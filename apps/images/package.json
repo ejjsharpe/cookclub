@@ -8,6 +8,7 @@
     "dev": "wrangler dev --inspector-port 9231",
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify",
+    "deploy:prod": "wrangler deploy --env production --minify",
     "check-types": "tsc --noEmit",
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix"
@@ -27,6 +28,9 @@
     "extends": "universe/node"
   },
   "nx": {
-    "tags": ["type:app", "runtime:worker"]
+    "tags": [
+      "type:app",
+      "runtime:worker"
+    ]
   }
 }

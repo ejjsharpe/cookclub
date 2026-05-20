@@ -7,16 +7,15 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { Resend } from "resend";
 
 const FROM_EMAIL = "Cook Club <noreply@cookclub.app>";
+const REPLY_TO_EMAIL = "help@cookclub.app";
 const AUTH_BASE_PATH = "/auth";
-const SOCIAL_PROVIDERS = ["google", "facebook", "apple"] as const;
+const SOCIAL_PROVIDERS = ["google", "apple"] as const;
 type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
 
 export interface AuthEnv {
   DATABASE_URL: string;
-  GOOGLE_CLIENT_ID: string;
-  GOOGLE_CLIENT_SECRET: string;
-  FB_CLIENT_ID: string;
-  FB_CLIENT_SECRET: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   APPLE_CLIENT_ID?: string;
   APPLE_CLIENT_SECRET?: string;
   APPLE_BUNDLE_IDENTIFIER?: string;
@@ -33,6 +32,7 @@ async function sendEmail(
   const resend = new Resend(env.RESEND_API_KEY);
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
+    replyTo: REPLY_TO_EMAIL,
     ...options,
   });
   if (error) {
@@ -53,6 +53,7 @@ function getTrustedOrigins(env: AuthEnv): string[] {
       "https://cookclub.app",
       "https://www.cookclub.app",
       "https://api.cookclub.app",
+      "https://appleid.apple.com",
       env.BETTER_AUTH_URL,
       ...configured,
     ]),
@@ -69,6 +70,16 @@ function getCallbackUrl(env: AuthEnv, provider: SocialProvider): string {
 
 export function getAuth(env: AuthEnv) {
   const db = getDb(env);
+  const googleProvider =
+    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
+            redirectURI: getCallbackUrl(env, "google"),
+          },
+        }
+      : {};
   const appleProvider =
     env.APPLE_CLIENT_ID && env.APPLE_CLIENT_SECRET
       ? {
@@ -130,16 +141,7 @@ export function getAuth(env: AuthEnv) {
       },
     },
     socialProviders: {
-      google: {
-        clientId: env.GOOGLE_CLIENT_ID,
-        clientSecret: env.GOOGLE_CLIENT_SECRET,
-        redirectURI: getCallbackUrl(env, "google"),
-      },
-      facebook: {
-        clientId: env.FB_CLIENT_ID,
-        clientSecret: env.FB_CLIENT_SECRET,
-        redirectURI: getCallbackUrl(env, "facebook"),
-      },
+      ...googleProvider,
       ...appleProvider,
     },
     account: {

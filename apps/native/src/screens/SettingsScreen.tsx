@@ -4,7 +4,7 @@ import { View, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 
 import { useSignOut } from "@/api/auth";
-import { useUpdateProfile, useUser } from "@/api/user";
+import { useDeleteAccount, useUpdateProfile, useUser } from "@/api/user";
 import { Ionicons } from "@/components/Ionicons";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { SafeAreaView } from "@/components/SafeAreaView";
@@ -102,6 +102,7 @@ const ToggleOption = ({
 export const SettingsScreen = () => {
   const navigation = useNavigation();
   const signOutMutation = useSignOut();
+  const deleteAccountMutation = useDeleteAccount();
   const updateProfileMutation = useUpdateProfile();
   const [currentTheme, setCurrentTheme] =
     useState<ThemePreference>(getThemePreference);
@@ -133,6 +134,45 @@ export const SettingsScreen = () => {
         onPress: () => signOutMutation.mutate(),
       },
     ]);
+  };
+
+  const deleteAccount = () => {
+    deleteAccountMutation.mutate(undefined, {
+      onError: (error) => {
+        Alert.alert(
+          "Delete Account Failed",
+          error.message || "Please try again.",
+        );
+      },
+    });
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "This permanently deletes your Cook Club account and app data. It does not cancel any App Store or Google Play subscription.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Delete Account Permanently",
+              "This cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete Account",
+                  style: "destructive",
+                  onPress: deleteAccount,
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -234,6 +274,14 @@ export const SettingsScreen = () => {
             icon="log-out-outline"
             label="Sign Out"
             onPress={handleSignOut}
+            destructive
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="trash-outline"
+            label="Delete Account"
+            value={deleteAccountMutation.isPending ? "Deleting..." : undefined}
+            onPress={handleDeleteAccount}
             destructive
           />
         </View>

@@ -23,8 +23,6 @@ export function createMockEnv() {
     GOOGLE_CLIENT_SECRET: "mock-google-secret",
     BETTER_AUTH_SECRET: "mock-auth-secret",
     BETTER_AUTH_URL: "http://localhost:8787",
-    FB_CLIENT_ID: "mock-fb-id",
-    FB_CLIENT_SECRET: "mock-fb-secret",
     RECIPE_AI: {
       parse: vi.fn(),
       chat: vi.fn(),

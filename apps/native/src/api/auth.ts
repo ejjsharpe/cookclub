@@ -2,14 +2,8 @@ import { useTRPC } from "@repo/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { authClient } from "@/lib/authClient";
-import { clearSelectedMealPlan } from "@/lib/mealPlanPreferences";
-import { storage } from "@/lib/mmkv";
-import { clearPendingShareIntent } from "@/lib/pendingShareIntent";
 import { getCurrentExpoPushToken } from "@/lib/pushNotifications";
-import {
-  setThemePreference,
-  applyThemePreference,
-} from "@/lib/themePreferences";
+import { clearLocalSessionState } from "@/lib/sessionCleanup";
 
 export class AuthError extends Error {
   status: number;
@@ -75,7 +69,7 @@ export const useSignInWithSocial = () => {
   const queryClient = useQueryClient();
   return useMutation({
     onError: (e) => console.log(e),
-    mutationFn: ({ provider }: { provider: "google" | "facebook" | "apple" }) =>
+    mutationFn: ({ provider }: { provider: "google" | "apple" }) =>
       authClient.signIn.social({ provider, callbackURL: "/" }),
     onSuccess: () => {
       queryClient.invalidateQueries();
@@ -105,13 +99,7 @@ export const useSignOut = () => {
       return authClient.signOut();
     },
     onSuccess: () => {
-      queryClient.setQueryData(["session"], null);
-      queryClient.clear();
-      storage.delete("cook-club-query-cache");
-      clearSelectedMealPlan();
-      clearPendingShareIntent();
-      setThemePreference("system");
-      applyThemePreference("system");
+      clearLocalSessionState(queryClient);
     },
   });
 };

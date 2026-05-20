@@ -1,11 +1,9 @@
 {
   "expo": {
-    "name": "cook-club",
-    "slug": "cook-club",
+    "name": "cookclub",
+    "slug": "cookclub",
+    "owner": "shakyhand",
     "version": "1.0.0",
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
     "scheme": "cookclub",
     "experiments": {
       "tsconfigPaths": true,
@@ -42,7 +40,7 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "15.0"
+            "deploymentTarget": "15.1"
           }
         }
       ],
@@ -61,21 +59,23 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ejjsharpe.cookclub",
+      "bundleIdentifier": "com.shakyhand.cookclub",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "icon": "./assets/cookclub.icon"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#f90000"
       },
-      "package": "com.ejjsharpe.cookclub"
+      "package": "com.shakyhand.cookclub"
     },
     "extra": {
       "eas": {
-        "projectId": "5854bf79-bc6b-4f28-9ecf-076b5e6b7f7b"
+        "projectId": "b8626cb5-f771-4f18-bd9f-07b048414cf4"
       }
     }
   }

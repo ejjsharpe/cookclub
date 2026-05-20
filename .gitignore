@@ -36,3 +36,4 @@ logs/
 
 # TypeScript build info
 *.tsbuildinfo.json
+*.p8

@@ -11,6 +11,9 @@
     "lint": "nx run-many -t lint",
     "test": "nx run-many -t test",
     "check-types": "nx run-many -t check-types",
+    "deploy:api:prod": "bun run --cwd apps/api deploy:prod",
+    "deploy:recipe-ai:prod": "bun run --cwd apps/recipe-ai deploy:prod",
+    "deploy:images:prod": "bun run --cwd apps/images deploy:prod",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },

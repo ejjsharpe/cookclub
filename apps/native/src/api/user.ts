@@ -2,6 +2,8 @@ import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { clearLocalSessionState } from "@/lib/sessionCleanup";
+
 // API Response Types
 export type User = Outputs["user"]["getUser"]["user"];
 
@@ -43,5 +45,17 @@ export const useCheckUsername = (username: string) => {
   return useQuery({
     ...trpc.user.checkUsername.queryOptions({ username }),
     enabled: username.length >= 3,
+  });
+};
+
+export const useDeleteAccount = () => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    ...trpc.user.deleteAccount.mutationOptions(),
+    onSuccess: () => {
+      clearLocalSessionState(queryClient);
+    },
   });
 };

@@ -1,0 +1,21 @@
+# Required for local API/auth development
+DATABASE_URL=
+BETTER_AUTH_SECRET=
+
+# Required for email/password sign-up and verification emails
+RESEND_API_KEY=
+
+# Required only if testing Google sign-in locally
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Required only if testing Sign in with Apple locally
+APPLE_CLIENT_ID=
+APPLE_CLIENT_SECRET=
+
+# Optional: enables authenticated Expo push requests
+EXPO_ACCESS_TOKEN=
+
+# Optional: enables Adapty entitlement refresh and webhook handling
+ADAPTY_SECRET_API_KEY=
+ADAPTY_WEBHOOK_AUTHORIZATION=
