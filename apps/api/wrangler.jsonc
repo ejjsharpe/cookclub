@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "cookclub-api",
+  "name": "cookclub-api-development",
   "main": "src/index.ts",
   "account_id": "46fa47bc2bba51d75383b4dfe6e3deb1",
   "compatibility_flags": ["nodejs_compat"],
@@ -14,51 +14,52 @@
   "services": [
     {
       "binding": "RECIPE_AI",
-      "service": "cookclub-recipe-ai",
+      "service": "cookclub-recipe-ai-development",
       "entrypoint": "RecipeAI",
     },
     {
       "binding": "IMAGE_SERVICE",
-      "service": "cookclub-images",
+      "service": "cookclub-images-development",
       "entrypoint": "ImageService",
     },
   ],
   "ratelimits": [
     {
       "name": "API_RATE_LIMITER",
-      "namespace_id": "4601001",
+      "namespace_id": "4602001",
       "simple": { "limit": 300, "period": 60 },
     },
     {
       "name": "AI_RATE_LIMITER",
-      "namespace_id": "4601002",
+      "namespace_id": "4602002",
       "simple": { "limit": 30, "period": 60 },
     },
     {
       "name": "IMAGE_AI_RATE_LIMITER",
-      "namespace_id": "4601003",
+      "namespace_id": "4602003",
       "simple": { "limit": 6, "period": 60 },
     },
     {
       "name": "UPLOAD_RATE_LIMITER",
-      "namespace_id": "4601004",
+      "namespace_id": "4602004",
       "simple": { "limit": 60, "period": 60 },
     },
   ],
   "vars": {
     "BETTER_AUTH_URL": "http://localhost:8787",
     // Public URL for images (dev uses R2 public URL, prod uses custom domain)
-    "IMAGE_PUBLIC_URL": "https://pub-f28c31fccf774b38b72b758fe11b56bb.r2.dev",
+    "IMAGE_PUBLIC_URL": "https://pub-8a33f3240252485aa859a3ac8dd49465.r2.dev",
     "APPLE_BUNDLE_IDENTIFIER": "com.shakyhand.cookclub",
     "ADAPTY_PRO_ACCESS_LEVEL_ID": "pro",
   },
   "durable_objects": {
     "bindings": [{ "name": "USER_FEED", "class_name": "FeedDO" }],
   },
-  "migrations": [{ "tag": "v1", "new_classes": ["FeedDO"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FeedDO"] }],
   // Production environment overrides
   "env": {
     "production": {
+      "name": "cookclub-api-production",
       "services": [
         {
           "binding": "RECIPE_AI",
@@ -74,6 +75,7 @@
       "durable_objects": {
         "bindings": [{ "name": "USER_FEED", "class_name": "FeedDO" }],
       },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FeedDO"] }],
       "routes": [{ "pattern": "api.cookclub.app", "custom_domain": true }],
       "ratelimits": [
         {

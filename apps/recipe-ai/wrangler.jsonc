@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "cookclub-recipe-ai",
+  "name": "cookclub-recipe-ai-development",
   "main": "src/index.ts",
   "account_id": "46fa47bc2bba51d75383b4dfe6e3deb1",
   "compatibility_flags": ["nodejs_compat"],
@@ -18,23 +18,24 @@
   "kv_namespaces": [
     {
       "binding": "RECIPE_CACHE",
-      "id": "51d8998b3bd54115a5c74fce8e67f37b",
-      "preview_id": "8d40df048b504ee39950c3ece6e71b9e"
+      "id": "c2e51093e69d40aeaeb5e8a3abd47575",
+      "preview_id": "3674effd74a94a30a4a74c6dbbb5bcea"
     }
   ],
   "services": [
     {
       "binding": "IMAGE_SERVICE",
-      "service": "cookclub-images",
+      "service": "cookclub-images-development",
       "entrypoint": "ImageService"
     }
   ],
   "vars": {
     "ENVIRONMENT": "development",
-    "IMAGE_PUBLIC_URL": "https://pub-f28c31fccf774b38b72b758fe11b56bb.r2.dev"
+    "IMAGE_PUBLIC_URL": "https://pub-8a33f3240252485aa859a3ac8dd49465.r2.dev"
   },
   "env": {
     "production": {
+      "name": "cookclub-recipe-ai-production",
       "ai": {
         "binding": "AI"
       },
@@ -44,8 +45,8 @@
       "kv_namespaces": [
         {
           "binding": "RECIPE_CACHE",
-          "id": "51d8998b3bd54115a5c74fce8e67f37b",
-          "preview_id": "8d40df048b504ee39950c3ece6e71b9e"
+          "id": "3e1c6d35a41743e4a456d1463f0308f8",
+          "preview_id": "ac757232baee4b87a508160a308ec2c3"
         }
       ],
       "services": [
