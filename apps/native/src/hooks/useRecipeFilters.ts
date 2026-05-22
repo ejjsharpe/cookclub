@@ -49,6 +49,11 @@ export const useRecipeFilters = () => {
   const hasActiveFilters =
     selectedTagIds.length > 0 || maxTotalTime !== undefined;
 
+  const clearFilters = useCallback(() => {
+    setSelectedTagIds([]);
+    setMaxTotalTime(undefined);
+  }, []);
+
   // Animate filter button visibility based on tab
   const setFilterButtonVisible = useCallback(
     (visible: boolean) => {
@@ -63,6 +68,7 @@ export const useRecipeFilters = () => {
     setSelectedTagIds,
     maxTotalTime,
     setMaxTotalTime,
+    clearFilters,
     hasActiveFilters,
 
     // Filter sheet props

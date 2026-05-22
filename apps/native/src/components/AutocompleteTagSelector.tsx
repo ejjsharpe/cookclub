@@ -97,30 +97,25 @@ export const AutocompleteTagSelector = ({
     <View style={styles.container}>
       {/* Search Input */}
       <View style={styles.inputWrapper}>
-        <Ionicons
-          name="search"
-          size={18}
-          color="#999"
-          style={styles.searchIcon}
-        />
+        <Ionicons name="search" size={18} style={styles.searchIcon} />
         <TextInput
           ref={inputRef}
           style={styles.input}
           value={searchText}
           onChangeText={setSearchText}
           placeholder={placeholder}
-          placeholderTextColor="#999"
           onFocus={() => setIsFocused(true)}
           onBlur={() => setTimeout(() => setIsFocused(false), 150)}
           autoCapitalize="none"
           autoCorrect={false}
+          placeholderTextColor={styles.placeholder.color}
         />
         {searchText.length > 0 && (
           <TouchableOpacity
             onPress={() => setSearchText("")}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="close-circle" size={18} color="#999" />
+            <Ionicons name="close-circle" size={18} style={styles.clearIcon} />
           </TouchableOpacity>
         )}
       </View>
@@ -136,7 +131,11 @@ export const AutocompleteTagSelector = ({
               activeOpacity={0.7}
             >
               <Text style={styles.dropdownText}>{tag.name}</Text>
-              <Ionicons name="add-circle-outline" size={20} color="#999" />
+              <Ionicons
+                name="add-circle-outline"
+                size={20}
+                style={styles.dropdownIcon}
+              />
             </TouchableOpacity>
           ))}
         </View>
@@ -177,13 +176,15 @@ const styles = StyleSheet.create((theme) => ({
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f5f5f5",
+    minHeight: 44,
+    backgroundColor: theme.colors.inputBackground,
     borderRadius: theme.borderRadius.extraLarge,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   searchIcon: {
     marginRight: 8,
+    color: theme.colors.textTertiary,
   },
   input: {
     flex: 1,
@@ -193,6 +194,12 @@ const styles = StyleSheet.create((theme) => ({
     textAlignVertical: "center",
     fontFamily: theme.fonts.regular,
     color: theme.colors.text,
+  },
+  placeholder: {
+    color: theme.colors.placeholderText,
+  },
+  clearIcon: {
+    color: theme.colors.textTertiary,
   },
   dropdown: {
     marginTop: 4,
@@ -216,6 +223,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 16,
     fontFamily: theme.fonts.regular,
     color: theme.colors.text,
+  },
+  dropdownIcon: {
+    color: theme.colors.textTertiary,
   },
   chipsContainer: {
     flexDirection: "row",

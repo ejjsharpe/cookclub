@@ -9,6 +9,7 @@ import {
   useParseRecipeFromText,
   useParseRecipeFromImage,
 } from "@/api/recipe";
+import { isAdaptyConfigured } from "@/lib/adapty";
 import {
   createBackgroundImportId,
   useBackgroundImportQueue,
@@ -189,6 +190,11 @@ export function ShareIntentHandler() {
 
   // Check for pending share intent on mount (from previous session or pre-login)
   useEffect(() => {
+    if (!isAdaptyConfigured()) {
+      clearPendingShareIntent();
+      return;
+    }
+
     if (hasCheckedPendingRef.current) return;
     hasCheckedPendingRef.current = true;
 
@@ -204,6 +210,11 @@ export function ShareIntentHandler() {
   // Handle new share intents
   useEffect(() => {
     if (!hasShareIntent || !shareIntent || hasProcessedRef.current) return;
+
+    if (!isAdaptyConfigured()) {
+      resetShareIntent();
+      return;
+    }
 
     const detectedIntent = detectContentType(shareIntent);
     if (!detectedIntent) {

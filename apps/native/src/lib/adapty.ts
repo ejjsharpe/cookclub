@@ -1,7 +1,9 @@
-import { adapty } from "react-native-adapty";
+import { adapty, type AdaptyProfile } from "react-native-adapty";
 
 export const ADAPTY_PAYWALL_PLACEMENT_ID =
   process.env.EXPO_PUBLIC_ADAPTY_PAYWALL_PLACEMENT_ID ?? "pro_paywall";
+export const ADAPTY_PRO_ACCESS_LEVEL_ID =
+  process.env.EXPO_PUBLIC_ADAPTY_PRO_ACCESS_LEVEL_ID ?? "pro";
 
 const ADAPTY_SDK_KEY = process.env.EXPO_PUBLIC_ADAPTY_PUBLIC_SDK_KEY;
 
@@ -17,7 +19,6 @@ export function activateAdaptyAtStartup() {
 
   activationPromise = adapty
     .activate(ADAPTY_SDK_KEY, {
-      activateUi: true,
       __ignoreActivationOnFastRefresh: true,
     })
     .catch((error) => {
@@ -37,6 +38,10 @@ export async function identifyAdaptyUser(userId: string) {
 
   await adapty.identify(userId);
   identifiedUserId = userId;
+}
+
+export function hasActiveAdaptyAccess(profile: AdaptyProfile | undefined) {
+  return Boolean(profile?.accessLevels?.[ADAPTY_PRO_ACCESS_LEVEL_ID]?.isActive);
 }
 
 export { adapty };

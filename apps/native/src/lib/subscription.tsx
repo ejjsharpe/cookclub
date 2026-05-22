@@ -11,7 +11,6 @@ import {
   type PropsWithChildren,
 } from "react";
 import { Alert } from "react-native";
-import { createPaywallView } from "react-native-adapty";
 
 import {
   useRefreshSubscriptionEntitlement,
@@ -19,11 +18,10 @@ import {
   type SubscriptionStatus,
 } from "@/api/subscription";
 import {
-  ADAPTY_PAYWALL_PLACEMENT_ID,
-  adapty,
-  identifyAdaptyUser,
-  isAdaptyConfigured,
-} from "@/lib/adapty";
+  ProPaywallSheet,
+  type ProPaywallSheetRef,
+} from "@/components/ProPaywallSheet";
+import { adapty, identifyAdaptyUser, isAdaptyConfigured } from "@/lib/adapty";
 import { useSessionContext } from "@/lib/sessionContext";
 
 interface SubscriptionContextValue {
@@ -54,6 +52,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   const refreshMutation = useRefreshSubscriptionEntitlement();
   const [isPresentingPaywall, setIsPresentingPaywall] = useState(false);
   const activatedUserIdRef = useRef<string | null>(null);
+  const paywallSheetRef = useRef<ProPaywallSheetRef>(null);
+  const paywallResolveRef = useRef<((didUnlock: boolean) => void) | null>(null);
 
   const refresh = useCallback(async () => {
     if (!session?.user.id) return undefined;
@@ -96,6 +96,13 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     };
   }, [refresh, session?.user.id]);
 
+  const resolvePaywall = useCallback((didUnlock: boolean) => {
+    const resolve = paywallResolveRef.current;
+    paywallResolveRef.current = null;
+    setIsPresentingPaywall(false);
+    resolve?.(didUnlock);
+  }, []);
+
   const presentPaywall = useCallback(async () => {
     if (!isAdaptyConfigured()) {
       Alert.alert(
@@ -105,44 +112,25 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       return false;
     }
 
-    if (!session?.user.id || isPresentingPaywall) return false;
+    if (!session?.user.id || isPresentingPaywall || paywallResolveRef.current) {
+      return false;
+    }
 
     setIsPresentingPaywall(true);
-    let purchaseCompleted = false;
 
-    try {
-      await identifyAdaptyUser(session.user.id);
+    return new Promise<boolean>((resolve) => {
+      paywallResolveRef.current = resolve;
 
-      const paywall = await adapty.getPaywall(ADAPTY_PAYWALL_PLACEMENT_ID);
-      const view = await createPaywallView(paywall);
-      view.setEventHandlers({
-        onPurchaseCompleted: (purchaseResult) => {
-          purchaseCompleted = purchaseResult.type === "success";
-          refresh().catch((error) => {
-            console.log("Subscription refresh failed:", error);
-          });
-          return purchaseResult.type !== "user_cancelled";
-        },
-        onRestoreCompleted: () => {
-          refresh().catch((error) => {
-            console.log("Subscription refresh failed:", error);
-          });
-          return true;
-        },
+      requestAnimationFrame(() => {
+        const sheet = paywallSheetRef.current;
+        if (!sheet) {
+          resolvePaywall(false);
+          return;
+        }
+        sheet.present();
       });
-      await view.present();
-      const refreshedStatus = await refresh();
-      return Boolean(refreshedStatus?.isPro || purchaseCompleted);
-    } catch (error: any) {
-      Alert.alert(
-        "Subscription unavailable",
-        error?.message || "Could not open the subscription screen.",
-      );
-      return false;
-    } finally {
-      setIsPresentingPaywall(false);
-    }
-  }, [isPresentingPaywall, refresh, session?.user.id]);
+    });
+  }, [isPresentingPaywall, resolvePaywall, session?.user.id]);
 
   const restorePurchases = useCallback(async () => {
     if (!isAdaptyConfigured()) {
@@ -231,6 +219,16 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   return (
     <SubscriptionContext.Provider value={value}>
       {children}
+      {session?.user.id ? (
+        <ProPaywallSheet
+          ref={paywallSheetRef}
+          userId={session.user.id}
+          isPro={isPro}
+          smartImportsRemaining={smartImportsRemaining}
+          refreshEntitlement={refresh}
+          onResult={resolvePaywall}
+        />
+      ) : null}
     </SubscriptionContext.Provider>
   );
 }

@@ -147,9 +147,12 @@ const styles = StyleSheet.create((theme) => ({
   metaItem: {
     flexDirection: "row",
     alignItems: "center",
+    minHeight: 20,
+    gap: 4,
   },
   metaIcon: {
     color: theme.colors.textSecondary,
+    marginTop: 1,
   },
   metaText: {
     color: theme.colors.textSecondary,

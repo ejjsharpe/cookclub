@@ -201,6 +201,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   avatarText: {
     fontSize: 20,
+    lineHeight: 24,
+    includeFontPadding: false,
+    textAlign: "center",
     color: theme.colors.primary,
   },
   nameContainer: {

@@ -24,7 +24,6 @@ import startImage6 from "@/assets/images/start-food-6.jpg";
 import startImage7 from "@/assets/images/start-food-7.jpg";
 import startImage8 from "@/assets/images/start-food-8.jpg";
 import startImage9 from "@/assets/images/start-food-9.jpg";
-import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareIntentStorageHandler } from "@/components/ShareIntentStorageHandler";
 import { WelcomeOverlayProvider } from "@/components/WelcomeOverlay";
 import { activateAdaptyAtStartup } from "@/lib/adapty";
@@ -139,7 +138,6 @@ export default function App() {
                         <GestureHandlerRootView style={styles.rootView}>
                           <BackgroundImportQueueProvider>
                             <WelcomeOverlayProvider>
-                              <OfflineIndicator />
                               <Navigation
                                 ref={navigationRef}
                                 key={navigationKey}

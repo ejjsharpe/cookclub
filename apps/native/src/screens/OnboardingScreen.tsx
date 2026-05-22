@@ -1,14 +1,11 @@
 import { useTRPC } from "@repo/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 import { useState, useCallback } from "react";
+import { View, ScrollView, Alert, Dimensions } from "react-native";
 import {
-  View,
-  ScrollView,
   KeyboardAvoidingView,
-  Platform,
-  Alert,
-  Dimensions,
-} from "react-native";
+  KeyboardAwareScrollView,
+} from "react-native-keyboard-controller";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -145,7 +142,7 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="translate-with-padding"
         style={styles.keyboardView}
       >
         <VSpace size={16} />
@@ -157,11 +154,13 @@ export default function OnboardingScreen() {
 
         <View style={styles.pagerContainer}>
           <Animated.View style={[styles.pagerRow, animatedPagerStyle]}>
-            <ScrollView
+            <KeyboardAwareScrollView
               style={styles.stepContainer}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              bottomOffset={insets.bottom + 96}
+              extraKeyboardSpace={12}
             >
               <OnboardingStepProfile
                 name={name}
@@ -179,7 +178,7 @@ export default function OnboardingScreen() {
                 usernameError={usernameError}
                 hasAttemptedSubmit={hasAttemptedSubmit}
               />
-            </ScrollView>
+            </KeyboardAwareScrollView>
 
             <View style={[styles.stepContainer, styles.stepContent]}>
               <OnboardingStepMeasurements

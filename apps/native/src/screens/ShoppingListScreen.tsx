@@ -79,7 +79,7 @@ interface Recipe {
   imageUrl: string | null;
 }
 
-const INPUT_SECTION_HEIGHT = 68;
+const INPUT_SECTION_HEIGHT = 60;
 const HEADER_HEIGHT = 52; // Height of the title row
 const ReanimatedFlatList = Animated.createAnimatedComponent(
   FlatList<ShoppingListFlashItem>,
@@ -829,14 +829,7 @@ export const ShoppingListScreen = () => {
                 onPress={handleAddManualItem}
                 disabled={!manualItemText.trim() || addManualMutation.isPending}
               >
-                <Ionicons
-                  name="add-circle"
-                  size={50}
-                  style={[
-                    styles.addIcon,
-                    !manualItemText.trim() && styles.addIconDisabled,
-                  ]}
-                />
+                <Ionicons name="add" size={24} style={styles.addIcon} />
               </TouchableOpacity>
             </View>
           </LinearGradient>
@@ -1010,25 +1003,31 @@ const styles = StyleSheet.create((theme, rt) => ({
   inputSection: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
   input: {
     flex: 1,
-    minHeight: 50,
-    paddingHorizontal: 20,
+    height: 44,
+    paddingHorizontal: 16,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.inputBackground,
     fontSize: 17,
+    lineHeight: 22,
     fontFamily: theme.fonts.regular,
     color: theme.colors.text,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   inputPlaceholder: {
     color: theme.colors.textTertiary,
   },
   addButton: {
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.primary,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1036,10 +1035,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     opacity: 0.3,
   },
   addIcon: {
-    color: theme.colors.primary,
-  },
-  addIconDisabled: {
-    opacity: 0.3,
+    color: theme.colors.buttonText,
   },
 
   // Section Headers

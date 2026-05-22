@@ -252,7 +252,7 @@ const styles = StyleSheet.create((theme) => ({
     bottom: CONTAINER_PADDING,
     backgroundColor: theme.colors.background,
     borderRadius: TAB_HEIGHT / 2,
-    shadowColor: theme.colors.text,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,

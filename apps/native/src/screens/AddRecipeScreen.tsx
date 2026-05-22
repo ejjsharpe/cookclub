@@ -60,6 +60,7 @@ const ActionRow = ({
   icon,
   label,
   subtitle,
+  counterLabel,
   onPress,
   disabled,
   featured,
@@ -67,6 +68,7 @@ const ActionRow = ({
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   subtitle: string;
+  counterLabel?: string;
   onPress: () => void;
   disabled?: boolean;
   featured?: boolean;
@@ -111,7 +113,21 @@ const ActionRow = ({
               {subtitle}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} style={styles.chevron} />
+          <View
+            style={[
+              styles.rowTrailing,
+              !counterLabel && styles.rowTrailingCentered,
+            ]}
+          >
+            {counterLabel && (
+              <View style={styles.counterBadge}>
+                <Text type="caption" style={styles.counterBadgeText}>
+                  {counterLabel}
+                </Text>
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={20} style={styles.chevron} />
+          </View>
         </>
       )}
     </Pressable>
@@ -331,6 +347,7 @@ export const AddRecipeScreen = () => {
   const {
     isPro,
     smartImportsRemaining,
+    smartImportsLimit,
     requireSmartImport,
     requireProFeature,
   } = useSubscription();
@@ -498,10 +515,11 @@ export const AddRecipeScreen = () => {
           <ActionRow
             icon="sparkles"
             label="Smart import"
-            subtitle={
+            subtitle="Use AI to import from recipe links, social posts, pasted text, or photos."
+            counterLabel={
               isPro
-                ? "Unlimited AI imports from websites, text, images, and social media."
-                : `${smartImportsRemaining ?? 0} of 5 free Smart Imports left this month.`
+                ? undefined
+                : `${smartImportsRemaining ?? 0}/${smartImportsLimit ?? 5} left`
             }
             onPress={onPressSmartImport}
             featured
@@ -775,6 +793,15 @@ const styles = StyleSheet.create((theme, rt) => ({
     flex: 1,
     gap: 2,
   },
+  rowTrailing: {
+    alignSelf: "stretch",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    minWidth: 54,
+  },
+  rowTrailingCentered: {
+    justifyContent: "center",
+  },
   labelRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -789,6 +816,17 @@ const styles = StyleSheet.create((theme, rt) => ({
   badgeText: {
     color: "white",
     fontWeight: "600",
+  },
+  counterBadge: {
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: theme.borderRadius.full,
+  },
+  counterBadgeText: {
+    color: theme.colors.primary,
+    fontFamily: theme.fonts.semiBold,
+    fontVariant: ["tabular-nums"],
   },
   subtitle: {
     color: theme.colors.textSecondary,

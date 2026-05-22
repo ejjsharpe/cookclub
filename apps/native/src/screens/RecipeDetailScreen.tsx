@@ -561,14 +561,7 @@ export const RecipeDetailScreen = () => {
         },
       },
     );
-  }, [
-    isEditing,
-    isPreviewMode,
-    isPro,
-    nutrition,
-    nutritionMutation,
-    recipe,
-  ]);
+  }, [isEditing, isPreviewMode, isPro, nutrition, nutritionMutation, recipe]);
 
   useEffect(() => {
     const imageCount = isEditing
@@ -2083,8 +2076,7 @@ export const RecipeDetailScreen = () => {
     }
 
     const currentNutrition = nutrition ?? recipe.nutrition;
-    const isLoadingNutrition =
-      nutritionMutation.isPending && !currentNutrition;
+    const isLoadingNutrition = nutritionMutation.isPending && !currentNutrition;
 
     return (
       <View style={styles.nutritionCard}>
@@ -3162,12 +3154,13 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: 18,
   },
   sectionHeader: {
-    paddingBottom: 8,
+    paddingBottom: 10,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 17,
+    lineHeight: 22,
     color: theme.colors.text,
-    fontFamily: theme.fonts.semiBold,
+    fontFamily: theme.fonts.bold,
   },
   sectionHeadingRow: {
     flexDirection: "row",

@@ -327,6 +327,7 @@ export const MyRecipesScreen = () => {
   const [filterState, setFilterState] = useState<{
     hasActiveFilters: boolean;
     onOpenFilters: () => void;
+    clearFilters: () => void;
     activeTab: TabType;
   } | null>(null);
 
@@ -736,6 +737,7 @@ export const MyRecipesScreen = () => {
       // Trigger exit animation
       setIsSearchActive(false);
       setSearchQuery("");
+      filterState?.clearFilters();
     };
 
     // Capture flags for worklet (refs are only attached when data exists)
@@ -785,10 +787,11 @@ export const MyRecipesScreen = () => {
     if (isSearchActive) {
       setIsSearchActive(false);
       setSearchQuery("");
+      filterState?.clearFilters();
     }
 
     browseScrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, [isSearchActive]);
+  }, [filterState, isSearchActive]);
 
   useEffect(() => {
     // @ts-expect-error navigation type
@@ -1071,57 +1074,47 @@ export const MyRecipesScreen = () => {
           </View>
 
           {/* Recently Added Section */}
-          {(isLoadingRecipes || recentRecipes.length > 0) && (
-            <View style={styles.section}>
-              <Text type="title3" style={styles.sectionTitle}>
-                Recently Added
-              </Text>
-              {isLoadingRecipes ? (
-                <RecentRecipesSkeleton />
-              ) : (
-                <FadeIn>
-                  <Animated.View
-                    style={[styles.recentRecipesList, recipeCardsStyle]}
-                  >
-                    {recentRecipes.map((recipe, index) => (
-                      <Animated.View
-                        key={recipe.id}
-                        ref={index === 0 ? firstRecipeRef : undefined}
-                      >
-                        <RecipeCard
-                          recipe={recipe}
-                          onPress={() => handleRecipePress(recipe)}
-                        />
-                        {index < recentRecipes.length - 1 && (
-                          <VSpace size={12} />
-                        )}
-                      </Animated.View>
-                    ))}
-                  </Animated.View>
-                </FadeIn>
-              )}
-            </View>
-          )}
-
-          {/* Empty State */}
-          {!isLoadingCollections &&
-            !isLoadingRecipes &&
-            collections.length === 0 &&
-            recentRecipes.length === 0 && (
-              <View style={styles.emptyState}>
+          <View style={styles.section}>
+            <Text type="title3" style={styles.sectionTitle}>
+              Recently Added
+            </Text>
+            {isLoadingRecipes ? (
+              <RecentRecipesSkeleton />
+            ) : recentRecipes.length > 0 ? (
+              <FadeIn>
+                <Animated.View
+                  style={[styles.recentRecipesList, recipeCardsStyle]}
+                >
+                  {recentRecipes.map((recipe, index) => (
+                    <Animated.View
+                      key={recipe.id}
+                      ref={index === 0 ? firstRecipeRef : undefined}
+                    >
+                      <RecipeCard
+                        recipe={recipe}
+                        onPress={() => handleRecipePress(recipe)}
+                      />
+                      {index < recentRecipes.length - 1 && <VSpace size={12} />}
+                    </Animated.View>
+                  ))}
+                </Animated.View>
+              </FadeIn>
+            ) : (
+              <View style={styles.recipesEmptyState}>
                 <Ionicons
                   name="book-outline"
-                  size={48}
+                  size={36}
                   style={styles.emptyIcon}
                 />
                 <Text type="headline" style={styles.emptyTitle}>
-                  No recipes yet
+                  No recipes in your library yet!
                 </Text>
                 <Text type="body" style={styles.emptySubtitle}>
                   Import recipes from the feed or add your own to get started
                 </Text>
               </View>
             )}
+          </View>
         </AnimatedScrollView>
 
         {/* Fixed Title Header */}
@@ -1145,7 +1138,7 @@ export const MyRecipesScreen = () => {
           <RecipeCollectionBrowser
             onRecipePress={handleRecipePress}
             onCollectionPress={handleCollectionPress}
-            recipesEmptyMessage="No recipes in your library yet. Import recipes from the feed or add your own!"
+            recipesEmptyMessage="No recipes in your library yet!"
             hideSearchBar
             externalSearchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
@@ -1365,12 +1358,11 @@ const styles = StyleSheet.create((theme, rt) => ({
     right: HORIZONTAL_PADDING,
     zIndex: 100,
   },
-  emptyState: {
-    flex: 1,
+  recipesEmptyState: {
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 40,
-    paddingTop: 80,
+    paddingVertical: 28,
   },
   emptyIcon: {
     color: theme.colors.textTertiary,

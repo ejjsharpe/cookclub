@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Dimensions } from "react-native";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
   useAnimatedStyle,
   type SharedValue,
@@ -53,6 +54,7 @@ interface RecipeCollectionBrowserProps {
   onFilterStateChange?: (state: {
     hasActiveFilters: boolean;
     onOpenFilters: () => void;
+    clearFilters: () => void;
     activeTab: TabType;
   }) => void;
   /** Animation progress for header entrance (0 = hidden, 1 = visible) */
@@ -104,6 +106,7 @@ export const RecipeCollectionBrowser = ({
     searchQuery,
     setSearchQuery,
     hasActiveFilters,
+    clearFilters,
     filterButtonStyle,
     filterSheetProps,
     recipes,
@@ -125,6 +128,16 @@ export const RecipeCollectionBrowser = ({
     filterSheetRef.current?.present();
   }, []);
 
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+
+  const centeredKeyboardStyle = useAnimatedStyle(() => {
+    const keyboardOffset = Math.max(0, -keyboardHeight.value);
+
+    return {
+      paddingBottom: keyboardOffset,
+    };
+  });
+
   // Sync search query changes with parent if callback provided
   const handleSearchChange = useCallback(
     (query: string) => {
@@ -139,9 +152,16 @@ export const RecipeCollectionBrowser = ({
     onFilterStateChange?.({
       hasActiveFilters,
       onOpenFilters: handleOpenFilters,
+      clearFilters,
       activeTab,
     });
-  }, [onFilterStateChange, hasActiveFilters, handleOpenFilters, activeTab]);
+  }, [
+    onFilterStateChange,
+    hasActiveFilters,
+    handleOpenFilters,
+    clearFilters,
+    activeTab,
+  ]);
 
   // Hide list content until animation completes (prevents double recipe cards with overlay)
   const listEntranceStyle = useAnimatedStyle(() => {
@@ -156,6 +176,14 @@ export const RecipeCollectionBrowser = ({
 
   const insets = UnistylesRuntime.insets;
   const headerPaddingTop = insets.top + HEADER_CONTENT_HEIGHT;
+  const centeredStateStyle = useMemo(
+    () => [
+      styles.centered,
+      { paddingTop: headerPaddingTop },
+      centeredKeyboardStyle,
+    ],
+    [headerPaddingTop, centeredKeyboardStyle],
+  );
 
   // Render item callbacks
   const renderRecipe = useCallback(
@@ -193,23 +221,30 @@ export const RecipeCollectionBrowser = ({
 
     if (recipesError) {
       return (
-        <View style={[styles.centered, { paddingTop: headerPaddingTop }]}>
+        <Animated.View style={centeredStateStyle}>
           <Text type="subheadline" style={styles.centeredText}>
             Failed to load recipes
           </Text>
-        </View>
+        </Animated.View>
       );
     }
 
     if (recipes.length === 0) {
+      const hasSearchQuery = searchQuery.trim().length > 0;
+      const emptyMessage = hasSearchQuery
+        ? hasActiveFilters
+          ? "No recipes match your search and filters"
+          : "No recipes found for your search"
+        : hasActiveFilters
+          ? "No recipes match your filters"
+          : recipesEmptyMessage;
+
       return (
-        <View style={[styles.centered, { paddingTop: headerPaddingTop }]}>
+        <Animated.View style={centeredStateStyle}>
           <Text type="subheadline" style={styles.centeredText}>
-            {searchQuery
-              ? "No recipes found for your search"
-              : recipesEmptyMessage}
+            {emptyMessage}
           </Text>
-        </View>
+        </Animated.View>
       );
     }
 
@@ -230,8 +265,9 @@ export const RecipeCollectionBrowser = ({
     recipesError,
     recipes,
     searchQuery,
+    hasActiveFilters,
     recipesEmptyMessage,
-    headerPaddingTop,
+    centeredStateStyle,
     renderRecipe,
     handleLoadMoreRecipes,
     isFetchingNextRecipes,
@@ -250,24 +286,24 @@ export const RecipeCollectionBrowser = ({
 
     if (collectionsError) {
       return (
-        <View style={[styles.centered, { paddingTop: headerPaddingTop }]}>
+        <Animated.View style={centeredStateStyle}>
           <Text type="subheadline" style={styles.centeredText}>
             Failed to load collections
           </Text>
-        </View>
+        </Animated.View>
       );
     }
 
     // Show empty state only if not showing create card
     if (collections.length === 0 && !showCreateCollectionCard) {
       return (
-        <View style={[styles.centered, { paddingTop: headerPaddingTop }]}>
+        <Animated.View style={centeredStateStyle}>
           <Text type="subheadline" style={styles.centeredText}>
             {searchQuery
               ? "No collections found for your search"
               : "No collections yet"}
           </Text>
-        </View>
+        </Animated.View>
       );
     }
 
@@ -292,6 +328,7 @@ export const RecipeCollectionBrowser = ({
     searchQuery,
     showCreateCollectionCard,
     headerPaddingTop,
+    centeredStateStyle,
     renderCollection,
     onCreateCollection,
     isCreatingCollection,

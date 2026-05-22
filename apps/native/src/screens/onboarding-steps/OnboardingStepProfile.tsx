@@ -222,6 +222,9 @@ const styles = StyleSheet.create((theme) => ({
   avatarText: {
     color: theme.colors.primary,
     fontSize: 48,
+    lineHeight: 58,
+    includeFontPadding: false,
+    textAlign: "center",
   },
   editBadge: {
     position: "absolute",

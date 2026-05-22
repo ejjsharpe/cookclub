@@ -48,6 +48,7 @@ export const useRecipeCollectionBrowser = ({
     setSelectedTagIds,
     maxTotalTime,
     setMaxTotalTime,
+    clearFilters,
     allTags,
   } = useRecipeFilters();
 
@@ -115,6 +116,7 @@ export const useRecipeCollectionBrowser = ({
 
     // Filters
     hasActiveFilters,
+    clearFilters,
 
     // Filter button animation
     filterButtonProgress,

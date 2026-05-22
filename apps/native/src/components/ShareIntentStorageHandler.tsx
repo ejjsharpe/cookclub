@@ -2,7 +2,9 @@ import { useShareIntentContext } from "expo-share-intent";
 import { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 
+import { isAdaptyConfigured } from "@/lib/adapty";
 import {
+  clearPendingShareIntent,
   setPendingShareIntent,
   type PendingShareIntent,
 } from "@/lib/pendingShareIntent";
@@ -64,6 +66,12 @@ export function ShareIntentStorageHandler() {
   // Only handle share intents when NOT signed in
   // When signed in, the ShareIntentHandler inside TabNavigator handles it
   useEffect(() => {
+    if (!isAdaptyConfigured()) {
+      clearPendingShareIntent();
+      if (hasShareIntent) resetShareIntent();
+      return;
+    }
+
     if (isSignedIn) return; // Let the other handler deal with it
     if (!hasShareIntent || !shareIntent || hasProcessedRef.current) return;
 
