@@ -12,6 +12,7 @@ import { BaseButton } from "@/components/buttons/BaseButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { SignInWithAppleButton } from "@/components/buttons/SignInWithAppleButton";
 import { SignInWithGoogleButton } from "@/components/buttons/SignInWithGoogleButton";
+import { shouldShowEmailVerificationAfterSignUp } from "@/lib/runtimeConfig";
 
 export interface SignUpSheetProps {
   onSwitchToSignIn?: () => void;
@@ -45,7 +46,9 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
         {
           onSuccess: async () => {
             await dismissSheet();
-            navigation.navigate("EmailVerification", { email });
+            if (shouldShowEmailVerificationAfterSignUp()) {
+              navigation.navigate("EmailVerification", { email });
+            }
           },
           onError: async (error) => {
             if (error instanceof AuthError && error.status === 403) {

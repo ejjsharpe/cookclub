@@ -25,6 +25,15 @@ export interface AuthEnv {
   TRUSTED_ORIGINS?: string;
 }
 
+function shouldRequireEmailVerification(env: AuthEnv): boolean {
+  try {
+    const authUrl = new URL(env.BETTER_AUTH_URL);
+    return !["localhost", "127.0.0.1", "0.0.0.0"].includes(authUrl.hostname);
+  } catch {
+    return true;
+  }
+}
+
 async function sendEmail(
   env: AuthEnv,
   options: { to: string; subject: string; html: string },
@@ -70,6 +79,7 @@ function getCallbackUrl(env: AuthEnv, provider: SocialProvider): string {
 
 export function getAuth(env: AuthEnv) {
   const db = getDb(env);
+  const requireEmailVerification = shouldRequireEmailVerification(env);
   const googleProvider =
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
       ? {
@@ -115,10 +125,10 @@ export function getAuth(env: AuthEnv) {
     trustedOrigins: getTrustedOrigins(env),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      requireEmailVerification,
     },
     emailVerification: {
-      sendOnSignUp: true,
+      sendOnSignUp: requireEmailVerification,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
         return sendEmail(env, {

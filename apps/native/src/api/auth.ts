@@ -40,6 +40,7 @@ export const useSignInWithEmail = () => {
 };
 
 export const useSignUpWithEmail = () => {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
       email,
@@ -61,6 +62,9 @@ export const useSignUpWithEmail = () => {
         );
       }
       return result.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
     },
   });
 };

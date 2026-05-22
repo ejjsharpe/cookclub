@@ -26,6 +26,13 @@ export function getAuthBaseUrl(): string {
   return getDevHost();
 }
 
+export function shouldShowEmailVerificationAfterSignUp(): boolean {
+  return (
+    process.env.NODE_ENV === "production" ||
+    Boolean(process.env.EXPO_PUBLIC_AUTH_BASE_URL)
+  );
+}
+
 export function getApiUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL;
   if (configured) {
