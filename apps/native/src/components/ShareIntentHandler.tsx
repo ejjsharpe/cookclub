@@ -5,6 +5,7 @@ import { Alert } from "react-native";
 
 import {
   useParseRecipeFromUrl,
+  useParseRecipeFromUrlBasic,
   useParseRecipeFromText,
   useParseRecipeFromImage,
 } from "@/api/recipe";
@@ -19,6 +20,7 @@ import {
   type PendingShareIntent,
 } from "@/lib/pendingShareIntent";
 import { useSubscription } from "@/lib/subscription";
+import { isBasicImportUnsupportedUrl } from "@/utils/basicImport";
 import { imageToBase64 } from "@/utils/imageUtils";
 
 export function ShareIntentHandler() {
@@ -29,22 +31,33 @@ export function ShareIntentHandler() {
   const hasCheckedPendingRef = useRef(false);
 
   const parseFromUrl = useParseRecipeFromUrl();
+  const parseFromUrlBasic = useParseRecipeFromUrlBasic();
   const parseFromText = useParseRecipeFromText();
   const parseFromImage = useParseRecipeFromImage();
   const { startImport } = useBackgroundImportQueue();
-  const { requireSmartImport } = useSubscription();
+  const { status, isPro, smartImportsRemaining, presentPaywall, refresh } =
+    useSubscription();
 
-  // Process a share intent (either new or pending)
-  const processShareIntent = useCallback(
-    async (intent: PendingShareIntent) => {
-      const allowed = await requireSmartImport();
-      if (!allowed) {
-        setPendingShareIntent(intent);
-        resetShareIntent();
-        navigation.navigate("Add recipe");
-        return;
-      }
+  const navigateToAddRecipeTab = useCallback(() => {
+    navigation.navigate("Tabs", { screen: "Add recipe" } as never);
+  }, [navigation]);
 
+  const canUseSmartImportForShare = useCallback(async () => {
+    if (isPro) return true;
+    if (status) return (status.smartImports.remaining ?? 0) > 0;
+
+    try {
+      const refreshedStatus = await refresh();
+      if (refreshedStatus?.isPro) return true;
+      return (refreshedStatus?.smartImports.remaining ?? 0) > 0;
+    } catch (error) {
+      console.warn("Failed to refresh subscription before share import", error);
+      return status ? (smartImportsRemaining ?? 0) > 0 : false;
+    }
+  }, [isPro, refresh, smartImportsRemaining, status]);
+
+  const startSmartImport = useCallback(
+    (intent: PendingShareIntent) => {
       const id = createBackgroundImportId(intent.type);
       const mimeType = (intent.mimeType || "image/jpeg") as
         | "image/jpeg"
@@ -73,19 +86,65 @@ export function ShareIntentHandler() {
           });
         },
       });
+    },
+    [parseFromImage, parseFromText, parseFromUrl, startImport],
+  );
 
+  const startBasicUrlImport = useCallback(
+    (intent: PendingShareIntent) => {
+      startImport({
+        id: createBackgroundImportId("url"),
+        mode: "url",
+        title: intent.content,
+        run: () => parseFromUrlBasic.mutateAsync({ url: intent.content }),
+      });
+    },
+    [parseFromUrlBasic, startImport],
+  );
+
+  // Process a share intent (either new or pending)
+  const processShareIntent = useCallback(
+    async (intent: PendingShareIntent) => {
+      const canUseSmartImport = await canUseSmartImportForShare();
+      if (canUseSmartImport) {
+        startSmartImport(intent);
+        clearPendingShareIntent();
+        resetShareIntent();
+        navigateToAddRecipeTab();
+        return;
+      }
+
+      if (
+        intent.type === "url" &&
+        !isBasicImportUnsupportedUrl(intent.content)
+      ) {
+        startBasicUrlImport(intent);
+        clearPendingShareIntent();
+        resetShareIntent();
+        navigateToAddRecipeTab();
+        return;
+      }
+
+      const upgraded = await presentPaywall();
+      if (!upgraded) {
+        setPendingShareIntent(intent);
+        resetShareIntent();
+        navigateToAddRecipeTab();
+        return;
+      }
+
+      startSmartImport(intent);
       clearPendingShareIntent();
       resetShareIntent();
-      navigation.navigate("Add recipe");
+      navigateToAddRecipeTab();
     },
     [
-      navigation,
-      parseFromImage,
-      parseFromText,
-      parseFromUrl,
-      requireSmartImport,
+      canUseSmartImportForShare,
+      navigateToAddRecipeTab,
+      presentPaywall,
       resetShareIntent,
-      startImport,
+      startBasicUrlImport,
+      startSmartImport,
     ],
   );
 

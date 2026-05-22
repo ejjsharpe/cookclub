@@ -125,11 +125,15 @@ export const UserProfileScreen = () => {
     }
   }, [hasMoreActivities, isFetchingNextActivities, fetchNextActivities]);
 
+  const navigateToAddRecipeTab = useCallback(() => {
+    navigation.navigate("Tabs", { screen: "Add recipe" } as never);
+  }, [navigation]);
+
   const handleImportRecipe = useCallback(
     async (sourceUrl: string) => {
       const allowed = await requireSmartImport();
       if (!allowed) {
-        navigation.navigate("Add recipe");
+        navigateToAddRecipeTab();
         return;
       }
 
@@ -145,10 +149,10 @@ export const UserProfileScreen = () => {
           }
         },
       });
-      navigation.navigate("Add recipe");
+      navigateToAddRecipeTab();
     },
     [
-      navigation,
+      navigateToAddRecipeTab,
       parseRecipeFromUrl,
       refreshSubscription,
       requireSmartImport,

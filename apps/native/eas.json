@@ -7,7 +7,11 @@
     "development": {
       "environment": "development",
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env" :{
+        "EXPO_PUBLIC_ADAPTY_PUBLIC_SDK_KEY": "public_live_8FQGMLK6.jfT7Jix98Zmv7qg30reM",
+        "EXPO_PUBLIC_ADAPTY_PAYWALL_PLACEMENT_ID": "pro_paywall"
+      }
     },
     "preview": {
       "environment": "preview",

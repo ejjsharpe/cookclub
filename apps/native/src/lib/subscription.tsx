@@ -1,5 +1,5 @@
+import { useTRPC } from "@repo/trpc/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { createPaywallView } from "react-native-adapty";
 import {
   createContext,
   useCallback,
@@ -11,7 +11,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { Alert } from "react-native";
-import { useTRPC } from "@repo/trpc/client";
+import { createPaywallView } from "react-native-adapty";
 
 import {
   useRefreshSubscriptionEntitlement,
@@ -41,7 +41,9 @@ interface SubscriptionContextValue {
   requireSmartImport: () => Promise<boolean>;
 }
 
-const SubscriptionContext = createContext<SubscriptionContextValue | null>(null);
+const SubscriptionContext = createContext<SubscriptionContextValue | null>(
+  null,
+);
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
   const session = useSessionContext();
@@ -167,6 +169,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   }, [refresh, session?.user.id]);
 
   const status = statusQuery.data;
+  const refetchStatus = statusQuery.refetch;
   const isPro = Boolean(status?.isPro);
   const smartImportsUsed = status?.smartImports.used ?? 0;
   const smartImportsLimit = status ? status.smartImports.limit : 5;
@@ -175,16 +178,23 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
   const requireProFeature = useCallback(
     async (_featureName?: string) => {
-      if (isPro) return true;
+      const currentStatus = status ?? (await refetchStatus()).data;
+      if (currentStatus?.isPro) return true;
       return await presentPaywall();
     },
-    [isPro, presentPaywall],
+    [presentPaywall, refetchStatus, status],
   );
 
   const requireSmartImport = useCallback(async () => {
-    if (canUseSmartImport) return true;
+    const currentStatus = status ?? (await refetchStatus()).data;
+    const currentIsPro = Boolean(currentStatus?.isPro);
+    const currentRemaining =
+      currentStatus?.smartImports.remaining ??
+      (status ? smartImportsRemaining : 0);
+
+    if (currentIsPro || (currentRemaining ?? 0) > 0) return true;
     return await presentPaywall();
-  }, [canUseSmartImport, presentPaywall]);
+  }, [presentPaywall, refetchStatus, smartImportsRemaining, status]);
 
   const value = useMemo(
     () => ({

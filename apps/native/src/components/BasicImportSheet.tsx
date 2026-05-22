@@ -10,30 +10,7 @@ import { Text } from "./Text";
 import { PrimaryButton } from "./buttons/PrimaryButton";
 
 import { useParseRecipeFromUrlBasic, type ParsedRecipe } from "@/api/recipe";
-
-// Domains that don't have structured recipe data
-const UNSUPPORTED_DOMAINS = [
-  "instagram.com",
-  "www.instagram.com",
-  "tiktok.com",
-  "www.tiktok.com",
-  "facebook.com",
-  "www.facebook.com",
-  "fb.com",
-  "www.fb.com",
-];
-
-function isUnsupportedUrl(url: string): boolean {
-  try {
-    const urlObj = new URL(url);
-    return UNSUPPORTED_DOMAINS.some(
-      (domain) =>
-        urlObj.hostname === domain || urlObj.hostname.endsWith(`.${domain}`),
-    );
-  } catch {
-    return false;
-  }
-}
+import { isBasicImportUnsupportedUrl } from "@/utils/basicImport";
 
 export interface BasicImportSheetProps {
   onRecipeParsed?: (data: ParsedRecipe) => void;
@@ -70,7 +47,7 @@ export const BasicImportSheet = forwardRef<
     }
 
     // Check for unsupported social media URLs before making API call
-    if (isUnsupportedUrl(url)) {
+    if (isBasicImportUnsupportedUrl(url)) {
       Alert.alert(
         "Unsupported Link",
         "Social media links aren't supported with Basic Import. They don't contain structured recipe data.",
