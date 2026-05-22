@@ -31,7 +31,7 @@
   ],
   "vars": {
     "ENVIRONMENT": "development",
-    "IMAGE_PUBLIC_URL": "https://images.cookclub.app"
+    "IMAGE_PUBLIC_URL": "https://pub-f28c31fccf774b38b72b758fe11b56bb.r2.dev"
   },
   "env": {
     "production": {

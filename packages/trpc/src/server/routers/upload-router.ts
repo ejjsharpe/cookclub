@@ -16,6 +16,9 @@ export const uploadRouter = router({
     .input(RequestUploadUrlValidator)
     .mutation(async ({ ctx, input }) => {
       await enforceRateLimit(ctx, "upload_presign");
-      return await ctx.env.IMAGE_SERVICE.presign(input.contentType, ctx.user.id);
+      return await ctx.env.IMAGE_SERVICE.presign(
+        input.contentType,
+        ctx.user.id,
+      );
     }),
 });
