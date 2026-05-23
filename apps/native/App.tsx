@@ -6,7 +6,7 @@ import * as Linking from "expo-linking";
 import { ShareIntentProvider } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
-import React, { useEffect, useState, StrictMode } from "react";
+import React, { useEffect, useRef, useState, StrictMode } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -69,8 +69,9 @@ export default function App() {
   const isFontsReady = isFontsLoaded || isFontsError;
   const [isImagesReady, setIsImagesReady] = useState(false);
   const [isNavigationReady, setIsNavigationReady] = useState(false);
-  const [navigationState, setNavigationState] =
-    useState<React.ComponentProps<typeof Navigation>["initialState"]>();
+  const navigationStateRef = useRef<
+    React.ComponentProps<typeof Navigation>["initialState"] | undefined
+  >(undefined);
   const { theme, rt } = useUnistyles();
 
   useEffect(() => {
@@ -104,7 +105,10 @@ export default function App() {
     }
   }, [isFontsReady, isNavigationReady, isImagesReady]);
 
-  const onNavigationReady = () => setIsNavigationReady(true);
+  const onNavigationReady = () => {
+    navigationStateRef.current = navigationRef.getRootState();
+    setIsNavigationReady(true);
+  };
   const navigationKey = `${rt.themeName ?? "theme"}:${theme.colors.background}`;
   const navigationTheme = {
     dark: rt.themeName === "dark",
@@ -142,8 +146,10 @@ export default function App() {
                                 ref={navigationRef}
                                 key={navigationKey}
                                 onReady={onNavigationReady}
-                                initialState={navigationState}
-                                onStateChange={setNavigationState}
+                                initialState={navigationStateRef.current}
+                                onStateChange={(state) => {
+                                  navigationStateRef.current = state;
+                                }}
                                 linking={linking}
                                 theme={navigationTheme}
                               />

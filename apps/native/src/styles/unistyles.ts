@@ -28,6 +28,4 @@ StyleSheet.configure({
 
 // Initialize theme from stored preference
 const storedPreference = getThemePreference();
-if (storedPreference !== "system") {
-  applyThemePreference(storedPreference);
-}
+applyThemePreference(storedPreference);

@@ -242,10 +242,12 @@ const ImportQueueSummary = ({
 
 const BackgroundImportCard = ({
   importItem,
+  showSeparator,
   onReview,
   onDismiss,
 }: {
   importItem: BackgroundImport;
+  showSeparator: boolean;
   onReview: (id: string) => void;
   onDismiss: (id: string) => void;
 }) => {
@@ -260,7 +262,7 @@ const BackgroundImportCard = ({
       layout={LinearTransition.duration(180)}
       style={[
         styles.importCard,
-        !isReady && styles.importCardWithSeparator,
+        showSeparator && styles.importCardWithSeparator,
         isReady && styles.importCardReady,
         isFailed && styles.importCardFailed,
       ]}
@@ -488,10 +490,11 @@ export const AddRecipeScreen = () => {
                 pendingCount={pendingImportCount}
                 readyCount={readyImportCount}
               />
-              {backgroundImports.map((importItem) => (
+              {backgroundImports.map((importItem, index) => (
                 <BackgroundImportCard
                   key={importItem.id}
                   importItem={importItem}
+                  showSeparator={index < backgroundImports.length - 1}
                   onReview={handleReviewImport}
                   onDismiss={handleDismissImport}
                 />

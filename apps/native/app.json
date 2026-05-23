@@ -5,6 +5,7 @@
     "owner": "shakyhand",
     "version": "1.0.0",
     "scheme": "cookclub",
+    "userInterfaceStyle": "automatic",
     "experiments": {
       "tsconfigPaths": true,
       "reactCompiler": true
@@ -49,11 +50,6 @@
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -64,13 +60,23 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "icon": "./assets/cookclub.icon"
+      "icon": "./assets/cookclub.icon",
+      "splash": {
+        "image": "./assets/ios-splash.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#F21B21"
+    }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#f90000"
+        "backgroundColor": "#F21B21"
       },
+      "splash": {
+        "image": "./assets/android-splash.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#F21B21"
+    },
       "package": "com.shakyhand.cookclub"
     },
     "extra": {
