@@ -8,7 +8,8 @@
     "build": "astro build",
     "preview": "astro preview --host 0.0.0.0 --port 4321",
     "check-types": "astro check",
-    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern"
+    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern",
+    "deploy": "astro build && wrangler deploy"
   },
   "dependencies": {
     "@astrojs/react": "^5.0.5",
@@ -22,7 +23,8 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "eslint-config-universe": "^15.2.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "^4.94.0"
   },
   "eslintConfig": {
     "extends": "universe/web"

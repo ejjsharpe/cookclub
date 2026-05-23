@@ -1,0 +1,19 @@
+
+  {
+    "$schema": "./node_modules/wrangler/config-schema.json",
+    "name": "cookclub-web",
+    "compatibility_date": "2026-05-23",
+    "assets": {
+      "directory": "./dist"
+    },
+    "routes": [
+      {
+        "pattern": "cookclub.app",
+        "custom_domain": true
+      },
+      {
+        "pattern": "www.cookclub.app",
+        "custom_domain": true
+      }
+    ]
+  }
