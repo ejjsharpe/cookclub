@@ -358,7 +358,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.background,
   },
   starButtonSelected: {
-    backgroundColor: "rgba(249, 0, 0, 0.1)",
+    backgroundColor: theme.colors.primary + "1A",
   },
   starButtonPressed: {
     opacity: 0.72,

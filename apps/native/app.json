@@ -64,18 +64,18 @@
       "splash": {
         "image": "./assets/ios-splash.png",
         "resizeMode": "contain",
-        "backgroundColor": "#F21B21"
+        "backgroundColor": "#FF0027"
     }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#F21B21"
+        "backgroundColor": "#FF0027"
       },
       "splash": {
         "image": "./assets/android-splash.png",
         "resizeMode": "contain",
-        "backgroundColor": "#F21B21"
+        "backgroundColor": "#FF0027"
     },
       "package": "com.shakyhand.cookclub"
     },

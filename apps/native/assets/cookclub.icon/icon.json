@@ -1,6 +1,6 @@
 {
   "fill" : {
-    "automatic-gradient" : "display-p3:1.00000,0.00000,0.00000,1.00000",
+    "automatic-gradient" : "display-p3:0.96162,0.13655,0.20829,1.00000",
     "orientation" : {
       "start" : {
         "x" : 0.5,
@@ -14,10 +14,11 @@
   },
   "groups" : [
     {
-      "blur-material" : 0.5,
       "layers" : [
         {
+          "fill" : "automatic",
           "glass" : true,
+          "hidden" : false,
           "image-name" : "whiteontrans.png",
           "name" : "cookclublogo",
           "position" : {
@@ -29,15 +30,13 @@
           }
         }
       ],
-      "lighting" : "combined",
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
       },
-      "specular" : true,
       "translucency" : {
         "enabled" : true,
-        "value" : 0.25
+        "value" : 0.5
       }
     }
   ],

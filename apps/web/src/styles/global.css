@@ -41,8 +41,9 @@
 :root {
   --color-white: #ffffff;
   --color-black: #191919;
-  --color-red: #ff0030;
-  --color-red-strong: #d90029;
+  --color-red: #FF0027;
+  --color-red-rgb: 255 0 39;
+  --color-red-strong: #fd3351;
   --color-teal: #157488;
   --color-bg-soft: #f5f6f8;
   --color-control: #f2f4f5;
@@ -154,7 +155,7 @@ span {
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  box-shadow: 0 4px 14px rgba(255, 0, 48, 0.22);
+  box-shadow: 0 4px 14px rgb(var(--color-red-rgb) / 0.22);
 }
 
 .wordmark {
@@ -210,7 +211,7 @@ span {
 
 .nav-pill {
   color: var(--color-red);
-  background: rgba(255, 0, 48, 0.09);
+  background: rgb(var(--color-red-rgb) / 0.09);
 }
 
 .site-main {
@@ -476,7 +477,7 @@ span {
   border-radius: 50%;
   color: var(--color-white);
   background: var(--color-red);
-  box-shadow: 0 8px 18px rgba(255, 0, 48, 0.18);
+  box-shadow: 0 8px 18px rgb(var(--color-red-rgb) / 0.18);
   font-size: 12px;
   font-weight: 900;
 }
@@ -589,7 +590,7 @@ span {
   place-items: center;
   border-radius: 14px;
   color: var(--color-red);
-  background: rgba(255, 0, 48, 0.08);
+  background: rgb(var(--color-red-rgb) / 0.08);
 }
 
 .feature-icon svg,
@@ -751,7 +752,7 @@ span {
   border-radius: var(--radius-pill);
   padding: 5px 10px;
   color: var(--color-red);
-  background: rgba(255, 0, 48, 0.08);
+  background: rgb(var(--color-red-rgb) / 0.08);
   font-size: 12px;
   font-weight: 900;
 }
@@ -770,7 +771,7 @@ span {
   border-radius: var(--radius-pill);
   padding: 6px 10px;
   color: var(--color-red);
-  background: rgba(255, 0, 48, 0.1);
+  background: rgb(var(--color-red-rgb) / 0.1);
   font-size: 13px;
   font-weight: 900;
 }
@@ -1030,9 +1031,9 @@ span {
 
 .notice-box {
   margin: 28px 0;
-  border: 1px solid rgba(255, 0, 48, 0.22);
+  border: 1px solid rgb(var(--color-red-rgb) / 0.22);
   border-radius: 16px;
-  background: rgba(255, 0, 48, 0.07);
+  background: rgb(var(--color-red-rgb) / 0.07);
   padding: 18px;
 }
 
