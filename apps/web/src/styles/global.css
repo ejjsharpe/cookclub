@@ -1114,7 +1114,7 @@ span {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    border-radius: 26px;
+    border-radius: var(--radius-pill);
   }
 
   .brand {
