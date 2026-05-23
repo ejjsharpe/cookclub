@@ -11,83 +11,41 @@ interface Props {
 }
 
 const SPRING_CONFIG = { damping: 20, stiffness: 90, mass: 0.8 };
-const DOT_SIZE = 10;
-const LINE_HEIGHT = 3;
-
-function Dot({ active }: { active: boolean }) {
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(active ? 1.2 : 1, SPRING_CONFIG) }],
-    opacity: withSpring(active ? 1 : 0.3, SPRING_CONFIG),
-  }));
-
-  return (
-    <Animated.View
-      style={[styles.dot, active && styles.dotActive, animatedStyle]}
-    />
-  );
-}
-
-function ConnectingLine({ filled }: { filled: boolean }) {
-  const animatedFillStyle = useAnimatedStyle(() => ({
-    width: withSpring(filled ? "100%" : "0%", SPRING_CONFIG),
-  }));
-
-  return (
-    <View style={styles.lineTrack}>
-      <Animated.View style={[styles.lineFill, animatedFillStyle]} />
-    </View>
-  );
-}
+const BAR_HEIGHT = 4;
 
 export const OnboardingProgress = ({ currentStep, totalSteps }: Props) => {
+  const progress =
+    totalSteps > 0
+      ? Math.min(Math.max(currentStep, 0), totalSteps) / totalSteps
+      : 0;
+
+  const animatedFillStyle = useAnimatedStyle(() => ({
+    width: withSpring(`${progress * 100}%`, SPRING_CONFIG),
+  }));
+
   return (
     <View style={styles.container}>
-      {Array.from({ length: totalSteps }, (_, i) => {
-        const stepNum = i + 1;
-        return (
-          <View key={i} style={styles.segment}>
-            <Dot active={stepNum <= currentStep} />
-            {i < totalSteps - 1 && (
-              <ConnectingLine filled={stepNum < currentStep} />
-            )}
-          </View>
-        );
-      })}
+      <View style={styles.track}>
+        <Animated.View style={[styles.fill, animatedFillStyle]} />
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create((theme) => ({
   container: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 40,
+    paddingHorizontal: 20,
   },
-  segment: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  dot: {
-    width: DOT_SIZE,
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
-    backgroundColor: theme.colors.primary,
-  },
-  dotActive: {
-    backgroundColor: theme.colors.primary,
-  },
-  lineTrack: {
-    flex: 1,
-    height: LINE_HEIGHT,
+  track: {
+    width: "100%",
+    height: BAR_HEIGHT,
     backgroundColor: theme.colors.border,
-    borderRadius: LINE_HEIGHT / 2,
+    borderRadius: BAR_HEIGHT / 2,
     overflow: "hidden",
-    marginHorizontal: 8,
   },
-  lineFill: {
+  fill: {
     height: "100%",
     backgroundColor: theme.colors.primary,
-    borderRadius: LINE_HEIGHT / 2,
+    borderRadius: BAR_HEIGHT / 2,
   },
 }));

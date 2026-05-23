@@ -1,12 +1,7 @@
-import { useEffect } from "react";
 import { View, Pressable } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  withSpring,
-  useSharedValue,
-} from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 
+import { Ionicons } from "@/components/Ionicons";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
@@ -15,8 +10,6 @@ interface Props {
   selected: MeasurementSystem;
   onSelect: (system: MeasurementSystem) => void;
 }
-
-const SPRING_CONFIG = { damping: 15, stiffness: 150, mass: 0.8 };
 
 const options: {
   value: MeasurementSystem;
@@ -40,7 +33,7 @@ const options: {
   },
 ];
 
-function MeasurementCard({
+function MeasurementOption({
   option,
   isSelected,
   onPress,
@@ -49,50 +42,39 @@ function MeasurementCard({
   isSelected: boolean;
   onPress: () => void;
 }) {
-  const scale = useSharedValue(1);
-  const selected = useSharedValue(isSelected ? 1 : 0);
-
-  useEffect(() => {
-    selected.value = withSpring(isSelected ? 1 : 0, SPRING_CONFIG);
-  }, [isSelected, selected]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.97, SPRING_CONFIG);
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1, SPRING_CONFIG);
-  };
-
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
     >
-      <Animated.View
-        style={[styles.card, isSelected && styles.cardSelected, animatedStyle]}
-      >
-        <View style={styles.cardContent}>
-          <Text
-            type="heading"
-            style={isSelected ? styles.cardLabelSelected : undefined}
-          >
-            {option.label}
-          </Text>
-          <VSpace size={4} />
-          <Text type="bodyFaded">{option.description}</Text>
-        </View>
-        {isSelected && (
-          <View style={styles.checkmark}>
-            <Text style={styles.checkmarkText}>✓</Text>
+      {({ pressed }) => (
+        <View
+          style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+        >
+          {pressed && (
+            <View pointerEvents="none" style={styles.pressHighlight} />
+          )}
+          <View style={styles.optionContent}>
+            <Text
+              type="headline"
+              style={isSelected ? styles.optionLabelSelected : undefined}
+            >
+              {option.label}
+            </Text>
+            <Text type="subheadline" style={styles.optionDescription}>
+              {option.description}
+            </Text>
           </View>
-        )}
-      </Animated.View>
+          {isSelected && (
+            <Ionicons
+              name="checkmark-circle"
+              size={22}
+              style={styles.checkmark}
+            />
+          )}
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -100,25 +82,25 @@ function MeasurementCard({
 export const OnboardingStepMeasurements = ({ selected, onSelect }: Props) => {
   return (
     <View style={styles.container}>
-      <Text type="largeTitle" style={styles.title}>
+      <Text type="title2" style={styles.title}>
         Measurement units
       </Text>
-      <VSpace size={12} />
+      <VSpace size={6} />
       <Text type="bodyFaded" style={styles.subtitle}>
         How would you like to see measurements?
       </Text>
-      <VSpace size={32} />
+      <VSpace size={24} />
 
-      {options.map((option) => (
-        <View key={option.value}>
-          <MeasurementCard
+      <View style={styles.options}>
+        {options.map((option) => (
+          <MeasurementOption
+            key={option.value}
             option={option}
             isSelected={selected === option.value}
             onPress={() => onSelect(option.value)}
           />
-          <VSpace size={12} />
-        </View>
-      ))}
+        ))}
+      </View>
     </View>
   );
 };
@@ -128,42 +110,42 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   title: {
-    textAlign: "center",
+    textAlign: "left",
+    letterSpacing: -1,
+    paddingHorizontal: 2,
   },
-  subtitle: {
-    textAlign: "center",
+  options: {
+    gap: 12,
   },
-  card: {
+  optionCard: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
+    minHeight: 68,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: theme.borderRadius.medium,
     backgroundColor: theme.colors.inputBackground,
+    position: "relative",
+    overflow: "hidden",
   },
-  cardSelected: {
-    borderColor: theme.colors.primary,
+  optionCardSelected: {
     backgroundColor: theme.colors.primary + "10",
   },
-  cardContent: {
-    flex: 1,
+  pressHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.colors.pressHighlight,
   },
-  cardLabelSelected: {
+  optionContent: {
+    flex: 1,
+    gap: 2,
+  },
+  optionLabelSelected: {
     color: theme.colors.primary,
   },
-  checkmark: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: theme.colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
+  optionDescription: {
+    color: theme.colors.textSecondary,
   },
-  checkmarkText: {
-    color: theme.colors.buttonText,
-    fontSize: 16,
-    fontFamily: theme.fonts.semiBold,
+  checkmark: {
+    color: theme.colors.primary,
   },
 }));

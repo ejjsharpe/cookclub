@@ -88,6 +88,9 @@ function UserRow({ user, isFollowing: isFollowingServer }: UserRowProps) {
       <TouchableOpacity
         style={[styles.followButton, isFollowing && styles.followingButton]}
         onPress={handlePress}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={`${isFollowing ? "Unfollow" : "Follow"} ${user.name}`}
       >
         <Text
           style={[
@@ -122,10 +125,10 @@ export const OnboardingStepFollowCooks = () => {
 
   return (
     <View style={styles.container}>
-      <Text type="largeTitle" style={styles.title}>
+      <Text type="title2" style={styles.title}>
         Follow some cooks
       </Text>
-      <VSpace size={12} />
+      <VSpace size={6} />
       <Text type="bodyFaded" style={styles.subtitle}>
         See what they're cooking in your feed
       </Text>
@@ -146,9 +149,11 @@ export const OnboardingStepFollowCooks = () => {
           <ActivityIndicator size="large" />
         </View>
       ) : users && users.length > 0 ? (
-        users.map((u) => (
-          <UserRow key={u.id} user={u} isFollowing={followingIds.has(u.id)} />
-        ))
+        <View style={styles.usersList}>
+          {users.map((u) => (
+            <UserRow key={u.id} user={u} isFollowing={followingIds.has(u.id)} />
+          ))}
+        </View>
       ) : (
         <View style={styles.emptyContainer}>
           <Text type="bodyFaded" style={styles.emptyText}>
@@ -165,17 +170,19 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   title: {
-    textAlign: "center",
+    textAlign: "left",
+    letterSpacing: -1,
+    paddingHorizontal: 2,
   },
-  subtitle: {
-    textAlign: "center",
+  usersList: {
+    gap: 6,
   },
   userRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    minHeight: 64,
+    paddingVertical: 8,
+    position: "relative",
   },
   userInfo: {
     flex: 1,
@@ -183,18 +190,18 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
   },
   avatar: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
   },
   avatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: theme.colors.primary + "20",
     justifyContent: "center",
     alignItems: "center",
@@ -214,8 +221,11 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 1,
   },
   followButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    minHeight: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: theme.colors.primary,
   },
@@ -227,7 +237,8 @@ const styles = StyleSheet.create((theme) => ({
   followButtonText: {
     color: theme.colors.buttonText,
     fontFamily: theme.fonts.semiBold,
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 18,
   },
   followingButtonText: {
     color: theme.colors.text,

@@ -52,7 +52,7 @@ export const useSignUpWithEmail = () => {
       const result = await authClient.signUp.email({
         email,
         password,
-        name: "Cook",
+        name: "",
         callbackURL: "cookclub://",
       });
       if (result.error) {

@@ -132,7 +132,10 @@ export function WelcomeOverlayProvider({
         <Animated.View style={[styles.overlay, overlayStyle]}>
           <Animated.View style={[styles.textGroup, welcomeStyle]}>
             <Text style={styles.welcomeText}>Welcome to</Text>
-            <Text style={styles.brandText}>cookclub</Text>
+            <Text style={styles.brandText}>
+              cook
+              <Text style={[styles.brandText, styles.clubText]}>club</Text>
+            </Text>
           </Animated.View>
           <Animated.View style={[styles.textGroup, cookingStyle]}>
             <Text style={styles.cookingText}>Let's get cooking!</Text>
@@ -162,24 +165,30 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
   },
   welcomeText: {
-    fontSize: 34,
-    lineHeight: 41,
+    fontSize: 24,
+    lineHeight: 24,
     fontFamily: theme.fonts.regular,
     color: theme.colors.text,
     letterSpacing: -1,
+    paddingHorizontal: 2,
   },
   brandText: {
-    fontSize: 34,
-    lineHeight: 41,
+    fontSize: 44,
+    lineHeight: 54,
     fontFamily: theme.fonts.black,
+    color: theme.colors.text,
+    letterSpacing: -2.3,
+    paddingHorizontal: 6,
+  },
+  clubText: {
     color: theme.colors.primary,
-    letterSpacing: -1,
   },
   cookingText: {
     fontSize: 34,
-    lineHeight: 41,
+    lineHeight: 44,
     fontFamily: theme.fonts.black,
     color: theme.colors.text,
     letterSpacing: -1,
+    paddingHorizontal: 2,
   },
 }));

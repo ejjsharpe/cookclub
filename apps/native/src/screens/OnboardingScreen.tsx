@@ -2,10 +2,7 @@ import { useTRPC } from "@repo/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 import { useState, useCallback } from "react";
 import { View, ScrollView, Alert, Dimensions } from "react-native";
-import {
-  KeyboardAvoidingView,
-  KeyboardAwareScrollView,
-} from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -52,7 +49,7 @@ export default function OnboardingScreen() {
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
   // Step 1: Profile data
-  const [name, setName] = useState(user?.name || "");
+  const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -141,11 +138,15 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <KeyboardAvoidingView
-        behavior="translate-with-padding"
-        style={styles.keyboardView}
-      >
-        <VSpace size={16} />
+      <View style={styles.content}>
+        <VSpace size={10} />
+        <Text type="title2" style={styles.brandText}>
+          cook
+          <Text type="title2" style={styles.clubText}>
+            club
+          </Text>
+        </Text>
+        <VSpace size={12} />
         <OnboardingProgress
           currentStep={currentStep}
           totalSteps={TOTAL_STEPS}
@@ -159,8 +160,8 @@ export default function OnboardingScreen() {
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-              bottomOffset={insets.bottom + 96}
-              extraKeyboardSpace={12}
+              bottomOffset={insets.bottom}
+              extraKeyboardSpace={8}
             >
               <OnboardingStepProfile
                 name={name}
@@ -198,7 +199,7 @@ export default function OnboardingScreen() {
           </Animated.View>
         </View>
 
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
           <View style={styles.buttonRow}>
             <Animated.View style={animatedBackButtonStyle}>
               <ScalePressable
@@ -224,7 +225,7 @@ export default function OnboardingScreen() {
             </View>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -234,8 +235,17 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  keyboardView: {
+  content: {
     flex: 1,
+  },
+  brandText: {
+    textAlign: "center",
+    letterSpacing: -1,
+    paddingHorizontal: 2,
+  },
+  clubText: {
+    color: theme.colors.primary,
+    letterSpacing: -1,
   },
   pagerContainer: {
     flex: 1,
@@ -254,12 +264,15 @@ const styles = StyleSheet.create((theme) => ({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 24,
     flexGrow: 1,
   },
   footer: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
   },
   buttonRow: {
     flexDirection: "row",
@@ -269,15 +282,14 @@ const styles = StyleSheet.create((theme) => ({
     width: BACK_BUTTON_WIDTH,
     height: 50,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.inputBackground,
     justifyContent: "center",
     alignItems: "center",
   },
   backButtonText: {
     fontSize: 16,
     fontFamily: theme.fonts.medium,
-    color: theme.colors.text,
+    color: theme.colors.textSecondary,
   },
   nextButtonFlex: {
     flex: 1,
