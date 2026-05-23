@@ -1,0 +1,256 @@
+---
+import HeroMasonry from "../components/HeroMasonry.astro";
+import Icon from "../components/Icon.astro";
+import Layout from "../components/Layout.astro";
+import Wordmark from "../components/Wordmark.astro";
+import { site } from "../data/site";
+
+const features = [
+  {
+    icon: "link",
+    title: "Import recipes",
+    copy: "Save recipes from URLs, social media, pasted text, screenshots, or photos, then cook from a clean recipe card.",
+  },
+  {
+    icon: "sparkles",
+    title: "Use up leftovers",
+    copy: "Add ingredients you already have and get recipe ideas that match your pantry, time, and taste.",
+  },
+  {
+    icon: "book",
+    title: "Build your cookbook",
+    copy: "Keep your own recipes, imported favorites, photos, notes, tags, and collections together in one place.",
+  },
+  {
+    icon: "message",
+    title: "Improve every dish",
+    copy: "Rate what you cooked, add photos, and save notes so you know what to repeat or change next time.",
+  },
+  {
+    icon: "calendar",
+    title: "Plan your meals",
+    copy: "Add saved recipes to a weekly meal plan so dinners, prep, and leftovers are easy to see before the week starts.",
+  },
+  {
+    icon: "cart",
+    title: "Create shopping lists",
+    copy: "Create shopping lists from recipes or meal plans, combine ingredients, and check items off while you shop.",
+  },
+  {
+    icon: "users",
+    title: "Follow friends",
+    copy: "Follow friends and home cooks to see what they are cooking, saving, and recommending.",
+  },
+  {
+    icon: "search",
+    title: "Find things fast",
+    copy: "Search recipes, friends, collections, and tags quickly as your cookbook grows.",
+  },
+] as const;
+
+const policyCards = [
+  {
+    icon: "shield",
+    title: "Your data, explained",
+    copy: "See what Cook Club collects, how it powers the app, and how to request account deletion.",
+    href: "/privacy",
+    link: "Read Privacy Policy",
+  },
+  {
+    icon: "message",
+    title: "Community rules",
+    copy: "Understand the expectations for recipes, images, comments, follows, reviews, and moderation.",
+    href: "/terms",
+    link: "Read Terms",
+  },
+  {
+    icon: "users",
+    title: "Direct support",
+    copy: `Get help with accounts, billing, deletion, safety, or app review questions at ${site.supportEmail}.`,
+    href: "/support",
+    link: "Contact Support",
+  },
+] as const;
+---
+
+<Layout
+  title="Cook Club"
+  description="Cook Club helps home cooks save recipes from anywhere, use up ingredients, plan meals, build shopping lists, and share the dishes worth making again."
+  pageClass="home-page"
+>
+  <section class="hero">
+    <div class="hero__inner">
+      <div class="hero-content">
+        <h1><Wordmark level="hero" /></h1>
+        <p class="hero__tagline">
+          Turn leftovers into <em>masterpieces</em>
+        </p>
+        <div class="hero-actions">
+          <a class="button button--primary" href="#features">Learn more</a>
+        </div>
+      </div>
+      <ol class="hero-flow" aria-label="Cook Club workflow">
+        <li>
+          <span class="flow-dot">1</span>
+          <strong>Import</strong>
+          <span>recipes from URLs, social media, text, or images</span>
+        </li>
+        <li>
+          <span class="flow-dot">2</span>
+          <strong>Plan &amp; shop</strong>
+          <span>turn saved recipes into meal plans and shopping lists</span>
+        </li>
+        <li>
+          <span class="flow-dot">3</span>
+          <strong>Follow friends</strong>
+          <span>see what they are cooking and saving</span>
+        </li>
+      </ol>
+    </div>
+    <HeroMasonry />
+  </section>
+
+  <section id="features" class="section section--soft">
+    <div class="section__inner">
+      <div class="section-header section-header--center">
+        <h2>One place for the recipes you find, make, and repeat.</h2>
+        <p>
+          Cook Club turns scattered recipe links, screenshots, ingredient
+          ideas, and kitchen notes into a library you can actually cook from.
+        </p>
+      </div>
+      <div class="feature-grid">
+        {
+          features.map(({ icon, title, copy }) => (
+            <article class="feature-card">
+              <span class="feature-icon">
+                <Icon name={icon} />
+              </span>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--ink">
+    <div class="section__inner workflow">
+      <div class="workflow-copy">
+        <h2>Start with inspiration. End with a plan.</h2>
+        <p>
+          Import a recipe, generate one from ingredients, or save your own.
+          Cook Club keeps the method, notes, reviews, meal plan, and shopping
+          list connected so the next step is always obvious.
+        </p>
+        <ol class="workflow-steps">
+          <li><span>1</span>Capture a link, photo, text recipe, or idea.</li>
+          <li><span>2</span>Cook with clear steps, timings, and notes.</li>
+          <li><span>3</span>Review, share, plan ahead, and shop from it.</li>
+        </ol>
+      </div>
+      <div class="app-preview" aria-label="Cook Club recipe and meal plan preview">
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="phone-status" aria-hidden="true">
+              <span>9:41</span>
+              <span class="phone-status__icons">LTE 100%</span>
+            </div>
+            <div class="phone-screen__image"></div>
+            <div class="phone-screen__body">
+              <div class="phone-screen__title-row">
+                <h3>Roast tomato pasta</h3>
+                <span>Saved</span>
+              </div>
+              <div class="phone-screen__meta">
+                <span class="chip">35 min</span>
+                <span class="chip">use-it-up</span>
+                <span class="chip">weeknight</span>
+              </div>
+              <div class="recipe-action-row" aria-hidden="true">
+                <span>Cook</span>
+                <span>Plan</span>
+                <span>Shop</span>
+              </div>
+              <div class="recipe-lines" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="plan-board">
+          <div class="plan-board__header">
+            <span>Meal plan</span>
+            <strong>This week</strong>
+          </div>
+          <div class="plan-row">
+            <img src="/images/start-food-2.jpg" alt="" width="500" height="500" loading="lazy" />
+            <div>
+              <strong>Monday</strong>
+              <span>Roast chicken, rice, greens</span>
+            </div>
+          </div>
+          <div class="plan-row">
+            <img src="/images/start-food-7.jpg" alt="" width="500" height="500" loading="lazy" />
+            <div>
+              <strong>Wednesday</strong>
+              <span>Soup, bread, shared list</span>
+            </div>
+          </div>
+          <div class="plan-row">
+            <img src="/images/start-food-10.jpg" alt="" width="500" height="500" loading="lazy" />
+            <div>
+              <strong>Sunday</strong>
+              <span>Cook again, tweak notes</span>
+            </div>
+          </div>
+          <div class="grocery-pill">6 shopping items ready</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--soft">
+    <div class="section__inner">
+      <div class="section-header">
+        <h2>Clear policies, direct help, no hidden paths.</h2>
+        <p>
+          Privacy, terms, account deletion, and support pages are public, easy
+          to reach, and written for users and platform reviewers.
+        </p>
+      </div>
+      <div class="policy-grid">
+        {
+          policyCards.map(({ icon, title, copy, href, link }) => (
+            <article class="policy-card">
+              <span class="policy-icon">
+                <Icon name={icon} />
+              </span>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+              <p><a href={href}>{link}</a></p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section final-cta">
+    <div class="section__inner">
+      <h2>Cook Club will be available on iOS and Android.</h2>
+      <p>
+        The mobile app is being prepared for launch. Store badges will switch
+        to live links as soon as the App Store and Google Play listings are
+        ready.
+      </p>
+      <div class="section-actions" aria-label="Store availability">
+        <span class="store-badge" aria-disabled="true">App Store coming soon</span>
+        <span class="store-badge" aria-disabled="true">Google Play coming soon</span>
+      </div>
+    </div>
+  </section>
+</Layout>

@@ -1,0 +1,41 @@
+---
+const columns = [
+  [
+    { image: 1, shape: "portrait" },
+    { image: 5, shape: "wide" },
+    { image: 9, shape: "square" },
+    { image: 4, shape: "portrait" },
+  ],
+  [
+    { image: 2, shape: "square" },
+    { image: 6, shape: "portrait" },
+    { image: 10, shape: "tail" },
+    { image: 8, shape: "square" },
+  ],
+  [
+    { image: 3, shape: "wide" },
+    { image: 7, shape: "square" },
+    { image: 11, shape: "portrait" },
+    { image: 12, shape: "portrait" },
+  ],
+] as const;
+---
+
+<div class="hero-masonry" aria-hidden="true">
+  {
+    columns.map((column, columnIndex) => (
+      <div class={`hero-masonry__column hero-masonry__column--${columnIndex + 1}`}>
+        {column.map(({ image, shape }, imageIndex) => (
+          <img
+            class={`hero-masonry__tile hero-masonry__tile--${shape}`}
+            src={`/images/start-food-${image}.jpg`}
+            alt=""
+            loading={columnIndex === 0 && imageIndex === 0 ? "eager" : "lazy"}
+            width="500"
+            height="500"
+          />
+        ))}
+      </div>
+    ))
+  }
+</div>

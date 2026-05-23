@@ -1,0 +1,43 @@
+---
+import LegalPage from "../components/LegalPage.astro";
+import Layout from "../components/Layout.astro";
+import { site, supportMailto } from "../data/site";
+---
+
+<Layout
+  title="Support"
+  description="Contact Cook Club support for account, deletion, billing, safety, moderation, or app help."
+>
+  <LegalPage
+    title="Support"
+    intro="Cook Club support is available for users, reviewers, and platform teams who need help with the app."
+  >
+    <p>
+      Email Cook Club support at <a href={supportMailto}>{site.supportEmail}</a>.
+      Cook Club is developed by {site.developer}.
+    </p>
+
+    <h2>What To Contact Us About</h2>
+    <ul>
+      <li>Account access, email verification, sign-in, or profile issues.</li>
+      <li>Recipe import, AI recipe generation, images, meal plans, or shopping lists.</li>
+      <li>Subscription status or billing questions.</li>
+      <li>Account deletion or privacy requests.</li>
+      <li>Safety, moderation, abusive content, infringing content, or user reports.</li>
+      <li>App review or platform compliance questions.</li>
+    </ul>
+
+    <h2>Helpful Details</h2>
+    <p>
+      When you contact support, include the email address connected to your Cook
+      Club account, the device platform you use, and a short description of the
+      issue. Do not send passwords or payment card details.
+    </p>
+
+    <h2>Account Deletion</h2>
+    <p>
+      For account deletion instructions, visit
+      <a href="/delete-account">cookclub.app/delete-account</a>.
+    </p>
+  </LegalPage>
+</Layout>

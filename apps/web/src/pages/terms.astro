@@ -1,0 +1,100 @@
+---
+import LegalPage from "../components/LegalPage.astro";
+import Layout from "../components/Layout.astro";
+import { site, supportMailto } from "../data/site";
+---
+
+<Layout
+  title="Terms"
+  description="Cook Club terms covering accounts, user content, moderation, subscriptions, and support."
+>
+  <LegalPage
+    title="Terms"
+    intro="These terms explain the rules for using Cook Club, including user content, community behavior, moderation, and subscriptions."
+  >
+    <p><strong>Last updated:</strong> {site.lastUpdated}</p>
+    <p>
+      By using Cook Club, you agree to these Terms. If you do not agree, do not
+      use Cook Club.
+    </p>
+    <p>
+      Cook Club is the app brand for this service and is developed by
+      {site.developer}.
+    </p>
+
+    <h2>Accounts</h2>
+    <p>
+      You are responsible for your account and for keeping your sign-in method
+      secure. You must provide accurate account information and use Cook Club in
+      a lawful way.
+    </p>
+
+    <h2>User Content</h2>
+    <p>
+      Cook Club lets users upload, save, create, review, comment on, and share
+      content, including recipes, images, text, meal plans, shopping lists, and
+      profile information. You keep ownership of content you upload, but you give
+      Cook Club permission to host, process, display, copy, resize, and transmit
+      that content as needed to operate the app.
+    </p>
+    <p>
+      You must own or have the necessary rights to anything you upload or share
+      through Cook Club. Do not upload content that infringes someone else's
+      copyright, trademark, privacy, publicity, or other rights.
+    </p>
+
+    <h2>Content and Conduct Rules</h2>
+    <p>You may not use Cook Club to create, upload, share, or promote:</p>
+    <ul>
+      <li>Illegal content or activity.</li>
+      <li>Abusive, threatening, harassing, bullying, or exploitative behavior.</li>
+      <li>Hateful, discriminatory, or dehumanizing content.</li>
+      <li>Sexually explicit content or content involving sexual exploitation.</li>
+      <li>Violent, self-harm, dangerous, or unsafe instructions unrelated to normal cooking use.</li>
+      <li>Spam, scams, impersonation, deception, or attempts to manipulate Cook Club systems.</li>
+      <li>Content that infringes intellectual property or other legal rights.</li>
+    </ul>
+
+    <h2>Moderation and Enforcement</h2>
+    <p>
+      Cook Club may review, restrict, remove, or hide content that violates these
+      Terms or creates risk for users, the service, or third parties. Cook Club
+      may suspend or terminate accounts, limit features, block uploads, or take
+      other action where needed to enforce these Terms or respond to abuse,
+      safety, legal, or security concerns.
+    </p>
+    <p>
+      To report content or behavior, contact <a href={supportMailto}>{site.supportEmail}</a>.
+    </p>
+
+    <h2>Subscriptions</h2>
+    <p>
+      Some Cook Club features may require a paid subscription. Subscriptions are
+      managed through Apple, Google, or another payment provider shown at
+      purchase. Deleting your Cook Club account or uninstalling the app does not
+      automatically cancel a subscription managed by Apple or Google.
+    </p>
+
+    <h2>Service Changes</h2>
+    <p>
+      Cook Club may add, change, limit, or remove features. We may also suspend
+      or stop the service if needed for operational, legal, security, or business
+      reasons.
+    </p>
+
+    <h2>Disclaimers</h2>
+    <p>
+      Cook Club is provided as a cooking and organization tool. Recipes,
+      generated suggestions, nutritional estimates, timing, substitutions, and
+      shopping information may be incomplete or inaccurate. You are responsible
+      for food safety, allergies, dietary needs, cooking decisions, and checking
+      ingredients before use.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions about these Terms can be sent to
+      <a href={supportMailto}>{site.supportEmail}</a>.
+    </p>
+  </LegalPage>
+</Layout>

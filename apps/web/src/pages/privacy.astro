@@ -1,0 +1,103 @@
+---
+import LegalPage from "../components/LegalPage.astro";
+import Layout from "../components/Layout.astro";
+import { site, supportMailto } from "../data/site";
+---
+
+<Layout
+  title="Privacy Policy"
+  description="Cook Club Privacy Policy, including data collected, providers, retention, deletion, and contact information."
+>
+  <LegalPage
+    title="Privacy Policy"
+    intro="This Privacy Policy explains how Cook Club collects, uses, stores, and deletes information for the Cook Club app and website."
+  >
+    <p><strong>Last updated:</strong> {site.lastUpdated}</p>
+    <p>
+      Cook Club is the app brand for this service and is developed by
+      {site.developer}. For privacy questions, contact
+      <a href={supportMailto}>{site.supportEmail}</a>.
+    </p>
+
+    <h2>Information We Collect</h2>
+    <p>Cook Club may collect the following information when you use the app:</p>
+    <ul>
+      <li>Account details such as name, email address, user ID, username, profile details, and profile image.</li>
+      <li>Authentication information from Apple or Google when you choose those sign-in methods, such as the account identifier and profile information they share with Cook Club.</li>
+      <li>User content such as recipes, recipe images, review text and images, comments, collections, follows, meal plans, and shopping lists.</li>
+      <li>Subscription status, entitlement information, and related purchase identifiers from Apple, Google, and Adapty. Cook Club does not receive your full payment card details.</li>
+      <li>Device push tokens used to send notifications you enable.</li>
+      <li>Diagnostics, server logs, request metadata, and app or device information used to operate, secure, debug, and improve Cook Club.</li>
+    </ul>
+
+    <h2>How We Use Information</h2>
+    <ul>
+      <li>Provide accounts, authentication, recipe storage, meal planning, shopping lists, social features, comments, reviews, and notifications.</li>
+      <li>Process recipe imports, AI-assisted recipe features, and image uploads.</li>
+      <li>Manage subscriptions and access to paid features.</li>
+      <li>Respond to support, privacy, safety, moderation, and account deletion requests.</li>
+      <li>Protect Cook Club from abuse, spam, security incidents, and policy violations.</li>
+      <li>Maintain and improve reliability, performance, and user experience.</li>
+    </ul>
+
+    <h2>Service Providers and Processors</h2>
+    <p>
+      Cook Club uses third-party providers to run the service. These providers
+      process information only as needed to provide their services to Cook Club.
+    </p>
+    <ul>
+      <li>Cloudflare for hosting, Workers, routing, logs, and image/object storage.</li>
+      <li>Neon/Postgres for database hosting.</li>
+      <li>Expo for app services, push notifications, and app delivery tooling.</li>
+      <li>Apple and Google for authentication, app distribution, and subscription platform services.</li>
+      <li>Adapty for subscription status and entitlement management.</li>
+      <li>Resend for transactional email such as verification and support-related email.</li>
+      <li>Analytics or crash reporting tools, if added later, will be disclosed in this policy before production use.</li>
+    </ul>
+
+    <h2>Sharing</h2>
+    <p>
+      Cook Club does not sell your personal information. Some profile, recipe,
+      review, image, comment, follow, and activity information may be visible to
+      other Cook Club users when you use social or shared features. We may also
+      disclose information when required by law, to protect rights and safety, or
+      to investigate abuse or security incidents.
+    </p>
+
+    <h2>Security</h2>
+    <p>
+      Cook Club uses encryption in transit for public app and website traffic.
+      Access to production systems is limited to the people and services that
+      need it to operate Cook Club. No online service can guarantee absolute
+      security, but Cook Club is designed to reduce unnecessary data exposure.
+    </p>
+
+    <h2>Retention and Deletion</h2>
+    <p>
+      Cook Club keeps account information and user content while your account is
+      active or as needed to provide the service. You can delete your account in
+      the app from <strong>Settings &gt; Delete Account</strong>, or request deletion
+      by emailing <a href={supportMailto}>{site.supportEmail}</a>.
+    </p>
+    <p>
+      After account deletion, Cook Club deletes or de-identifies account data and
+      user content unless retention is required for legal, security, fraud
+      prevention, dispute, backup, tax, accounting, or payment/subscription
+      record reasons. Deleting your Cook Club account does not cancel Apple or
+      Google subscriptions.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+      Cook Club is not directed to children under 13. If you believe a child has
+      provided personal information to Cook Club, contact us so we can review
+      and delete it where appropriate.
+    </p>
+
+    <h2>Changes</h2>
+    <p>
+      Cook Club may update this Privacy Policy as the app changes. The latest
+      version will always be available at <a href="/privacy">cookclub.app/privacy</a>.
+    </p>
+  </LegalPage>
+</Layout>

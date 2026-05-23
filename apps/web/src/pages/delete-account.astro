@@ -1,0 +1,80 @@
+---
+import LegalPage from "../components/LegalPage.astro";
+import Layout from "../components/Layout.astro";
+import { deletionMailto, site, supportMailto } from "../data/site";
+---
+
+<Layout
+  title="Delete Account"
+  description="How to delete your Cook Club account in the app or request deletion by email."
+>
+  <LegalPage
+    title="Delete Account"
+    intro="Cook Club lets users delete their account in the app, and also provides an outside-app deletion request path for users who no longer have the app installed."
+  >
+    <p><strong>Last updated:</strong> {site.lastUpdated}</p>
+
+    <div class="notice-box">
+      <p>
+        Need help deleting your account without the app?
+        <a href={deletionMailto}>Email {site.supportEmail}</a> with the email
+        address connected to your Cook Club account and write that you want your
+        Cook Club account deleted.
+      </p>
+    </div>
+
+    <h2>Delete Your Account In The App</h2>
+    <ol>
+      <li>Open Cook Club.</li>
+      <li>Go to <strong>Settings</strong>.</li>
+      <li>Choose <strong>Delete Account</strong>.</li>
+      <li>Follow the confirmation steps shown in the app.</li>
+    </ol>
+
+    <h2>Request Deletion Outside The App</h2>
+    <p>
+      If you uninstalled Cook Club or cannot access the app, email
+      <a href={deletionMailto}>{site.supportEmail}</a>. Include the email
+      address used for your Cook Club account. We may ask for additional
+      verification before deleting account data.
+    </p>
+    <p>
+      Cook Club aims to complete verified deletion requests within 30 days unless
+      additional time is required for legal, security, fraud prevention, dispute,
+      backup, tax, accounting, or payment/subscription record reasons.
+    </p>
+
+    <h2>Subscriptions Are Separate</h2>
+    <p>
+      Deleting your Cook Club account does not cancel subscriptions managed by
+      Apple or Google. You must cancel those subscriptions through the platform
+      where you subscribed:
+    </p>
+    <ul>
+      <li><a href={site.appleSubscriptionsUrl}>Manage or cancel an Apple subscription</a>.</li>
+      <li><a href={site.googleSubscriptionsUrl}>Manage or cancel a Google Play subscription</a>.</li>
+    </ul>
+
+    <h2>What Gets Deleted</h2>
+    <p>
+      Account deletion removes or de-identifies your Cook Club account, profile,
+      recipes, reviews, comments, follows, meal plans, shopping lists, and other
+      user content associated with your account, subject to the retention limits
+      below.
+    </p>
+
+    <h2>Information We May Retain</h2>
+    <p>
+      Cook Club may retain limited information where required for legal,
+      security, fraud prevention, abuse investigation, dispute, backup, tax,
+      accounting, or payment/subscription record reasons. Retained information is
+      limited to what is necessary for those purposes.
+    </p>
+
+    <h2>Questions</h2>
+    <p>
+      Contact <a href={supportMailto}>{site.supportEmail}</a> with account
+      deletion questions.
+    </p>
+  </LegalPage>
+</Layout>

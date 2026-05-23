@@ -1,0 +1,39 @@
+---
+import Wordmark from "./Wordmark.astro";
+import { site, supportMailto } from "../data/site";
+
+const year = new Date().getFullYear();
+const footerLinks = [
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms" },
+  { href: "/delete-account", label: "Delete Account" },
+  { href: "/support", label: "Support" },
+];
+---
+
+<footer class="site-footer">
+  <div class="site-footer__inner">
+    <div>
+      <a class="brand brand--footer" href="/" aria-label="Cook Club homepage">
+        <img class="brand__mark" src="/icons/icon.png" alt="" width="34" height="34" />
+        <Wordmark />
+      </a>
+      <p class="site-footer__copy">
+        Cook Club is developed by {site.developer}. Collect recipes, cook with
+        notes, plan ahead, and shop with less friction.
+      </p>
+    </div>
+    <nav class="footer-links" aria-label="Footer navigation">
+      {
+        footerLinks.map((item) => (
+          <a href={item.href}>{item.label}</a>
+        ))
+      }
+      <a href={supportMailto}>{site.supportEmail}</a>
+    </nav>
+  </div>
+  <div class="site-footer__bottom">
+    <span>&copy; {year} {site.name}.</span>
+    <span>Support, privacy, terms, and account deletion links for Cook Club users.</span>
+  </div>
+</footer>

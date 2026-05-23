@@ -1,0 +1,27 @@
+---
+interface Props {
+  level?: "hero" | "nav";
+}
+
+const { level = "nav" } = Astro.props;
+const letters = [
+  { char: "c", tone: "ink" },
+  { char: "o", tone: "ink" },
+  { char: "o", tone: "ink" },
+  { char: "k", tone: "ink" },
+  { char: "c", tone: "red" },
+  { char: "l", tone: "red" },
+  { char: "u", tone: "red" },
+  { char: "b", tone: "red" },
+] as const;
+---
+
+<span class={`wordmark wordmark--${level}`} aria-label="cookclub">
+  {
+    letters.map((letter) => (
+      <span class={`wordmark__letter wordmark__letter--${letter.tone}`}>
+        {letter.char}
+      </span>
+    ))
+  }
+</span>

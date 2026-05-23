@@ -1,0 +1,22 @@
+---
+interface Props {
+  eyebrow?: string;
+  title: string;
+  intro: string;
+}
+
+const { eyebrow = "Cook Club", title, intro } = Astro.props;
+---
+
+<section class="legal-hero">
+  <div class="legal-hero__inner">
+    <p class="eyebrow">{eyebrow}</p>
+    <h1>{title}</h1>
+    <p>{intro}</p>
+  </div>
+</section>
+<section class="legal-section">
+  <article class="legal-content">
+    <slot />
+  </article>
+</section>

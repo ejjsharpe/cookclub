@@ -30,6 +30,7 @@ logs/
 
 # Cache folders
 .cache/
+.astro/
 
 .nx/cache
 .nx/workspace-data
