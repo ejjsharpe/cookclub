@@ -6,6 +6,7 @@ import { cacheRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
 import {
   evaluateRecipeQuality,
+  MAX_RECIPE_IMAGES,
   normalizeRecipeForImport,
   type RecipeQuality,
   type RecipeQualitySource,
@@ -43,17 +44,18 @@ export async function reuploadImagesToR2(
   imageUrls: string[],
   prefix: string,
 ): Promise<string[]> {
-  if (!imageUrls.length) return [];
+  const imagesToUpload = imageUrls.slice(0, MAX_RECIPE_IMAGES);
+  if (!imagesToUpload.length) return [];
 
   if (!env.IMAGE_SERVICE) {
     console.log(
       "[reupload] IMAGE_SERVICE binding not available (dev mode?) - using original URLs",
     );
-    return imageUrls;
+    return imagesToUpload;
   }
 
   const results = await Promise.all(
-    imageUrls.map(async (sourceUrl, index) => {
+    imagesToUpload.map(async (sourceUrl, index) => {
       try {
         const imageId = crypto.randomUUID();
         const destinationKey = `${prefix}/${imageId}.jpg`;

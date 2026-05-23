@@ -1,4 +1,26 @@
 import * as cheerio from "cheerio";
+import type { AnyNode } from "domhandler";
+
+import { selectBestRecipeImages } from "./recipe-quality";
+
+const NON_RECIPE_IMAGE_PATTERNS = [
+  /\badvertisement\b/,
+  /\bavatar\b/,
+  /\bbadge\b/,
+  /\bcookbook\b/,
+  /\bfavicon\b/,
+  /\bfacebook\b/,
+  /\bheadshot\b/,
+  /(?:^|[\s/_.-])icon(?:[\s/_.-]|$)/,
+  /\binstagram\b/,
+  /\blogo\b/,
+  /\bpinterest\b/,
+  /\bplaceholder\b/,
+  /\bportrait\b/,
+  /\bprofile\b/,
+  /\bsocial\b/,
+  /\bsponsor\b/,
+];
 
 /**
  * Clean HTML content for AI processing
@@ -77,22 +99,45 @@ export function extractText(rawHtml: string): string {
 export function extractImageUrls(rawHtml: string, baseUrl: string): string[] {
   const $ = cheerio.load(rawHtml);
 
-  // Remove non-content sections first
-  $("script, style, nav, footer, header, aside, noscript, iframe").remove();
-  $(".ads, .comments, .sidebar, .social-share").remove();
-  $('[class*="advertisement"], [class*="promo"], [id*="ad-"]').remove();
-
   const imageUrls: string[] = [];
   const seen = new Set<string>();
   const addImageUrl = (rawUrl: string | null | undefined) => {
     if (!rawUrl || rawUrl.startsWith("data:")) return;
 
     const absoluteUrl = makeAbsoluteUrl(rawUrl, baseUrl);
-    if (!absoluteUrl || seen.has(absoluteUrl)) return;
+    if (
+      !absoluteUrl ||
+      seen.has(absoluteUrl) ||
+      isLikelyNonRecipeImage(rawUrl)
+    ) {
+      return;
+    }
 
     seen.add(absoluteUrl);
     imageUrls.push(absoluteUrl);
   };
+
+  // Schema.org Recipe images are the clearest signal when present.
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const jsonText = $(el).html();
+      if (!jsonText) return;
+
+      const data = JSON.parse(jsonText);
+      const images = extractRecipeImagesFromJsonLd(data);
+
+      for (const imgUrl of images) {
+        addImageUrl(imgUrl);
+      }
+    } catch {
+      // Ignore invalid JSON
+    }
+  });
+
+  // Remove non-content sections after reading JSON-LD from script tags.
+  $("script, style, nav, footer, header, aside, noscript, iframe").remove();
+  $(".ads, .comments, .sidebar, .social-share").remove();
+  $('[class*="advertisement"], [class*="promo"], [id*="ad-"]').remove();
 
   // Open Graph/Twitter images are often the most reliable hero image,
   // especially when the recipe card lazy-loads images via JavaScript.
@@ -114,74 +159,111 @@ export function extractImageUrls(rawHtml: string, baseUrl: string): string[] {
   ).first();
   const searchContext = mainContent.length ? mainContent : $("body");
 
+  $(
+    [
+      ".wprm-recipe img",
+      ".tasty-recipes img",
+      ".mv-create-card img",
+      ".recipe-card img",
+      ".recipe-press-recipe img",
+      ".easyrecipe img",
+      '[itemtype*="schema.org/Recipe"] img',
+      '[itemtype*="Recipe"] img',
+      '[typeof*="Recipe"] img',
+    ].join(","),
+  ).each((_, el) => {
+    if (isInNonRecipeRegion($, el)) return;
+
+    const src = getImageSrc($, el);
+    if (src && !isTinyImage($, el) && !isLikelyNonRecipeImage(src, $, el)) {
+      addImageUrl(src);
+    }
+  });
+
   // Extract from img tags
   searchContext.find("img").each((_, el) => {
-    // Try multiple attributes for lazy-loaded images
-    const src =
-      $(el).attr("data-src") ||
-      $(el).attr("data-lazy-src") ||
-      $(el).attr("data-original") ||
-      chooseLargestSrcsetUrl($(el).attr("data-srcset")) ||
-      chooseLargestSrcsetUrl($(el).attr("srcset")) ||
-      $(el).attr("src");
+    if (isInNonRecipeRegion($, el)) return;
 
-    if (!src) return;
-
-    // Skip data URLs (base64, SVG placeholders, etc.)
-    if (src.startsWith("data:")) {
+    const src = getImageSrc($, el);
+    if (!src || isTinyImage($, el) || isLikelyNonRecipeImage(src, $, el))
       return;
-    }
 
-    const absoluteUrl = makeAbsoluteUrl(src, baseUrl);
-    if (!absoluteUrl) return;
-
-    // Filter out tiny images (likely icons/logos)
-    const width = parseInt($(el).attr("width") || "0", 10);
-    const height = parseInt($(el).attr("height") || "0", 10);
-
-    // Skip if clearly too small (< 100px in either dimension, if specified)
-    if ((width > 0 && width < 100) || (height > 0 && height < 100)) {
-      return;
-    }
-
-    // Filter out common icon/logo patterns
-    if (
-      src.includes("logo") ||
-      src.includes("icon") ||
-      src.includes("avatar") ||
-      src.includes("social") ||
-      src.includes("badge") ||
-      src.includes("placeholder")
-    ) {
-      return;
-    }
-
-    addImageUrl(absoluteUrl);
+    addImageUrl(src);
   });
 
-  // Also check for images in JSON-LD schema
-  $('script[type="application/ld+json"]').each((_, el) => {
-    try {
-      const jsonText = $(el).html();
-      if (!jsonText) return;
-
-      const data = JSON.parse(jsonText);
-      const images = extractImagesFromJsonLd(data);
-
-      for (const imgUrl of images) {
-        addImageUrl(imgUrl);
-      }
-    } catch {
-      // Ignore invalid JSON
-    }
-  });
-
-  return imageUrls;
+  return selectBestRecipeImages(imageUrls);
 }
 
-function chooseLargestSrcsetUrl(
-  srcset: string | null | undefined,
-): string | null {
+function getImageSrc($: cheerio.CheerioAPI, el: AnyNode): string | null {
+  return (
+    chooseBestSrcsetUrl($(el).attr("data-srcset")) ||
+    chooseBestSrcsetUrl($(el).attr("srcset")) ||
+    $(el).attr("data-original") ||
+    $(el).attr("data-src") ||
+    $(el).attr("data-lazy-src") ||
+    $(el).attr("src") ||
+    null
+  );
+}
+
+function isTinyImage($: cheerio.CheerioAPI, el: AnyNode): boolean {
+  const width = parseInt($(el).attr("width") || "0", 10);
+  const height = parseInt($(el).attr("height") || "0", 10);
+  return (width > 0 && width < 100) || (height > 0 && height < 100);
+}
+
+function isInNonRecipeRegion($: cheerio.CheerioAPI, el: AnyNode): boolean {
+  return (
+    $(el).closest(
+      [
+        ".ads",
+        ".comments",
+        ".sidebar",
+        ".social-share",
+        ".related-posts",
+        '[class*="advertisement"]',
+        '[class*="author"]',
+        '[class*="bio"]',
+        '[class*="comment"]',
+        '[class*="newsletter"]',
+        '[class*="popular"]',
+        '[class*="promo"]',
+        '[class*="related"]',
+        '[class*="shop"]',
+        '[id*="ad-"]',
+        '[id*="author"]',
+        '[id*="comment"]',
+        '[id*="popular"]',
+        '[id*="related"]',
+      ].join(","),
+    ).length > 0
+  );
+}
+
+function isLikelyNonRecipeImage(
+  url: string,
+  $?: cheerio.CheerioAPI,
+  el?: AnyNode,
+): boolean {
+  const elementText =
+    $ && el
+      ? [
+          $(el).attr("alt"),
+          $(el).attr("title"),
+          $(el).attr("class"),
+          $(el).attr("id"),
+          $(el).parent().attr("class"),
+          $(el).parent().attr("id"),
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : "";
+  const text = `${url} ${elementText}`.toLowerCase();
+
+  return NON_RECIPE_IMAGE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function chooseBestSrcsetUrl(srcset: string | null | undefined): string | null {
   if (!srcset) return null;
 
   const candidates = srcset
@@ -197,54 +279,77 @@ function chooseLargestSrcsetUrl(
       Boolean(candidate.url),
     );
 
-  candidates.sort((a, b) => b.width - a.width);
+  candidates.sort((a, b) => srcsetCandidateRank(a) - srcsetCandidateRank(b));
   return candidates[0]?.url || null;
 }
 
-/**
- * Extract image URLs from JSON-LD structured data
- */
-function extractImagesFromJsonLd(data: any): string[] {
+function srcsetCandidateRank(candidate: { width: number }): number {
+  const targetWidth = 1200;
+  const maxPreferredWidth = 1600;
+  const width = candidate.width;
+
+  if (width <= 0) return Number.MAX_SAFE_INTEGER;
+  if (width >= targetWidth && width <= maxPreferredWidth) {
+    return width - targetWidth;
+  }
+  if (width > maxPreferredWidth) {
+    return 10_000 + (width - maxPreferredWidth);
+  }
+  return 20_000 - width;
+}
+
+function extractRecipeImagesFromJsonLd(data: unknown): string[] {
   const images: string[] = [];
 
   if (!data) return images;
 
-  // Handle arrays
   if (Array.isArray(data)) {
     for (const item of data) {
-      images.push(...extractImagesFromJsonLd(item));
+      images.push(...extractRecipeImagesFromJsonLd(item));
     }
     return images;
   }
 
-  // Handle objects
   if (typeof data === "object") {
-    // Direct image property
-    if (data.image) {
-      if (typeof data.image === "string") {
-        images.push(data.image);
-      } else if (Array.isArray(data.image)) {
-        for (const img of data.image) {
-          if (typeof img === "string") {
-            images.push(img);
-          } else if (img?.url) {
-            images.push(img.url);
-          }
-        }
-      } else if (data.image.url) {
-        images.push(data.image.url);
-      }
+    const record = data as Record<string, unknown>;
+
+    if (isRecipeJsonLdNode(record)) {
+      images.push(...extractImagePropertyUrls(record.image));
     }
 
-    // Recursively search other properties
-    for (const value of Object.values(data)) {
+    for (const value of Object.values(record)) {
       if (typeof value === "object" && value !== null) {
-        images.push(...extractImagesFromJsonLd(value));
+        images.push(...extractRecipeImagesFromJsonLd(value));
       }
     }
   }
 
   return images;
+}
+
+function isRecipeJsonLdNode(data: Record<string, unknown>): boolean {
+  const rawType = data["@type"];
+  const types = Array.isArray(rawType) ? rawType : [rawType];
+  return types.some(
+    (type) => typeof type === "string" && /\bRecipe\b/i.test(type),
+  );
+}
+
+function extractImagePropertyUrls(image: unknown): string[] {
+  if (!image) return [];
+
+  if (typeof image === "string") return [image];
+
+  if (Array.isArray(image)) {
+    return image.flatMap((item) => extractImagePropertyUrls(item));
+  }
+
+  if (typeof image !== "object") return [];
+
+  const record = image as Record<string, unknown>;
+  const url = record.url || record.contentUrl || record["@id"];
+  if (typeof url !== "string" || url.startsWith("#")) return [];
+  return [url];
 }
 
 /**
@@ -277,8 +382,8 @@ export function extractStepImageContext(
       $img.attr("data-src") ||
       $img.attr("data-lazy-src") ||
       $img.attr("data-original") ||
-      chooseLargestSrcsetUrl($img.attr("data-srcset")) ||
-      chooseLargestSrcsetUrl($img.attr("srcset")) ||
+      chooseBestSrcsetUrl($img.attr("data-srcset")) ||
+      chooseBestSrcsetUrl($img.attr("srcset")) ||
       $img.attr("src");
 
     if (!src || src.startsWith("data:")) return null;

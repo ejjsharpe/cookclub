@@ -21,6 +21,10 @@ export interface RecipeQuality {
   reasons: string[];
 }
 
+export const MAX_RECIPE_IMAGES = 6;
+const MOBILE_RECIPE_IMAGE_TARGET_WIDTH = 1200;
+const MOBILE_RECIPE_IMAGE_MAX_WIDTH = 1600;
+
 const BAD_DESCRIPTION_PATTERNS = [
   /\bread more\b/i,
   /\bfollow\b/i,
@@ -91,6 +95,154 @@ function isBadImageUrl(url: string): boolean {
   );
 }
 
+interface ImageVariantInfo {
+  url: string;
+  key: string;
+  width: number | null;
+  height: number | null;
+  isOriginal: boolean;
+}
+
+function readDimension(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function imageVariantInfo(url: string): ImageVariantInfo {
+  try {
+    const parsed = new URL(url);
+    let pathname = parsed.pathname;
+    let width: number | null = null;
+    let height: number | null = null;
+    let isGeneratedVariant = false;
+
+    pathname = pathname.replace(
+      /-(\d{2,5})x(\d{2,5})(?=\.(?:avif|jpe?g|png|webp)$)/i,
+      (_match, rawWidth: string, rawHeight: string) => {
+        width = readDimension(rawWidth);
+        height = readDimension(rawHeight);
+        isGeneratedVariant = true;
+        return "";
+      },
+    );
+
+    const resize = parsed.searchParams.get("resize");
+    const resizeMatch = resize?.match(/^(\d{2,5})[x,](\d{2,5})$/);
+    if (resizeMatch) {
+      width = readDimension(resizeMatch[1] ?? null);
+      height = readDimension(resizeMatch[2] ?? null);
+      isGeneratedVariant = true;
+    }
+
+    const queryWidth =
+      readDimension(parsed.searchParams.get("w")) ??
+      readDimension(parsed.searchParams.get("width"));
+    const queryHeight =
+      readDimension(parsed.searchParams.get("h")) ??
+      readDimension(parsed.searchParams.get("height"));
+    if (queryWidth || queryHeight) {
+      width = queryWidth ?? width;
+      height = queryHeight ?? height;
+      isGeneratedVariant = true;
+    }
+
+    if (isGeneratedVariant) {
+      for (const param of [
+        "crop",
+        "fit",
+        "h",
+        "height",
+        "q",
+        "quality",
+        "resize",
+        "w",
+        "width",
+      ]) {
+        parsed.searchParams.delete(param);
+      }
+    }
+
+    parsed.pathname = pathname;
+    parsed.hash = "";
+    parsed.searchParams.sort();
+
+    return {
+      url,
+      key: parsed.toString(),
+      width,
+      height,
+      isOriginal: !isGeneratedVariant,
+    };
+  } catch {
+    return {
+      url,
+      key: url,
+      width: null,
+      height: null,
+      isOriginal: true,
+    };
+  }
+}
+
+function imageVariantScore(info: ImageVariantInfo): number {
+  if (info.isOriginal && info.width == null) return 1_000_000;
+  if (info.width == null) return 0;
+
+  const width = info.width;
+  const height = info.height ?? info.width;
+  const tooSmallPenalty = width < 700 || height < 500 ? -100_000 : 0;
+
+  if (width >= MOBILE_RECIPE_IMAGE_TARGET_WIDTH) {
+    const oversizePenalty =
+      width > MOBILE_RECIPE_IMAGE_MAX_WIDTH
+        ? width - MOBILE_RECIPE_IMAGE_MAX_WIDTH
+        : 0;
+    return (
+      100_000 -
+      Math.abs(width - MOBILE_RECIPE_IMAGE_TARGET_WIDTH) -
+      oversizePenalty +
+      tooSmallPenalty
+    );
+  }
+
+  return width + tooSmallPenalty;
+}
+
+export function selectBestRecipeImages(
+  imageUrls: string[],
+  maxImages = MAX_RECIPE_IMAGES,
+): string[] {
+  const groups = new Map<
+    string,
+    { index: number; variants: { url: string; score: number }[] }
+  >();
+
+  for (const rawUrl of imageUrls) {
+    const url = rawUrl.trim();
+    if (!url || isBadImageUrl(url)) continue;
+
+    const info = imageVariantInfo(url);
+    const existing = groups.get(info.key);
+    const variant = { url, score: imageVariantScore(info) };
+
+    if (existing) {
+      if (!existing.variants.some((item) => item.url === url)) {
+        existing.variants.push(variant);
+      }
+      continue;
+    }
+
+    groups.set(info.key, { index: groups.size, variants: [variant] });
+  }
+
+  return Array.from(groups.values())
+    .sort((a, b) => a.index - b.index)
+    .map((group) => group.variants.sort((a, b) => b.score - a.score)[0]?.url)
+    .filter((url): url is string => Boolean(url))
+    .slice(0, maxImages);
+}
+
 function sourceBonus(source: RecipeQualitySource): number {
   switch (source) {
     case "structured":
@@ -154,9 +306,7 @@ export function normalizeRecipeForImport(recipe: ParsedRecipe): ParsedRecipe {
     }))
     .filter((section) => section.instructions.length > 0);
 
-  const images = Array.from(
-    new Set((recipe.images ?? []).map((url) => url.trim()).filter(Boolean)),
-  ).filter((url) => !isBadImageUrl(url));
+  const images = selectBestRecipeImages(recipe.images ?? []);
 
   return {
     ...recipe,

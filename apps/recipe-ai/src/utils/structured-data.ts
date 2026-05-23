@@ -358,17 +358,19 @@ function readElementUrl($: cheerio.CheerioAPI, el: AnyNode): string | null {
     $el.find("[data-srcset], [srcset]").first().attr("srcset");
   const value =
     $el.attr("content") ||
-    $el.attr("src") ||
+    chooseBestSrcsetUrl(srcset || "") ||
     $el.attr("data-src") ||
     $el.attr("data-lazy-src") ||
+    $el.attr("data-original") ||
+    $el.attr("src") ||
     $el.attr("href") ||
-    chooseLargestSrcsetUrl(srcset || "");
+    "";
 
   const normalized = normalizeStructuredText(value || "");
   return normalized && !normalized.startsWith("data:") ? normalized : null;
 }
 
-function chooseLargestSrcsetUrl(srcset: string): string | null {
+function chooseBestSrcsetUrl(srcset: string): string | null {
   if (!srcset) return null;
 
   const candidates = srcset
@@ -384,8 +386,23 @@ function chooseLargestSrcsetUrl(srcset: string): string | null {
       Boolean(candidate.url),
     );
 
-  candidates.sort((a, b) => b.width - a.width);
+  candidates.sort((a, b) => srcsetCandidateRank(a) - srcsetCandidateRank(b));
   return candidates[0]?.url || null;
+}
+
+function srcsetCandidateRank(candidate: { width: number }): number {
+  const targetWidth = 1200;
+  const maxPreferredWidth = 1600;
+  const width = candidate.width;
+
+  if (width <= 0) return Number.MAX_SAFE_INTEGER;
+  if (width >= targetWidth && width <= maxPreferredWidth) {
+    return width - targetWidth;
+  }
+  if (width > maxPreferredWidth) {
+    return 10_000 + (width - maxPreferredWidth);
+  }
+  return 20_000 - width;
 }
 
 function readFirstPropertyValue(
@@ -958,7 +975,9 @@ function parseServingsFromString(yieldStr: string): number | null {
   return null;
 }
 
-function parseNutritionNumber(value: string | number | undefined): number | null {
+function parseNutritionNumber(
+  value: string | number | undefined,
+): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (!value) return null;
 
@@ -973,7 +992,11 @@ function parseNutritionNumber(value: string | number | undefined): number | null
 function parseMilligrams(value: string | number | undefined): number | null {
   const parsed = parseNutritionNumber(value);
   if (parsed === null) return null;
-  if (typeof value === "string" && /\bg\b/i.test(value) && !/\bmg\b/i.test(value)) {
+  if (
+    typeof value === "string" &&
+    /\bg\b/i.test(value) &&
+    !/\bmg\b/i.test(value)
+  ) {
     return Math.round(parsed * 1000);
   }
   return Math.round(parsed);

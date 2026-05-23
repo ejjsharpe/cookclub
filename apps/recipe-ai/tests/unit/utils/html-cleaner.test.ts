@@ -265,4 +265,53 @@ describe("extractImageUrls", () => {
       "https://example.com/large.jpg",
     ]);
   });
+
+  it("caps images at 6 and prefers recipe-specific images", () => {
+    const html = `
+      <html>
+        <head>
+          <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "Recipe",
+              "name": "Chocolate Chip Cookies",
+              "image": [
+                "/schema-225x225.jpg",
+                "/schema-260x195.jpg",
+                "/schema.jpg"
+              ]
+            }
+          </script>
+          <meta property="og:image" content="/hero.jpg">
+          <meta name="twitter:image" content="/twitter.jpg">
+        </head>
+        <body>
+          <article>
+            <div class="author"><img src="/headshot.jpg" alt="author headshot"></div>
+            <div class="recipe-card"><img src="/card.jpg" width="1200" height="800"></div>
+            <img src="/step-1.jpg" width="1200" height="800">
+            <img src="/step-2.jpg" width="1200" height="800">
+            <img src="/step-3.jpg" width="1200" height="800">
+            <img src="/step-4.jpg" width="1200" height="800">
+            <img src="/step-5.jpg" width="1200" height="800">
+            <img src="/step-6.jpg" width="1200" height="800">
+            <img src="/step-7.jpg" width="1200" height="800">
+            <img src="/step-8.jpg" width="1200" height="800">
+            <div class="related-posts"><img src="/other-recipe.jpg"></div>
+          </article>
+        </body>
+      </html>
+    `;
+
+    const images = extractImageUrls(html, "https://example.com/recipe");
+
+    expect(images).toEqual([
+      "https://example.com/schema.jpg",
+      "https://example.com/hero.jpg",
+      "https://example.com/twitter.jpg",
+      "https://example.com/card.jpg",
+      "https://example.com/step-1.jpg",
+      "https://example.com/step-2.jpg",
+    ]);
+  });
 });
