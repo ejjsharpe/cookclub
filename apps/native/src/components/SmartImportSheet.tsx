@@ -29,6 +29,10 @@ import {
   type BackgroundImportMode,
   type BackgroundImportTask,
 } from "@/lib/backgroundImportQueue";
+import {
+  ensureCameraPermission,
+  ensureMediaLibraryPermission,
+} from "@/utils/imagePickerPermissions";
 import { imageToBase64 } from "@/utils/imageUtils";
 
 export type SmartImportMode = BackgroundImportMode;
@@ -146,34 +150,43 @@ export const SmartImportSheet = forwardRef<
   };
 
   const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      quality: 0.8,
+    const hasPermission = await ensureMediaLibraryPermission({
+      message: "Please allow access to your photos to upload a recipe image.",
     });
+    if (!hasPermission) return;
 
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Failed to pick recipe import image:", error);
+      Alert.alert("Photo Error", "Unable to open your photo library.");
     }
   };
 
   const handleTakePhoto = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(
-        "Permission Required",
-        "Please allow camera access to take photos",
-      );
-      return;
-    }
+    const hasPermission = await ensureCameraPermission();
+    if (!hasPermission) return;
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.8,
-    });
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Failed to take recipe import photo:", error);
+      Alert.alert("Camera Error", "Unable to open your camera.");
     }
   };
 

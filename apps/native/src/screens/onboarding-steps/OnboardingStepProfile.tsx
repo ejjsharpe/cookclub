@@ -13,6 +13,7 @@ import { Input } from "@/components/Input";
 import { Ionicons } from "@/components/Ionicons";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
+import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
 
 interface Props {
   name: string;
@@ -48,26 +49,25 @@ export const OnboardingStepProfile = ({
   hasAttemptedSubmit,
 }: Props) => {
   const handlePickImage = async () => {
-    const permissionResult =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permissionResult.granted) {
-      Alert.alert(
-        "Permission Required",
-        "Please allow access to your photos to set a profile picture.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
+    const hasPermission = await ensureMediaLibraryPermission({
+      message: "Please allow access to your photos to set a profile picture.",
     });
+    if (!hasPermission) return;
 
-    if (!result.canceled && result.assets[0]) {
-      setProfileImage(result.assets[0].uri);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setProfileImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Failed to pick profile image:", error);
+      Alert.alert("Photo Error", "Unable to open your photo library.");
     }
   };
 

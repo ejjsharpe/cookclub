@@ -90,6 +90,7 @@ import { useImageUpload } from "@/hooks/useImageUpload";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
+import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
 import { getImageUrl } from "@/utils/imageUrl";
 import {
   isCompactUnit,
@@ -759,15 +760,29 @@ export const RecipeDetailScreen = () => {
   };
 
   const handlePickRecipeImage = useCallback(async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.85,
+    const hasPermission = await ensureMediaLibraryPermission({
+      message: "Please allow access to your photos to add a recipe image.",
     });
+    if (!hasPermission) return;
 
-    const pickedAsset = result.assets?.[0];
-    if (result.canceled || !pickedAsset) return;
+    let pickedUri: string | null = null;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.85,
+      });
+
+      const pickedAsset = result.assets?.[0];
+      if (result.canceled || !pickedAsset) return;
+      pickedUri = pickedAsset.uri;
+    } catch (error) {
+      console.error("Failed to pick recipe image:", error);
+      Alert.alert("Photo Error", "Unable to open your photo library.");
+      return;
+    }
 
     const imageId = createDraftId("image");
     setDraft((current) =>
@@ -776,14 +791,14 @@ export const RecipeDetailScreen = () => {
             ...current,
             images: [
               ...current.images,
-              { id: imageId, uri: pickedAsset.uri, isRemote: false },
+              { id: imageId, uri: pickedUri, isRemote: false },
             ],
           }
         : current,
     );
 
     try {
-      const [uploadResult] = await uploadImages([pickedAsset.uri]);
+      const [uploadResult] = await uploadImages([pickedUri]);
       if (!uploadResult) return;
 
       setDraft((current) =>

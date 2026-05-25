@@ -13,6 +13,7 @@ import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { useAvatarUpload } from "@/hooks/useAvatarUpload";
+import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
 import { getImageUrl } from "@/utils/imageUrl";
 
 export const EditProfileScreen = () => {
@@ -48,15 +49,25 @@ export const EditProfileScreen = () => {
     localImage !== null || name !== (currentUser?.user?.name ?? "");
 
   const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: "images",
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
+    const hasPermission = await ensureMediaLibraryPermission({
+      message: "Please allow access to your photos to set a profile picture.",
     });
+    if (!hasPermission) return;
 
-    if (!result.canceled && result.assets[0]) {
-      setLocalImage(result.assets[0].uri);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setLocalImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Failed to pick profile image:", error);
+      Alert.alert("Photo Error", "Unable to open your photo library.");
     }
   };
 

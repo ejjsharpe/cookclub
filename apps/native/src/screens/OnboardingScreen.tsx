@@ -1,5 +1,3 @@
-import { useTRPC } from "@repo/trpc/client";
-import { useMutation } from "@tanstack/react-query";
 import { useState, useCallback } from "react";
 import { View, ScrollView, Alert, Dimensions } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -17,7 +15,7 @@ import { OnboardingStepFollowCooks } from "./onboarding-steps/OnboardingStepFoll
 import { OnboardingStepMeasurements } from "./onboarding-steps/OnboardingStepMeasurements";
 import { OnboardingStepProfile } from "./onboarding-steps/OnboardingStepProfile";
 
-import { useCheckUsername, useUser } from "@/api/user";
+import { useCheckUsername, useCompleteOnboarding, useUser } from "@/api/user";
 import { OnboardingProgress } from "@/components/OnboardingProgress";
 import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
@@ -38,11 +36,8 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { data: userData } = useUser();
   const user = userData?.user;
-  const trpc = useTRPC();
   const { triggerWelcome } = useWelcomeOverlay();
-  const completeOnboarding = useMutation({
-    ...trpc.user.completeOnboarding.mutationOptions(),
-  });
+  const completeOnboarding = useCompleteOnboarding();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -105,7 +100,7 @@ export default function OnboardingScreen() {
       try {
         await completeOnboarding.mutateAsync({
           username,
-          name: name || undefined,
+          name: name.trim(),
           bio: bio || null,
           image: profileImage,
           measurementPreference: measurementSystem,

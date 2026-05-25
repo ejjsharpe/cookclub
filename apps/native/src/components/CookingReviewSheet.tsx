@@ -25,6 +25,7 @@ import { VSpace } from "./Space";
 import { Text } from "./Text";
 
 import { Ionicons } from "@/components/Ionicons";
+import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
 
 const MAX_IMAGES = 5;
 
@@ -97,16 +98,27 @@ export const CookingReviewSheet = forwardRef<
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsMultipleSelection: true,
-        selectionLimit: MAX_IMAGES - images.length,
-        quality: 0.8,
+      const hasPermission = await ensureMediaLibraryPermission({
+        message:
+          "Please allow access to your photos to add images to your review.",
       });
+      if (!hasPermission) return;
 
-      if (!result.canceled) {
-        const newImages = result.assets.map((asset) => asset.uri);
-        setImages((prev) => [...prev, ...newImages].slice(0, MAX_IMAGES));
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsMultipleSelection: true,
+          selectionLimit: MAX_IMAGES - images.length,
+          quality: 0.8,
+        });
+
+        if (!result.canceled) {
+          const newImages = result.assets.map((asset) => asset.uri);
+          setImages((prev) => [...prev, ...newImages].slice(0, MAX_IMAGES));
+        }
+      } catch (error) {
+        console.error("Failed to pick review images:", error);
+        Alert.alert("Photo Error", "Unable to open your photo library.");
       }
     };
 

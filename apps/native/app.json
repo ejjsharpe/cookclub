@@ -46,6 +46,12 @@
         }
       ],
       "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow cookclub to access your photos so you upload add images to your recipes and profile."
+        }
+      ],
       "expo-notifications"
     ],
     "orientation": "portrait",
@@ -58,7 +64,8 @@
       "bundleIdentifier": "com.shakyhand.cookclub",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Allow cookclub to access your photos so you can choose a profile picture."
       },
       "icon": "./assets/cookclub.icon",
       "splash": {
