@@ -37,6 +37,7 @@ type CollectionDetailScreenRoute = RouteProp<AppParamList, "CollectionDetail">;
 export const CollectionDetailScreen = () => {
   const route = useRoute<CollectionDetailScreenRoute>();
   const navigation = useNavigation();
+  const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const { collectionId } = route.params;
   const headerOpacity = useSharedValue(1);
@@ -141,6 +142,7 @@ export const CollectionDetailScreen = () => {
         <Ionicons name="trash-outline" size={22} color="#ff3b30" />
       </TouchableOpacity>
     ) : undefined;
+  const refreshOffset = insets.top + NAVIGATION_HEADER_HEIGHT;
 
   return (
     <View style={styles.screen}>
@@ -153,7 +155,13 @@ export const CollectionDetailScreen = () => {
           },
         ]}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+            progressViewOffset={refreshOffset}
+          />
         }
         onScroll={handleScroll}
         scrollEventThrottle={16}

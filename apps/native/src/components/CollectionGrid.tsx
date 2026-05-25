@@ -71,6 +71,7 @@ export const CollectionGrid = forwardRef<
 
     const theme = UnistylesRuntime.getTheme();
     const insets = UnistylesRuntime.insets;
+    const refreshOffset = insets.top + headerHeight;
 
     // Build list with optional create card
     const collectionsList = useMemo<CollectionListItem[]>(
@@ -160,6 +161,8 @@ export const CollectionGrid = forwardRef<
               refreshing={isRefreshing}
               onRefresh={onRefresh}
               tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+              progressViewOffset={refreshOffset}
             />
           ) : undefined
         }

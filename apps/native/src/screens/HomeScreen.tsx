@@ -213,6 +213,7 @@ export const HomeScreen = () => {
   );
   useScrollToTop(browseScrollRef);
   const navigation = useNavigation();
+  const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const listBottomPadding = TAB_BAR_LIST_CLEARANCE;
   const trpc = useTRPC();
@@ -659,6 +660,8 @@ export const HomeScreen = () => {
   const isFetching = usersPending || usersFetching;
 
   const fixedHeaderHeight = insets.top + SEARCH_BAR_HEIGHT;
+  const browseRefreshOffset = insets.top + HEADER_HEIGHT + 8;
+  const searchRefreshOffset = insets.top + SEARCH_BAR_HEIGHT + 16;
 
   const renderSearchEmpty = () => (
     <SearchEmptyState
@@ -778,6 +781,9 @@ export const HomeScreen = () => {
                 <RefreshControl
                   refreshing={isRefreshing && !isSearchActive}
                   onRefresh={handleRefresh}
+                  tintColor={theme.colors.primary}
+                  colors={[theme.colors.primary]}
+                  progressViewOffset={browseRefreshOffset}
                 />
               }
             />
@@ -840,6 +846,9 @@ export const HomeScreen = () => {
               refreshing={isRefreshing && isSearchActive}
               onRefresh={handleRefresh}
               enabled={shouldFetchUsers}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+              progressViewOffset={searchRefreshOffset}
             />
           }
           showsVerticalScrollIndicator={false}

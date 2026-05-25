@@ -518,7 +518,7 @@ export const AddRecipeScreen = () => {
           <ActionRow
             icon="sparkles"
             label="Smart import"
-            subtitle="Use AI to import from recipe links, social posts, pasted text, or photos."
+            subtitle="Use AI to import from URL's, social media, text or photos."
             counterLabel={
               isPro
                 ? undefined

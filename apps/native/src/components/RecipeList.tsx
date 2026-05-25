@@ -50,6 +50,7 @@ export const RecipeList = forwardRef<RecipeListRef, RecipeListProps>(
 
     const theme = UnistylesRuntime.getTheme();
     const insets = UnistylesRuntime.insets;
+    const refreshOffset = insets.top + headerHeight;
 
     // Use useMemo to create a stable element instead of a component function
     const ListHeader = useMemo(
@@ -87,6 +88,8 @@ export const RecipeList = forwardRef<RecipeListRef, RecipeListProps>(
               refreshing={isRefreshing}
               onRefresh={onRefresh}
               tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+              progressViewOffset={refreshOffset}
             />
           ) : undefined
         }

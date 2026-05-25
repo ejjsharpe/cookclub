@@ -46,6 +46,7 @@ const ReanimatedFlatList = Animated.createAnimatedComponent(
 
 export const NotificationsScreen = () => {
   const navigation = useNavigation();
+  const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const trpc = useTRPC();
   const queryClient = useQueryClient();
@@ -369,6 +370,7 @@ export const NotificationsScreen = () => {
   const headerAnimatedStyle = useAnimatedStyle(() => ({
     opacity: headerOpacity.value,
   }));
+  const refreshOffset = insets.top + NAVIGATION_HEADER_HEIGHT;
 
   return (
     <View style={styles.screen}>
@@ -391,7 +393,13 @@ export const NotificationsScreen = () => {
           },
         ]}
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+            progressViewOffset={refreshOffset}
+          />
         }
       />
       <Animated.View style={[styles.fixedHeader, headerAnimatedStyle]}>

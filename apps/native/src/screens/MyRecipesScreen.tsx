@@ -314,6 +314,7 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
 export const MyRecipesScreen = () => {
   const navigation = useNavigation();
   const isFocused = useIsFocused();
+  const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const browseScrollRef = useRef<ScrollView>(null);
 
@@ -1014,6 +1015,8 @@ export const MyRecipesScreen = () => {
   });
 
   // ─── Render ───────────────────────────────────────────────────────────────────
+  const browseRefreshOffset = insets.top + HEADER_HEIGHT + 8;
+
   return (
     <View style={styles.screen}>
       {/* Browse Mode */}
@@ -1031,6 +1034,9 @@ export const MyRecipesScreen = () => {
             <RefreshControl
               refreshing={isRefreshingBrowse}
               onRefresh={handleBrowseRefresh}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+              progressViewOffset={browseRefreshOffset}
             />
           }
         >
