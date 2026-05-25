@@ -4,10 +4,11 @@ import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { Platform } from "react-native";
 
 import { useSessionContext } from "./sessionContext";
 
-import { navigationRef } from "@/navigation/RootStack";
+import { navigationRef } from "@/navigation/navigationRef";
 
 type PushNotificationData = {
   notificationId?: unknown;
@@ -111,10 +112,12 @@ async function requestAndRegisterPushToken(params: {
     platform: "ios" | "android" | "web";
   }) => void;
 }) {
-  await Notifications.setNotificationChannelAsync("default", {
-    name: "Default",
-    importance: Notifications.AndroidImportance.DEFAULT,
-  });
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Default",
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
 
   const existingPermissions = await Notifications.getPermissionsAsync();
   let finalStatus = existingPermissions.status;

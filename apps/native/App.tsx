@@ -6,7 +6,7 @@ import * as Linking from "expo-linking";
 import { ShareIntentProvider } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
-import React, { useEffect, useRef, useState, StrictMode } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -69,9 +69,6 @@ export default function App() {
   const isFontsReady = isFontsLoaded || isFontsError;
   const [isImagesReady, setIsImagesReady] = useState(false);
   const [isNavigationReady, setIsNavigationReady] = useState(false);
-  const navigationStateRef = useRef<
-    React.ComponentProps<typeof Navigation>["initialState"] | undefined
-  >(undefined);
   const { theme, rt } = useUnistyles();
 
   useEffect(() => {
@@ -106,7 +103,6 @@ export default function App() {
   }, [isFontsReady, isNavigationReady, isImagesReady]);
 
   const onNavigationReady = () => {
-    navigationStateRef.current = navigationRef.getRootState();
     setIsNavigationReady(true);
   };
   const navigationKey = `${rt.themeName ?? "theme"}:${theme.colors.background}`;
@@ -128,44 +124,38 @@ export default function App() {
   }
 
   return (
-    <StrictMode>
-      <SafeAreaProvider>
-        <KeyboardProvider>
-          <ShareIntentProvider>
-            <ReactQueryProvider>
-              <SessionProvider>
-                <TRPCProvider>
-                  <SignedInProvider>
-                    <SubscriptionProvider>
-                      <PushNotificationsProvider>
-                        <ShareIntentStorageHandler />
-                        <GestureHandlerRootView style={styles.rootView}>
-                          <BackgroundImportQueueProvider>
-                            <WelcomeOverlayProvider>
-                              <Navigation
-                                ref={navigationRef}
-                                key={navigationKey}
-                                onReady={onNavigationReady}
-                                initialState={navigationStateRef.current}
-                                onStateChange={(state) => {
-                                  navigationStateRef.current = state;
-                                }}
-                                linking={linking}
-                                theme={navigationTheme}
-                              />
-                            </WelcomeOverlayProvider>
-                          </BackgroundImportQueueProvider>
-                        </GestureHandlerRootView>
-                      </PushNotificationsProvider>
-                    </SubscriptionProvider>
-                  </SignedInProvider>
-                </TRPCProvider>
-              </SessionProvider>
-            </ReactQueryProvider>
-          </ShareIntentProvider>
-        </KeyboardProvider>
-      </SafeAreaProvider>
-    </StrictMode>
+    <SafeAreaProvider>
+      <KeyboardProvider>
+        <ShareIntentProvider>
+          <ReactQueryProvider>
+            <SessionProvider>
+              <TRPCProvider>
+                <SignedInProvider>
+                  <SubscriptionProvider>
+                    <PushNotificationsProvider>
+                      <ShareIntentStorageHandler />
+                      <GestureHandlerRootView style={styles.rootView}>
+                        <BackgroundImportQueueProvider>
+                          <WelcomeOverlayProvider>
+                            <Navigation
+                              ref={navigationRef}
+                              key={navigationKey}
+                              onReady={onNavigationReady}
+                              linking={linking}
+                              theme={navigationTheme}
+                            />
+                          </WelcomeOverlayProvider>
+                        </BackgroundImportQueueProvider>
+                      </GestureHandlerRootView>
+                    </PushNotificationsProvider>
+                  </SubscriptionProvider>
+                </SignedInProvider>
+              </TRPCProvider>
+            </SessionProvider>
+          </ReactQueryProvider>
+        </ShareIntentProvider>
+      </KeyboardProvider>
+    </SafeAreaProvider>
   );
 }
 

@@ -1,8 +1,11 @@
 import { createContext, useContext } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 
 import { useSessionContext } from "./sessionContext";
 
 import { useUser } from "@/api/user";
+import { Text } from "@/components/Text";
 
 interface SignedInState {
   isSignedIn: boolean;
@@ -43,7 +46,7 @@ export const SignedInProvider = ({
   });
 
   if (isSignedIn && isUserPending) {
-    return null;
+    return <AuthTransitionScreen />;
   }
 
   const value: SignedInState = {
@@ -55,3 +58,31 @@ export const SignedInProvider = ({
     <SignInContext.Provider value={value}>{children}</SignInContext.Provider>
   );
 };
+
+export const AuthTransitionScreen = () => (
+  <View style={styles.transitionScreen}>
+    <Text type="screenTitle">
+      cook
+      <Text type="screenTitle" style={styles.clubText}>
+        club
+      </Text>
+    </Text>
+    <ActivityIndicator color={styles.activityIndicator.color} />
+  </View>
+);
+
+const styles = StyleSheet.create((theme) => ({
+  transitionScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    backgroundColor: theme.colors.background,
+  },
+  clubText: {
+    color: theme.colors.primary,
+  },
+  activityIndicator: {
+    color: theme.colors.primary,
+  },
+}));

@@ -14,23 +14,23 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@hono/trpc-server": "^0.4.0",
+    "@hono/trpc-server": "0.4.2",
     "@repo/auth": "workspace:*",
     "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/trpc": "workspace:*",
-    "hono": "^4.10.6"
+    "hono": "4.12.23"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.11.0",
-    "@cloudflare/workers-types": "^4.20250718.0",
+    "@cloudflare/vitest-pool-workers": "0.16.9",
+    "@cloudflare/workers-types": "4.20260525.1",
     "@repo/tsconfig": "workspace:*",
-    "@types/node": "^24.0.14",
-    "eslint-config-universe": "15.0.3",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.3",
-    "wait-on": "^9.0.3",
-    "wrangler": "^4.50.0"
+    "@types/node": "25.9.1",
+    "eslint-config-universe": "15.2.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "wait-on": "9.0.10",
+    "wrangler": "4.94.0"
   },
   "eslintConfig": {
     "extends": "universe/node"

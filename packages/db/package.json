@@ -23,26 +23,29 @@
     "seed:prod": "dotenvx run -f .env.production -- bun run seed.ts"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
+    "@neondatabase/serverless": "1.1.0",
     "@repo/contracts": "workspace:*",
     "@repo/shared": "workspace:*",
-    "bcryptjs": "^3.0.3",
-    "drizzle-orm": "0.44.3"
+    "bcryptjs": "3.0.3",
+    "drizzle-orm": "0.45.2"
   },
   "devDependencies": {
-    "@dotenvx/dotenvx": "^1.34.0",
-    "@cloudflare/workers-types": "^4.20250718.0",
+    "@dotenvx/dotenvx": "1.68.1",
+    "@cloudflare/workers-types": "4.20260525.1",
     "@repo/tsconfig": "workspace:*",
-    "@types/bcrypt": "^6.0.0",
-    "@types/bcryptjs": "^3.0.0",
-    "eslint-config-universe": "15.0.3",
-    "drizzle-kit": "^0.31.4",
-    "typescript": "^5.8.3"
+    "@types/bcrypt": "6.0.0",
+    "@types/bcryptjs": "3.0.0",
+    "eslint-config-universe": "15.2.0",
+    "drizzle-kit": "0.31.10",
+    "typescript": "6.0.3"
   },
   "eslintConfig": {
     "extends": "universe/node"
   },
   "nx": {
-    "tags": ["type:package", "scope:db"]
+    "tags": [
+      "type:package",
+      "scope:db"
+    ]
   }
 }

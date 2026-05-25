@@ -1,4 +1,4 @@
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createNativeBottomTabNavigator } from "@react-navigation/bottom-tabs/unstable";
 import { useUnistyles } from "react-native-unistyles";
 
 import { ShareIntentHandler } from "@/components/ShareIntentHandler";
@@ -8,7 +8,7 @@ import { MealPlanScreen } from "@/screens/MealPlanScreen";
 import { MyRecipesScreen } from "@/screens/MyRecipesScreen";
 import { ShoppingListScreen } from "@/screens/ShoppingListScreen";
 
-const Tab = createBottomTabNavigator();
+const Tab = createNativeBottomTabNavigator();
 
 export const TabNavigator = () => {
   const { theme } = useUnistyles();
@@ -20,6 +20,8 @@ export const TabNavigator = () => {
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: theme.colors.primary,
+          tabBarControllerMode: "tabBar",
+          tabBarMinimizeBehavior: "auto",
           // lazy: false,
         }}
       >
@@ -49,7 +51,6 @@ export const TabNavigator = () => {
           component={MealPlanScreen}
           options={{
             tabBarLabelVisibilityMode: "selected",
-
             tabBarIcon: { type: "sfSymbol", name: "calendar" },
           }}
         />
@@ -58,7 +59,6 @@ export const TabNavigator = () => {
           component={ShoppingListScreen}
           options={{
             tabBarLabelVisibilityMode: "selected",
-
             tabBarIcon: { type: "sfSymbol", name: "cart.fill" },
           }}
         />

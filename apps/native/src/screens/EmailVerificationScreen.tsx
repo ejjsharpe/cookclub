@@ -1,4 +1,8 @@
-import { useNavigation, useRoute } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from "@react-navigation/native";
 import { useState } from "react";
 import { View, Alert } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -10,16 +14,13 @@ import { Text } from "@/components/Text";
 import { BaseButton } from "@/components/buttons/BaseButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { authClient } from "@/lib/authClient";
+import type { AppParamList } from "@/navigation/navigationRef";
 
-type EmailVerificationParams = {
-  EmailVerification: {
-    email: string;
-  };
-};
+type EmailVerificationRoute = RouteProp<AppParamList, "EmailVerification">;
 
 export const EmailVerificationScreen = () => {
   const navigation = useNavigation();
-  const route = useRoute<EmailVerificationParams>("EmailVerification");
+  const route = useRoute<EmailVerificationRoute>();
   const { email } = route.params;
   const [isResending, setIsResending] = useState(false);
 

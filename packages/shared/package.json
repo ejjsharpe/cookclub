@@ -14,13 +14,16 @@
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "eslint-config-universe": "15.0.3",
-    "typescript": "^5.8.3"
+    "eslint-config-universe": "15.2.0",
+    "typescript": "6.0.3"
   },
   "eslintConfig": {
     "extends": "universe/node"
   },
   "nx": {
-    "tags": ["type:package", "scope:shared"]
+    "tags": [
+      "type:package",
+      "scope:shared"
+    ]
   }
 }

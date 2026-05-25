@@ -1,4 +1,8 @@
-import { useRoute, useNavigation } from "@react-navigation/native";
+import {
+  useRoute,
+  useNavigation,
+  type RouteProp,
+} from "@react-navigation/native";
 import { useTRPC } from "@repo/trpc/client";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { useMutation } from "@tanstack/react-query";
@@ -40,12 +44,9 @@ import {
   useBackgroundImportQueue,
 } from "@/lib/backgroundImportQueue";
 import { useSubscription } from "@/lib/subscription";
+import type { AppParamList } from "@/navigation/navigationRef";
 
-type UserProfileScreenParams = {
-  UserProfile: {
-    userId: string;
-  };
-};
+type UserProfileScreenRoute = RouteProp<AppParamList, "UserProfile">;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator, (theme) => ({
   color: theme.colors.primary,
@@ -54,7 +55,7 @@ const ThemedFlashList = withUnistyles(FlashList<ActivityFeedListItem>);
 const HEADER_HEIGHT = 52;
 
 export const UserProfileScreen = () => {
-  const route = useRoute<UserProfileScreenParams>("UserProfile");
+  const route = useRoute<UserProfileScreenRoute>();
   const navigation = useNavigation();
   const { userId } = route.params;
   const trpc = useTRPC();

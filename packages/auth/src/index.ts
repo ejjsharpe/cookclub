@@ -141,7 +141,7 @@ export function getAuth(env: AuthEnv) {
     user: {
       changeEmail: {
         enabled: true,
-        sendChangeEmailVerification: async ({ user, newEmail, url }) => {
+        sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
           return sendEmail(env, {
             to: newEmail,
             subject: "Verify your new email - Cook Club",

@@ -54,8 +54,8 @@ export const useDeleteAccount = () => {
 
   return useMutation({
     ...trpc.user.deleteAccount.mutationOptions(),
-    onSuccess: () => {
-      clearLocalSessionState(queryClient);
+    onSuccess: async () => {
+      await clearLocalSessionState(queryClient);
     },
   });
 };

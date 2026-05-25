@@ -11,20 +11,23 @@
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\""
   },
   "dependencies": {
-    "@better-auth/expo": "^1.4.1",
+    "@better-auth/expo": "1.6.11",
     "@repo/db": "workspace:*",
-    "better-auth": "^1.4.1",
-    "resend": "^6.9.1"
+    "better-auth": "1.6.11",
+    "resend": "6.12.3"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "eslint-config-universe": "15.0.3",
-    "typescript": "^5.8.3"
+    "eslint-config-universe": "15.2.0",
+    "typescript": "6.0.3"
   },
   "eslintConfig": {
     "extends": "universe/node"
   },
   "nx": {
-    "tags": ["type:package", "scope:auth"]
+    "tags": [
+      "type:package",
+      "scope:auth"
+    ]
   }
 }

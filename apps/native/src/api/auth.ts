@@ -102,8 +102,8 @@ export const useSignOut = () => {
 
       return authClient.signOut();
     },
-    onSuccess: () => {
-      clearLocalSessionState(queryClient);
+    onSettled: async () => {
+      await clearLocalSessionState(queryClient);
     },
   });
 };

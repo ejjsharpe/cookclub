@@ -16,14 +16,17 @@
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "@types/node": "^24.0.14",
-    "eslint-config-universe": "15.0.3",
-    "typescript": "^5.8.3"
+    "@types/node": "25.9.1",
+    "eslint-config-universe": "15.2.0",
+    "typescript": "6.0.3"
   },
   "eslintConfig": {
     "extends": "universe/node"
   },
   "nx": {
-    "tags": ["type:package", "scope:contracts"]
+    "tags": [
+      "type:package",
+      "scope:contracts"
+    ]
   }
 }

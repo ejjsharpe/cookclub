@@ -1,5 +1,11 @@
-import type { Env } from "./types";
+import type { Env as AppEnv } from "./types";
+
+declare global {
+  namespace Cloudflare {
+    interface Env extends AppEnv {}
+  }
+}
 
 declare module "cloudflare:test" {
-  interface ProvidedEnv extends Env {}
+  interface ProvidedEnv extends AppEnv {}
 }

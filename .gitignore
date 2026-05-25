@@ -23,6 +23,8 @@ android
 .env
 .env.production
 .dev.vars
+*firebase-adminsdk*.json
+*service-account*.json
 
 # logs
 logs/

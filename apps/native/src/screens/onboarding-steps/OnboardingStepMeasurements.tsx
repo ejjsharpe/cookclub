@@ -114,6 +114,9 @@ const styles = StyleSheet.create((theme) => ({
     letterSpacing: -1,
     paddingHorizontal: 2,
   },
+  subtitle: {
+    paddingHorizontal: 2,
+  },
   options: {
     gap: 12,
   },

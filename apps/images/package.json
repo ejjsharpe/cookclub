@@ -15,14 +15,14 @@
   },
   "dependencies": {
     "@repo/contracts": "workspace:*",
-    "aws4fetch": "^1.0.20",
-    "hono": "^4.10.6"
+    "aws4fetch": "1.0.20",
+    "hono": "4.12.23"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250718.0",
+    "@cloudflare/workers-types": "4.20260525.1",
     "@repo/tsconfig": "workspace:*",
-    "typescript": "^5.8.3",
-    "wrangler": "^4.50.0"
+    "typescript": "6.0.3",
+    "wrangler": "4.94.0"
   },
   "eslintConfig": {
     "extends": "universe/node"

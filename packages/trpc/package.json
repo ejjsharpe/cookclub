@@ -19,22 +19,25 @@
     "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/shared": "workspace:*",
-    "@trpc/client": "^11.4.3",
-    "@trpc/server": "^11.4.3",
-    "@trpc/tanstack-react-query": "^11.4.3",
-    "arktype": "^2.1.20",
-    "drizzle-orm": "0.44.3"
+    "@trpc/client": "11.17.0",
+    "@trpc/server": "11.17.0",
+    "@trpc/tanstack-react-query": "11.17.0",
+    "arktype": "2.2.0",
+    "drizzle-orm": "0.45.2"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "eslint-config-universe": "15.0.3",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.3"
+    "eslint-config-universe": "15.2.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7"
   },
   "eslintConfig": {
     "extends": "universe/node"
   },
   "nx": {
-    "tags": ["type:package", "scope:api"]
+    "tags": [
+      "type:package",
+      "scope:api"
+    ]
   }
 }

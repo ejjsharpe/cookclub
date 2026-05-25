@@ -1,4 +1,8 @@
-import { useRoute, useNavigation } from "@react-navigation/native";
+import {
+  useRoute,
+  useNavigation,
+  type RouteProp,
+} from "@react-navigation/native";
 import { useState } from "react";
 import {
   View,
@@ -22,19 +26,16 @@ import { NavigationHeader } from "@/components/NavigationHeader";
 import { RecipeCard } from "@/components/RecipeCard";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
+import type { AppParamList } from "@/navigation/navigationRef";
 
 const NAVIGATION_HEADER_HEIGHT = 60;
 
 const ReanimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
-type CollectionDetailScreenParams = {
-  CollectionDetail: {
-    collectionId: number;
-  };
-};
+type CollectionDetailScreenRoute = RouteProp<AppParamList, "CollectionDetail">;
 
 export const CollectionDetailScreen = () => {
-  const route = useRoute<CollectionDetailScreenParams>("CollectionDetail");
+  const route = useRoute<CollectionDetailScreenRoute>();
   const navigation = useNavigation();
   const insets = UnistylesRuntime.insets;
   const { collectionId } = route.params;

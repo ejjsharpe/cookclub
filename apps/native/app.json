@@ -77,7 +77,8 @@
         "resizeMode": "contain",
         "backgroundColor": "#FF0027"
     },
-      "package": "com.shakyhand.cookclub"
+      "package": "com.shakyhand.cookclub",
+      "googleServicesFile": "./google-services.json"
     },
     "extra": {
       "eas": {

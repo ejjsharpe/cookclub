@@ -15,6 +15,7 @@ import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { UserCard } from "@/components/UserCard";
 import { UserSearchCard } from "@/components/UserSearchCard";
+import type { AppParamList } from "@/navigation/navigationRef";
 
 type TabType = "following" | "followers" | "search";
 
@@ -36,18 +37,10 @@ interface User {
   image?: string | null;
 }
 
-type FollowsScreenParams = {
-  FollowsList: {
-    userId: string;
-    activeTab: "following" | "followers";
-    userName: string;
-  };
-};
-
-type FollowsScreenRouteProp = RouteProp<FollowsScreenParams, "FollowsList">;
+type FollowsScreenRouteProp = RouteProp<AppParamList, "FollowsList">;
 
 export const FollowsScreen = () => {
-  const route = useRoute<FollowsScreenParams>("FollowsList");
+  const route = useRoute<FollowsScreenRouteProp>();
   const navigation = useNavigation();
   const { userId, activeTab: initialTab, userName } = route.params;
 

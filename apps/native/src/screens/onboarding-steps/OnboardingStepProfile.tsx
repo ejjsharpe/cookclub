@@ -117,7 +117,7 @@ export const OnboardingStepProfile = ({
         </TouchableOpacity>
         <VSpace size={8} />
         <Text type="caption" style={styles.photoHint}>
-          Profile photo optional
+          Profile photo
         </Text>
       </View>
 
@@ -200,6 +200,9 @@ const styles = StyleSheet.create((theme) => ({
   title: {
     textAlign: "left",
     letterSpacing: -1,
+    paddingHorizontal: 2,
+  },
+  subtitle: {
     paddingHorizontal: 2,
   },
   centered: {

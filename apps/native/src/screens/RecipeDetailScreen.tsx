@@ -1,4 +1,9 @@
-import { useRoute, useNavigation } from "@react-navigation/native";
+import {
+  StackActions,
+  useRoute,
+  useNavigation,
+  type RouteProp,
+} from "@react-navigation/native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -84,6 +89,7 @@ import {
 import { useImageUpload } from "@/hooks/useImageUpload";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { useSubscription } from "@/lib/subscription";
+import type { AppParamList } from "@/navigation/navigationRef";
 import { getImageUrl } from "@/utils/imageUrl";
 import {
   isCompactUnit,
@@ -98,12 +104,7 @@ const IMAGE_HEIGHT = SCREEN_WIDTH;
 
 type RecipeDetailMode = "view" | "edit";
 
-type RecipeDetailScreenParams = {
-  RecipeDetail:
-    | { recipeId: number; mode?: RecipeDetailMode }
-    | { parsedRecipe: ParsedRecipe; mode?: RecipeDetailMode }
-    | { draft: true; mode: "edit" };
-};
+type RecipeDetailScreenRoute = RouteProp<AppParamList, "RecipeDetail">;
 
 type SourceType = "url" | "image" | "text" | "ai" | "manual" | "user";
 
@@ -163,13 +164,13 @@ interface RecipeDraft {
 }
 
 function isPreviewParams(
-  params: RecipeDetailScreenParams["RecipeDetail"],
+  params: AppParamList["RecipeDetail"],
 ): params is { parsedRecipe: ParsedRecipe; mode?: RecipeDetailMode } {
   return "parsedRecipe" in params;
 }
 
 function isBlankDraftParams(
-  params: RecipeDetailScreenParams["RecipeDetail"],
+  params: AppParamList["RecipeDetail"],
 ): params is { draft: true; mode: "edit" } {
   return "draft" in params;
 }
@@ -388,8 +389,8 @@ function draftToMutationInput(draft: RecipeDraft) {
 }
 
 export const RecipeDetailScreen = () => {
-  const route = useRoute<RecipeDetailScreenParams>("RecipeDetail");
-  const navigation = useNavigation("RecipeDetail");
+  const route = useRoute<RecipeDetailScreenRoute>();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const params = route.params;
 
@@ -720,7 +721,9 @@ export const RecipeDetailScreen = () => {
       const newRecipe = await importMutation.mutateAsync({
         recipeId: recipe.id,
       });
-      navigation.replace("RecipeDetail", { recipeId: newRecipe.id });
+      navigation.dispatch(
+        StackActions.replace("RecipeDetail", { recipeId: newRecipe.id }),
+      );
     } catch (err: any) {
       const message =
         err?.message || "Something went wrong while importing the recipe.";
@@ -1216,7 +1219,9 @@ export const RecipeDetailScreen = () => {
         setIsEditing(false);
       } else {
         const { id } = await saveRecipeMutation.mutateAsync(recipeData);
-        navigation.replace("RecipeDetail", { recipeId: id });
+        navigation.dispatch(
+          StackActions.replace("RecipeDetail", { recipeId: id }),
+        );
       }
     } catch (err: any) {
       Alert.alert(

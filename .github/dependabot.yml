@@ -1,0 +1,60 @@
+version: 2
+updates:
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    groups:
+      expo-sdk:
+        patterns:
+          - "expo"
+          - "expo-*"
+          - "react"
+          - "react-native"
+      native-libraries:
+        patterns:
+          - "react-native-*"
+          - "@react-navigation/*"
+      cloudflare:
+        patterns:
+          - "@cloudflare/*"
+          - "wrangler"
+          - "workerd"
+      dev-tooling:
+        dependency-type: "development"
+        patterns:
+          - "*"
+    ignore:
+      # Expo SDK 56 is intentionally held until expo-share-intent supports it.
+      - dependency-name: "expo"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "expo-*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "@shopify/flash-list"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "react"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
