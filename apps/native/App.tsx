@@ -1,4 +1,5 @@
 import { DefaultTheme } from "@react-navigation/native";
+import * as Sentry from "@sentry/react-native";
 import { Asset } from "expo-asset";
 import { useFonts } from "expo-font";
 import { Image } from "expo-image";
@@ -36,9 +37,38 @@ import { SubscriptionProvider } from "@/lib/subscription";
 import { TRPCProvider } from "@/lib/trpc";
 import { Navigation, navigationRef } from "@/navigation/RootStack";
 
+const navigationIntegration = Sentry.reactNavigationIntegration({
+  enableTimeToInitialDisplay: true,
+});
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  environment: __DEV__ ? "development" : "production",
+  sendDefaultPii: true,
+  tracesSampleRate: __DEV__ ? 1.0 : 0.1,
+  profilesSampleRate: 1.0,
+  replaysOnErrorSampleRate: 1.0,
+  replaysSessionSampleRate: __DEV__ ? 1.0 : 0.05,
+  enableLogs: true,
+  integrations: [
+    navigationIntegration,
+    Sentry.mobileReplayIntegration({
+      maskAllImages: true,
+      maskAllText: true,
+    }),
+  ],
+  enableNativeFramesTracking: true,
+  tracePropagationTargets: [
+    "localhost",
+    /^http:\/\/.*:8787\/trpc/,
+    /^https:\/\/api\.cookclub\.app\/trpc/,
+  ],
+});
+
 SplashScreen.preventAutoHideAsync();
 activateAdaptyAtStartup()?.catch((error) => {
   console.log("Adapty activation failed:", error);
+  Sentry.captureException(error);
 });
 
 const prefix = Linking.createURL("/");
@@ -58,7 +88,7 @@ function cacheImages(images: any[]) {
   ]);
 }
 
-export default function App() {
+function App() {
   const [isFontsLoaded, isFontsError] = useFonts({
     "Satoshi-Regular": require("@/assets/fonts/Satoshi/Satoshi-Regular.otf"),
     "Satoshi-Medium": require("@/assets/fonts/Satoshi/Satoshi-Medium.otf"),
@@ -69,6 +99,7 @@ export default function App() {
   const isFontsReady = isFontsLoaded || isFontsError;
   const [isImagesReady, setIsImagesReady] = useState(false);
   const [isNavigationReady, setIsNavigationReady] = useState(false);
+  const hasReportedAppLoadedRef = useRef(false);
   const navigationStateRef = useRef<
     React.ComponentProps<typeof Navigation>["initialState"] | undefined
   >(undefined);
@@ -102,11 +133,16 @@ export default function App() {
   useEffect(() => {
     if (isFontsReady && isNavigationReady && isImagesReady) {
       SplashScreen.hideAsync();
+      if (!hasReportedAppLoadedRef.current) {
+        Sentry.appLoaded();
+        hasReportedAppLoadedRef.current = true;
+      }
     }
   }, [isFontsReady, isNavigationReady, isImagesReady]);
 
   const onNavigationReady = () => {
     navigationStateRef.current = navigationRef.getRootState();
+    navigationIntegration.registerNavigationContainer(navigationRef);
     setIsNavigationReady(true);
   };
   const navigationKey = `${rt.themeName ?? "theme"}:${theme.colors.background}`;
@@ -166,6 +202,8 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+export default Sentry.wrap(App);
 
 const styles = StyleSheet.create((theme) => ({
   rootView: { flex: 1, backgroundColor: theme.colors.background },

@@ -1,11 +1,11 @@
-const { getDefaultConfig } = require("expo/metro-config");
+const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 const {
   wrapWithReanimatedMetroConfig,
 } = require("react-native-reanimated/metro-config");
 
 // eslint-disable-next-line no-undef
 const projectRoot = __dirname;
-const config = getDefaultConfig(projectRoot);
+const config = getSentryExpoConfig(projectRoot);
 
 config.resolver.unstable_enablePackageExports = true;
 
