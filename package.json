@@ -27,6 +27,7 @@
     "nx": "22.7.3"
   },
   "trustedDependencies": [
+    "@sentry/cli",
     "esbuild",
     "nx",
     "sharp",
