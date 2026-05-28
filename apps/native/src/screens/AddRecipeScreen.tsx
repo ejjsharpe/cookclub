@@ -100,7 +100,9 @@ const ActionRow = ({
           </View>
           <View style={styles.textContainer}>
             <View style={styles.labelRow}>
-              <Text type="body">{label}</Text>
+              <Text type="body" style={styles.actionLabel}>
+                {label}
+              </Text>
               {featured && (
                 <View style={styles.badge}>
                   <Text type="caption" style={styles.badgeText}>
@@ -804,6 +806,9 @@ const styles = StyleSheet.create((theme, rt) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  actionLabel: {
+    fontFamily: theme.fonts.semiBold,
   },
   badge: {
     backgroundColor: theme.colors.primary,
