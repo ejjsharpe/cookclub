@@ -93,6 +93,47 @@ describe("extractStructuredRecipe", () => {
     expect(recipe?.instructionSections[0]?.instructions).toHaveLength(2);
   });
 
+  it("caps structured recipe images to the six best main images", () => {
+    const html = `
+      <html>
+        <head>
+          <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "Recipe",
+              "name": "Image Heavy Pancakes",
+              "image": [
+                "/pancakes-225x225.jpg",
+                "/pancakes-1200x800.jpg",
+                "/pancakes.jpg",
+                "/step-1.jpg",
+                "/step-2.jpg",
+                "/step-3.jpg",
+                "/step-4.jpg",
+                "/step-5.jpg",
+                "/step-6.jpg",
+                "/step-7.jpg"
+              ],
+              "recipeIngredient": ["1 cup flour"],
+              "recipeInstructions": ["Whisk and cook."]
+            }
+          </script>
+        </head>
+      </html>
+    `;
+
+    const recipe = extractStructuredRecipe(html, "https://example.com/recipe");
+
+    expect(recipe?.images).toEqual([
+      "https://example.com/pancakes.jpg",
+      "https://example.com/step-1.jpg",
+      "https://example.com/step-2.jpg",
+      "https://example.com/step-3.jpg",
+      "https://example.com/step-4.jpg",
+      "https://example.com/step-5.jpg",
+    ]);
+  });
+
   it("extracts RDFa recipes", () => {
     const html = `
       <article typeof="schema:Recipe">

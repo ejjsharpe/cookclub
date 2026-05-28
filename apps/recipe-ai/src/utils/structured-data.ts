@@ -11,6 +11,7 @@ import type {
   Tag,
 } from "../schema";
 import { parseIngredientText } from "./ingredient-parser";
+import { selectBestRecipeImages } from "./recipe-quality";
 
 function decodeHtmlEntities(value: string): string {
   if (!value.includes("&")) return value;
@@ -1225,10 +1226,12 @@ function toParsedRecipe(
     ? extractInstructionSections(raw.recipeInstructions, sourceUrl)
     : [];
 
-  // Get images (already normalized by parseJsonLd)
-  const images: string[] = Array.isArray(raw.image)
-    ? raw.image.filter((img): img is string => typeof img === "string")
-    : [];
+  // Main recipe images only; step images stay on instruction sections.
+  const images = selectBestRecipeImages(
+    Array.isArray(raw.image)
+      ? raw.image.filter((img): img is string => typeof img === "string")
+      : [],
+  );
 
   return {
     name: raw.name ? normalizeStructuredText(raw.name) : "",

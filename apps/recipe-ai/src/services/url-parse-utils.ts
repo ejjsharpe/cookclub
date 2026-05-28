@@ -6,8 +6,8 @@ import { cacheRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
 import {
   evaluateRecipeQuality,
-  MAX_RECIPE_IMAGES,
   normalizeRecipeForImport,
+  selectBestRecipeImages,
   type RecipeQuality,
   type RecipeQualitySource,
 } from "../utils/recipe-quality";
@@ -44,7 +44,7 @@ export async function reuploadImagesToR2(
   imageUrls: string[],
   prefix: string,
 ): Promise<string[]> {
-  const imagesToUpload = imageUrls.slice(0, MAX_RECIPE_IMAGES);
+  const imagesToUpload = selectBestRecipeImages(imageUrls);
   if (!imagesToUpload.length) return [];
 
   if (!env.IMAGE_SERVICE) {
