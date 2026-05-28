@@ -30,7 +30,7 @@ export const darkTheme = {
     textTertiary: "rgba(255, 255, 255, 0.27)",
     buttonText: colors.white,
     border: `${colors.white}26`,
-    inputBackground: "rgba(120, 120, 128, 0.24)",
+    inputBackground: "#303032",
     pressHighlight: "rgba(255, 255, 255, 0.08)",
     placeholderText: "#BCBDC0",
   },
