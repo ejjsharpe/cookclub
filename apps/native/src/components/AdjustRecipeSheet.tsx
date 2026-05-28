@@ -83,8 +83,6 @@ export const AdjustRecipeSheet = forwardRef<
         ref={sheetRef}
         title="Adjust Recipe"
         detents={["auto"]}
-        backgroundBlur="system-material"
-        blurOptions={{ intensity: 84, interaction: true }}
       >
         <View style={styles.content}>
           <View style={styles.servingsSection}>
