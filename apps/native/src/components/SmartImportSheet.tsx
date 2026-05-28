@@ -33,6 +33,14 @@ import { imageToBase64 } from "@/utils/imageUtils";
 export type SmartImportMode = BackgroundImportMode;
 export type SmartImportTask = BackgroundImportTask;
 
+const isDarkThemeRuntime = (runtime: {
+  themeName?: string;
+  colorScheme: string;
+}) =>
+  runtime.themeName
+    ? runtime.themeName === "dark"
+    : runtime.colorScheme === "dark";
+
 const ModeOption = ({
   icon,
   label,
@@ -70,45 +78,55 @@ const ModeOption = ({
   </TouchableOpacity>
 );
 
-const modeStyles = StyleSheet.create((theme) => ({
-  option: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 50,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.inputBackground,
-    gap: 8,
-  },
-  optionSelected: {
-    backgroundColor: theme.colors.primary + "20",
-  },
-  iconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.background,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  iconContainerSelected: {
-    backgroundColor: theme.colors.primary + "30",
-  },
-  icon: {
-    color: theme.colors.textSecondary,
-  },
-  iconSelected: {
-    color: theme.colors.primary,
-  },
-  label: {
-    color: theme.colors.textSecondary,
-  },
-  labelSelected: {
-    color: theme.colors.primary,
-    fontWeight: "500",
-  },
-}));
+const modeStyles = StyleSheet.create((theme, runtime) => {
+  const isDarkTheme = isDarkThemeRuntime(runtime);
+  const optionColor = isDarkTheme
+    ? theme.colors.text
+    : theme.colors.textSecondary;
+  const selectedLabelColor = isDarkTheme
+    ? theme.colors.text
+    : theme.colors.primary;
+
+  return {
+    option: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      height: 50,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.inputBackground,
+      gap: 8,
+    },
+    optionSelected: {
+      backgroundColor: theme.colors.primary + "20",
+    },
+    iconContainer: {
+      width: 28,
+      height: 28,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.background,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    iconContainerSelected: {
+      backgroundColor: theme.colors.primary + "30",
+    },
+    icon: {
+      color: optionColor,
+    },
+    iconSelected: {
+      color: theme.colors.primary,
+    },
+    label: {
+      color: optionColor,
+    },
+    labelSelected: {
+      color: selectedLabelColor,
+      fontWeight: "500",
+    },
+  };
+});
 
 export interface SmartImportSheetProps {
   onImportStarted?: (task: SmartImportTask) => void;
@@ -338,7 +356,7 @@ export const SmartImportSheet = forwardRef<
               <TextInput
                 style={styles.textArea}
                 placeholder="Paste ingredients, instructions, or a full recipe..."
-                placeholderTextColor="rgba(0,0,0,0.35)"
+                placeholderTextColor={styles.placeholder.color}
                 value={text}
                 onChangeText={setText}
                 multiline
@@ -436,75 +454,92 @@ export const SmartImportSheet = forwardRef<
   );
 });
 
-const styles = StyleSheet.create((theme) => ({
-  content: {
-    paddingHorizontal: 20,
-  },
-  modeSelector: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  label: {
-    color: theme.colors.textSecondary,
-    marginLeft: 4,
-  },
-  hint: {
-    color: theme.colors.textTertiary,
-    marginLeft: 4,
-  },
-  textArea: {
-    width: "100%",
-    height: 180,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: theme.borderRadius.large,
-    backgroundColor: theme.colors.inputBackground,
-    fontFamily: theme.fonts.regular,
-    fontSize: 16,
-    color: theme.colors.text,
-  },
-  imagePickerOptions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  imagePickerOption: {
-    flex: 1,
-    height: 120,
-    borderRadius: theme.borderRadius.large,
-    backgroundColor: theme.colors.inputBackground,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imagePickerIcon: {
-    color: theme.colors.textTertiary,
-  },
-  imagePickerText: {
-    color: theme.colors.textSecondary,
-  },
-  imagePreviewContainer: {
-    position: "relative",
-    width: "100%",
-    height: 200,
-    borderRadius: theme.borderRadius.large,
-    overflow: "hidden",
-  },
-  imagePreview: {
-    width: "100%",
-    height: "100%",
-  },
-  changeImageButtons: {
-    position: "absolute",
-    bottom: 12,
-    right: 12,
-    flexDirection: "row",
-    gap: 8,
-  },
-  changeImageButton: {
-    backgroundColor: "rgba(0,0,0,0.6)",
-    width: 36,
-    height: 36,
-    borderRadius: theme.borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-}));
+const styles = StyleSheet.create((theme, runtime) => {
+  const isDarkTheme = isDarkThemeRuntime(runtime);
+  const labelColor = isDarkTheme
+    ? theme.colors.text
+    : theme.colors.textSecondary;
+  const hintColor = isDarkTheme ? theme.colors.text : theme.colors.textTertiary;
+  const imagePickerTextColor = isDarkTheme
+    ? theme.colors.text
+    : theme.colors.textSecondary;
+  const imagePickerIconColor = isDarkTheme
+    ? theme.colors.text
+    : theme.colors.textTertiary;
+
+  return {
+    content: {
+      paddingHorizontal: 20,
+    },
+    modeSelector: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    label: {
+      color: labelColor,
+      marginLeft: 4,
+    },
+    hint: {
+      color: hintColor,
+      marginLeft: 4,
+    },
+    textArea: {
+      width: "100%",
+      height: 180,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderRadius: theme.borderRadius.large,
+      backgroundColor: theme.colors.inputBackground,
+      fontFamily: theme.fonts.regular,
+      fontSize: 16,
+      color: theme.colors.text,
+    },
+    placeholder: {
+      color: theme.colors.placeholderText,
+    },
+    imagePickerOptions: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    imagePickerOption: {
+      flex: 1,
+      height: 120,
+      borderRadius: theme.borderRadius.large,
+      backgroundColor: theme.colors.inputBackground,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    imagePickerIcon: {
+      color: imagePickerIconColor,
+    },
+    imagePickerText: {
+      color: imagePickerTextColor,
+    },
+    imagePreviewContainer: {
+      position: "relative",
+      width: "100%",
+      height: 200,
+      borderRadius: theme.borderRadius.large,
+      overflow: "hidden",
+    },
+    imagePreview: {
+      width: "100%",
+      height: "100%",
+    },
+    changeImageButtons: {
+      position: "absolute",
+      bottom: 12,
+      right: 12,
+      flexDirection: "row",
+      gap: 8,
+    },
+    changeImageButton: {
+      backgroundColor: "rgba(0,0,0,0.6)",
+      width: 36,
+      height: 36,
+      borderRadius: theme.borderRadius.full,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  };
+});
