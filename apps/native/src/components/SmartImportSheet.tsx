@@ -83,9 +83,7 @@ const modeStyles = StyleSheet.create((theme, runtime) => {
   const optionColor = isDarkTheme
     ? theme.colors.text
     : theme.colors.textSecondary;
-  const selectedLabelColor = isDarkTheme
-    ? theme.colors.text
-    : theme.colors.primary;
+  const selectedLabelColor = theme.colors.primary;
 
   return {
     option: {
