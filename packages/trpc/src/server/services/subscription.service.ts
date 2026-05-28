@@ -3,12 +3,17 @@ import {
   consumeSmartImportUsage,
   getSubscriptionStatus,
   upsertSubscriptionEntitlement,
+  type DbClient,
+  type TransactionClient,
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 
 import type { Context } from "../context";
 
-type AuthedContext = Context & { user: NonNullable<Context["user"]> };
+type AuthedContext = Pick<Context, "env"> & {
+  db: DbClient | TransactionClient;
+  user: Pick<NonNullable<Context["user"]>, "id">;
+};
 
 interface AdaptyProfileResponse {
   data?: {

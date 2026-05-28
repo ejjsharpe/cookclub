@@ -15,6 +15,12 @@ export function createMockDurableObjectNamespace() {
   };
 }
 
+export function createMockQueue() {
+  return {
+    send: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 export function createMockEnv() {
   return {
     USER_FEED: createMockDurableObjectNamespace(),
@@ -39,6 +45,10 @@ export function createMockEnv() {
       uploadImage: vi.fn(),
     },
     IMAGE_PUBLIC_URL: "https://images.example.com",
+    RECIPE_IMPORT_BASIC_QUEUE: createMockQueue(),
+    RECIPE_IMPORT_URL_QUEUE: createMockQueue(),
+    RECIPE_IMPORT_TEXT_QUEUE: createMockQueue(),
+    RECIPE_IMPORT_IMAGE_QUEUE: createMockQueue(),
     RESEND_API_KEY: "mock-resend-key",
   };
 }

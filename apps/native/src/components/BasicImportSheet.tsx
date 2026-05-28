@@ -1,6 +1,6 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { forwardRef, useState, useImperativeHandle, useRef } from "react";
-import { View, ActivityIndicator, Alert, ScrollView } from "react-native";
+import { View, Alert, ScrollView } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { AppSheet } from "./AppSheet";
@@ -9,11 +9,14 @@ import { VSpace } from "./Space";
 import { Text } from "./Text";
 import { PrimaryButton } from "./buttons/PrimaryButton";
 
-import { useParseRecipeFromUrlBasic, type ParsedRecipe } from "@/api/recipe";
+import {
+  createBackgroundImportId,
+  type BackgroundImportTask,
+} from "@/lib/backgroundImportQueue";
 import { isBasicImportUnsupportedUrl } from "@/utils/basicImport";
 
 export interface BasicImportSheetProps {
-  onRecipeParsed?: (data: ParsedRecipe) => void;
+  onImportStarted?: (task: BackgroundImportTask) => void;
 }
 
 export interface BasicImportSheetRef {
@@ -24,12 +27,10 @@ export interface BasicImportSheetRef {
 export const BasicImportSheet = forwardRef<
   BasicImportSheetRef,
   BasicImportSheetProps
->(({ onRecipeParsed }, ref) => {
+>(({ onImportStarted }, ref) => {
   const sheetRef = useRef<TrueSheet>(null);
   const [url, setUrl] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  const parseFromUrl = useParseRecipeFromUrlBasic();
+  const [isStarting, setIsStarting] = useState(false);
 
   useImperativeHandle(ref, () => ({
     present: () => sheetRef.current?.present(),
@@ -40,14 +41,16 @@ export const BasicImportSheet = forwardRef<
     sheetRef.current?.dismiss();
   };
 
-  const handleImport = async () => {
-    if (!url.trim()) {
+  const handleImport = () => {
+    const submittedUrl = url.trim();
+
+    if (!submittedUrl) {
       Alert.alert("Error", "Please enter a URL");
       return;
     }
 
     // Check for unsupported social media URLs before making API call
-    if (isBasicImportUnsupportedUrl(url)) {
+    if (isBasicImportUnsupportedUrl(submittedUrl)) {
       Alert.alert(
         "Unsupported Link",
         "Social media links aren't supported with Basic Import. They don't contain structured recipe data.",
@@ -55,27 +58,18 @@ export const BasicImportSheet = forwardRef<
       return;
     }
 
-    setIsLoading(true);
-
+    setIsStarting(true);
     try {
-      const result = await parseFromUrl.mutateAsync({ url });
-      if (result.success) {
-        onRecipeParsed?.(result);
-        handleClose();
-      } else {
-        Alert.alert(
-          "Import Failed",
-          "This website doesn't have recipe data we can read. Try a different recipe website.",
-        );
-      }
-    } catch (error) {
-      console.error("Import error:", error);
-      Alert.alert(
-        "Error",
-        "Couldn't access this URL. Please check the link and try again.",
-      );
+      onImportStarted?.({
+        id: createBackgroundImportId("url"),
+        importType: "basic",
+        mode: "url",
+        title: submittedUrl,
+        data: submittedUrl,
+      });
+      handleClose();
     } finally {
-      setIsLoading(false);
+      setIsStarting(false);
     }
   };
 
@@ -84,8 +78,8 @@ export const BasicImportSheet = forwardRef<
       ref={sheetRef}
       title="Basic Import"
       detents={["auto"]}
-      dismissible={!isLoading}
-      closeDisabled={isLoading}
+      dismissible={!isStarting}
+      closeDisabled={isStarting}
     >
       <ScrollView keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
@@ -102,7 +96,7 @@ export const BasicImportSheet = forwardRef<
             onSubmitEditing={handleImport}
             autoCapitalize="none"
             autoCorrect={false}
-            editable={!isLoading}
+            editable={!isStarting}
           />
           <VSpace size={8} />
           <Text type="caption" style={styles.hint}>
@@ -111,19 +105,9 @@ export const BasicImportSheet = forwardRef<
 
           <VSpace size={24} />
 
-          <PrimaryButton onPress={handleImport} disabled={isLoading}>
-            {isLoading ? "Importing..." : "Import Recipe"}
+          <PrimaryButton onPress={handleImport} disabled={isStarting}>
+            {isStarting ? "Starting..." : "Import Recipe"}
           </PrimaryButton>
-          {isLoading && (
-            <View style={styles.loadingContainer}>
-              <VSpace size={16} />
-              <ActivityIndicator size="small" />
-              <VSpace size={8} />
-              <Text type="caption" style={styles.loadingText}>
-                Fetching recipe data...
-              </Text>
-            </View>
-          )}
         </View>
       </ScrollView>
     </AppSheet>
@@ -141,11 +125,5 @@ const styles = StyleSheet.create((theme) => ({
   hint: {
     color: theme.colors.textSecondary,
     marginLeft: 4,
-  },
-  loadingContainer: {
-    alignItems: "center",
-  },
-  loadingText: {
-    color: theme.colors.textSecondary,
   },
 }));

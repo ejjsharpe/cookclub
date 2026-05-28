@@ -4,8 +4,9 @@ export type PendingShareIntentType = "url" | "text" | "image";
 
 export interface PendingShareIntent {
   type: PendingShareIntentType;
-  content: string; // URL, text content, or base64 image data
+  content: string; // URL, text content, image file URI, or base64 image data
   mimeType?: string; // For images
+  isBase64?: boolean; // For deferred image shares persisted across sessions
   timestamp: number;
 }
 

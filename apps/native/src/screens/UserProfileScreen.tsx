@@ -3,9 +3,7 @@ import {
   useNavigation,
   type RouteProp,
 } from "@react-navigation/native";
-import { useTRPC } from "@repo/trpc/client";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
-import { useMutation } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useCallback, useState, useRef } from "react";
 import {
@@ -58,14 +56,9 @@ export const UserProfileScreen = () => {
   const route = useRoute<UserProfileScreenRoute>();
   const navigation = useNavigation();
   const { userId } = route.params;
-  const trpc = useTRPC();
-  const parseRecipeFromUrl = useMutation(
-    trpc.recipe.parseRecipeFromUrl.mutationOptions({ retry: false }),
-  );
   const importRecipeMutation = useImportRecipe();
   const { startImport } = useBackgroundImportQueue();
-  const { requireSmartImport, refresh: refreshSubscription } =
-    useSubscription();
+  const { requireSmartImport } = useSubscription();
 
   const commentsSheetRef = useRef<CommentsSheetRef>(null);
 
@@ -140,25 +133,14 @@ export const UserProfileScreen = () => {
 
       startImport({
         id: createBackgroundImportId("url"),
+        importType: "smart",
         mode: "url",
         title: sourceUrl,
-        run: async () => {
-          try {
-            return await parseRecipeFromUrl.mutateAsync({ url: sourceUrl });
-          } finally {
-            refreshSubscription().catch(() => {});
-          }
-        },
+        data: sourceUrl,
       });
       navigateToAddRecipeTab();
     },
-    [
-      navigateToAddRecipeTab,
-      parseRecipeFromUrl,
-      refreshSubscription,
-      requireSmartImport,
-      startImport,
-    ],
+    [navigateToAddRecipeTab, requireSmartImport, startImport],
   );
 
   const handleImportExistingRecipe = useCallback(

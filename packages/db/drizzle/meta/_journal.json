@@ -22,6 +22,20 @@
       "when": 1779033600000,
       "tag": "0002_subscription_model",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779926400000,
+      "tag": "0003_recipe_import_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779996454058,
+      "tag": "0004_recipe_import_job_tracking_columns",
+      "breakpoints": true
     }
   ]
 }

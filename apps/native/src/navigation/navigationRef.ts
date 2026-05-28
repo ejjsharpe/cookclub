@@ -26,7 +26,11 @@ export interface AppParamList extends ParamListBase {
   };
   RecipeDetail:
     | { recipeId: number; mode?: "view" | "edit" }
-    | { parsedRecipe: ParsedRecipe; mode?: "view" | "edit" }
+    | {
+        parsedRecipe: ParsedRecipe;
+        mode?: "view" | "edit";
+        importJobId?: string;
+      }
     | { draft: true; mode: "edit" };
   CollectionDetail: { collectionId: number };
   Account: undefined;

@@ -2,6 +2,7 @@ import type { ParsedRecipe, PersonalizationGoal } from "@repo/contracts";
 import {
   recipeImages,
   recipes,
+  recipeImportJobs,
   recipeCollections,
   collections,
   user,
@@ -22,7 +23,17 @@ import {
 import { parseIngredients } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, lt, desc, and, ilike, count, inArray, min } from "drizzle-orm";
+import {
+  eq,
+  lt,
+  desc,
+  and,
+  ilike,
+  count,
+  inArray,
+  min,
+  isNull,
+} from "drizzle-orm";
 
 import { enforceRateLimit } from "../rate-limit";
 import { propagateActivityToFollowers } from "../services/activity";
@@ -30,6 +41,12 @@ import {
   cleanupMovedRecipeImages,
   prepareRecipeImages,
 } from "../services/recipe-image.service";
+import {
+  enqueueRecipeImportJob,
+  failRecipeImportJob,
+  type ImportJobMode,
+  type ImportJobRecord,
+} from "../services/recipe-import-job.service";
 import {
   assertSmartImportAllowance,
   consumeSmartImportAllowance,
@@ -132,6 +149,29 @@ export const RecipeUpdateValidator = type({
 const UrlValidator = type({ url: "string.url" });
 
 const MimeTypeValidator = type("'image/jpeg' | 'image/png' | 'image/webp'");
+
+const ImportJobModeValidator = type("'url' | 'text' | 'image'");
+
+const ImportJobTypeValidator = type("'basic' | 'smart'");
+
+const CreateImportJobValidator = type({
+  id: "string",
+  importType: ImportJobTypeValidator,
+  mode: ImportJobModeValidator,
+  title: "string",
+  data: "string",
+  "mimeType?": MimeTypeValidator,
+});
+
+const ImportJobIdValidator = type({
+  id: "string",
+});
+
+const MAX_IMPORT_DATA_LENGTH: Record<ImportJobMode, number> = {
+  url: 4096,
+  text: 100_000,
+  image: 2_500_000,
+};
 
 // Chat types for AI recipe generation
 const ChatMessageValidator = type({
@@ -272,6 +312,15 @@ function parseResponseForEntitlement<T extends { success: boolean }>(
   } as T;
 }
 
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function validateRecipePayload(input: RecipePayloadInput) {
   if (!input.name.trim()) {
     throw new TRPCError({
@@ -317,7 +366,214 @@ function validateRecipePayload(input: RecipePayloadInput) {
   }
 }
 
+function getImportRateLimitKey(mode: ImportJobMode) {
+  switch (mode) {
+    case "url":
+      return "recipe_parse_url";
+    case "text":
+      return "recipe_parse_text";
+    case "image":
+      return "recipe_parse_image";
+  }
+}
+
 export const recipeRouter = router({
+  listImportJobs: authedProcedure.query(async ({ ctx }) => {
+    const [jobs, subscriptionStatus] = await Promise.all([
+      ctx.db
+        .select({
+          id: recipeImportJobs.id,
+          importType: recipeImportJobs.importType,
+          mode: recipeImportJobs.mode,
+          title: recipeImportJobs.title,
+          status: recipeImportJobs.status,
+          recipe: recipeImportJobs.recipe,
+          error: recipeImportJobs.error,
+          createdAt: recipeImportJobs.createdAt,
+          updatedAt: recipeImportJobs.updatedAt,
+          completedAt: recipeImportJobs.completedAt,
+        })
+        .from(recipeImportJobs)
+        .where(
+          and(
+            eq(recipeImportJobs.userId, ctx.user.id),
+            isNull(recipeImportJobs.dismissedAt),
+          ),
+        )
+        .orderBy(desc(recipeImportJobs.createdAt))
+        .limit(20),
+      getCurrentSubscriptionStatus(ctx),
+    ]);
+
+    return jobs.map((job) => ({
+      ...job,
+      recipe: job.recipe
+        ? parseResponseForEntitlement(job.recipe, subscriptionStatus.isPro)
+        : job.recipe,
+    }));
+  }),
+
+  createImportJob: authedProcedure
+    .input(CreateImportJobValidator)
+    .mutation(async ({ ctx, input }) => {
+      if (input.id.trim().length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Import job id is required.",
+        });
+      }
+      if (input.title.trim().length === 0 || input.data.trim().length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Import source is required.",
+        });
+      }
+      if (input.importType === "basic" && input.mode !== "url") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Basic Import only supports recipe URLs.",
+        });
+      }
+      if (input.mode === "image" && !input.mimeType) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Image imports require a mime type.",
+        });
+      }
+
+      const inputData = input.data.trim();
+      if (inputData.length > MAX_IMPORT_DATA_LENGTH[input.mode]) {
+        throw new TRPCError({
+          code: "PAYLOAD_TOO_LARGE",
+          message: "Import source is too large.",
+        });
+      }
+      if (input.mode === "url" && !isHttpUrl(inputData)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Recipe URL is invalid.",
+        });
+      }
+
+      if (input.importType === "basic") {
+        await enforceRateLimit(ctx, "recipe_parse_url_basic");
+      } else {
+        await enforceRateLimit(ctx, getImportRateLimitKey(input.mode));
+      }
+
+      const now = new Date();
+      const job: ImportJobRecord = {
+        id: input.id,
+        userId: ctx.user.id,
+        importType: input.importType,
+        mode: input.mode,
+        title: input.title.trim(),
+        inputData,
+        mimeType: input.mimeType ?? null,
+        status: "pending",
+        processingStartedAt: null,
+        usagePeriodStart: null,
+        usageConsumedAt: null,
+        refundedAt: null,
+      };
+
+      await ctx.db.transaction(async (tx) => {
+        const [insertedJob] = await tx
+          .insert(recipeImportJobs)
+          .values({
+            id: job.id,
+            userId: job.userId,
+            importType: job.importType,
+            mode: job.mode,
+            title: job.title,
+            inputData: job.inputData,
+            mimeType: job.mimeType,
+            status: "pending",
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .returning({ id: recipeImportJobs.id });
+
+        if (!insertedJob) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Import job already exists.",
+          });
+        }
+
+        if (input.importType !== "smart") return;
+
+        const subscriptionStatus = await consumeSmartImportAllowance({
+          db: tx,
+          env: ctx.env,
+          user: { id: ctx.user.id },
+        });
+
+        if (subscriptionStatus.isPro || !subscriptionStatus.consumedSmartImport)
+          return;
+
+        job.usagePeriodStart = subscriptionStatus.smartImports.periodStart;
+        job.usageConsumedAt = now;
+
+        await tx
+          .update(recipeImportJobs)
+          .set({
+            usagePeriodStart: job.usagePeriodStart,
+            usageConsumedAt: job.usageConsumedAt,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(recipeImportJobs.id, job.id),
+              eq(recipeImportJobs.userId, job.userId),
+            ),
+          );
+      });
+
+      try {
+        await enqueueRecipeImportJob(ctx.env, job);
+      } catch (error) {
+        await failRecipeImportJob(
+          { db: ctx.db, env: ctx.env },
+          { jobId: job.id, userId: job.userId },
+          error instanceof Error ? error.message : "Unable to queue this import.",
+        );
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Unable to queue this import.",
+        });
+      }
+
+      return {
+        id: job.id,
+        importType: job.importType,
+        mode: job.mode,
+        title: job.title,
+        status: "pending" as const,
+        recipe: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+      };
+    }),
+
+  dismissImportJob: authedProcedure
+    .input(ImportJobIdValidator)
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db
+        .delete(recipeImportJobs)
+        .where(
+          and(
+            eq(recipeImportJobs.id, input.id),
+            eq(recipeImportJobs.userId, ctx.user.id),
+          ),
+        );
+
+      return { success: true };
+    }),
+
   // Parse recipe from URL using AI
   parseRecipeFromUrl: authedProcedure
     .input(UrlValidator)
@@ -907,7 +1163,11 @@ export const recipeRouter = router({
     )
     .query(async ({ ctx, input }) => {
       try {
-        const recipe = await getRecipeDetail(ctx.db, input.recipeId, ctx.user.id);
+        const recipe = await getRecipeDetail(
+          ctx.db,
+          input.recipeId,
+          ctx.user.id,
+        );
         const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
         return recipeForEntitlement(recipe, subscriptionStatus.isPro);
       } catch (err) {

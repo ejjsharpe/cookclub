@@ -1,11 +1,9 @@
 import { useNavigation, useScrollToTop } from "@react-navigation/native";
-import { useTRPC } from "@repo/trpc/client";
 import {
   FlashList,
   type FlashListRef,
   type ListRenderItemInfo,
 } from "@shopify/flash-list";
-import { useMutation } from "@tanstack/react-query";
 import { useState, useCallback, useMemo, useRef, memo, useEffect } from "react";
 import {
   View,
@@ -216,14 +214,9 @@ export const HomeScreen = () => {
   const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const listBottomPadding = TAB_BAR_LIST_CLEARANCE;
-  const trpc = useTRPC();
-  const parseRecipeFromUrl = useMutation(
-    trpc.recipe.parseRecipeFromUrl.mutationOptions({ retry: false }),
-  );
   const importRecipeMutation = useImportRecipe();
   const { startImport } = useBackgroundImportQueue();
-  const { requireSmartImport, refresh: refreshSubscription } =
-    useSubscription();
+  const { requireSmartImport } = useSubscription();
 
   // ─── State ────────────────────────────────────────────────────────────────────
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -457,25 +450,14 @@ export const HomeScreen = () => {
 
       startImport({
         id: createBackgroundImportId("url"),
+        importType: "smart",
         mode: "url",
         title: sourceUrl,
-        run: async () => {
-          try {
-            return await parseRecipeFromUrl.mutateAsync({ url: sourceUrl });
-          } finally {
-            refreshSubscription().catch(() => {});
-          }
-        },
+        data: sourceUrl,
       });
       navigation.navigate("Add recipe");
     },
-    [
-      navigation,
-      parseRecipeFromUrl,
-      refreshSubscription,
-      requireSmartImport,
-      startImport,
-    ],
+    [navigation, requireSmartImport, startImport],
   );
 
   const handleImportExistingRecipe = useCallback(

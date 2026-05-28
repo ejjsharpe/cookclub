@@ -17,6 +17,7 @@ const mockUpdateRecipe = vi.fn();
 const mockGetRecipeDetail = vi.fn();
 const mockGetStoredRecipeNutrition = vi.fn();
 const mockUpsertRecipeNutrition = vi.fn();
+const mockGetSubscriptionStatus = vi.fn();
 const mockValidateTagIds = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@repo/db/services", () => ({
@@ -30,18 +31,8 @@ vi.mock("@repo/db/services", () => ({
   importRecipe: vi.fn(),
   queryPopularRecipesThisWeek: vi.fn(),
   DEFAULT_PRO_ACCESS_LEVEL_ID: "pro",
-  getSubscriptionStatus: vi.fn().mockResolvedValue({
-    isPro: true,
-    accessLevelId: "pro",
-    expiresAt: null,
-    willRenew: true,
-    smartImports: {
-      used: 0,
-      limit: null,
-      remaining: null,
-      periodStart: new Date("2026-05-01T00:00:00.000Z"),
-    },
-  }),
+  getSubscriptionStatus: (...args: unknown[]) =>
+    mockGetSubscriptionStatus(...args),
   consumeSmartImportUsage: vi.fn().mockResolvedValue({
     isPro: true,
     accessLevelId: "pro",
@@ -54,6 +45,7 @@ vi.mock("@repo/db/services", () => ({
       periodStart: new Date("2026-05-01T00:00:00.000Z"),
     },
   }),
+  refundSmartImportUsageForPeriod: vi.fn(),
   upsertSubscriptionEntitlement: vi.fn(),
   recordAdaptyWebhookEvent: vi.fn(),
   ServiceError: class ServiceError extends Error {
@@ -70,6 +62,26 @@ vi.mock("@repo/db/schemas", () => ({
   recipeIngredients: { _name: "recipe_ingredients" },
   recipeInstructions: { _name: "recipe_instructions" },
   recipeCollections: { _name: "recipe_collections" },
+  recipeImportJobs: {
+    id: "recipe_import_jobs.id",
+    userId: "recipe_import_jobs.user_id",
+    importType: "recipe_import_jobs.import_type",
+    mode: "recipe_import_jobs.mode",
+    title: "recipe_import_jobs.title",
+    inputData: "recipe_import_jobs.input_data",
+    mimeType: "recipe_import_jobs.mime_type",
+    status: "recipe_import_jobs.status",
+    recipe: "recipe_import_jobs.recipe",
+    error: "recipe_import_jobs.error",
+    createdAt: "recipe_import_jobs.created_at",
+    updatedAt: "recipe_import_jobs.updated_at",
+    completedAt: "recipe_import_jobs.completed_at",
+    dismissedAt: "recipe_import_jobs.dismissed_at",
+    processingStartedAt: "recipe_import_jobs.processing_started_at",
+    usagePeriodStart: "recipe_import_jobs.usage_period_start",
+    usageConsumedAt: "recipe_import_jobs.usage_consumed_at",
+    refundedAt: "recipe_import_jobs.refunded_at",
+  },
   recipeNutrition: { _name: "recipe_nutrition" },
   collections: { _name: "collections" },
   recipeTags: { _name: "recipe_tags" },
@@ -85,6 +97,9 @@ vi.mock("drizzle-orm", () => ({
   asc: vi.fn((a) => ({ type: "asc", field: a })),
   and: vi.fn((...args) => ({ type: "and", conditions: args })),
   or: vi.fn((...args) => ({ type: "or", conditions: args })),
+  isNull: vi.fn((a) => ({ type: "isNull", field: a })),
+  ne: vi.fn((a, b) => ({ type: "ne", field: a, value: b })),
+  gt: vi.fn((a, b) => ({ type: "gt", field: a, value: b })),
   ilike: vi.fn((a, b) => ({ type: "ilike", field: a, pattern: b })),
   inArray: vi.fn((a, b) => ({ type: "inArray", field: a, values: b })),
   count: vi.fn((a) => ({ type: "count", field: a })),
@@ -118,6 +133,7 @@ vi.mock("arktype", () => {
 function createMockDb() {
   let insertReturning: unknown[] = [];
   let insertError: unknown = null;
+  let selectResult: unknown[] = [];
 
   return {
     select: vi.fn().mockReturnThis(),
@@ -129,7 +145,13 @@ function createMockDb() {
     orderBy: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     offset: vi.fn().mockReturnThis(),
-    then: vi.fn().mockResolvedValue([]),
+    then: vi.fn(
+      (
+        resolve?: (rows: unknown[]) => unknown,
+        reject?: (error: unknown) => unknown,
+      ) => Promise.resolve(selectResult).then(resolve, reject),
+    ),
+    delete: vi.fn().mockReturnThis(),
     insert: vi.fn().mockImplementation(() => ({
       values: vi.fn().mockReturnThis(),
       returning: vi
@@ -145,6 +167,9 @@ function createMockDb() {
     },
     _setInsertError: (error: unknown) => {
       insertError = error;
+    },
+    _setSelectResult: (result: unknown[]) => {
+      selectResult = result;
     },
   } as any;
 }
@@ -177,6 +202,18 @@ describe("recipeRouter - activity integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetSubscriptionStatus.mockResolvedValue({
+      isPro: true,
+      accessLevelId: "pro",
+      expiresAt: null,
+      willRenew: true,
+      smartImports: {
+        used: 0,
+        limit: null,
+        remaining: null,
+        periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      },
+    });
     consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -234,6 +271,106 @@ describe("recipeRouter - activity integration", () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+  });
+
+  describe("import jobs", () => {
+    const readyImportJob = {
+      id: "job-1",
+      importType: "smart",
+      mode: "url",
+      title: "Tomato Pasta",
+      status: "ready",
+      recipe: {
+        success: true,
+        data: {
+          name: "Tomato Pasta",
+          nutrition: { calories: 500 },
+        },
+        metadata: {
+          source: "url",
+          parseMethod: "ai_only",
+          confidence: "high",
+        },
+      },
+      error: null,
+      createdAt: new Date("2026-06-02T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-02T10:00:00.000Z"),
+      completedAt: new Date("2026-06-02T10:00:00.000Z"),
+    };
+
+    it("redacts completed import nutrition for non-Pro users at read time", async () => {
+      mockDb._setSelectResult([readyImportJob]);
+      mockGetSubscriptionStatus.mockResolvedValue({
+        isPro: false,
+        accessLevelId: null,
+        expiresAt: null,
+        willRenew: null,
+        smartImports: {
+          used: 1,
+          limit: 5,
+          remaining: 4,
+          periodStart: new Date("2026-06-01T00:00:00.000Z"),
+        },
+      });
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      const [job] = await caller.listImportJobs();
+
+      expect(job?.recipe).toEqual(
+        expect.objectContaining({
+          data: expect.objectContaining({ nutrition: null }),
+        }),
+      );
+    });
+
+    it("returns stored completed import nutrition for Pro users", async () => {
+      mockDb._setSelectResult([readyImportJob]);
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      const [job] = await caller.listImportJobs();
+
+      expect(job?.recipe).toEqual(
+        expect.objectContaining({
+          data: expect.objectContaining({ nutrition: { calories: 500 } }),
+        }),
+      );
+    });
+
+    it("rejects URL import jobs with invalid URLs before queueing", async () => {
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.createImportJob({
+          id: "job-1",
+          importType: "smart",
+          mode: "url",
+          title: "not a url",
+          data: "not a url",
+        }),
+      ).rejects.toThrow("Recipe URL is invalid.");
+
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockEnv.RECIPE_IMPORT_URL_QUEUE.send).not.toHaveBeenCalled();
+    });
+
+    it("hard-deletes dismissed import jobs", async () => {
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.dismissImportJob({ id: "job-1" }),
+      ).resolves.toEqual({ success: true });
+
+      expect(mockDb.delete).toHaveBeenCalledWith(expect.anything());
+      expect(mockDb.where).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "and" }),
+      );
+    });
   });
 
   describe("postRecipe - activity integration", () => {

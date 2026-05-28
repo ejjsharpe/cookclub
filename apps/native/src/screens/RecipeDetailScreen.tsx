@@ -87,6 +87,7 @@ import {
   type AddToMealPlanSheetRef,
 } from "@/components/mealPlan/AddToMealPlanSheet";
 import { useImageUpload } from "@/hooks/useImageUpload";
+import { useBackgroundImportQueue } from "@/lib/backgroundImportQueue";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
@@ -164,9 +165,11 @@ interface RecipeDraft {
   instructionSections: DraftInstructionSection[];
 }
 
-function isPreviewParams(
-  params: AppParamList["RecipeDetail"],
-): params is { parsedRecipe: ParsedRecipe; mode?: RecipeDetailMode } {
+function isPreviewParams(params: AppParamList["RecipeDetail"]): params is {
+  parsedRecipe: ParsedRecipe;
+  mode?: RecipeDetailMode;
+  importJobId?: string;
+} {
   return "parsedRecipe" in params;
 }
 
@@ -398,7 +401,9 @@ export const RecipeDetailScreen = () => {
   const isPreviewMode = isPreviewParams(params);
   const isBlankDraftMode = isBlankDraftParams(params);
   const parsedRecipe = isPreviewMode ? params.parsedRecipe : null;
+  const importJobId = isPreviewMode ? params.importJobId : undefined;
   const recipeId = "recipeId" in params ? params.recipeId : null;
+  const isImportReviewMode = Boolean(importJobId);
   const shouldStartEditing =
     params.mode === "edit" || isBlankDraftMode || isPreviewMode;
   const isCreateMode = isPreviewMode || isBlankDraftMode;
@@ -429,6 +434,7 @@ export const RecipeDetailScreen = () => {
   const nutritionMutation = useGetRecipeNutrition();
   const createCookingReviewMutation = useCreateCookingReview();
   const { isPro, requireProFeature, presentPaywall } = useSubscription();
+  const { dismissImport } = useBackgroundImportQueue();
 
   const [servings, setServings] = useState(1);
   const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>(
@@ -1199,6 +1205,12 @@ export const RecipeDetailScreen = () => {
     ]);
   }, [draft, isCreateMode, navigation]);
 
+  const handleDismissImportReview = useCallback(() => {
+    if (!importJobId) return;
+    dismissImport(importJobId);
+    navigation.goBack();
+  }, [dismissImport, importJobId, navigation]);
+
   const handleSaveDraft = useCallback(async () => {
     if (!draft) return;
 
@@ -1234,6 +1246,9 @@ export const RecipeDetailScreen = () => {
         setIsEditing(false);
       } else {
         const { id } = await saveRecipeMutation.mutateAsync(recipeData);
+        if (importJobId) {
+          dismissImport(importJobId);
+        }
         navigation.dispatch(
           StackActions.replace("RecipeDetail", { recipeId: id }),
         );
@@ -1246,6 +1261,8 @@ export const RecipeDetailScreen = () => {
     }
   }, [
     draft,
+    dismissImport,
+    importJobId,
     isCreateMode,
     isUploadingImages,
     navigation,
@@ -2625,13 +2642,25 @@ export const RecipeDetailScreen = () => {
             { paddingBottom: insets.bottom + 12 },
           ]}
         >
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={handleCancelEdit}
-            disabled={isSaving}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
+          {isImportReviewMode ? (
+            <TouchableOpacity
+              style={[styles.cancelButton, styles.dismissButton]}
+              onPress={handleDismissImportReview}
+              disabled={isSaving}
+            >
+              <Text style={[styles.cancelButtonText, styles.dismissButtonText]}>
+                Dismiss
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={handleCancelEdit}
+              disabled={isSaving}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.saveButton, isSaving && styles.buttonDisabled]}
             onPress={handleSaveDraft}
@@ -3430,6 +3459,13 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.text,
     fontSize: 17,
     fontFamily: theme.fonts.semiBold,
+  },
+  dismissButton: {
+    borderColor: theme.colors.destructive,
+    backgroundColor: theme.colors.destructive + "12",
+  },
+  dismissButtonText: {
+    color: theme.colors.destructive,
   },
   saveButton: {
     flex: 1,

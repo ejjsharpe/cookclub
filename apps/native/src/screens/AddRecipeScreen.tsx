@@ -151,7 +151,8 @@ const getImportStatusCopy = (importItem: BackgroundImport) => {
   if (importItem.status === "ready") return "Recipe ready";
   if (importItem.status === "failed")
     return importItem.error || "Import failed";
-  return "AI is reading the recipe";
+  if (importItem.status === "processing") return "Import is processing";
+  return "Import is running";
 };
 
 const ImportProgressBar = ({ active }: { active: boolean }) => {
@@ -221,7 +222,7 @@ const ImportQueueSummary = ({
             style={styles.importSummaryIconGlyph}
           />
           <Text type="headline">
-            {active ? "Smart import is working" : "Import ready"}
+            {active ? "Import is working" : "Import ready"}
           </Text>
         </View>
         <Text type="caption" style={styles.importProgressLabel}>
@@ -254,7 +255,8 @@ const BackgroundImportCard = ({
   const theme = UnistylesRuntime.getTheme();
   const isReady = importItem.status === "ready";
   const isFailed = importItem.status === "failed";
-  const isPending = importItem.status === "pending";
+  const isPending =
+    importItem.status === "pending" || importItem.status === "processing";
 
   return (
     <Animated.View
@@ -343,7 +345,6 @@ export const AddRecipeScreen = () => {
     readyCount: readyImportCount,
     startImport,
     dismissImport,
-    removeImport,
   } = useBackgroundImportQueue();
   const personalizeRecipeMutation = usePersonalizeRecipe();
   const {
@@ -372,12 +373,6 @@ export const AddRecipeScreen = () => {
     [titleOpacity],
   );
 
-  const handleRecipeParsed = (result: ParsedRecipe | undefined) => {
-    if (result) {
-      navigate("RecipeDetail", { parsedRecipe: result, mode: "edit" });
-    }
-  };
-
   const handleSmartImportStarted = useCallback(
     (task: SmartImportTask) => {
       startImport(task);
@@ -390,13 +385,13 @@ export const AddRecipeScreen = () => {
       const importItem = backgroundImports.find((item) => item.id === id);
       if (!importItem?.recipe) return;
 
-      removeImport(id);
       navigate("RecipeDetail", {
         parsedRecipe: importItem.recipe,
         mode: "edit",
+        importJobId: importItem.id,
       });
     },
-    [backgroundImports, navigate, removeImport],
+    [backgroundImports, navigate],
   );
 
   const handleDismissImport = useCallback(
@@ -587,7 +582,7 @@ export const AddRecipeScreen = () => {
       />
       <BasicImportSheet
         ref={basicImportSheetRef}
-        onRecipeParsed={handleRecipeParsed}
+        onImportStarted={handleSmartImportStarted}
       />
       <RecipeBrowserSheet
         ref={recipeBrowserSheetRef}
@@ -711,7 +706,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   importCardGlow: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.primary + "04",
+    backgroundColor: "transparent",
   },
   importIconContainer: {
     width: 42,
@@ -779,7 +774,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     opacity: 0.5,
   },
   rowFeatured: {
-    backgroundColor: theme.colors.primary + "10",
+    backgroundColor: theme.colors.inputBackground,
   },
   iconContainer: {
     width: 40,

@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 
 import {
   adaptyWebhookEvents,
@@ -123,80 +123,125 @@ export async function getSubscriptionStatus(
 }
 
 export async function consumeSmartImportUsage(
-  db: DbClient,
+  db: DbClient | TransactionClient,
   userId: string,
   now = new Date(),
 ): Promise<ConsumedSmartImportStatus> {
-  return await db.transaction(async (tx) => {
-    const status = await getSubscriptionStatus(tx, userId, now);
-    if (status.isPro) return { ...status, consumedSmartImport: true };
-
-    if (status.smartImports.used >= FREE_SMART_IMPORT_LIMIT) {
-      return { ...status, consumedSmartImport: false };
-    }
-
-    const periodStart = status.smartImports.periodStart;
-    const whereCurrentPeriod = and(
-      eq(smartImportUsage.userId, userId),
-      eq(smartImportUsage.periodStart, periodStart),
+  if ("transaction" in db && typeof db.transaction === "function") {
+    return await db.transaction(async (tx) =>
+      consumeSmartImportUsageWithClient(tx, userId, now),
     );
+  }
 
-    const [updated] = await tx
-      .update(smartImportUsage)
-      .set({
-        usedCount: sql`${smartImportUsage.usedCount} + 1`,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          whereCurrentPeriod,
-          lt(smartImportUsage.usedCount, FREE_SMART_IMPORT_LIMIT),
-        ),
-      )
-      .returning({ usedCount: smartImportUsage.usedCount });
+  return await consumeSmartImportUsageWithClient(db, userId, now);
+}
 
-    if (updated) {
-      const nextStatus = await getSubscriptionStatus(tx, userId, now);
-      return { ...nextStatus, consumedSmartImport: true };
-    }
+async function consumeSmartImportUsageWithClient(
+  db: DbClient | TransactionClient,
+  userId: string,
+  now: Date,
+): Promise<ConsumedSmartImportStatus> {
+  const status = await getSubscriptionStatus(db, userId, now);
+  if (status.isPro) return { ...status, consumedSmartImport: true };
 
-    const [inserted] = await tx
-      .insert(smartImportUsage)
-      .values({
-        userId,
-        periodStart,
-        usedCount: 1,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing()
-      .returning({ usedCount: smartImportUsage.usedCount });
+  if (status.smartImports.used >= FREE_SMART_IMPORT_LIMIT) {
+    return { ...status, consumedSmartImport: false };
+  }
 
-    if (inserted) {
-      const nextStatus = await getSubscriptionStatus(tx, userId, now);
-      return { ...nextStatus, consumedSmartImport: true };
-    }
+  const periodStart = status.smartImports.periodStart;
+  const whereCurrentPeriod = and(
+    eq(smartImportUsage.userId, userId),
+    eq(smartImportUsage.periodStart, periodStart),
+  );
 
-    const [updatedAfterConflict] = await tx
-      .update(smartImportUsage)
-      .set({
-        usedCount: sql`${smartImportUsage.usedCount} + 1`,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          whereCurrentPeriod,
-          lt(smartImportUsage.usedCount, FREE_SMART_IMPORT_LIMIT),
-        ),
-      )
-      .returning({ usedCount: smartImportUsage.usedCount });
+  const [updated] = await db
+    .update(smartImportUsage)
+    .set({
+      usedCount: sql`${smartImportUsage.usedCount} + 1`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        whereCurrentPeriod,
+        lt(smartImportUsage.usedCount, FREE_SMART_IMPORT_LIMIT),
+      ),
+    )
+    .returning({ usedCount: smartImportUsage.usedCount });
 
-    const nextStatus = await getSubscriptionStatus(tx, userId, now);
-    return {
-      ...nextStatus,
-      consumedSmartImport: Boolean(updatedAfterConflict),
-    };
-  });
+  if (updated) {
+    const nextStatus = await getSubscriptionStatus(db, userId, now);
+    return { ...nextStatus, consumedSmartImport: true };
+  }
+
+  const [inserted] = await db
+    .insert(smartImportUsage)
+    .values({
+      userId,
+      periodStart,
+      usedCount: 1,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing()
+    .returning({ usedCount: smartImportUsage.usedCount });
+
+  if (inserted) {
+    const nextStatus = await getSubscriptionStatus(db, userId, now);
+    return { ...nextStatus, consumedSmartImport: true };
+  }
+
+  const [updatedAfterConflict] = await db
+    .update(smartImportUsage)
+    .set({
+      usedCount: sql`${smartImportUsage.usedCount} + 1`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        whereCurrentPeriod,
+        lt(smartImportUsage.usedCount, FREE_SMART_IMPORT_LIMIT),
+      ),
+    )
+    .returning({ usedCount: smartImportUsage.usedCount });
+
+  const nextStatus = await getSubscriptionStatus(db, userId, now);
+  return {
+    ...nextStatus,
+    consumedSmartImport: Boolean(updatedAfterConflict),
+  };
+}
+
+export async function refundSmartImportUsage(
+  db: DbClient | TransactionClient,
+  userId: string,
+  now = new Date(),
+) {
+  const periodStart = getSmartImportPeriodStart(now);
+  return refundSmartImportUsageForPeriod(db, userId, periodStart, now);
+}
+
+export async function refundSmartImportUsageForPeriod(
+  db: DbClient | TransactionClient,
+  userId: string,
+  periodStart: Date,
+  now = new Date(),
+) {
+  const [updated] = await db
+    .update(smartImportUsage)
+    .set({
+      usedCount: sql`${smartImportUsage.usedCount} - 1`,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(smartImportUsage.userId, userId),
+        eq(smartImportUsage.periodStart, periodStart),
+        gt(smartImportUsage.usedCount, 0),
+      ),
+    )
+    .returning({ usedCount: smartImportUsage.usedCount });
+
+  return Boolean(updated);
 }
 
 export async function upsertSubscriptionEntitlement(

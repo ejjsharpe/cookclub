@@ -18,11 +18,6 @@ import { VSpace } from "./Space";
 import { Text } from "./Text";
 import { PrimaryButton } from "./buttons/PrimaryButton";
 
-import {
-  useParseRecipeFromUrl,
-  useParseRecipeFromText,
-  useParseRecipeFromImage,
-} from "@/api/recipe";
 import { Ionicons } from "@/components/Ionicons";
 import {
   createBackgroundImportId,
@@ -136,10 +131,6 @@ export const SmartImportSheet = forwardRef<
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
 
-  const parseFromUrl = useParseRecipeFromUrl();
-  const parseFromText = useParseRecipeFromText();
-  const parseFromImage = useParseRecipeFromImage();
-
   useImperativeHandle(ref, () => ({
     present: () => sheetRef.current?.present(),
     dismiss: () => sheetRef.current?.dismiss(),
@@ -190,7 +181,7 @@ export const SmartImportSheet = forwardRef<
     }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     setIsStarting(true);
 
     try {
@@ -205,13 +196,10 @@ export const SmartImportSheet = forwardRef<
 
         const task: SmartImportTask = {
           id: taskId,
+          importType: "smart",
           mode,
           title: submittedUrl,
-          run: async () => {
-            return parseFromUrl.mutateAsync({
-              url: submittedUrl,
-            });
-          },
+          data: submittedUrl,
         };
 
         onImportStarted?.(task);
@@ -231,13 +219,10 @@ export const SmartImportSheet = forwardRef<
 
         const task: SmartImportTask = {
           id: taskId,
+          importType: "smart",
           mode,
           title: "Pasted recipe text",
-          run: async () => {
-            return parseFromText.mutateAsync({
-              text: submittedText,
-            });
-          },
+          data: submittedText,
         };
 
         onImportStarted?.(task);
@@ -252,22 +237,22 @@ export const SmartImportSheet = forwardRef<
           return;
         }
 
+        const { base64, mimeType } = await imageToBase64(submittedImageUri);
         const task: SmartImportTask = {
           id: taskId,
+          importType: "smart",
           mode,
           title: "Recipe image",
-          run: async () => {
-            const { base64, mimeType } = await imageToBase64(submittedImageUri);
-            return parseFromImage.mutateAsync({
-              imageBase64: base64,
-              mimeType,
-            });
-          },
+          data: base64,
+          mimeType,
         };
 
         onImportStarted?.(task);
         handleClose();
       }
+    } catch (error) {
+      console.error("Failed to start smart import:", error);
+      Alert.alert("Import Error", "Unable to start this import.");
     } finally {
       setIsStarting(false);
     }

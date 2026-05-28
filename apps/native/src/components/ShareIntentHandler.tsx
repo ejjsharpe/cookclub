@@ -3,12 +3,6 @@ import { useShareIntentContext } from "expo-share-intent";
 import { useCallback, useEffect, useRef } from "react";
 import { Alert } from "react-native";
 
-import {
-  useParseRecipeFromUrl,
-  useParseRecipeFromUrlBasic,
-  useParseRecipeFromText,
-  useParseRecipeFromImage,
-} from "@/api/recipe";
 import { isAdaptyConfigured } from "@/lib/adapty";
 import {
   createBackgroundImportId,
@@ -24,6 +18,19 @@ import { useSubscription } from "@/lib/subscription";
 import { isBasicImportUnsupportedUrl } from "@/utils/basicImport";
 import { imageToBase64 } from "@/utils/imageUtils";
 
+const supportedImageMimeTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+const getSupportedImageMimeType = (mimeType?: string) => {
+  if (mimeType && supportedImageMimeTypes.has(mimeType)) {
+    return mimeType as "image/jpeg" | "image/png" | "image/webp";
+  }
+  return "image/jpeg";
+};
+
 export function ShareIntentHandler() {
   const { hasShareIntent, shareIntent, resetShareIntent } =
     useShareIntentContext();
@@ -31,10 +38,6 @@ export function ShareIntentHandler() {
   const hasProcessedRef = useRef(false);
   const hasCheckedPendingRef = useRef(false);
 
-  const parseFromUrl = useParseRecipeFromUrl();
-  const parseFromUrlBasic = useParseRecipeFromUrlBasic();
-  const parseFromText = useParseRecipeFromText();
-  const parseFromImage = useParseRecipeFromImage();
   const { startImport } = useBackgroundImportQueue();
   const { status, isPro, smartImportsRemaining, presentPaywall, refresh } =
     useSubscription();
@@ -58,15 +61,16 @@ export function ShareIntentHandler() {
   }, [isPro, refresh, smartImportsRemaining, status]);
 
   const startSmartImport = useCallback(
-    (intent: PendingShareIntent) => {
+    async (intent: PendingShareIntent) => {
       const id = createBackgroundImportId(intent.type);
-      const mimeType = (intent.mimeType || "image/jpeg") as
-        | "image/jpeg"
-        | "image/png"
-        | "image/webp";
+      const imageData =
+        intent.type === "image" && !intent.isBase64
+          ? await imageToBase64(intent.content)
+          : null;
 
       startImport({
         id,
+        importType: "smart",
         mode: intent.type,
         title:
           intent.type === "url"
@@ -74,33 +78,43 @@ export function ShareIntentHandler() {
             : intent.type === "text"
               ? "Shared recipe text"
               : "Shared recipe image",
-        run: () => {
-          if (intent.type === "url") {
-            return parseFromUrl.mutateAsync({ url: intent.content });
-          }
-          if (intent.type === "text") {
-            return parseFromText.mutateAsync({ text: intent.content });
-          }
-          return parseFromImage.mutateAsync({
-            imageBase64: intent.content,
-            mimeType,
-          });
-        },
+        data: imageData?.base64 ?? intent.content,
+        mimeType:
+          imageData?.mimeType ??
+          (intent.type === "image"
+            ? getSupportedImageMimeType(intent.mimeType)
+            : undefined),
       });
     },
-    [parseFromImage, parseFromText, parseFromUrl, startImport],
+    [startImport],
+  );
+
+  const prepareIntentForPending = useCallback(
+    async (intent: PendingShareIntent): Promise<PendingShareIntent> => {
+      if (intent.type !== "image" || intent.isBase64) return intent;
+
+      const { base64, mimeType } = await imageToBase64(intent.content);
+      return {
+        ...intent,
+        content: base64,
+        mimeType,
+        isBase64: true,
+      };
+    },
+    [],
   );
 
   const startBasicUrlImport = useCallback(
     (intent: PendingShareIntent) => {
       startImport({
         id: createBackgroundImportId("url"),
+        importType: "basic",
         mode: "url",
         title: intent.content,
-        run: () => parseFromUrlBasic.mutateAsync({ url: intent.content }),
+        data: intent.content,
       });
     },
-    [parseFromUrlBasic, startImport],
+    [startImport],
   );
 
   // Process a share intent (either new or pending)
@@ -108,7 +122,7 @@ export function ShareIntentHandler() {
     async (intent: PendingShareIntent) => {
       const canUseSmartImport = await canUseSmartImportForShare();
       if (canUseSmartImport) {
-        startSmartImport(intent);
+        await startSmartImport(intent);
         clearPendingShareIntent();
         resetShareIntent();
         navigateToAddRecipeTab();
@@ -128,13 +142,13 @@ export function ShareIntentHandler() {
 
       const upgraded = await presentPaywall();
       if (!upgraded) {
-        setPendingShareIntent(intent);
+        setPendingShareIntent(await prepareIntentForPending(intent));
         resetShareIntent();
         navigateToAddRecipeTab();
         return;
       }
 
-      startSmartImport(intent);
+      await startSmartImport(intent);
       clearPendingShareIntent();
       resetShareIntent();
       navigateToAddRecipeTab();
@@ -143,6 +157,7 @@ export function ShareIntentHandler() {
       canUseSmartImportForShare,
       navigateToAddRecipeTab,
       presentPaywall,
+      prepareIntentForPending,
       resetShareIntent,
       startBasicUrlImport,
       startSmartImport,
@@ -202,7 +217,11 @@ export function ShareIntentHandler() {
     if (pendingIntent) {
       // Small delay to ensure navigation is ready
       setTimeout(() => {
-        processShareIntent(pendingIntent);
+        processShareIntent(pendingIntent).catch((error) => {
+          console.error("Error processing pending share intent:", error);
+          Alert.alert("Error", "Failed to process the pending recipe.");
+          clearPendingShareIntent();
+        });
       }, 500);
     }
   }, [processShareIntent]);
@@ -224,27 +243,11 @@ export function ShareIntentHandler() {
 
     hasProcessedRef.current = true;
 
-    // For image type, we need to convert file path to base64 first
-    if (detectedIntent.type === "image") {
-      (async () => {
-        try {
-          const { base64, mimeType } = await imageToBase64(
-            detectedIntent.content,
-          );
-          processShareIntent({
-            ...detectedIntent,
-            content: base64,
-            mimeType,
-          });
-        } catch (error) {
-          console.error("Error converting image:", error);
-          Alert.alert("Error", "Failed to process the shared image.");
-          resetShareIntent();
-        }
-      })();
-    } else {
-      processShareIntent(detectedIntent);
-    }
+    processShareIntent(detectedIntent).catch((error) => {
+      console.error("Error processing share intent:", error);
+      Alert.alert("Error", "Failed to process the shared recipe.");
+      resetShareIntent();
+    });
   }, [hasShareIntent, processShareIntent, resetShareIntent, shareIntent]);
 
   // Reset the processed flag when share intent is cleared

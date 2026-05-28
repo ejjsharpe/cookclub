@@ -11,6 +11,56 @@
   "triggers": {
     "crons": ["*/15 * * * *"],
   },
+  "queues": {
+    "producers": [
+      {
+        "binding": "RECIPE_IMPORT_BASIC_QUEUE",
+        "queue": "cookclub-recipe-import-basic-development",
+      },
+      {
+        "binding": "RECIPE_IMPORT_URL_QUEUE",
+        "queue": "cookclub-recipe-import-url-development",
+      },
+      {
+        "binding": "RECIPE_IMPORT_TEXT_QUEUE",
+        "queue": "cookclub-recipe-import-text-development",
+      },
+      {
+        "binding": "RECIPE_IMPORT_IMAGE_QUEUE",
+        "queue": "cookclub-recipe-import-image-development",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "cookclub-recipe-import-basic-development",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "max_concurrency": 50,
+      },
+      {
+        "queue": "cookclub-recipe-import-url-development",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "max_concurrency": 30,
+      },
+      {
+        "queue": "cookclub-recipe-import-text-development",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "max_concurrency": 20,
+      },
+      {
+        "queue": "cookclub-recipe-import-image-development",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "max_concurrency": 8,
+      },
+    ],
+  },
   "services": [
     {
       "binding": "RECIPE_AI",
@@ -74,6 +124,56 @@
       ],
       "durable_objects": {
         "bindings": [{ "name": "USER_FEED", "class_name": "FeedDO" }],
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "RECIPE_IMPORT_BASIC_QUEUE",
+            "queue": "cookclub-recipe-import-basic-production",
+          },
+          {
+            "binding": "RECIPE_IMPORT_URL_QUEUE",
+            "queue": "cookclub-recipe-import-url-production",
+          },
+          {
+            "binding": "RECIPE_IMPORT_TEXT_QUEUE",
+            "queue": "cookclub-recipe-import-text-production",
+          },
+          {
+            "binding": "RECIPE_IMPORT_IMAGE_QUEUE",
+            "queue": "cookclub-recipe-import-image-production",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "cookclub-recipe-import-basic-production",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 3,
+            "max_concurrency": 50,
+          },
+          {
+            "queue": "cookclub-recipe-import-url-production",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 3,
+            "max_concurrency": 30,
+          },
+          {
+            "queue": "cookclub-recipe-import-text-production",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 3,
+            "max_concurrency": 20,
+          },
+          {
+            "queue": "cookclub-recipe-import-image-production",
+            "max_batch_size": 1,
+            "max_batch_timeout": 1,
+            "max_retries": 3,
+            "max_concurrency": 8,
+          },
+        ],
       },
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FeedDO"] }],
       "routes": [{ "pattern": "api.cookclub.app", "custom_domain": true }],

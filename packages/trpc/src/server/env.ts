@@ -14,6 +14,15 @@ export interface RateLimitBinding {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
+export interface RecipeImportJobMessage {
+  jobId: string;
+  userId: string;
+}
+
+export interface QueueBinding<Message> {
+  send(message: Message): Promise<unknown>;
+}
+
 // Re-export service types for convenience
 export type { ImageService, RecipeAIService } from "@repo/contracts";
 export type {
@@ -40,4 +49,8 @@ export interface TRPCEnv extends AuthEnv {
   AI_RATE_LIMITER?: RateLimitBinding;
   IMAGE_AI_RATE_LIMITER?: RateLimitBinding;
   UPLOAD_RATE_LIMITER?: RateLimitBinding;
+  RECIPE_IMPORT_BASIC_QUEUE: QueueBinding<RecipeImportJobMessage>;
+  RECIPE_IMPORT_URL_QUEUE: QueueBinding<RecipeImportJobMessage>;
+  RECIPE_IMPORT_TEXT_QUEUE: QueueBinding<RecipeImportJobMessage>;
+  RECIPE_IMPORT_IMAGE_QUEUE: QueueBinding<RecipeImportJobMessage>;
 }

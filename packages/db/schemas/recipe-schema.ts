@@ -1,3 +1,5 @@
+import type { ParseResponse } from "@repo/contracts";
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -6,11 +8,12 @@ import {
   timestamp,
   index,
   numeric,
+  jsonb,
   uniqueIndex,
   check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+
 import { user } from "./auth-schema";
 
 // ─── Central recipes store ────────────────────────────────────────────────────
@@ -38,7 +41,7 @@ export const recipes = pgTable(
     // For recipes imported from another user
     originalRecipeId: integer("original_recipe_id").references(
       (): AnyPgColumn => recipes.id,
-      { onDelete: "set null" }
+      { onDelete: "set null" },
     ),
     originalOwnerId: text("original_owner_id").references(() => user.id, {
       onDelete: "set null",
@@ -51,13 +54,58 @@ export const recipes = pgTable(
     // Full-text search index for recipe name queries
     index("recipes_name_search_idx").using(
       "gin",
-      sql`to_tsvector('english', ${table.name})`
+      sql`to_tsvector('english', ${table.name})`,
     ),
     check(
       "recipes_source_type_check",
       sql`${table.sourceType} IN ('url', 'image', 'text', 'ai', 'manual', 'user')`,
     ),
-  ]
+  ],
+);
+
+export const recipeImportJobs = pgTable(
+  "recipe_import_jobs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    importType: text("import_type").notNull().default("smart"),
+    mode: text("mode").notNull(),
+    title: text("title").notNull(),
+    inputData: text("input_data").notNull(),
+    mimeType: text("mime_type"),
+    status: text("status").notNull().default("pending"),
+    recipe: jsonb("recipe").$type<ParseResponse | null>(),
+    error: text("error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+    dismissedAt: timestamp("dismissed_at"),
+    processingStartedAt: timestamp("processing_started_at"),
+    usagePeriodStart: timestamp("usage_period_start"),
+    usageConsumedAt: timestamp("usage_consumed_at"),
+    refundedAt: timestamp("refunded_at"),
+  },
+  (table) => [
+    index("recipe_import_jobs_user_status_idx").on(table.userId, table.status),
+    index("recipe_import_jobs_user_created_at_idx").on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+    check(
+      "recipe_import_jobs_import_type_check",
+      sql`${table.importType} IN ('basic', 'smart')`,
+    ),
+    check(
+      "recipe_import_jobs_mode_check",
+      sql`${table.mode} IN ('url', 'text', 'image')`,
+    ),
+    check(
+      "recipe_import_jobs_status_check",
+      sql`${table.status} IN ('pending', 'processing', 'ready', 'failed')`,
+    ),
+  ],
 );
 
 // ─── Collections: user-created recipe collections ────────────────────────────
@@ -78,7 +126,7 @@ export const collections = pgTable(
     index("collections_user_id_idx").on(table.userId),
     index("collections_user_id_created_at_idx").on(
       table.userId,
-      table.createdAt.desc()
+      table.createdAt.desc(),
     ),
     // Ensure only one of each default type per user
     uniqueIndex("collections_user_default_type_unique_idx")
@@ -88,7 +136,7 @@ export const collections = pgTable(
       "collections_default_type_check",
       sql`${table.defaultType} IS NULL OR ${table.defaultType} IN ('want_to_cook', 'cooked')`,
     ),
-  ]
+  ],
 );
 
 // ─── Join table: which recipes are in which collections ──────────────────────
@@ -109,9 +157,9 @@ export const recipeCollections = pgTable(
     index("recipe_collections_collection_id_idx").on(table.collectionId),
     uniqueIndex("recipe_collections_recipe_collection_idx").on(
       table.recipeId,
-      table.collectionId
+      table.collectionId,
     ),
-  ]
+  ],
 );
 
 // ─── Additional recipe detail tables ─────────────────────────────────────────
@@ -124,7 +172,7 @@ export const recipeImages = pgTable(
       .references(() => recipes.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
   },
-  (table) => [index("recipe_images_recipe_id_idx").on(table.recipeId)]
+  (table) => [index("recipe_images_recipe_id_idx").on(table.recipeId)],
 );
 
 // ─── Section tables (normalized) ──────────────────────────────────────────────
@@ -142,9 +190,9 @@ export const ingredientSections = pgTable(
     index("ingredient_sections_recipe_id_idx").on(table.recipeId),
     index("ingredient_sections_recipe_id_index_idx").on(
       table.recipeId,
-      table.index
+      table.index,
     ),
-  ]
+  ],
 );
 
 export const instructionSections = pgTable(
@@ -161,9 +209,9 @@ export const instructionSections = pgTable(
     index("instruction_sections_recipe_id_idx").on(table.recipeId),
     index("instruction_sections_recipe_id_index_idx").on(
       table.recipeId,
-      table.index
+      table.index,
     ),
-  ]
+  ],
 );
 
 // ─── Ingredient and instruction items ─────────────────────────────────────────
@@ -184,9 +232,9 @@ export const recipeIngredients = pgTable(
     index("recipe_ingredients_section_id_idx").on(table.sectionId),
     index("recipe_ingredients_section_id_index_idx").on(
       table.sectionId,
-      table.index
+      table.index,
     ),
-  ]
+  ],
 );
 
 export const recipeInstructions = pgTable(
@@ -204,9 +252,9 @@ export const recipeInstructions = pgTable(
     index("recipe_instructions_section_id_idx").on(table.sectionId),
     index("recipe_instructions_section_id_index_idx").on(
       table.sectionId,
-      table.index
+      table.index,
     ),
-  ]
+  ],
 );
 
 // ─── Tags system ─────────────────────────────────────────────────────────────
@@ -224,7 +272,7 @@ export const tags = pgTable(
       "tags_type_check",
       sql`${table.type} IN ('cuisine', 'category', 'dietary', 'meal_type', 'occasion')`,
     ),
-  ]
+  ],
 );
 
 export const recipeTags = pgTable(
@@ -242,7 +290,7 @@ export const recipeTags = pgTable(
     index("recipe_tags_recipe_id_idx").on(table.recipeId),
     index("recipe_tags_tag_id_idx").on(table.tagId),
     uniqueIndex("recipe_tags_recipe_tag_idx").on(table.recipeId, table.tagId),
-  ]
+  ],
 );
 
 // ─── Recipe nutrition (1:1 with recipes) ──────────────────────────────────────
@@ -290,5 +338,5 @@ export const recipeNutrition = pgTable(
       "recipe_nutrition_confidence_check",
       sql`${table.confidence} IS NULL OR ${table.confidence} IN ('high', 'medium', 'low')`,
     ),
-  ]
+  ],
 );

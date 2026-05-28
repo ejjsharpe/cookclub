@@ -95,6 +95,7 @@ export function ShareIntentStorageHandler() {
             ...detectedIntent,
             content: base64,
             mimeType,
+            isBase64: true,
           });
         } catch (error) {
           console.error("Error storing image intent:", error);
