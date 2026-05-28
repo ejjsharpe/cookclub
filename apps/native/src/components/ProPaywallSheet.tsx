@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 import type { AdaptyPaywallProduct } from "react-native-adapty";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 
 import type { SubscriptionStatus } from "@/api/subscription";
 import startImage11 from "@/assets/images/start-food-11.jpg";
@@ -131,7 +131,6 @@ export const ProPaywallSheet = forwardRef<
     { userId, isPro, smartImportsRemaining, refreshEntitlement, onResult },
     ref,
   ) => {
-    const theme = UnistylesRuntime.getTheme();
     const sheetRef = useRef<TrueSheet>(null);
     const resultSettledRef = useRef(false);
     const loadRequestIdRef = useRef(0);
@@ -359,7 +358,6 @@ export const ProPaywallSheet = forwardRef<
         dismissible={!isBusy}
         draggable={!isBusy}
         closeDisabled={isBusy}
-        cornerRadius={theme.borderRadius.extraLarge}
         footer={footer}
         footerStyle={styles.footerContainer}
         onDidDismiss={handleDidDismiss}

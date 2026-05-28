@@ -4,14 +4,20 @@ import {
 } from "@lodev09/react-native-true-sheet";
 import { forwardRef, type ReactNode, useCallback, useRef } from "react";
 import { TouchableOpacity, View } from "react-native";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 
 import { Text } from "./Text";
 
 import { Ionicons } from "@/components/Ionicons";
 
-export interface AppSheetProps
-  extends Omit<TrueSheetProps, "children" | "header"> {
+const ThemedTrueSheet = withUnistyles(TrueSheet, (theme) => ({
+  backgroundColor: theme.colors.background,
+}));
+
+export interface AppSheetProps extends Omit<
+  TrueSheetProps,
+  "children" | "header"
+> {
   title: string;
   subtitle?: string | null;
   children: ReactNode;
@@ -37,7 +43,6 @@ export const AppSheet = forwardRef<TrueSheet, AppSheetProps>(
     },
     ref,
   ) => {
-    const theme = UnistylesRuntime.getTheme();
     const sheetRef = useRef<TrueSheet | null>(null);
 
     const setRefs = useCallback(
@@ -93,15 +98,15 @@ export const AppSheet = forwardRef<TrueSheet, AppSheetProps>(
     );
 
     return (
-      <TrueSheet
+      <ThemedTrueSheet
         ref={setRefs}
         grabber={grabber}
-        backgroundColor={backgroundColor ?? theme.colors.background}
+        {...(backgroundColor === undefined ? null : { backgroundColor })}
         header={headerContent ?? defaultHeader}
         {...sheetProps}
       >
         {children}
-      </TrueSheet>
+      </ThemedTrueSheet>
     );
   },
 );
