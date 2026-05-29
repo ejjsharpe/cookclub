@@ -2,10 +2,11 @@ import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { useKeepAwake } from "expo-keep-awake";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
+  type LayoutChangeEvent,
   Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -78,9 +79,16 @@ interface FlattenedInstruction {
 
 interface InstructionListItemProps {
   item: FlattenedInstruction;
-  index: number;
-  itemHeight: number;
+  minHeight: number;
+  layout: InstructionPageLayout;
   scrollY: SharedValue<number>;
+  onHeightChange: (id: number, height: number) => void;
+}
+
+interface InstructionPageLayout {
+  offset: number;
+  fadeBefore: number;
+  fadeAfter: number;
 }
 
 interface CookingTimer {
@@ -100,15 +108,26 @@ const TIMER_WHEEL_VERTICAL_PADDING =
 
 const InstructionListItem = ({
   item,
-  index,
-  itemHeight,
+  minHeight,
+  layout,
   scrollY,
+  onHeightChange,
 }: InstructionListItemProps) => {
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      onHeightChange(item.id, event.nativeEvent.layout.height);
+    },
+    [item.id, onHeightChange],
+  );
+
   const animatedStyle = useAnimatedStyle(() => {
-    const center = index * itemHeight;
     const opacity = interpolate(
       scrollY.value,
-      [center - itemHeight, center, center + itemHeight],
+      [
+        layout.offset - layout.fadeBefore,
+        layout.offset,
+        layout.offset + layout.fadeAfter,
+      ],
       [0.18, 1, 0.18],
       Extrapolation.CLAMP,
     );
@@ -118,7 +137,8 @@ const InstructionListItem = ({
 
   return (
     <Animated.View
-      style={[styles.instructionItem, { height: itemHeight }, animatedStyle]}
+      onLayout={handleLayout}
+      style={[styles.instructionItem, { minHeight }, animatedStyle]}
     >
       {item.sectionName && item.isFirstInSection && (
         <Text style={styles.sectionName}>{item.sectionName}</Text>
@@ -365,16 +385,98 @@ export const CookModeScreen = () => {
   const [timerHours, setTimerHours] = useState(0);
   const [timerMinutes, setTimerMinutes] = useState(10);
   const [timer, setTimer] = useState<CookingTimer | null>(null);
+  const [instructionHeights, setInstructionHeights] = useState<
+    Record<number, number>
+  >({});
   const selectedTimerDurationSeconds = timerHours * 60 * 60 + timerMinutes * 60;
 
-  const itemHeight = Math.max(Math.min(windowHeight * 0.36, 350), 240);
-  const centeredItemInset = Math.max((windowHeight - itemHeight) / 2, 0);
+  const minInstructionPageHeight = Math.max(
+    Math.min(windowHeight * 0.36, 350),
+    240,
+  );
+
+  const instructionPageLayout = useMemo(() => {
+    const getCenteredInset = (height: number) =>
+      Math.max((windowHeight - height) / 2, 0);
+
+    const heights = flattenedInstructions.map((instruction) =>
+      Math.max(
+        instructionHeights[instruction.id] ?? minInstructionPageHeight,
+        minInstructionPageHeight,
+      ),
+    );
+    const firstHeight = heights[0] ?? minInstructionPageHeight;
+    const lastHeight = heights[heights.length - 1] ?? minInstructionPageHeight;
+    const paddingTop = getCenteredInset(firstHeight);
+    const paddingBottom = getCenteredInset(lastHeight);
+    let cumulativeHeight = 0;
+
+    const offsets = heights.map((height) => {
+      const offset = Math.max(
+        paddingTop + cumulativeHeight - getCenteredInset(height),
+        0,
+      );
+
+      cumulativeHeight += height;
+
+      return offset;
+    });
+    const itemLayouts = heights.map((height, index) => {
+      const offset = offsets[index] ?? 0;
+      const previousOffset = offsets[index - 1];
+      const nextOffset = offsets[index + 1];
+
+      return {
+        offset,
+        fadeBefore: Math.max(
+          offset - (previousOffset ?? offset - minInstructionPageHeight),
+          1,
+        ),
+        fadeAfter: Math.max((nextOffset ?? offset + height) - offset, 1),
+      };
+    });
+
+    return {
+      itemLayouts,
+      offsets,
+      paddingTop,
+      paddingBottom,
+    };
+  }, [
+    flattenedInstructions,
+    instructionHeights,
+    minInstructionPageHeight,
+    windowHeight,
+  ]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       scrollY.value = event.contentOffset.y;
     },
   });
+
+  const handleInstructionHeightChange = useCallback(
+    (id: number, height: number) => {
+      const nextHeight = Math.ceil(height);
+
+      setInstructionHeights((currentHeights) => {
+        const currentHeight = currentHeights[id];
+
+        if (
+          currentHeight !== undefined &&
+          Math.abs(currentHeight - nextHeight) < 1
+        ) {
+          return currentHeights;
+        }
+
+        return {
+          ...currentHeights,
+          [id]: nextHeight,
+        };
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!timer?.endsAt || timer.isPaused) {
@@ -514,26 +616,28 @@ export const CookModeScreen = () => {
           renderItem={({ item, index }) => (
             <InstructionListItem
               item={item}
-              index={index}
-              itemHeight={itemHeight}
+              minHeight={minInstructionPageHeight}
+              layout={
+                instructionPageLayout.itemLayouts[index] ?? {
+                  offset: 0,
+                  fadeBefore: minInstructionPageHeight,
+                  fadeAfter: minInstructionPageHeight,
+                }
+              }
               scrollY={scrollY}
+              onHeightChange={handleInstructionHeightChange}
             />
           )}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={{
-            paddingTop: centeredItemInset,
-            paddingBottom: centeredItemInset,
+            paddingTop: instructionPageLayout.paddingTop,
+            paddingBottom: instructionPageLayout.paddingBottom,
           }}
           showsVerticalScrollIndicator={false}
-          snapToInterval={itemHeight}
+          snapToOffsets={instructionPageLayout.offsets}
           decelerationRate="fast"
           onScroll={scrollHandler}
           scrollEventThrottle={16}
-          getItemLayout={(_, index) => ({
-            length: itemHeight,
-            offset: itemHeight * index,
-            index,
-          })}
         />
       ) : (
         <View style={styles.emptyState}>
@@ -773,6 +877,7 @@ const styles = StyleSheet.create((theme) => ({
   instructionItem: {
     justifyContent: "center",
     paddingHorizontal: 24,
+    paddingVertical: 24,
     gap: 18,
   },
   emptyState: {
