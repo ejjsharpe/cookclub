@@ -1,5 +1,6 @@
 import { useTRPC } from "@repo/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Image as ExpoImage } from "expo-image";
 import { useState, useCallback } from "react";
 
 export interface UseAvatarUploadOptions {
@@ -75,11 +76,17 @@ export function useAvatarUpload(options: UseAvatarUploadOptions = {}) {
       await uploadAvatarMutation.mutateAsync({ imageKey: key });
       setProgress(90);
 
-      // Invalidate user query to refresh avatar
-      await queryClient.invalidateQueries({ queryKey: [["user", "getUser"]] });
+      // Refresh screens and clear image caches that may still hold the old avatar URL.
+      await Promise.all([
+        queryClient.invalidateQueries(trpc.user.getUser.queryFilter()),
+        queryClient.invalidateQueries(trpc.follows.pathFilter()),
+        queryClient.invalidateQueries(trpc.activity.pathFilter()),
+        ExpoImage.clearMemoryCache().catch(() => false),
+        ExpoImage.clearDiskCache().catch(() => false),
+      ]);
       setProgress(100);
     },
-    [requestUploadUrlMutation, uploadAvatarMutation, queryClient],
+    [requestUploadUrlMutation, uploadAvatarMutation, queryClient, trpc],
   );
 
   const uploadMutation = useMutation({

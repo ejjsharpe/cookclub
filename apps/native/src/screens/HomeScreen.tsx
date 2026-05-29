@@ -155,7 +155,12 @@ const Header = memo(
                   onPressIn={handleAvatarPressIn}
                   onPressOut={handleAvatarPressOut}
                 >
-                  <Avatar imageUrl={user.image} name={user.name} size={44} />
+                  <Avatar
+                    imageUrl={user.image}
+                    imageVersion={user.updatedAt}
+                    name={user.name}
+                    size={44}
+                  />
                 </Pressable>
               </Animated.View>
             )}

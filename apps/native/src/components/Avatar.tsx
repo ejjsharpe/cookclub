@@ -3,21 +3,34 @@ import { View, TouchableOpacity } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Text } from "@/components/Text";
+import { appendImageVersion, getImageUrl } from "@/utils/imageUrl";
 
 interface AvatarProps {
   imageUrl?: string | null;
+  imageVersion?: Date | string | number | null;
   name: string;
   size?: number;
   onPress?: () => void;
 }
 
-export const Avatar = ({ imageUrl, name, size = 44, onPress }: AvatarProps) => {
+export const Avatar = ({
+  imageUrl,
+  imageVersion,
+  name,
+  size = 44,
+  onPress,
+}: AvatarProps) => {
   const initial = name.charAt(0).toUpperCase();
   const fontSize = size * 0.36;
+  const versionedImageUrl = appendImageVersion(imageUrl, imageVersion);
+  const displayImageUrl = getImageUrl(
+    versionedImageUrl,
+    size > 60 ? "avatar-lg" : "avatar-sm",
+  );
 
-  const content = imageUrl ? (
+  const content = displayImageUrl ? (
     <Image
-      source={{ uri: imageUrl }}
+      source={{ uri: displayImageUrl }}
       style={[styles.image, { width: size, height: size }]}
       cachePolicy="memory-disk"
       transition={100}

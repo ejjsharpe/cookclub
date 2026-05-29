@@ -14,7 +14,6 @@ export { navigationRef } from "@/navigation/navigationRef";
 import { AccountScreen } from "@/screens/AccountScreen";
 import { CollectionDetailScreen } from "@/screens/CollectionDetailScreen";
 import { CookModeScreen } from "@/screens/CookModeScreen";
-import { EditProfileScreen } from "@/screens/EditProfileScreen";
 import { EmailVerificationScreen } from "@/screens/EmailVerificationScreen";
 import { FollowsScreen } from "@/screens/FollowsScreen";
 import GenerateRecipeScreen from "@/screens/GenerateRecipeScreen";
@@ -57,7 +56,6 @@ const RootStack = createNativeStackNavigator({
       screens: {
         Tabs: TabNavigator,
         GenerateRecipe: { screen: GenerateRecipeScreen },
-        EditProfile: { screen: EditProfileScreen },
         Settings: { screen: SettingsScreen },
         Notifications: { screen: NotificationsScreen },
         UserProfile: { screen: UserProfileScreen },

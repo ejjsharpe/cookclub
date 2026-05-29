@@ -57,3 +57,17 @@ export function getImageUrl(
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}${PRESETS[preset]}`;
 }
+
+export function appendImageVersion(
+  url: string | null | undefined,
+  version: Date | string | number | null | undefined,
+): string | null | undefined {
+  if (!url || version === null || version === undefined) return url;
+
+  const versionValue =
+    version instanceof Date ? version.getTime().toString() : String(version);
+  if (!versionValue) return url;
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(versionValue)}`;
+}

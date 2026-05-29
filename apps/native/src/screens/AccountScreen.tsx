@@ -1,6 +1,14 @@
 import { useNavigation } from "@react-navigation/native";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useState, useEffect } from "react";
-import { View, Alert, ActivityIndicator, ScrollView } from "react-native";
+import {
+  View,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+  TouchableOpacity,
+} from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
@@ -11,7 +19,10 @@ import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
+import { useAvatarUpload } from "@/hooks/useAvatarUpload";
 import { authClient } from "@/lib/authClient";
+import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
+import { appendImageVersion, getImageUrl } from "@/utils/imageUrl";
 
 export const AccountScreen = () => {
   const navigation = useNavigation();
@@ -23,7 +34,13 @@ export const AccountScreen = () => {
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [localImage, setLocalImage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    upload: uploadAvatar,
+    isUploading: isUploadingAvatar,
+    progress: uploadProgress,
+  } = useAvatarUpload();
 
   const { data: usernameCheck, isFetching: isCheckingUsername } =
     useCheckUsername(username);
@@ -39,11 +56,21 @@ export const AccountScreen = () => {
   const originalUsername = currentUser?.user?.username ?? "";
   const originalName = currentUser?.user?.name ?? "";
   const originalEmail = currentUser?.user?.email ?? "";
+  const userImage = currentUser?.user?.image;
+  const userInitial = (name || originalName || "?").charAt(0).toUpperCase();
+  const remoteImage = getImageUrl(
+    appendImageVersion(userImage, currentUser?.user?.updatedAt),
+    "avatar-lg",
+  );
+  const displayImage = localImage ?? remoteImage;
 
   const usernameChanged = username !== originalUsername;
   const nameChanged = name !== originalName;
   const emailChanged = email !== originalEmail;
-  const hasChanges = usernameChanged || nameChanged || emailChanged;
+  const imageChanged = localImage !== null;
+  const hasChanges =
+    usernameChanged || nameChanged || emailChanged || imageChanged;
+  const isSaving = isSubmitting || isUpdating || isUploadingAvatar;
 
   const isUsernameValid =
     !usernameChanged ||
@@ -55,6 +82,29 @@ export const AccountScreen = () => {
   };
 
   const showUsernameStatus = usernameChanged && username.length >= 3;
+
+  const handlePickImage = async () => {
+    const hasPermission = await ensureMediaLibraryPermission({
+      message: "Please allow access to your photos to set a profile picture.",
+    });
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setLocalImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error("Failed to pick profile image:", error);
+      Alert.alert("Photo Error", "Unable to open your photo library.");
+    }
+  };
 
   const handleSave = async () => {
     if (!hasChanges) return;
@@ -72,8 +122,12 @@ export const AccountScreen = () => {
       return;
     }
 
-    setIsSaving(true);
+    setIsSubmitting(true);
     try {
+      if (localImage) {
+        await uploadAvatar(localImage);
+      }
+
       // Update username and/or name via tRPC
       if (usernameChanged || nameChanged) {
         await updateProfile({
@@ -97,7 +151,7 @@ export const AccountScreen = () => {
     } catch (error: any) {
       Alert.alert("Error", error?.message ?? "Failed to save changes.");
     } finally {
-      setIsSaving(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -114,6 +168,39 @@ export const AccountScreen = () => {
         >
           <VSpace size={24} />
 
+          <TouchableOpacity
+            onPress={handlePickImage}
+            activeOpacity={0.7}
+            disabled={isSaving}
+            accessibilityRole="button"
+            accessibilityLabel="Choose profile photo"
+            style={styles.avatarButton}
+          >
+            <View style={styles.avatarContainer}>
+              {displayImage ? (
+                <Image source={{ uri: displayImage }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text type="largeTitle" style={styles.avatarText}>
+                    {userInitial}
+                  </Text>
+                </View>
+              )}
+              {isUploadingAvatar ? (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="small" color="#fff" />
+                  <Text style={styles.uploadingText}>{uploadProgress}%</Text>
+                </View>
+              ) : (
+                <View style={styles.editOverlay}>
+                  <Text style={styles.editOverlayText}>Edit</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+
+          <VSpace size={32} />
+
           {/* Username */}
           <View>
             <Input
@@ -123,6 +210,7 @@ export const AccountScreen = () => {
               placeholder="your_username"
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!isSaving}
             />
             {showUsernameStatus && (
               <View style={styles.fieldStatus}>
@@ -158,6 +246,7 @@ export const AccountScreen = () => {
             onChangeText={setName}
             placeholder="Enter your name"
             autoCapitalize="words"
+            editable={!isSaving}
           />
 
           <VSpace size={16} />
@@ -170,6 +259,7 @@ export const AccountScreen = () => {
             placeholder="your@email.com"
             autoCapitalize="none"
             keyboardType="email-address"
+            editable={!isSaving}
           />
           {emailChanged && (
             <Animated.View
@@ -188,13 +278,10 @@ export const AccountScreen = () => {
           <PrimaryButton
             onPress={handleSave}
             disabled={
-              !hasChanges ||
-              isSaving ||
-              isUpdating ||
-              (usernameChanged && !isUsernameValid)
+              !hasChanges || isSaving || (usernameChanged && !isUsernameValid)
             }
           >
-            {isSaving || isUpdating ? "Saving..." : "Save Changes"}
+            {isSaving ? "Saving..." : "Save Changes"}
           </PrimaryButton>
         </ScrollView>
       </SafeAreaView>
@@ -213,6 +300,61 @@ const styles = StyleSheet.create((theme) => ({
   scrollView: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  avatarButton: {
+    alignSelf: "center",
+  },
+  avatarContainer: {
+    position: "relative",
+  },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  avatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: theme.colors.primary + "20",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: {
+    color: theme.colors.primary,
+  },
+  editOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    paddingVertical: 6,
+    borderBottomLeftRadius: 50,
+    borderBottomRightRadius: 50,
+    alignItems: "center",
+  },
+  editOverlayText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  uploadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    borderRadius: 50,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  uploadingText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 4,
   },
   fieldStatus: {
     marginTop: 6,

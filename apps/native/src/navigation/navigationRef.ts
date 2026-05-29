@@ -14,7 +14,6 @@ export interface AppParamList extends ParamListBase {
   "Shopping List": undefined;
   Start: undefined;
   Onboarding: undefined;
-  EditProfile: undefined;
   Settings: undefined;
   Notifications: undefined;
   GenerateRecipe: undefined;
