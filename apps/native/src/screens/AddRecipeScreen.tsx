@@ -54,6 +54,11 @@ import {
 } from "@/lib/backgroundImportQueue";
 import { useSubscription } from "@/lib/subscription";
 import { getImageUrl } from "@/utils/imageUrl";
+import {
+  getRecipeImportSocialPlatform,
+  getRecipeImportSocialPlatformInfo,
+  getRecipeImportSourceTitle,
+} from "@/utils/socialPlatforms";
 
 const HEADER_HEIGHT = 52;
 const IMPORT_PROGRESS_TRACK_WIDTH = 160;
@@ -276,7 +281,20 @@ const BackgroundImportCard = ({
   const thumbnailUrl = isReady
     ? getImageUrl(importItem.recipe?.data.images?.[0], "recipe-thumb")
     : undefined;
-  const shouldEmphasizeTitle = isPending || isReady;
+  const shouldEmphasizeTitle = isPending || isReady || isFailed;
+  const socialPlatform =
+    importItem.mode === "url" && !isReady
+      ? getRecipeImportSocialPlatform(importItem.title)
+      : null;
+  const socialPlatformInfo = socialPlatform
+    ? getRecipeImportSocialPlatformInfo(socialPlatform)
+    : null;
+  const displayTitle =
+    isFailed && socialPlatformInfo
+      ? `Import from ${socialPlatformInfo.displayName} failed`
+      : importItem.mode === "url" && !isReady
+        ? getRecipeImportSourceTitle(importItem.title)
+        : importItem.title;
 
   return (
     <Animated.View
@@ -295,6 +313,11 @@ const BackgroundImportCard = ({
           styles.importIconContainer,
           isFailed && styles.importIconContainerFailed,
           isReady && styles.importIconContainerReady,
+          socialPlatformInfo &&
+            !isFailed &&
+            !thumbnailUrl && {
+              backgroundColor: `${socialPlatformInfo.color}18`,
+            },
           thumbnailUrl && styles.importThumbnailContainer,
         ]}
       >
@@ -304,6 +327,12 @@ const BackgroundImportCard = ({
             style={styles.importThumbnailImage}
             contentFit="cover"
             cachePolicy="memory-disk"
+          />
+        ) : socialPlatformInfo && !isFailed ? (
+          <Ionicons
+            name={socialPlatformInfo.icon}
+            size={23}
+            color={socialPlatformInfo.color}
           />
         ) : importItem.status === "pending" ? (
           <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -327,7 +356,7 @@ const BackgroundImportCard = ({
             shouldEmphasizeTitle && styles.importTitleEmphasized,
           ]}
         >
-          {importItem.title}
+          {displayTitle}
         </Text>
         <Text
           type="subheadline"

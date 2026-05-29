@@ -14,6 +14,7 @@ import {
   type BackgroundImportTask,
 } from "@/lib/backgroundImportQueue";
 import { isBasicImportUnsupportedUrl } from "@/utils/basicImport";
+import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 export interface BasicImportSheetProps {
   onImportStarted?: (task: BackgroundImportTask) => void;
@@ -41,6 +42,11 @@ export const BasicImportSheet = forwardRef<
     sheetRef.current?.dismiss();
   };
 
+  const handleDidDismiss = () => {
+    setUrl("");
+    setIsStarting(false);
+  };
+
   const handleImport = () => {
     const submittedUrl = url.trim();
 
@@ -64,7 +70,7 @@ export const BasicImportSheet = forwardRef<
         id: createBackgroundImportId("url"),
         importType: "basic",
         mode: "url",
-        title: submittedUrl,
+        title: getRecipeImportSourceTitle(submittedUrl),
         data: submittedUrl,
       });
       handleClose();
@@ -80,6 +86,7 @@ export const BasicImportSheet = forwardRef<
       detents={["auto"]}
       dismissible={!isStarting}
       closeDisabled={isStarting}
+      onDidDismiss={handleDidDismiss}
     >
       <ScrollView keyboardShouldPersistTaps="handled">
         <View style={styles.content}>

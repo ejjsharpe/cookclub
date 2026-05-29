@@ -43,6 +43,7 @@ import {
 } from "@/lib/backgroundImportQueue";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
+import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 type UserProfileScreenRoute = RouteProp<AppParamList, "UserProfile">;
 
@@ -135,7 +136,7 @@ export const UserProfileScreen = () => {
         id: createBackgroundImportId("url"),
         importType: "smart",
         mode: "url",
-        title: sourceUrl,
+        title: getRecipeImportSourceTitle(sourceUrl),
         data: sourceUrl,
       });
       navigateToAddRecipeTab();

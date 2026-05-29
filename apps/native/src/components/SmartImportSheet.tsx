@@ -29,6 +29,7 @@ import {
   ensureMediaLibraryPermission,
 } from "@/utils/imagePickerPermissions";
 import { imageToBase64 } from "@/utils/imageUtils";
+import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 export type SmartImportMode = BackgroundImportMode;
 export type SmartImportTask = BackgroundImportTask;
@@ -156,6 +157,13 @@ export const SmartImportSheet = forwardRef<
     sheetRef.current?.dismiss();
   };
 
+  const handleDidDismiss = () => {
+    setUrl("");
+    setText("");
+    setImageUri(null);
+    setIsStarting(false);
+  };
+
   const handlePickImage = async () => {
     const hasPermission = await ensureMediaLibraryPermission({
       message: "Please allow access to your photos to upload a recipe image.",
@@ -214,7 +222,7 @@ export const SmartImportSheet = forwardRef<
           id: taskId,
           importType: "smart",
           mode,
-          title: submittedUrl,
+          title: getRecipeImportSourceTitle(submittedUrl),
           data: submittedUrl,
         };
 
@@ -294,6 +302,7 @@ export const SmartImportSheet = forwardRef<
       dismissible={!isStarting}
       backgroundColor={theme.colors.background}
       closeDisabled={isStarting}
+      onDidDismiss={handleDidDismiss}
     >
       <ScrollView keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
@@ -454,10 +463,6 @@ export const SmartImportSheet = forwardRef<
 
 const styles = StyleSheet.create((theme, runtime) => {
   const isDarkTheme = isDarkThemeRuntime(runtime);
-  const labelColor = isDarkTheme
-    ? theme.colors.text
-    : theme.colors.textSecondary;
-  const hintColor = isDarkTheme ? theme.colors.text : theme.colors.textTertiary;
   const imagePickerTextColor = isDarkTheme
     ? theme.colors.text
     : theme.colors.textSecondary;
@@ -474,11 +479,11 @@ const styles = StyleSheet.create((theme, runtime) => {
       gap: 12,
     },
     label: {
-      color: labelColor,
+      color: theme.colors.text,
       marginLeft: 4,
     },
     hint: {
-      color: hintColor,
+      color: theme.colors.textSecondary,
       marginLeft: 4,
     },
     textArea: {

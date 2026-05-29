@@ -60,6 +60,7 @@ import {
   useBackgroundImportQueue,
 } from "@/lib/backgroundImportQueue";
 import { useSubscription } from "@/lib/subscription";
+import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 // ─── Header Component ─────────────────────────────────────────────────────────
 
@@ -457,7 +458,7 @@ export const HomeScreen = () => {
         id: createBackgroundImportId("url"),
         importType: "smart",
         mode: "url",
-        title: sourceUrl,
+        title: getRecipeImportSourceTitle(sourceUrl),
         data: sourceUrl,
       });
       navigation.navigate("Add recipe");

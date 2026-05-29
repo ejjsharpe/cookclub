@@ -17,6 +17,7 @@ import {
 import { useSubscription } from "@/lib/subscription";
 import { isBasicImportUnsupportedUrl } from "@/utils/basicImport";
 import { imageToBase64 } from "@/utils/imageUtils";
+import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 const supportedImageMimeTypes = new Set([
   "image/jpeg",
@@ -74,7 +75,7 @@ export function ShareIntentHandler() {
         mode: intent.type,
         title:
           intent.type === "url"
-            ? intent.content
+            ? getRecipeImportSourceTitle(intent.content)
             : intent.type === "text"
               ? "Shared recipe text"
               : "Shared recipe image",
@@ -110,7 +111,7 @@ export function ShareIntentHandler() {
         id: createBackgroundImportId("url"),
         importType: "basic",
         mode: "url",
-        title: intent.content,
+        title: getRecipeImportSourceTitle(intent.content),
         data: intent.content,
       });
     },
