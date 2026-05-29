@@ -1,3 +1,6 @@
+import { inArray, and, eq } from "drizzle-orm";
+
+import type { FeedItem, RecipeMetadata, SourceType } from "./feed-types";
 import type { DbType } from "../../index";
 import {
   activityEvents,
@@ -8,9 +11,6 @@ import {
   recipes,
   recipeImages,
 } from "../../schemas";
-import { inArray, and, eq } from "drizzle-orm";
-
-import type { FeedItem, RecipeMetadata, SourceType } from "./feed-types";
 
 /**
  * Extract domain from a URL.
@@ -70,7 +70,7 @@ export async function hydrateActivityIds(
   // Batch fetch recipes
   const recipeIds = [
     ...new Set(
-      activities.filter((a) => a.recipeId).map((a) => a.recipeId as number)
+      activities.filter((a) => a.recipeId).map((a) => a.recipeId as number),
     ),
   ];
 
@@ -79,6 +79,7 @@ export async function hydrateActivityIds(
       ? await db
           .select({
             id: recipes.id,
+            ownerId: recipes.ownerId,
             name: recipes.name,
             sourceUrl: recipes.sourceUrl,
             sourceType: recipes.sourceType,
@@ -126,7 +127,7 @@ export async function hydrateActivityIds(
       : [];
 
   const reviewMap = new Map(
-    reviewsData.map((r) => [r.activityEventId as number, r])
+    reviewsData.map((r) => [r.activityEventId as number, r]),
   );
 
   // Batch fetch review images
@@ -159,8 +160,8 @@ export async function hydrateActivityIds(
     .where(
       and(
         inArray(activityLikes.activityEventId, activityIds),
-        eq(activityLikes.userId, currentUserId)
-      )
+        eq(activityLikes.userId, currentUserId),
+      ),
     );
   const likedSet = new Set(likesData.map((l) => l.activityEventId));
 
@@ -188,6 +189,7 @@ export async function hydrateActivityIds(
       const sourceDomain = extractDomain(recipe.sourceUrl);
       recipeMetadata = {
         id: recipe.id,
+        ownerId: recipe.ownerId,
         name: recipe.name,
         image: recipeImage,
         sourceType: "url",
@@ -197,6 +199,7 @@ export async function hydrateActivityIds(
     } else {
       recipeMetadata = {
         id: recipe.id,
+        ownerId: recipe.ownerId,
         name: recipe.name,
         image: recipeImage,
         sourceType: sourceType === "url" ? "manual" : sourceType,
@@ -246,7 +249,7 @@ export async function hydrateActivityIds(
   const idOrder = new Map(activityIds.map((id, idx) => [id, idx]));
   feedItems.sort(
     (a, b) =>
-      (idOrder.get(parseInt(a.id)) ?? 0) - (idOrder.get(parseInt(b.id)) ?? 0)
+      (idOrder.get(parseInt(a.id)) ?? 0) - (idOrder.get(parseInt(b.id)) ?? 0),
   );
 
   return feedItems;
@@ -266,7 +269,7 @@ export async function buildFeedItem(
   const items = await hydrateActivityIds(
     db,
     [activityEventId],
-    currentUserId ?? ""
+    currentUserId ?? "",
   );
   return items[0] ?? null;
 }

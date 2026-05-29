@@ -41,6 +41,7 @@ import {
   createBackgroundImportId,
   useBackgroundImportQueue,
 } from "@/lib/backgroundImportQueue";
+import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
 import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
@@ -59,6 +60,7 @@ export const UserProfileScreen = () => {
   const { userId } = route.params;
   const importRecipeMutation = useImportRecipe();
   const { startImport } = useBackgroundImportQueue();
+  const session = useSessionContext();
   const { requireSmartImport } = useSubscription();
 
   const commentsSheetRef = useRef<CommentsSheetRef>(null);
@@ -70,6 +72,7 @@ export const UserProfileScreen = () => {
   const { data: profile, isLoading, error } = useUserProfile({ userId });
   const followMutation = useFollowUser();
   const unfollowMutation = useUnfollowUser();
+  const currentUserId = currentUser?.user?.id ?? session?.user.id;
 
   // Fetch user activities
   const {
@@ -80,7 +83,7 @@ export const UserProfileScreen = () => {
     isLoading: isLoadingActivities,
   } = useUserActivities({ userId });
 
-  const isOwnProfile = currentUser?.user?.id === userId;
+  const isOwnProfile = currentUserId === userId;
 
   const handleFollow = () => {
     followMutation.mutate({ userId });
@@ -186,6 +189,7 @@ export const UserProfileScreen = () => {
             onCommentPress={handleCommentPress}
             onImportPress={handleImportRecipe}
             onImportRecipePress={handleImportExistingRecipe}
+            currentUserId={currentUserId}
             timeAgo={item._display.timeAgo}
             userInitials={item._display.userInitials}
           />
@@ -199,6 +203,7 @@ export const UserProfileScreen = () => {
           onCommentPress={handleCommentPress}
           onImportPress={handleImportRecipe}
           onImportRecipePress={handleImportExistingRecipe}
+          currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
           userInitials={item._display.userInitials}
           sourceDescription={item._display.sourceDescription}
@@ -211,6 +216,7 @@ export const UserProfileScreen = () => {
       handleImportRecipe,
       handleImportExistingRecipe,
       handleCommentPress,
+      currentUserId,
     ],
   );
 

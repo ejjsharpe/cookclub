@@ -25,6 +25,7 @@ interface Props {
   onImportPress?: (sourceUrl: string) => void;
   onImportRecipePress?: (recipeId: number) => void;
   onCommentPress?: (activityEventId: number) => void;
+  currentUserId?: string;
   timeAgo?: string;
   userInitials?: string;
 }
@@ -226,12 +227,14 @@ export const ReviewActivityCard = memo(
     onImportPress,
     onImportRecipePress,
     onCommentPress,
+    currentUserId,
     timeAgo: providedTimeAgo,
     userInitials: providedUserInitials,
   }: Props) => {
     const { width: screenWidth } = useWindowDimensions();
     const imageWidth = screenWidth - 40; // 20px padding on each side
     const activityId = useMemo(() => parseInt(activity.id, 10), [activity.id]);
+    const isCurrentUserRecipe = activity.recipe.ownerId === currentUserId;
 
     const timeAgo = useMemo(
       () =>
@@ -262,12 +265,22 @@ export const ReviewActivityCard = memo(
     }, [activity.actor.id, onUserPress]);
 
     const handleImport = useCallback(() => {
+      if (isCurrentUserRecipe) {
+        onRecipePress?.(activity.recipe.id);
+        return;
+      }
       if (activity.recipe.sourceType === "url") {
         onImportPress?.(activity.recipe.sourceUrl);
       } else {
         onImportRecipePress?.(activity.recipe.id);
       }
-    }, [activity.recipe, onImportPress, onImportRecipePress]);
+    }, [
+      activity.recipe,
+      isCurrentUserRecipe,
+      onImportPress,
+      onImportRecipePress,
+      onRecipePress,
+    ]);
 
     return (
       <View style={styles.card}>
@@ -303,6 +316,8 @@ export const ReviewActivityCard = memo(
           onLikePress={onLikePress}
           onCommentPress={onCommentPress}
           onImportPress={handleImport}
+          primaryActionLabel={isCurrentUserRecipe ? "View Recipe" : "Import"}
+          primaryActionIcon={isCurrentUserRecipe ? "book-outline" : "add"}
         />
       </View>
     );

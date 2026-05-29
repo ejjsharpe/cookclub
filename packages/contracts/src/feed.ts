@@ -6,19 +6,20 @@ export type FeedSourceType =
   | "manual"
   | "user";
 
-interface UrlSourcedRecipe {
+interface BaseRecipeMetadata {
   id: number;
+  ownerId: string;
   name: string;
   image: string | null;
+}
+
+interface UrlSourcedRecipe extends BaseRecipeMetadata {
   sourceType: "url";
   sourceUrl: string;
   sourceDomain: string;
 }
 
-interface AppSourcedRecipe {
-  id: number;
-  name: string;
-  image: string | null;
+interface AppSourcedRecipe extends BaseRecipeMetadata {
   sourceType: Exclude<FeedSourceType, "url">;
 }
 

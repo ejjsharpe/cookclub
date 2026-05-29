@@ -59,6 +59,7 @@ import {
   createBackgroundImportId,
   useBackgroundImportQueue,
 } from "@/lib/backgroundImportQueue";
+import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
 import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
@@ -225,6 +226,7 @@ export const HomeScreen = () => {
   const listBottomPadding = TAB_BAR_LIST_CLEARANCE;
   const importRecipeMutation = useImportRecipe();
   const { startImport } = useBackgroundImportQueue();
+  const session = useSessionContext();
   const { requireSmartImport } = useSubscription();
 
   // ─── State ────────────────────────────────────────────────────────────────────
@@ -314,6 +316,7 @@ export const HomeScreen = () => {
   // ─── API Hooks ────────────────────────────────────────────────────────────────
   const { data: userData } = useUser();
   const user = userData?.user;
+  const currentUserId = user?.id ?? session?.user.id;
 
   // Notification unread count (poll every 60s)
   const { data: unreadData } = useUnreadNotificationCount({
@@ -593,6 +596,7 @@ export const HomeScreen = () => {
             onCommentPress={handleCommentPress}
             onImportPress={handleImportRecipe}
             onImportRecipePress={handleImportExistingRecipe}
+            currentUserId={currentUserId}
             timeAgo={item._display.timeAgo}
             userInitials={item._display.userInitials}
           />
@@ -608,6 +612,7 @@ export const HomeScreen = () => {
           onCommentPress={handleCommentPress}
           onImportPress={handleImportRecipe}
           onImportRecipePress={handleImportExistingRecipe}
+          currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
           userInitials={item._display.userInitials}
           sourceDescription={item._display.sourceDescription}
@@ -621,6 +626,7 @@ export const HomeScreen = () => {
       handleCommentPress,
       handleImportRecipe,
       handleImportExistingRecipe,
+      currentUserId,
     ],
   );
 

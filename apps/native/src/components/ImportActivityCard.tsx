@@ -21,6 +21,7 @@ interface Props {
   onImportRecipePress?: (recipeId: number) => void;
   onViewSourcePress?: () => void;
   onCommentPress?: (activityEventId: number) => void;
+  currentUserId?: string;
   timeAgo?: string;
   userInitials?: string;
   sourceDescription?: string;
@@ -146,11 +147,15 @@ export const ImportActivityCard = memo(
     onImportPress,
     onImportRecipePress,
     onCommentPress,
+    currentUserId,
     timeAgo: providedTimeAgo,
     userInitials: providedUserInitials,
     sourceDescription: providedSourceDescription,
   }: Props) => {
     const activityId = useMemo(() => parseInt(activity.id, 10), [activity.id]);
+    const isCurrentUserRecipe =
+      activity.recipe.ownerId === currentUserId ||
+      activity.actor.id === currentUserId;
 
     const timeAgo = useMemo(
       () =>
@@ -179,12 +184,22 @@ export const ImportActivityCard = memo(
     }, [activity.actor.id, onUserPress]);
 
     const handleImport = useCallback(() => {
+      if (isCurrentUserRecipe) {
+        onRecipePress?.(activity.recipe.id);
+        return;
+      }
       if (activity.recipe.sourceType === "url") {
         onImportPress?.(activity.recipe.sourceUrl);
       } else {
         onImportRecipePress?.(activity.recipe.id);
       }
-    }, [activity.recipe, onImportPress, onImportRecipePress]);
+    }, [
+      activity.recipe,
+      isCurrentUserRecipe,
+      onImportPress,
+      onImportRecipePress,
+      onRecipePress,
+    ]);
 
     const sourceDescription = useMemo(() => {
       if (providedSourceDescription) return providedSourceDescription;
@@ -230,6 +245,8 @@ export const ImportActivityCard = memo(
           onLikePress={onLikePress}
           onCommentPress={onCommentPress}
           onImportPress={handleImport}
+          primaryActionLabel={isCurrentUserRecipe ? "View Recipe" : "Import"}
+          primaryActionIcon={isCurrentUserRecipe ? "book-outline" : "add"}
         />
       </View>
     );

@@ -12,6 +12,8 @@ interface Props {
   onLikePress?: (activityEventId: number) => void;
   onCommentPress?: (activityEventId: number) => void;
   onImportPress?: () => void;
+  primaryActionLabel?: string;
+  primaryActionIcon?: keyof typeof Ionicons.glyphMap;
 }
 
 export const ActivityActionRow = memo(
@@ -22,6 +24,8 @@ export const ActivityActionRow = memo(
     onLikePress,
     onCommentPress,
     onImportPress,
+    primaryActionLabel = "Import",
+    primaryActionIcon = "add",
   }: Props) => {
     const handleLike = useCallback(() => {
       onLikePress?.(activityId);
@@ -66,9 +70,13 @@ export const ActivityActionRow = memo(
           onPress={onImportPress}
           activeOpacity={0.7}
         >
-          <Ionicons name="add" size={16} style={styles.actionIconPrimary} />
+          <Ionicons
+            name={primaryActionIcon}
+            size={16}
+            style={styles.actionIconPrimary}
+          />
           <Text type="subheadline" style={styles.actionTextPrimary}>
-            Import
+            {primaryActionLabel}
           </Text>
         </TouchableOpacity>
       </View>
@@ -79,6 +87,7 @@ export const ActivityActionRow = memo(
 const styles = StyleSheet.create((theme) => ({
   actionRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     paddingHorizontal: 20,
   },
