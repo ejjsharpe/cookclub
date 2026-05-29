@@ -15,7 +15,7 @@ export const PageIndicator = ({
   if (totalPages <= 1) return null;
 
   return (
-    <View style={styles.container}>
+    <View pointerEvents="none" style={styles.container}>
       <Text style={styles.text}>
         {currentPage} / {totalPages}
       </Text>
@@ -28,14 +28,20 @@ const styles = StyleSheet.create(() => ({
     position: "absolute",
     bottom: 32,
     right: 16,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    minHeight: 30,
+    backgroundColor: "rgba(0,0,0,0.38)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 15,
+    zIndex: 20,
+    elevation: 2,
   },
   text: {
-    color: "white",
+    color: "rgba(255,255,255,0.88)",
     fontSize: 13,
     fontWeight: "500",
+    fontVariant: ["tabular-nums"],
   },
 }));

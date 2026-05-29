@@ -1527,6 +1527,21 @@ export const RecipeDetailScreen = () => {
     );
   };
 
+  const renderHeroImageCounter = (totalPages: number) => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <View
+        pointerEvents="none"
+        style={[styles.heroMetaChip, styles.heroImageCounterChip]}
+      >
+        <Text style={styles.heroImageCounterText}>
+          {currentImageIndex + 1} / {totalPages}
+        </Text>
+      </View>
+    );
+  };
+
   const renderHero = () => {
     if (isEditing && draft) {
       if (draft.images.length === 0) {
@@ -1582,6 +1597,7 @@ export const RecipeDetailScreen = () => {
             </View>
             <LinearGradient
               colors={["transparent", "rgba(0,0,0,0.58)"]}
+              pointerEvents="box-none"
               style={styles.imageOverlay}
             >
               <View style={styles.overlayTitleInputFrame}>
@@ -1633,6 +1649,7 @@ export const RecipeDetailScreen = () => {
           />
           <LinearGradient
             colors={["transparent", "rgba(0,0,0,0.6)"]}
+            pointerEvents="box-none"
             style={styles.imageOverlay}
           >
             {renderImageEditOverlay()}
@@ -1669,34 +1686,55 @@ export const RecipeDetailScreen = () => {
                 onMomentumScrollEnd={handleImageScroll}
               />
             </Animated.View>
-            <PageIndicator
-              currentPage={currentImageIndex + 1}
-              totalPages={recipe.images.length}
-            />
             <LinearGradient
               colors={["transparent", "rgba(0,0,0,0.6)"]}
+              pointerEvents="box-none"
               style={styles.imageOverlay}
             >
-              <Text type="title1" style={styles.overlayTitle} numberOfLines={2}>
-                {recipe.name}
-              </Text>
               {shouldShowSourceChip && sourceWebsiteName ? (
-                <TouchableOpacity
-                  style={styles.heroSourceButton}
-                  onPress={handleViewSource}
-                  activeOpacity={0.76}
-                  accessibilityLabel={sourceChipAccessibilityLabel}
-                >
-                  <Ionicons
-                    name="open-outline"
-                    size={14}
-                    style={styles.heroSourceIcon}
-                  />
-                  <Text style={styles.heroSourceText} numberOfLines={1}>
-                    {sourceWebsiteName}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
+                <>
+                  <View pointerEvents="none">
+                    <Text
+                      type="title1"
+                      style={styles.overlayTitle}
+                      numberOfLines={2}
+                    >
+                      {recipe.name}
+                    </Text>
+                  </View>
+                  <View pointerEvents="box-none" style={styles.heroMetaRow}>
+                    <TouchableOpacity
+                      style={[styles.heroMetaChip, styles.heroSourceButton]}
+                      onPress={handleViewSource}
+                      activeOpacity={0.76}
+                      accessibilityLabel={sourceChipAccessibilityLabel}
+                    >
+                      <Ionicons
+                        name="open-outline"
+                        size={14}
+                        style={styles.heroMetaIcon}
+                      />
+                      <Text style={styles.heroSourceText} numberOfLines={1}>
+                        {sourceWebsiteName}
+                      </Text>
+                    </TouchableOpacity>
+                    {renderHeroImageCounter(recipe.images.length)}
+                  </View>
+                </>
+              ) : (
+                <View pointerEvents="box-none" style={styles.heroTitleRow}>
+                  <View pointerEvents="none" style={styles.heroTitleTextWrap}>
+                    <Text
+                      type="title1"
+                      style={styles.overlayTitle}
+                      numberOfLines={2}
+                    >
+                      {recipe.name}
+                    </Text>
+                  </View>
+                  {renderHeroImageCounter(recipe.images.length)}
+                </View>
+              )}
             </LinearGradient>
           </>
         ) : (
@@ -2879,11 +2917,25 @@ const styles = StyleSheet.create((theme) => ({
   overlayTitle: {
     color: "white",
   },
-  heroSourceButton: {
-    alignSelf: "flex-start",
-    maxWidth: "100%",
-    minHeight: 30,
+  heroTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    width: "100%",
+  },
+  heroTitleTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginTop: 8,
+    width: "100%",
+  },
+  heroMetaChip: {
+    minHeight: 30,
     paddingHorizontal: 10,
     borderRadius: 15,
     borderWidth: 1,
@@ -2893,7 +2945,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: 5,
   },
-  heroSourceIcon: {
+  heroSourceButton: {
+    maxWidth: "72%",
+    flexShrink: 1,
+  },
+  heroMetaIcon: {
     color: "rgba(255,255,255,0.84)",
   },
   heroSourceText: {
@@ -2903,6 +2959,16 @@ const styles = StyleSheet.create((theme) => ({
     color: "rgba(255,255,255,0.88)",
     fontSize: 13,
     fontFamily: theme.fonts.semiBold,
+  },
+  heroImageCounterText: {
+    color: "rgba(255,255,255,0.88)",
+    fontSize: 13,
+    fontFamily: theme.fonts.semiBold,
+    fontVariant: ["tabular-nums"],
+  },
+  heroImageCounterChip: {
+    marginLeft: "auto",
+    flexShrink: 0,
   },
   overlayTitleInputFrame: {
     marginTop: -5,
