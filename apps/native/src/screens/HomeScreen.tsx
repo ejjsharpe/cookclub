@@ -178,8 +178,11 @@ const HORIZONTAL_PADDING = 20;
 const BACK_BUTTON_WIDTH = 44;
 const HEADER_GAP = 6;
 const HEADER_HEIGHT = 52; // Height of the cook club title + avatar row
-const SCROLLED_DOWN_LIMIT = 200;
+const LOAD_LATEST_SHOW_SCROLL_Y = 200;
+const LOAD_LATEST_HIDE_SCROLL_Y = 120;
+const LOAD_LATEST_SCROLL_DOWN_HIDE_DISTANCE = 48;
 const LOAD_LATEST_SCROLL_UP_DELAY_MS = 500;
+const LOAD_LATEST_ANIMATION_MS = 180;
 const SCROLL_DIRECTION_THRESHOLD = 2;
 const TAB_BAR_LIST_CLEARANCE = 112;
 
@@ -247,6 +250,8 @@ export const HomeScreen = () => {
   const avatarHidden = useSharedValue(false);
   const previousScrollY = useSharedValue(0);
   const isScrollingTowardLatest = useSharedValue(false);
+  const latestScrollMinY = useSharedValue(0);
+  const loadLatestProgress = useSharedValue(0);
 
   // Keyboard height as animated value for empty state centering
   const keyboardHeight = useSharedValue(0);
@@ -287,6 +292,13 @@ export const HomeScreen = () => {
       return () => clearTimeout(timeout);
     }
   }, [isSearchActive, animationConfig, searchProgress]);
+
+  useEffect(() => {
+    loadLatestProgress.value = withTiming(showLoadLatest ? 1 : 0, {
+      duration: LOAD_LATEST_ANIMATION_MS,
+      easing: Easing.bezier(0.2, 0, 0, 1),
+    });
+  }, [loadLatestProgress, showLoadLatest]);
 
   useEffect(() => {
     return () => {
@@ -378,12 +390,15 @@ export const HomeScreen = () => {
   }, []);
 
   const hideLoadLatest = useCallback(() => {
+    isScrollingTowardLatest.value = false;
+    latestScrollMinY.value = 0;
+
     if (loadLatestTimeoutRef.current) {
       clearTimeout(loadLatestTimeoutRef.current);
       loadLatestTimeoutRef.current = null;
     }
     setShowLoadLatest(false);
-  }, []);
+  }, [isScrollingTowardLatest, latestScrollMinY]);
 
   const scheduleLoadLatest = useCallback(() => {
     if (loadLatestTimeoutRef.current) {
@@ -395,6 +410,12 @@ export const HomeScreen = () => {
       setShowLoadLatest(true);
     }, LOAD_LATEST_SCROLL_UP_DELAY_MS);
   }, []);
+
+  useEffect(() => {
+    if (isSearchActive) {
+      hideLoadLatest();
+    }
+  }, [hideLoadLatest, isSearchActive]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -512,17 +533,33 @@ export const HomeScreen = () => {
         });
       }
 
-      const isAboveLatestThreshold = y > SCROLLED_DOWN_LIMIT;
-      const isScrollingUp =
-        previousScrollY.value - y > SCROLL_DIRECTION_THRESHOLD;
+      const deltaY = y - previousScrollY.value;
+      const isAboveLatestShowThreshold = y > LOAD_LATEST_SHOW_SCROLL_Y;
+      const isBelowLatestHideThreshold = y <= LOAD_LATEST_HIDE_SCROLL_Y;
+      const isScrollingUp = deltaY < -SCROLL_DIRECTION_THRESHOLD;
+      const isScrollingDown = deltaY > SCROLL_DIRECTION_THRESHOLD;
 
-      if (isAboveLatestThreshold && isScrollingUp) {
+      if (isBelowLatestHideThreshold) {
+        if (isScrollingTowardLatest.value) {
+          isScrollingTowardLatest.value = false;
+          latestScrollMinY.value = 0;
+          runOnJS(hideLoadLatest)();
+        }
+      } else if (isAboveLatestShowThreshold && isScrollingUp) {
+        latestScrollMinY.value = isScrollingTowardLatest.value
+          ? Math.min(latestScrollMinY.value, y)
+          : y;
         if (!isScrollingTowardLatest.value) {
           isScrollingTowardLatest.value = true;
           runOnJS(scheduleLoadLatest)();
         }
-      } else if (isScrollingTowardLatest.value) {
+      } else if (
+        isScrollingDown &&
+        isScrollingTowardLatest.value &&
+        y - latestScrollMinY.value > LOAD_LATEST_SCROLL_DOWN_HIDE_DISTANCE
+      ) {
         isScrollingTowardLatest.value = false;
+        latestScrollMinY.value = 0;
         runOnJS(hideLoadLatest)();
       }
 
@@ -719,6 +756,18 @@ export const HomeScreen = () => {
     transform: [{ scale: searchProgress.value }],
   }));
 
+  const loadLatestAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: loadLatestProgress.value,
+    transform: [
+      {
+        translateY: interpolate(loadLatestProgress.value, [0, 1], [-8, 0]),
+      },
+      {
+        scale: interpolate(loadLatestProgress.value, [0, 1], [0.96, 1]),
+      },
+    ],
+  }));
+
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <View style={styles.screen}>
@@ -790,25 +839,27 @@ export const HomeScreen = () => {
           />
         </View>
 
-        {showLoadLatest && (
-          <View style={styles.loadLatestContainer} pointerEvents="box-none">
-            <ScalePressable
-              onPress={handleLoadLatest}
-              style={styles.loadLatestButton}
-              accessibilityRole="button"
-              accessibilityLabel="Load latest activity"
-            >
-              <Ionicons
-                name="arrow-up"
-                size={16}
-                style={styles.loadLatestIcon}
-              />
-              <Text type="subheadline" style={styles.loadLatestText}>
-                Latest
-              </Text>
-            </ScalePressable>
-          </View>
-        )}
+        <Animated.View
+          style={[styles.loadLatestContainer, loadLatestAnimatedStyle]}
+          pointerEvents={showLoadLatest ? "box-none" : "none"}
+          accessibilityElementsHidden={!showLoadLatest}
+          importantForAccessibility={
+            showLoadLatest ? "auto" : "no-hide-descendants"
+          }
+        >
+          <ScalePressable
+            disabled={!showLoadLatest}
+            onPress={handleLoadLatest}
+            style={styles.loadLatestButton}
+            accessibilityRole="button"
+            accessibilityLabel="Load latest activity"
+          >
+            <Ionicons name="arrow-up" size={16} style={styles.loadLatestIcon} />
+            <Text type="subheadline" style={styles.loadLatestText}>
+              Latest
+            </Text>
+          </ScalePressable>
+        </Animated.View>
       </Animated.View>
 
       {/* Search Mode */}
