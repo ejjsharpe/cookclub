@@ -2,10 +2,52 @@ import type { NutritionInput, NutritionResponse } from "@repo/contracts";
 
 import type { Nutrition } from "../schema";
 import type { Env } from "../types";
+import { parseAiJsonResponse } from "../utils/ai-response-parser";
 import { fetchHtml } from "../utils/html-fetcher";
 import { extractStructuredRecipeCandidates } from "../utils/structured-data";
 
-const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
+const TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast" as const;
+
+const NUTRITION_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    type: "object",
+    properties: {
+      calories: { type: ["number", "null"] },
+      protein: { type: ["number", "null"] },
+      carbohydrates: { type: ["number", "null"] },
+      fat: { type: ["number", "null"] },
+      saturatedFat: { type: ["number", "null"] },
+      fiber: { type: ["number", "null"] },
+      sugar: { type: ["number", "null"] },
+      sodium: { type: ["number", "null"] },
+      cholesterol: { type: ["number", "null"] },
+      potassium: { type: ["number", "null"] },
+      vitaminA: { type: ["number", "null"] },
+      vitaminC: { type: ["number", "null"] },
+      calcium: { type: ["number", "null"] },
+      iron: { type: ["number", "null"] },
+      confidence: { type: "string", enum: ["low", "medium", "high"] },
+    },
+    required: [
+      "calories",
+      "protein",
+      "carbohydrates",
+      "fat",
+      "saturatedFat",
+      "fiber",
+      "sugar",
+      "sodium",
+      "cholesterol",
+      "potassium",
+      "vitaminA",
+      "vitaminC",
+      "calcium",
+      "iron",
+      "confidence",
+    ],
+  },
+} as const;
 
 function parseJsonResponse(response: unknown): Record<string, unknown> {
   const value =
@@ -27,7 +69,7 @@ function parseJsonResponse(response: unknown): Record<string, unknown> {
   if (json.startsWith("```")) json = json.slice(3);
   if (json.endsWith("```")) json = json.slice(0, -3);
 
-  return JSON.parse(json.trim()) as Record<string, unknown>;
+  return parseAiJsonResponse<Record<string, unknown>>(json.trim());
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -41,25 +83,35 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function pickValue(input: Record<string, unknown>, keys: string[]) {
+  return keys.map((key) => input[key]).find((value) => value !== undefined);
+}
+
 function normalizeNutrition(
   input: Record<string, unknown>,
   source: Nutrition["source"],
 ): Nutrition {
   return {
-    calories: numberOrNull(input.calories),
-    protein: numberOrNull(input.protein),
-    carbohydrates: numberOrNull(input.carbohydrates),
-    fat: numberOrNull(input.fat),
-    saturatedFat: numberOrNull(input.saturatedFat),
-    fiber: numberOrNull(input.fiber),
-    sugar: numberOrNull(input.sugar),
-    sodium: numberOrNull(input.sodium),
-    cholesterol: numberOrNull(input.cholesterol),
-    potassium: numberOrNull(input.potassium),
-    vitaminA: numberOrNull(input.vitaminA),
-    vitaminC: numberOrNull(input.vitaminC),
-    calcium: numberOrNull(input.calcium),
-    iron: numberOrNull(input.iron),
+    calories: numberOrNull(pickValue(input, ["calories", "kcal"])),
+    protein: numberOrNull(pickValue(input, ["protein", "protein_g"])),
+    carbohydrates: numberOrNull(
+      pickValue(input, ["carbohydrates", "carbs", "carbohydrate", "carbs_g"]),
+    ),
+    fat: numberOrNull(pickValue(input, ["fat", "totalFat", "total_fat"])),
+    saturatedFat: numberOrNull(
+      pickValue(input, ["saturatedFat", "saturated_fat", "saturatedFat_g"]),
+    ),
+    fiber: numberOrNull(pickValue(input, ["fiber", "fibre", "fiber_g"])),
+    sugar: numberOrNull(pickValue(input, ["sugar", "sugars", "sugar_g"])),
+    sodium: numberOrNull(pickValue(input, ["sodium", "sodium_mg"])),
+    cholesterol: numberOrNull(
+      pickValue(input, ["cholesterol", "cholesterol_mg"]),
+    ),
+    potassium: numberOrNull(pickValue(input, ["potassium", "potassium_mg"])),
+    vitaminA: numberOrNull(pickValue(input, ["vitaminA", "vitamin_a"])),
+    vitaminC: numberOrNull(pickValue(input, ["vitaminC", "vitamin_c"])),
+    calcium: numberOrNull(pickValue(input, ["calcium", "calcium_dv"])),
+    iron: numberOrNull(pickValue(input, ["iron", "iron_dv"])),
     source,
     confidence:
       input.confidence === "high" ||
@@ -118,11 +170,9 @@ function recipeToNutritionPrompt(recipe: NutritionInput["recipe"]) {
   const ingredients = recipe.ingredientSections
     .flatMap((section) => section.ingredients)
     .map((ingredient) =>
-      [
-        ingredient.quantity,
-        ingredient.unit,
-        ingredient.name,
-      ].filter(Boolean).join(" "),
+      [ingredient.quantity, ingredient.unit, ingredient.name]
+        .filter(Boolean)
+        .join(" "),
     )
     .join("\n");
 
@@ -151,7 +201,7 @@ Estimate nutrition per serving for this recipe. Return JSON only, with numeric v
   "confidence": "low" | "medium" | "high"
 }
 
-Use kcal for calories, grams for protein/carbohydrates/fat/saturatedFat/fiber/sugar, milligrams for sodium/cholesterol/potassium, and percent daily value for vitaminA/vitaminC/calcium/iron. Estimate conservatively from the ingredient amounts and servings. If servings are missing, assume 4 servings and set confidence to low.
+Use kcal for calories, grams for protein/carbohydrates/fat/saturatedFat/fiber/sugar, milligrams for sodium/cholesterol/potassium, and percent daily value for vitaminA/vitaminC/calcium/iron. Estimate conservatively from the ingredient amounts and servings. If servings are missing, assume 4 servings and set confidence to low. Always estimate calories, protein, carbohydrates, and fat when the recipe has ingredients; use null mainly for extended micronutrients when unknown.
 
 Recipe: ${recipe.name}
 Description: ${recipe.description ?? ""}
@@ -164,11 +214,12 @@ ${instructions}
 `;
 }
 
-async function estimateNutritionWithAi(
+async function runNutritionModel(
   ai: Env["AI"],
   recipe: NutritionInput["recipe"],
+  useJsonMode: boolean,
 ): Promise<Nutrition> {
-  const response = await (ai as any).run(TEXT_MODEL, {
+  const request: Record<string, unknown> = {
     messages: [
       {
         role: "system",
@@ -178,9 +229,39 @@ async function estimateNutritionWithAi(
       { role: "user", content: recipeToNutritionPrompt(recipe) },
     ],
     max_tokens: 1024,
-  });
+    temperature: 0.1,
+  };
 
-  return normalizeNutrition(parseJsonResponse(response), "ai_estimated");
+  if (useJsonMode) {
+    request.response_format = NUTRITION_RESPONSE_FORMAT;
+  }
+
+  const response = await (ai as any).run(TEXT_MODEL, request);
+  const nutrition = normalizeNutrition(
+    parseJsonResponse(response),
+    "ai_estimated",
+  );
+  if (!hasNutritionValues(nutrition)) {
+    throw new Error("AI returned empty nutrition estimates.");
+  }
+
+  return nutrition;
+}
+
+async function estimateNutritionWithAi(
+  ai: Env["AI"],
+  recipe: NutritionInput["recipe"],
+): Promise<Nutrition> {
+  try {
+    return await runNutritionModel(ai, recipe, true);
+  } catch (jsonModeError) {
+    console.log(
+      "Nutrition JSON mode failed, retrying without JSON mode:",
+      jsonModeError instanceof Error ? jsonModeError.message : jsonModeError,
+    );
+  }
+
+  return await runNutritionModel(ai, recipe, false);
 }
 
 export async function generateNutrition(

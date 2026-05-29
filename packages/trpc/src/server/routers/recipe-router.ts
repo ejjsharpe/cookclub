@@ -1,4 +1,8 @@
-import type { ParsedRecipe, PersonalizationGoal } from "@repo/contracts";
+import type {
+  NutritionResponse,
+  ParsedRecipe,
+  PersonalizationGoal,
+} from "@repo/contracts";
 import {
   recipeImages,
   recipes,
@@ -537,7 +541,9 @@ export const recipeRouter = router({
         await failRecipeImportJob(
           { db: ctx.db, env: ctx.env },
           { jobId: job.id, userId: job.userId },
-          error instanceof Error ? error.message : "Unable to queue this import.",
+          error instanceof Error
+            ? error.message
+            : "Unable to queue this import.",
         );
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -1132,10 +1138,19 @@ export const recipeRouter = router({
         const stored = await getStoredRecipeNutrition(ctx.db, input.recipeId);
         if (stored) return stored;
 
-        const result = await ctx.env.RECIPE_AI.nutrition({
-          recipe: recipeDetailToParsedRecipe(recipe),
-          sourceUrl: recipe.sourceUrl,
-        });
+        let result: NutritionResponse;
+        try {
+          result = await ctx.env.RECIPE_AI.nutrition({
+            recipe: recipeDetailToParsedRecipe(recipe),
+            sourceUrl: recipe.sourceUrl,
+          });
+        } catch (nutritionError) {
+          console.error("Nutrition service call failed:", nutritionError);
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Could not generate nutrition for this recipe.",
+          });
+        }
 
         if (!result.success) {
           throw new TRPCError({
@@ -1144,10 +1159,41 @@ export const recipeRouter = router({
           });
         }
 
-        return await upsertRecipeNutrition(ctx.db, input.recipeId, {
-          ...result.data,
-          generatedAt: new Date(),
-        });
+        const generatedNutrition = result.data;
+        const hasNutritionValues = [
+          generatedNutrition.calories,
+          generatedNutrition.protein,
+          generatedNutrition.carbohydrates,
+          generatedNutrition.fat,
+          generatedNutrition.saturatedFat,
+          generatedNutrition.fiber,
+          generatedNutrition.sugar,
+          generatedNutrition.sodium,
+          generatedNutrition.cholesterol,
+          generatedNutrition.potassium,
+          generatedNutrition.vitaminA,
+          generatedNutrition.vitaminC,
+          generatedNutrition.calcium,
+          generatedNutrition.iron,
+        ].some((value) => typeof value === "number" && Number.isFinite(value));
+
+        if (!hasNutritionValues) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Could not generate nutrition for this recipe.",
+          });
+        }
+
+        const generatedAt = new Date();
+        try {
+          return await upsertRecipeNutrition(ctx.db, input.recipeId, {
+            ...generatedNutrition,
+            generatedAt,
+          });
+        } catch (storageError) {
+          console.error("Failed to store recipe nutrition:", storageError);
+          return { ...generatedNutrition, generatedAt };
+        }
       } catch (err) {
         if (err instanceof TRPCError) throw err;
         console.error("Error fetching recipe nutrition:", err);

@@ -63,6 +63,32 @@ const aiOnlyHtml = `
 </html>
 `;
 
+const recipeWithoutNutrition = {
+  name: "Weeknight Pasta",
+  description: "A simple pasta dinner",
+  servings: 4,
+  sourceUrl: null,
+  ingredientSections: [
+    {
+      name: null,
+      ingredients: [
+        { index: 0, quantity: 400, unit: "g", name: "spaghetti" },
+        { index: 1, quantity: 2, unit: "tbsp", name: "olive oil" },
+        { index: 2, quantity: 1, unit: "cup", name: "tomato sauce" },
+      ],
+    },
+  ],
+  instructionSections: [
+    {
+      name: null,
+      instructions: [
+        { index: 0, instruction: "Boil the pasta." },
+        { index: 1, instruction: "Toss with sauce and oil." },
+      ],
+    },
+  ],
+};
+
 // Create mock environment
 function createMockEnv() {
   const kvStore = new Map<string, string>();
@@ -1450,6 +1476,106 @@ Serves 4
         expect(imageResult.metadata.source).toBe("image");
       }
     });
+  });
+});
+
+describe("RecipeAI.nutrition()", () => {
+  let mockEnv: ReturnType<typeof createMockEnv>;
+  let parser: RecipeAI;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockEnv = createMockEnv();
+    parser = createParser(mockEnv);
+  });
+
+  it("generates nutrition with AI when no nutrition exists", async () => {
+    mockEnv.AI.run = vi.fn().mockResolvedValue({
+      response: JSON.stringify({
+        calories: 510,
+        protein: 14,
+        carbohydrates: 82,
+        fat: 15,
+        saturatedFat: 2,
+        fiber: 5,
+        sugar: 8,
+        sodium: 420,
+        cholesterol: null,
+        potassium: null,
+        vitaminA: null,
+        vitaminC: null,
+        calcium: null,
+        iron: null,
+        confidence: "medium",
+      }),
+    });
+
+    const result = await parser.nutrition({
+      recipe: recipeWithoutNutrition,
+      sourceUrl: null,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        calories: 510,
+        protein: 14,
+        carbohydrates: 82,
+        fat: 15,
+        source: "ai_estimated",
+        confidence: "medium",
+      });
+    }
+
+    const request = mockEnv.AI.run.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request).toHaveProperty("response_format");
+  });
+
+  it("retries AI nutrition without JSON mode if the JSON-mode request fails", async () => {
+    mockEnv.AI.run = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("400 Bad Request"))
+      .mockResolvedValueOnce({
+        response: JSON.stringify({
+          kcal: "530 kcal",
+          protein_g: "22 g",
+          carbs_g: "65 g",
+          total_fat: "17 g",
+          confidence: "low",
+        }),
+      });
+
+    const result = await parser.nutrition({
+      recipe: recipeWithoutNutrition,
+      sourceUrl: null,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        calories: 530,
+        protein: 22,
+        carbohydrates: 65,
+        fat: 17,
+        source: "ai_estimated",
+        confidence: "low",
+      });
+    }
+
+    expect(mockEnv.AI.run).toHaveBeenCalledTimes(2);
+    const firstRequest = mockEnv.AI.run.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    const secondRequest = mockEnv.AI.run.mock.calls[1]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(firstRequest).toHaveProperty("response_format");
+    expect(secondRequest).not.toHaveProperty("response_format");
   });
 });
 

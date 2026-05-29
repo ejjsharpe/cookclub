@@ -7,6 +7,7 @@ import {
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
+import * as WebBrowser from "expo-web-browser";
 import {
   useState,
   useEffect,
@@ -392,6 +393,16 @@ function draftToMutationInput(draft: RecipeDraft) {
   };
 }
 
+function getSourceWebsiteName(sourceUrl: string | null | undefined) {
+  if (!sourceUrl) return null;
+
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
 export const RecipeDetailScreen = () => {
   const route = useRoute<RecipeDetailScreenRoute>();
   const navigation = useNavigation();
@@ -564,9 +575,6 @@ export const RecipeDetailScreen = () => {
       { recipeId: recipe.id },
       {
         onSuccess: (data) => setNutrition(data),
-        onError: () => {
-          nutritionRequestRecipeIdRef.current = null;
-        },
       },
     );
   }, [isEditing, isPreviewMode, isPro, nutrition, nutritionMutation, recipe]);
@@ -608,6 +616,18 @@ export const RecipeDetailScreen = () => {
 
   const isOwnRecipe = recipe?.owner.id === userData?.user?.id;
   const displayedRating = ratingOverride ?? recipe?.userReviewRating ?? null;
+  const recipeSourceUrl = recipe?.sourceUrl ?? null;
+  const sourceWebsiteName = useMemo(
+    () => getSourceWebsiteName(recipeSourceUrl),
+    [recipeSourceUrl],
+  );
+  const sourceChipAccessibilityLabel = sourceWebsiteName
+    ? `View on ${sourceWebsiteName}`
+    : undefined;
+  const shouldShowSourceChip =
+    !isEditing &&
+    !isPreviewMode &&
+    Boolean(recipeSourceUrl && sourceWebsiteName);
   const servingMultiplier = recipe?.servings ? servings / recipe.servings : 1;
   const shoppingListIngredientSections = useMemo(
     () =>
@@ -690,6 +710,20 @@ export const RecipeDetailScreen = () => {
     if (!recipe || !isOwnRecipe || isPreviewMode || isEditing) return;
     cookingReviewSheetRef.current?.present();
   };
+
+  const handleViewSource = useCallback(async () => {
+    if (!recipeSourceUrl) return;
+
+    try {
+      await WebBrowser.openBrowserAsync(recipeSourceUrl);
+    } catch (err) {
+      console.error("Failed to open recipe source:", err);
+      Alert.alert(
+        "Unable to Open Website",
+        "Something went wrong while opening the original recipe.",
+      );
+    }
+  }, [recipeSourceUrl]);
 
   const handleStartCookMode = () => {
     if (!recipe) return;
@@ -1366,6 +1400,7 @@ export const RecipeDetailScreen = () => {
     const sourceUrl = (error as any)?.data?.cause?.sourceUrl as
       | string
       | undefined;
+    const forbiddenSourceWebsiteName = getSourceWebsiteName(sourceUrl);
 
     return (
       <View style={[styles.screen, styles.centered]}>
@@ -1379,12 +1414,18 @@ export const RecipeDetailScreen = () => {
           <>
             <PrimaryButton
               onPress={() => {
-                import("expo-web-browser").then((WebBrowser) => {
-                  WebBrowser.openBrowserAsync(sourceUrl);
+                WebBrowser.openBrowserAsync(sourceUrl).catch((err) => {
+                  console.error("Failed to open recipe source:", err);
+                  Alert.alert(
+                    "Unable to Open Website",
+                    "Something went wrong while opening the original recipe.",
+                  );
                 });
               }}
             >
-              View on Original Site
+              {forbiddenSourceWebsiteName
+                ? `View on ${forbiddenSourceWebsiteName}`
+                : "View on Original Site"}
             </PrimaryButton>
             <VSpace size={8} />
             <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -1639,6 +1680,23 @@ export const RecipeDetailScreen = () => {
               <Text type="title1" style={styles.overlayTitle} numberOfLines={2}>
                 {recipe.name}
               </Text>
+              {shouldShowSourceChip && sourceWebsiteName ? (
+                <TouchableOpacity
+                  style={styles.heroSourceButton}
+                  onPress={handleViewSource}
+                  activeOpacity={0.76}
+                  accessibilityLabel={sourceChipAccessibilityLabel}
+                >
+                  <Ionicons
+                    name="open-outline"
+                    size={14}
+                    style={styles.heroSourceIcon}
+                  />
+                  <Text style={styles.heroSourceText} numberOfLines={1}>
+                    {sourceWebsiteName}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </LinearGradient>
           </>
         ) : (
@@ -2082,93 +2140,105 @@ export const RecipeDetailScreen = () => {
     );
   };
 
-  const renderNutritionPanel = () => {
+  const renderNutritionSection = () => {
     if (isEditing || isPreviewMode || !recipe) return null;
-
-    if (!isPro) {
-      return (
-        <TouchableOpacity
-          style={styles.nutritionCard}
-          onPress={presentPaywall}
-          activeOpacity={0.78}
-        >
-          <View style={styles.nutritionHeader}>
-            <View style={styles.nutritionTitleRow}>
-              <Ionicons
-                name="nutrition-outline"
-                size={18}
-                style={styles.nutritionIcon}
-              />
-              <Text style={styles.nutritionTitle}>Nutrition</Text>
-            </View>
-            <View style={styles.proBadge}>
-              <Text style={styles.proBadgeText}>Pro</Text>
-            </View>
-          </View>
-          <Text style={styles.nutritionSubtitle}>
-            Upgrade to see per-serving nutrition.
-          </Text>
-        </TouchableOpacity>
-      );
-    }
 
     const currentNutrition = nutrition ?? recipe.nutrition;
     const isLoadingNutrition = nutritionMutation.isPending && !currentNutrition;
+    const nutritionSubheading =
+      currentNutrition?.source === "ai_estimated"
+        ? "Estimated per serving"
+        : isLoadingNutrition
+          ? "Calculating per serving"
+          : "Per serving";
+
+    if (!isPro) {
+      return (
+        <>
+          <View style={styles.pageDivider} />
+          <View style={styles.recipeSection}>
+            <View style={styles.sectionHeadingRow}>
+              <View>
+                <Text style={styles.sectionHeading}>Nutrition</Text>
+                <Text style={styles.sectionSubheading}>Per serving</Text>
+              </View>
+              <View style={styles.proBadge}>
+                <Text style={styles.proBadgeText}>Pro</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.nutritionCard}
+              onPress={presentPaywall}
+              activeOpacity={0.78}
+            >
+              <Text style={styles.nutritionSubtitle}>
+                Upgrade to see per-serving nutrition.
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      );
+    }
 
     return (
-      <View style={styles.nutritionCard}>
-        <View style={styles.nutritionHeader}>
-          <View style={styles.nutritionTitleRow}>
-            <Ionicons
-              name="nutrition-outline"
-              size={18}
-              style={styles.nutritionIcon}
-            />
-            <Text style={styles.nutritionTitle}>Nutrition</Text>
+      <>
+        <View style={styles.pageDivider} />
+        <View style={styles.recipeSection}>
+          <View style={styles.sectionHeadingRow}>
+            <View>
+              <Text style={styles.sectionHeading}>Nutrition</Text>
+              <Text style={styles.sectionSubheading}>
+                {nutritionSubheading}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.nutritionSubtitle}>
-            {currentNutrition?.source === "ai_estimated"
-              ? "Estimated per serving"
-              : "Per serving"}
-          </Text>
-        </View>
 
-        {isLoadingNutrition ? (
-          <View style={styles.nutritionLoadingRow}>
-            <ActivityIndicator size="small" />
-            <Text style={styles.nutritionSubtitle}>Calculating...</Text>
-          </View>
-        ) : currentNutrition ? (
-          <View style={styles.nutritionGrid}>
-            {renderNutritionMetric("Calories", currentNutrition.calories)}
-            {renderNutritionMetric("Protein", currentNutrition.protein, "g")}
-            {renderNutritionMetric(
-              "Carbs",
-              currentNutrition.carbohydrates,
-              "g",
+          <View style={styles.nutritionCard}>
+            {isLoadingNutrition ? (
+              <View style={styles.nutritionLoadingRow}>
+                <ActivityIndicator size="small" />
+                <Text style={styles.nutritionSubtitle}>Calculating...</Text>
+              </View>
+            ) : currentNutrition ? (
+              <View style={styles.nutritionGrid}>
+                {renderNutritionMetric("Calories", currentNutrition.calories)}
+                {renderNutritionMetric(
+                  "Protein",
+                  currentNutrition.protein,
+                  "g",
+                )}
+                {renderNutritionMetric(
+                  "Carbs",
+                  currentNutrition.carbohydrates,
+                  "g",
+                )}
+                {renderNutritionMetric("Fat", currentNutrition.fat, "g")}
+                {renderNutritionMetric("Fiber", currentNutrition.fiber, "g")}
+                {renderNutritionMetric("Sugar", currentNutrition.sugar, "g")}
+                {renderNutritionMetric("Sodium", currentNutrition.sodium, "mg")}
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.nutritionRetryButton}
+                onPress={() => {
+                  if (recipe.id > 0) {
+                    nutritionMutation.mutate(
+                      { recipeId: recipe.id },
+                      { onSuccess: (data) => setNutrition(data) },
+                    );
+                  }
+                }}
+                activeOpacity={0.76}
+              >
+                <Text style={styles.nutritionRetryText}>
+                  Calculate nutrition
+                </Text>
+              </TouchableOpacity>
             )}
-            {renderNutritionMetric("Fat", currentNutrition.fat, "g")}
-            {renderNutritionMetric("Fiber", currentNutrition.fiber, "g")}
-            {renderNutritionMetric("Sugar", currentNutrition.sugar, "g")}
-            {renderNutritionMetric("Sodium", currentNutrition.sodium, "mg")}
           </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.nutritionRetryButton}
-            onPress={() => {
-              if (recipe.id > 0) {
-                nutritionMutation.mutate(
-                  { recipeId: recipe.id },
-                  { onSuccess: (data) => setNutrition(data) },
-                );
-              }
-            }}
-            activeOpacity={0.76}
-          >
-            <Text style={styles.nutritionRetryText}>Calculate nutrition</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      </>
     );
   };
 
@@ -2550,8 +2620,6 @@ export const RecipeDetailScreen = () => {
                 </Animated.View>
               )}
 
-              {renderNutritionPanel()}
-
               <View style={styles.pageDivider} />
 
               <View style={styles.recipeSection}>
@@ -2579,6 +2647,8 @@ export const RecipeDetailScreen = () => {
                 </View>
                 {isEditing ? renderEditableMethod() : renderMethod()}
               </View>
+
+              {renderNutritionSection()}
 
               <VSpace
                 size={
@@ -2809,6 +2879,31 @@ const styles = StyleSheet.create((theme) => ({
   overlayTitle: {
     color: "white",
   },
+  heroSourceButton: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    minHeight: 30,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.24)",
+    backgroundColor: "rgba(0,0,0,0.38)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  heroSourceIcon: {
+    color: "rgba(255,255,255,0.84)",
+  },
+  heroSourceText: {
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: 180,
+    color: "rgba(255,255,255,0.88)",
+    fontSize: 13,
+    fontFamily: theme.fonts.semiBold,
+  },
   overlayTitleInputFrame: {
     marginTop: -5,
     marginBottom: -9,
@@ -3006,30 +3101,10 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.textSecondary,
   },
   nutritionCard: {
-    marginTop: 16,
     padding: 14,
     borderRadius: 18,
     backgroundColor: theme.colors.inputBackground,
     gap: 12,
-  },
-  nutritionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  nutritionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  nutritionIcon: {
-    color: theme.colors.primary,
-  },
-  nutritionTitle: {
-    color: theme.colors.text,
-    fontSize: 15,
-    fontFamily: theme.fonts.semiBold,
   },
   nutritionSubtitle: {
     color: theme.colors.textSecondary,
