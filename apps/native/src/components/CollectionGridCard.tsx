@@ -45,7 +45,11 @@ const ImageGrid = ({ images, width }: { images: string[]; width?: number }) => {
   const borderRadius =
     effectiveWidth != null ? effectiveWidth * BORDER_RADIUS_RATIO : 14;
 
-  const containerStyle = [gridStyles.container, { borderRadius }];
+  const containerStyle = [
+    gridStyles.container,
+    effectiveWidth != null && { width: effectiveWidth, height: effectiveWidth },
+    { borderRadius },
+  ];
 
   if (count === 0) {
     return (

@@ -29,15 +29,35 @@ export const collectionRouter = router({
       // Ensure default collections exist (lazy creation on first access)
       await getOrCreateDefaultCollections(ctx.db, ctx.user.id);
 
-      // If includeMetadata is requested AND no recipeId, return with metadata
-      if (includeMetadata && recipeId === undefined) {
-        return await getUserCollectionsWithMetadataService(ctx.db, {
-          userId: ctx.user.id,
-          ...(search && { search }),
-        });
-      }
-
       try {
+        if (includeMetadata) {
+          const userCollections = await getUserCollectionsWithMetadataService(
+            ctx.db,
+            {
+              userId: ctx.user.id,
+              ...(search && { search }),
+            },
+          );
+
+          if (recipeId === undefined) {
+            return userCollections;
+          }
+
+          const recipeInCollections = await ctx.db
+            .select({ collectionId: recipeCollections.collectionId })
+            .from(recipeCollections)
+            .where(eq(recipeCollections.recipeId, recipeId));
+
+          const collectionIdsWithRecipe = new Set(
+            recipeInCollections.map((rc) => rc.collectionId),
+          );
+
+          return userCollections.map((collection) => ({
+            ...collection,
+            hasRecipe: collectionIdsWithRecipe.has(collection.id),
+          }));
+        }
+
         // Get all user's collections, newest first.
         const userCollections = await ctx.db
           .select({

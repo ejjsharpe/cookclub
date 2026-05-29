@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
 import { AppSheet } from "./AppSheet";
+import { ImageGrid } from "./CollectionGridCard";
 import { Text } from "./Text";
 import {
   useGetUserCollections,
@@ -28,6 +29,8 @@ import {
 import { useDeleteRecipe } from "../api/recipe";
 
 import { Ionicons } from "@/components/Ionicons";
+
+const COLLECTION_PREVIEW_SIZE = 58;
 
 export interface CollectionSelectorSheetProps {
   recipeId?: number;
@@ -49,7 +52,10 @@ export const CollectionSelectorSheet = forwardRef<
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const { data: collections, isLoading } = useGetUserCollections({ recipeId });
+  const { data: collections, isLoading } = useGetUserCollections({
+    recipeId,
+    includeMetadata: true,
+  });
   const updateCollectionsMutation = useUpdateRecipeCollections();
   const deleteRecipeMutation = useDeleteRecipe();
   const createCollectionMutation = useCreateCollection();
@@ -161,7 +167,7 @@ export const CollectionSelectorSheet = forwardRef<
   const isSaveDisabled = !hasChanges || isSaving;
 
   const renderFooter = () => (
-    <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+    <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
       <TouchableOpacity
         style={[
           styles.saveButton,
@@ -200,13 +206,6 @@ export const CollectionSelectorSheet = forwardRef<
     <AppSheet
       ref={sheetRef}
       title="Manage Collections"
-      subtitle={
-        isLoading
-          ? null
-          : hasCollections
-            ? `${selectedCount} selected`
-            : "Create a collection"
-      }
       detents={[0.62, 1]}
       scrollable
       backgroundColor={theme.colors.background}
@@ -221,26 +220,22 @@ export const CollectionSelectorSheet = forwardRef<
             </View>
           ) : (
             <>
-              <View style={styles.sectionHeadingRow}>
-                <View>
-                  <Text type="heading">Collections</Text>
-                  <Text type="caption" style={styles.sectionSubtitle}>
-                    {selectedCount} of {collections?.length ?? 0} selected
-                  </Text>
-                </View>
-              </View>
-
               {hasCollections ? (
-                <View style={styles.group}>
-                  {collections.map((collection, index) => {
+                <View style={styles.collectionList}>
+                  {collections.map((collection) => {
                     const isSelected = selectedIds.has(collection.id);
+                    const previewImages =
+                      "previewImages" in collection
+                        ? collection.previewImages
+                        : [];
+                    const recipeCount =
+                      "recipeCount" in collection ? collection.recipeCount : 0;
+
                     return (
                       <TouchableOpacity
                         key={collection.id}
                         style={[
                           styles.collectionRow,
-                          index === collections.length - 1 &&
-                            styles.lastGroupRow,
                           isSaving && styles.collectionRowDisabled,
                         ]}
                         onPress={() => handleToggleCollection(collection.id)}
@@ -248,27 +243,18 @@ export const CollectionSelectorSheet = forwardRef<
                         activeOpacity={0.78}
                       >
                         <View style={styles.collectionInfo}>
-                          <Ionicons
-                            name={
-                              collection.defaultType
-                                ? "bookmark-outline"
-                                : "albums-outline"
-                            }
-                            size={20}
-                            style={styles.collectionIcon}
+                          <ImageGrid
+                            images={previewImages}
+                            width={COLLECTION_PREVIEW_SIZE}
                           />
                           <View style={styles.collectionTextWrap}>
-                            <Text type="body" numberOfLines={1}>
+                            <Text type="headline" numberOfLines={1}>
                               {collection.name}
                             </Text>
-                            {collection.defaultType ? (
-                              <Text
-                                type="caption"
-                                style={styles.collectionMeta}
-                              >
-                                Default collection
-                              </Text>
-                            ) : null}
+                            <Text type="caption" style={styles.collectionMeta}>
+                              {recipeCount}{" "}
+                              {recipeCount === 1 ? "recipe" : "recipes"}
+                            </Text>
                           </View>
                         </View>
                         {isSelected ? (
@@ -342,18 +328,32 @@ export const CollectionSelectorSheet = forwardRef<
                 </View>
               ) : (
                 <TouchableOpacity
-                  style={styles.newCollectionButton}
+                  style={[styles.collectionRow, styles.newCollectionButton]}
                   onPress={() => setIsCreatingCollection(true)}
                   activeOpacity={0.78}
                 >
+                  <View style={styles.collectionInfo}>
+                    <View style={styles.newCollectionPreview}>
+                      <Ionicons
+                        name="add"
+                        size={28}
+                        style={styles.newCollectionPreviewIcon}
+                      />
+                    </View>
+                    <View style={styles.collectionTextWrap}>
+                      <Text type="headline" numberOfLines={1}>
+                        New Collection
+                      </Text>
+                      <Text type="caption" style={styles.collectionMeta}>
+                        Create collection
+                      </Text>
+                    </View>
+                  </View>
                   <Ionicons
                     name="add-circle-outline"
-                    size={22}
+                    size={24}
                     style={styles.newCollectionIcon}
                   />
-                  <Text type="body" style={styles.newCollectionText}>
-                    Create new collection
-                  </Text>
                 </TouchableOpacity>
               )}
             </>
@@ -378,52 +378,31 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingVertical: 32,
   },
-  sectionHeadingRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  collectionList: {
     gap: 12,
-  },
-  sectionSubtitle: {
-    color: theme.colors.textSecondary,
-    marginTop: 2,
-  },
-  group: {
-    overflow: "hidden",
-    borderRadius: theme.borderRadius.medium,
-    backgroundColor: theme.colors.inputBackground,
   },
   collectionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    paddingVertical: 4,
+    gap: 14,
   },
   collectionRowDisabled: {
     opacity: 0.5,
-  },
-  lastGroupRow: {
-    borderBottomWidth: 0,
   },
   collectionInfo: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    gap: 10,
-  },
-  collectionIcon: {
-    color: theme.colors.textSecondary,
+    gap: 12,
   },
   collectionTextWrap: {
     flex: 1,
+    gap: 3,
   },
   collectionMeta: {
     color: theme.colors.textSecondary,
-    marginTop: 1,
   },
   selectedIcon: {
     color: theme.colors.primary,
@@ -493,27 +472,25 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.buttonText,
   },
   newCollectionButton: {
-    flexDirection: "row",
+    opacity: 0.9,
+  },
+  newCollectionPreview: {
+    width: COLLECTION_PREVIEW_SIZE,
+    height: COLLECTION_PREVIEW_SIZE,
+    borderRadius: COLLECTION_PREVIEW_SIZE * 0.12,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    minHeight: 48,
-    borderRadius: theme.borderRadius.medium,
-    borderWidth: 1.5,
-    borderColor: theme.colors.border,
-    borderStyle: "dashed",
+    backgroundColor: theme.colors.inputBackground,
   },
-  newCollectionIcon: {
+  newCollectionPreviewIcon: {
     color: theme.colors.textSecondary,
   },
-  newCollectionText: {
+  newCollectionIcon: {
     color: theme.colors.textSecondary,
   },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.background,
   },
   saveButton: {

@@ -14,15 +14,23 @@ export type CollectionDetail = Outputs["collection"]["getCollectionDetail"];
 // Get user's collections with optional recipe membership info
 interface UseGetUserCollectionsParams {
   recipeId?: number;
+  includeMetadata?: boolean;
+  search?: string;
 }
 
 export const useGetUserCollections = ({
   recipeId,
+  includeMetadata,
+  search,
 }: UseGetUserCollectionsParams = {}) => {
   const trpc = useTRPC();
 
   return useQuery({
-    ...trpc.collection.getUserCollections.queryOptions({ recipeId }),
+    ...trpc.collection.getUserCollections.queryOptions({
+      recipeId,
+      includeMetadata,
+      search: search?.trim() || undefined,
+    }),
   });
 };
 
