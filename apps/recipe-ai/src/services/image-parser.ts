@@ -1,7 +1,7 @@
-import { ParsedRecipeSchema } from "../schema";
 import type { Env, ParseResult } from "../types";
 import { parseRecipeFromImage } from "./ai-client";
 import { aiResultToRecipe } from "./recipe-mapper";
+import { acceptedCandidate } from "./url-parse-utils";
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const VALID_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -88,12 +88,23 @@ export async function parseImage(
       sourceType: "image",
       sourceUrl: null,
     });
-    recipe.images = await uploadSourceImage(env, imageData, mimeType);
+    const sourceImages = await uploadSourceImage(env, imageData, mimeType);
+    const candidateRecipe = sourceImages.length
+      ? { ...recipe, images: sourceImages }
+      : recipe;
+    const parsedResult = await acceptedCandidate(
+      env,
+      "image",
+      candidateRecipe,
+      "ai",
+      {
+        parseMethod: "ai_only",
+        cache: false,
+        metadataSource: "image",
+      },
+    );
 
-    // Validate against schema
-    const validation = ParsedRecipeSchema(recipe);
-
-    if (validation instanceof Error) {
+    if (!parsedResult || !parsedResult.success) {
       return {
         success: false,
         error: {
@@ -103,34 +114,7 @@ export async function parseImage(
       };
     }
 
-    // Image parsing is inherently lower confidence than text/URL
-    // Count total ingredients and instructions across all sections
-    const totalIngredients = recipe.ingredientSections.reduce(
-      (sum, section) => sum + section.ingredients.length,
-      0,
-    );
-    const totalInstructions = recipe.instructionSections.reduce(
-      (sum, section) => sum + section.instructions.length,
-      0,
-    );
-
-    let confidence: "high" | "medium" | "low" = "low";
-    if (
-      totalIngredients >= 3 &&
-      totalInstructions >= 2 &&
-      recipe.name.length > 3
-    ) {
-      confidence = "medium";
-    }
-
-    return {
-      success: true,
-      data: recipe,
-      metadata: {
-        source: "image",
-        confidence,
-      },
-    };
+    return parsedResult;
   } catch (error) {
     return {
       success: false,

@@ -1,7 +1,8 @@
-import { ParsedRecipeSchema } from "../schema";
 import type { Env, ParseResult } from "../types";
 import { parseRecipeFromText } from "./ai-client";
 import { aiResultToRecipe } from "./recipe-mapper";
+import { acceptedCandidate } from "./url-parse-utils";
+import { extractRecipeOutline } from "../utils/recipe-outline-parser";
 
 /**
  * Parse a recipe from free-form text
@@ -29,53 +30,40 @@ export async function parseText(env: Env, text: string): Promise<ParseResult> {
   }
 
   try {
+    const outlineRecipe = extractRecipeOutline(text, {
+      sourceUrl: null,
+      sourceType: "text",
+    });
+    const outlineResult = await acceptedCandidate(
+      env,
+      "text",
+      outlineRecipe,
+      "ai",
+      {
+        parseMethod: "outline_rules",
+        cache: false,
+        metadataSource: "text",
+      },
+    );
+    if (outlineResult) return outlineResult;
+
     const aiResult = await parseRecipeFromText(env.AI, text.trim());
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "text",
       sourceUrl: null,
     });
-
-    // Validate against schema
-    const validation = ParsedRecipeSchema(recipe);
-
-    if (validation instanceof Error) {
-      return {
-        success: false,
-        error: {
-          code: "VALIDATION_FAILED",
-          message: "AI output did not match expected schema",
-        },
-      };
-    }
-
-    // Determine confidence based on completeness
-    // Count total ingredients and instructions across all sections
-    const totalIngredients = recipe.ingredientSections.reduce(
-      (sum, section) => sum + section.ingredients.length,
-      0,
-    );
-    const totalInstructions = recipe.instructionSections.reduce(
-      (sum, section) => sum + section.instructions.length,
-      0,
-    );
-
-    let confidence: "high" | "medium" | "low" = "medium";
-    if (
-      totalIngredients >= 3 &&
-      totalInstructions >= 2 &&
-      recipe.name.length > 3
-    ) {
-      confidence = "high";
-    } else if (totalIngredients < 2 || totalInstructions < 1) {
-      confidence = "low";
-    }
+    const result = await acceptedCandidate(env, "text", recipe, "ai", {
+      parseMethod: "ai_only",
+      cache: false,
+      metadataSource: "text",
+    });
+    if (result) return result;
 
     return {
-      success: true,
-      data: recipe,
-      metadata: {
-        source: "text",
-        confidence,
+      success: false,
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "AI output did not match expected schema",
       },
     };
   } catch (error) {

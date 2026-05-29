@@ -119,18 +119,107 @@ function validateContentType(response: Response) {
   }
 }
 
-async function readLimitedText(response: Response): Promise<string> {
-  const contentLength = response.headers.get("content-length");
-  if (contentLength && Number(contentLength) > MAX_HTML_BYTES) {
+export async function readLimitedBytes(
+  response: Response,
+  maxBytes = MAX_HTML_BYTES,
+): Promise<Uint8Array> {
+  const contentLength = response.headers?.get?.("content-length");
+  if (contentLength && Number(contentLength) > maxBytes) {
     throw new Error(`HTML response too large: ${contentLength} bytes`);
   }
 
-  const body = await response.arrayBuffer();
-  if (body.byteLength > MAX_HTML_BYTES) {
-    throw new Error(`HTML response too large: ${body.byteLength} bytes`);
+  if (!response.body || typeof response.body.getReader !== "function") {
+    if (typeof response.arrayBuffer === "function") {
+      const body = await response.arrayBuffer();
+      if (body.byteLength > maxBytes) {
+        throw new Error(`HTML response too large: ${body.byteLength} bytes`);
+      }
+      return new Uint8Array(body);
+    }
+
+    const readText = (response as { text?: () => Promise<string> }).text;
+    if (typeof readText !== "function") {
+      throw new Error("Response body is not readable");
+    }
+
+    const body = new TextEncoder().encode(await readText.call(response));
+    if (body.byteLength > maxBytes) {
+      throw new Error(`HTML response too large: ${body.byteLength} bytes`);
+    }
+    return body;
   }
 
-  return new TextDecoder().decode(body);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+        // Ignore cancellation failures; the size guard has already fired.
+      }
+      throw new Error(`HTML response too large: ${totalBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return bytes;
+}
+
+export async function readLimitedText(
+  response: Response,
+  maxBytes = MAX_HTML_BYTES,
+): Promise<string> {
+  return new TextDecoder().decode(await readLimitedBytes(response, maxBytes));
+}
+
+export async function resolveFinalFetchUrl(url: string): Promise<string> {
+  let currentUrl = validateFetchUrl(url);
+
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+    const response = await fetch(currentUrl.toString(), {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      headers: {
+        "User-Agent": USER_AGENTS[0]!,
+        Accept: "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      redirect: "manual",
+    });
+
+    if (
+      response.status >= 300 &&
+      response.status < 400 &&
+      response.headers.has("location")
+    ) {
+      if (redirectCount === MAX_REDIRECTS) {
+        throw new Error("Too many redirects");
+      }
+
+      currentUrl = validateFetchUrl(
+        new URL(response.headers.get("location")!, currentUrl).toString(),
+      );
+      continue;
+    }
+
+    return currentUrl.toString();
+  }
+
+  return currentUrl.toString();
 }
 
 /**

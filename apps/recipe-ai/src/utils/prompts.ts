@@ -132,6 +132,26 @@ export function createHtmlExtractionPrompt(cleanedHtml: string): string {
 ${cleanedHtml}`;
 }
 
+export function createRepairExtractionPrompt(options: {
+  evidence: string;
+  partialRecipeJson: string | null;
+}): string {
+  return `Repair the recipe extraction using only the source evidence below.
+
+Rules:
+- Return the same JSON shape as the recipe extraction API.
+- Use the partial recipe only as a starting point.
+- Do not invent missing ingredients, instructions, times, servings, tags, or descriptions.
+- If a field is not present in the evidence, use null or an empty array.
+- Prefer complete ingredient and instruction sections that are directly supported by the evidence.
+
+Partial recipe:
+${options.partialRecipeJson ?? "null"}
+
+Source evidence:
+${options.evidence}`;
+}
+
 export function createImageExtractionPrompt(): string {
   return `Extract all recipe information visible in this image. Include the recipe name, ingredients with quantities, and cooking instructions.`;
 }

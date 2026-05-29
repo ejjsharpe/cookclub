@@ -1,4 +1,4 @@
-import { validateFetchUrl } from "./html-fetcher";
+import { readLimitedText, validateFetchUrl } from "./html-fetcher";
 
 interface TikTokOembedResponse {
   title?: string;
@@ -23,6 +23,9 @@ interface TikTokHydrationContent {
   videoUrls: string[];
   subtitleUrls: string[];
 }
+
+const MAX_TIKTOK_HTML_BYTES = 2 * 1024 * 1024;
+const MAX_SUBTITLE_BYTES = 512 * 1024;
 
 function uniqueStrings(values: (string | null | undefined)[]): string[] {
   return Array.from(
@@ -59,10 +62,30 @@ function getTikTokItemStruct(data: unknown): Record<string, any> | null {
   if (!data || typeof data !== "object") return null;
 
   const scope = (data as Record<string, any>)["__DEFAULT_SCOPE__"];
-  const detail = scope?.["webapp.reflow.video.detail"];
-  const item = detail?.itemInfo?.itemStruct;
+  const details = [
+    scope?.["webapp.reflow.video.detail"],
+    scope?.["webapp.video-detail"],
+  ];
+  const item = details
+    .map((detail) => detail?.itemInfo?.itemStruct)
+    .find((candidate) => candidate && typeof candidate === "object");
 
   return item && typeof item === "object" ? item : null;
+}
+
+function getTikTokCaption(item: Record<string, any>): string | null {
+  if (Array.isArray(item.contents)) {
+    const contentCaption = item.contents
+      .map((content: Record<string, unknown>) =>
+        typeof content.desc === "string" ? content.desc.trim() : "",
+      )
+      .join("\n")
+      .trim();
+
+    if (contentCaption) return contentCaption;
+  }
+
+  return typeof item.desc === "string" ? item.desc : null;
 }
 
 function extractHydrationContent(html: string): TikTokHydrationContent | null {
@@ -75,7 +98,7 @@ function extractHydrationContent(html: string): TikTokHydrationContent | null {
     : [];
 
   return {
-    caption: typeof item.desc === "string" ? item.desc : null,
+    caption: getTikTokCaption(item),
     images: uniqueStrings([
       video.cover,
       video.originCover,
@@ -128,7 +151,9 @@ async function fetchSubtitleTranscript(
       });
       if (!response.ok) continue;
 
-      const transcript = parseWebVttTranscript(await response.text());
+      const transcript = parseWebVttTranscript(
+        await readLimitedText(response, MAX_SUBTITLE_BYTES),
+      );
       if (transcript) transcripts.push(transcript);
     } catch (error) {
       console.log(
@@ -157,6 +182,12 @@ async function fetchHydrationContent(
 
     const readText = (response as { text?: () => Promise<string> }).text;
     if (typeof readText !== "function") return null;
+
+    if (response.body) {
+      return extractHydrationContent(
+        await readLimitedText(response, MAX_TIKTOK_HTML_BYTES),
+      );
+    }
 
     return extractHydrationContent(await readText.call(response));
   } catch (error) {

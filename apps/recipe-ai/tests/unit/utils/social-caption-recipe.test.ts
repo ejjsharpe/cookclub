@@ -169,4 +169,30 @@ describe("extractSocialCaptionRecipe", () => {
       "Follow the method shown in the source video using the listed ingredients.",
     );
   });
+
+  it("extracts full recipes that start ingredients with a serves heading", () => {
+    const caption =
+      "COTTAGE PIE  Nothing fancy, just a cozy cottage pie doing what it does best. Rich, slow-cooked filling topped with golden potato & swede mash. Comfort food, exactly as it should be. Serves 8: •1kg 5% beef mince  •2 medium sized carrots  •1 white onion •3 celery sticks  •3 garlic cloves  •2 large tbsp tomato puree  •1 large glass of red wine  •600ml of beef stock •A few sprigs each of rosemary & thyme •2/3 tbsp of Henderson’s relish •Seasoning to taste  •chopped chives to garnish  For the mash you’ll need: •500g potatoes (approx) •1 medium sized swede •100g butter •3 egg yolks •100g mature cheddar cheese  •80g Parmesan cheese  •Seasoning to taste  Method:  * Start off by frying the beef mince with salt & pepper on a medium/high heat until golden brown (do this in 2 batches).  * Remove the mince from the pan & set aside.  * In the same pan, fry off onion, carrot, celery & garlic until the veg has softened.  * Add tomato puree & cook for a few minutes before reducing a large glass of red wine.  * Once the wine has reduced by at least half, add rosemary, thyme, Henderson’s relish & beef stock and simmer until the sauce has reduced & thickened. (Usually about 40 minutes on medium heat) * For the topping, boil peeled potatoes & swede until fork tender & put them through a potato ricer. * Add butter, egg yolks, mature cheddar, parmesan & seasoning then mix well.  * Transfer the filling into an oven proof dish, adding the mash & swede mixture on top, followed by more Parmesan cheese.  * Bake in a pre heated oven at 180 degrees Celsius for 30/40 or until golden brown.  * Remove from the oven & leave to set slightly before cutting. * Top with chopped chives & divide into portions. Enjoy!  #cooking #homecooking #recipe #dinnerideas #fyp";
+
+    const recipe = extractSocialCaptionRecipe(
+      caption,
+      "https://vm.tiktok.com/ZNRWJ2Wa9/",
+      ["https://example.com/cottage-pie.jpg"],
+    );
+
+    expect(recipe).not.toBeNull();
+    expect(recipe?.name).toBe("Cottage Pie");
+    expect(recipe?.servings).toBe(8);
+    expect(recipe?.ingredientSections).toHaveLength(2);
+    expect(recipe?.ingredientSections[0]?.ingredients).toHaveLength(12);
+    expect(recipe?.ingredientSections[1]?.name).toBe("Mash");
+    expect(recipe?.ingredientSections[1]?.ingredients).toHaveLength(7);
+    expect(recipe?.instructionSections[0]?.instructions).toHaveLength(11);
+    expect(
+      recipe?.instructionSections[0]?.instructions[0]?.instruction,
+    ).toContain("frying the beef mince");
+    expect(recipe?.instructionSections[0]?.instructions[10]?.instruction).toBe(
+      "Top with chopped chives & divide into portions. Enjoy!",
+    );
+  });
 });

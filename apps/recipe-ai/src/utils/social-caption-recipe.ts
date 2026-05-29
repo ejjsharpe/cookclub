@@ -167,9 +167,13 @@ function splitExplicitRecipeSections(caption: string): {
   intro: string;
   ingredientsText: string;
   directionsText: string;
+  servings: number | null;
 } | null {
   const normalized = normalizeText(caption);
-  const ingredientsMatch = /\bingredients\s*:/i.exec(normalized);
+  const ingredientsMatch =
+    /\b(?:ingredients?|serves?\s+\d{1,3}|makes?\s+\d{1,3}|for\s+the\s+[^:]{1,80}\s+you(?:'|’)?ll\s+need)\s*:/i.exec(
+      normalized,
+    );
   if (ingredientsMatch?.index == null) return null;
 
   const afterIngredients = normalized.slice(
@@ -187,6 +191,8 @@ function splitExplicitRecipeSections(caption: string): {
     directionsText: afterIngredients
       .slice(directionsMatch.index + directionsMatch[0].length)
       .trim(),
+    servings:
+      servingsFromText(ingredientsMatch[0]) ?? servingsFromText(caption),
   };
 }
 
@@ -233,34 +239,96 @@ function parseIngredientItems(items: string[]): Ingredient[] {
     .filter((ingredient) => ingredient.name.length > 0);
 }
 
+interface IngredientSectionMatch {
+  index: number;
+  end: number;
+  name: string | null;
+}
+
+function ingredientSectionMatches(text: string): IngredientSectionMatch[] {
+  const matches: IngredientSectionMatch[] = [];
+
+  const legacyMatches = [...text.matchAll(/\b(Soup|Garnishes?)\b/gi)].filter(
+    (match) => match.index != null,
+  );
+  if (legacyMatches.length >= 2) {
+    matches.push(
+      ...legacyMatches.map((match) => ({
+        index: match.index!,
+        end: match.index! + match[0].length,
+        name: titleCase(match[0]),
+      })),
+    );
+  }
+
+  for (const match of text.matchAll(
+    /\bfor\s+the\s+([^:]{1,80}?)\s+you(?:'|’)?ll\s+need\s*:/gi,
+  )) {
+    if (match.index == null || !match[1]) continue;
+    matches.push({
+      index: match.index,
+      end: match.index + match[0].length,
+      name: titleCase(match[1].replace(/[^\p{L}\p{N}\s'&-]/gu, " ")),
+    });
+  }
+
+  return matches
+    .sort((a, b) => a.index - b.index)
+    .filter(
+      (match, index, all) =>
+        index === 0 || match.index >= (all[index - 1]?.end ?? 0),
+    );
+}
+
 function parseExplicitIngredientSections(
   ingredientsText: string,
 ): IngredientSection[] {
-  const sectionMatches = [
-    ...ingredientsText.matchAll(/\b(Soup|Garnishes?)\b/gi),
-  ].filter((match) => match.index != null);
+  const sectionMatches = ingredientSectionMatches(ingredientsText);
 
-  if (sectionMatches.length >= 2) {
-    return sectionMatches
-      .map((match, index) => {
-        const start = match.index! + match[0].length;
-        const end = sectionMatches[index + 1]?.index ?? ingredientsText.length;
-        const ingredients = parseIngredientItems(
-          splitIngredientItems(ingredientsText.slice(start, end)),
-        );
+  if (sectionMatches.length > 0) {
+    const sections: IngredientSection[] = [];
+    const leadingText = ingredientsText
+      .slice(0, sectionMatches[0]?.index)
+      .trim();
+    const leadingIngredients = parseIngredientItems(
+      splitIngredientItems(leadingText),
+    );
 
-        return {
-          name: titleCase(match[0]),
-          ingredients,
-        };
-      })
-      .filter((section) => section.ingredients.length > 0);
+    if (leadingIngredients.length > 0) {
+      sections.push({ name: null, ingredients: leadingIngredients });
+    }
+
+    sections.push(
+      ...sectionMatches
+        .map((match, index) => {
+          const end =
+            sectionMatches[index + 1]?.index ?? ingredientsText.length;
+          const ingredients = parseIngredientItems(
+            splitIngredientItems(ingredientsText.slice(match.end, end)),
+          );
+
+          return {
+            name: match.name,
+            ingredients,
+          };
+        })
+        .filter((section) => section.ingredients.length > 0),
+    );
+
+    return sections;
   }
 
   const ingredients = parseIngredientItems(
     splitIngredientItems(ingredientsText),
   );
   return ingredients.length > 0 ? [{ name: null, ingredients }] : [];
+}
+
+function cleanInstructionStep(value: string): string {
+  return value
+    .replace(/^[-*•·\s]+/, "")
+    .replace(/^\d+[.)]\s+/, "")
+    .trim();
 }
 
 function parseExplicitInstructionSections(
@@ -278,15 +346,20 @@ function parseExplicitInstructionSections(
           const end = matches[index + 1]?.index ?? text.length;
           return text.slice(start, end).trim();
         })
-      : text
-          .split(/\n|(?:\.\s+)(?=[A-Z])/g)
-          .map((step) => step.trim())
-          .filter(Boolean);
+      : /(?:^|\s)[*•·]\s+/.test(text)
+        ? text
+            .split(/(?:^|\s)[*•·]\s+/g)
+            .map(cleanInstructionStep)
+            .filter(Boolean)
+        : text
+            .split(/\n|(?:\.\s+)(?=[A-Z])/g)
+            .map(cleanInstructionStep)
+            .filter(Boolean);
 
   const parsedInstructions = instructions
     .map((instruction, index) => ({
       index,
-      instruction,
+      instruction: cleanInstructionStep(instruction),
       imageUrl: null,
     }))
     .filter((instruction) => instruction.instruction.length > 0);
@@ -306,11 +379,37 @@ function minutesFromCaption(caption: string): number | null {
   return Number.isFinite(minutes) ? minutes : null;
 }
 
+function servingsFromText(text: string): number | null {
+  const match = text.match(/\bserves?\s+(\d{1,3})\b/i);
+  if (!match?.[1]) return null;
+
+  const servings = Number(match[1]);
+  return Number.isFinite(servings) ? servings : null;
+}
+
+function titleFromLeadingCaps(intro: string): string | null {
+  const words = removeSocialNoise(intro).split(/\s+/).filter(Boolean);
+  const titleWords: string[] = [];
+
+  for (const word of words) {
+    const letters = word.replace(/[^\p{L}]/gu, "");
+    if (!letters) continue;
+    if (letters !== letters.toUpperCase()) break;
+    titleWords.push(word);
+  }
+
+  const title = titleWords.join(" ");
+  return title.length >= 3 ? cleanTitle(title) : null;
+}
+
 function titleFromIntro(intro: string): string {
   const thisWillBeMatch = intro.match(/\bthis\s+(.+?)\s+will be\b/i);
   if (thisWillBeMatch?.[1]) {
     return cleanTitle(thisWillBeMatch[1]);
   }
+
+  const leadingCapsTitle = titleFromLeadingCaps(intro);
+  if (leadingCapsTitle) return leadingCapsTitle;
 
   return cleanTitle(intro);
 }
@@ -350,7 +449,7 @@ function extractExplicitSocialCaptionRecipe(
     prepTime: totalTime,
     cookTime: null,
     totalTime,
-    servings: null,
+    servings: sections.servings,
     sourceUrl,
     sourceType: "url",
     ingredientSections,

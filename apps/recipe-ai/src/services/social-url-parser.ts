@@ -1,12 +1,13 @@
 import * as cheerio from "cheerio";
 
 import type { ParsedRecipe } from "../schema";
-import type { Env, ParseResult } from "../types";
+import type { Env, ParseMetadata, ParseResult } from "../types";
 import {
-  acceptedCandidate,
+  evaluateRecipeCandidates,
+  type RecipeCandidate,
   reuploadImagesToR2,
+  selectBestRecipeCandidate,
   tryAiRecipeCandidate,
-  trySocialCaptionRecipe,
 } from "./url-parse-utils";
 import {
   extractInstagramContent as extractInstagramContentBrowser,
@@ -23,6 +24,7 @@ import {
   extractInstagramContent as extractInstagramContentOembed,
   extractShortcode,
 } from "../utils/instagram-fetcher";
+import { extractRecipeOutline } from "../utils/recipe-outline-parser";
 import { extractSocialCaptionRecipe } from "../utils/social-caption-recipe";
 import { enrichSocialMediaRecipeText } from "../utils/social-media-enrichment";
 import {
@@ -77,6 +79,55 @@ function socialPrefix(platform: SocialPlatform): string {
   return `social/${platform}`;
 }
 
+interface SocialParseOptions {
+  diagnostics?: ParseMetadata["diagnostics"];
+}
+
+function socialCandidateDiagnostics(
+  options?: SocialParseOptions,
+): ParseMetadata["diagnostics"] | undefined {
+  return options?.diagnostics;
+}
+
+function socialDeterministicCandidates(options: {
+  url: string;
+  content: string | null;
+  images: string[];
+}): RecipeCandidate[] {
+  return [
+    {
+      recipe: extractSocialCaptionRecipe(
+        options.content,
+        options.url,
+        options.images,
+      ),
+      source: "social_ai",
+      parseMethod: "caption_rules",
+      cache: false,
+      evidence: {
+        imageCount: options.images.length,
+        textLength: options.content?.length ?? 0,
+        sourceUrl: options.url,
+      },
+    },
+    {
+      recipe: extractRecipeOutline(options.content, {
+        sourceUrl: options.url,
+        sourceType: "url",
+        images: options.images,
+      }),
+      source: "social_ai",
+      parseMethod: "outline_rules",
+      cache: false,
+      evidence: {
+        imageCount: options.images.length,
+        textLength: options.content?.length ?? 0,
+        sourceUrl: options.url,
+      },
+    },
+  ];
+}
+
 async function finalizeSocialResult(
   env: Env,
   url: string,
@@ -91,21 +142,15 @@ async function finalizeSocialResult(
     images,
     socialPrefix(platform),
   );
-  const finalResult = await acceptedCandidate(
-    env,
-    url,
-    { ...result.data, images: permanentImages },
-    "social_ai",
-    { parseMethod: result.metadata.parseMethod },
-  );
+  if (!permanentImages.length) return result;
 
-  if (finalResult) return finalResult;
-
-  return (
-    (await acceptedCandidate(env, url, result.data, "social_ai", {
-      parseMethod: result.metadata.parseMethod,
-    })) ?? result
-  );
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      images: permanentImages,
+    },
+  };
 }
 
 async function parseSocialTextRecipe(
@@ -117,7 +162,7 @@ async function parseSocialTextRecipe(
     images: string[];
     noContentMessage: string;
     aiErrorCode: string;
-  },
+  } & SocialParseOptions,
 ): Promise<ParseResult> {
   if (!options.content || options.content.length < 50) {
     return {
@@ -127,6 +172,34 @@ async function parseSocialTextRecipe(
         message: options.noContentMessage,
       },
     };
+  }
+
+  const candidates = socialDeterministicCandidates({
+    url: options.url,
+    content: options.content,
+    images: options.images,
+  });
+  const deterministicEvaluation = evaluateRecipeCandidates(candidates);
+  if ((deterministicEvaluation.accepted[0]?.quality.score ?? 0) >= 75) {
+    const deterministicResult = await selectBestRecipeCandidate(
+      env,
+      options.url,
+      candidates,
+      {
+        cache: false,
+        canonicalUrl: options.url,
+        diagnostics: socialCandidateDiagnostics(options),
+      },
+    );
+    if (deterministicResult) {
+      return finalizeSocialResult(
+        env,
+        options.url,
+        options.platform,
+        deterministicResult,
+        options.images,
+      );
+    }
   }
 
   const aiAttempt = await tryAiRecipeCandidate(
@@ -139,29 +212,36 @@ async function parseSocialTextRecipe(
     `[${options.platform}]`,
     { cache: false },
   );
-  if (aiAttempt.result) {
-    return finalizeSocialResult(
-      env,
-      options.url,
-      options.platform,
-      aiAttempt.result,
-      options.images,
-    );
+  if (aiAttempt.result?.success) {
+    candidates.push({
+      recipe: aiAttempt.result.data,
+      source: "social_ai",
+      parseMethod: aiAttempt.result.metadata.parseMethod,
+      cache: false,
+      evidence: {
+        imageCount: options.images.length,
+        textLength: options.content.length,
+        sourceUrl: options.url,
+      },
+    });
   }
 
-  const fallbackResult = await trySocialCaptionRecipe(
+  const bestResult = await selectBestRecipeCandidate(
     env,
     options.url,
-    options.content,
-    options.images,
-    { cache: false },
+    candidates,
+    {
+      cache: false,
+      canonicalUrl: options.url,
+      diagnostics: socialCandidateDiagnostics(options),
+    },
   );
-  if (fallbackResult) {
+  if (bestResult) {
     return finalizeSocialResult(
       env,
       options.url,
       options.platform,
-      fallbackResult,
+      bestResult,
       options.images,
     );
   }
@@ -178,7 +258,11 @@ async function parseSocialTextRecipe(
   };
 }
 
-async function parseInstagramUrl(env: Env, url: string): Promise<ParseResult> {
+async function parseInstagramUrl(
+  env: Env,
+  url: string,
+  options?: SocialParseOptions,
+): Promise<ParseResult> {
   const shortcode = extractShortcode(url) || "unknown";
   console.log(`Parsing Instagram URL [${shortcode}]:`, url);
 
@@ -252,6 +336,7 @@ async function parseInstagramUrl(env: Env, url: string): Promise<ParseResult> {
     noContentMessage:
       "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
     aiErrorCode: "INSTAGRAM_PARSE_FAILED",
+    diagnostics: options?.diagnostics,
   });
   if (result.success) {
     console.log(
@@ -313,6 +398,7 @@ function parseGenericSocialHtml(
   url: string,
   platform: SocialPlatform,
   html: string,
+  options?: SocialParseOptions,
 ): Promise<ParseResult> {
   return parseSocialTextRecipe(env, {
     url,
@@ -322,6 +408,7 @@ function parseGenericSocialHtml(
     noContentMessage:
       "Could not extract recipe content from this social media link.",
     aiErrorCode: "AI_PARSE_FAILED",
+    diagnostics: options?.diagnostics,
   });
 }
 
@@ -329,6 +416,7 @@ async function parseGenericSocialUrl(
   env: Env,
   url: string,
   platform: SocialPlatform,
+  options?: SocialParseOptions,
 ): Promise<ParseResult> {
   let plainResult: ParseResult | null = null;
   let fetchError: unknown = null;
@@ -339,6 +427,7 @@ async function parseGenericSocialUrl(
       url,
       platform,
       await fetchHtml(url, 1),
+      options,
     );
     if (plainResult.success) return plainResult;
   } catch (error) {
@@ -352,6 +441,7 @@ async function parseGenericSocialUrl(
         url,
         platform,
         await fetchHtmlWithBrowser(env.BROWSER, url),
+        options,
       );
       if (browserResult.success || !plainResult) return browserResult;
     } catch (browserError) {
@@ -444,7 +534,11 @@ function mergeTikTokContent(
   };
 }
 
-async function parseTikTokUrl(env: Env, url: string): Promise<ParseResult> {
+async function parseTikTokUrl(
+  env: Env,
+  url: string,
+  options?: SocialParseOptions,
+): Promise<ParseResult> {
   try {
     let result: TikTokContent = {
       caption: null,
@@ -500,6 +594,12 @@ async function parseTikTokUrl(env: Env, url: string): Promise<ParseResult> {
       };
     }
 
+    const candidates = socialDeterministicCandidates({
+      url,
+      content: result.caption,
+      images: result.images,
+    });
+
     const captionAiAttempt = await tryAiRecipeCandidate(
       env,
       url,
@@ -510,14 +610,41 @@ async function parseTikTokUrl(env: Env, url: string): Promise<ParseResult> {
       "[TikTok]",
       { cache: false },
     );
-    if (captionAiAttempt.result) {
-      return finalizeSocialResult(
+    if (captionAiAttempt.result?.success) {
+      candidates.push({
+        recipe: captionAiAttempt.result.data,
+        source: "social_ai",
+        parseMethod: captionAiAttempt.result.metadata.parseMethod,
+        cache: false,
+        evidence: {
+          imageCount: result.images.length,
+          textLength: result.caption?.length ?? 0,
+          sourceUrl: url,
+        },
+      });
+    }
+
+    const captionEvaluation = evaluateRecipeCandidates(candidates);
+    if ((captionEvaluation.accepted[0]?.quality.score ?? 0) >= 75) {
+      const captionResult = await selectBestRecipeCandidate(
         env,
         url,
-        "tiktok",
-        captionAiAttempt.result,
-        result.images,
+        candidates,
+        {
+          cache: false,
+          canonicalUrl: url,
+          diagnostics: socialCandidateDiagnostics(options),
+        },
       );
+      if (captionResult) {
+        return finalizeSocialResult(
+          env,
+          url,
+          "tiktok",
+          captionResult,
+          result.images,
+        );
+      }
     }
 
     if (
@@ -561,14 +688,18 @@ async function parseTikTokUrl(env: Env, url: string): Promise<ParseResult> {
           "[TikTok]",
           { cache: false },
         );
-        if (enrichedAiAttempt.result) {
-          return finalizeSocialResult(
-            env,
-            url,
-            "tiktok",
-            enrichedAiAttempt.result,
-            result.images,
-          );
+        if (enrichedAiAttempt.result?.success) {
+          candidates.push({
+            recipe: enrichedAiAttempt.result.data,
+            source: "social_ai",
+            parseMethod: enrichedAiAttempt.result.metadata.parseMethod,
+            cache: false,
+            evidence: {
+              imageCount: result.images.length,
+              textLength: enrichment.enrichedText.length,
+              sourceUrl: url,
+            },
+          });
         }
       }
     }
@@ -579,12 +710,15 @@ async function parseTikTokUrl(env: Env, url: string): Promise<ParseResult> {
       );
     }
 
-    const fallbackResult = await acceptedCandidate(
+    const fallbackResult = await selectBestRecipeCandidate(
       env,
       url,
-      fallbackRecipe,
-      "social_ai",
-      { parseMethod: "caption_rules", cache: false },
+      candidates,
+      {
+        cache: false,
+        canonicalUrl: url,
+        diagnostics: socialCandidateDiagnostics(options),
+      },
     );
     if (fallbackResult) {
       return finalizeSocialResult(
@@ -621,8 +755,9 @@ export function parseSocialUrl(
   env: Env,
   url: string,
   platform: SocialPlatform,
+  options?: SocialParseOptions,
 ): Promise<ParseResult> {
-  if (platform === "instagram") return parseInstagramUrl(env, url);
-  if (platform === "tiktok") return parseTikTokUrl(env, url);
-  return parseGenericSocialUrl(env, url, platform);
+  if (platform === "instagram") return parseInstagramUrl(env, url, options);
+  if (platform === "tiktok") return parseTikTokUrl(env, url, options);
+  return parseGenericSocialUrl(env, url, platform, options);
 }

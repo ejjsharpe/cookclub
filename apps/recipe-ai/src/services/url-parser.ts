@@ -1,14 +1,15 @@
 import type { ParsedRecipe } from "../schema";
 import { ParsedRecipeSchema } from "../schema";
 import type { Env, ParseResult } from "../types";
-import { parseRecipeFromHtml } from "./ai-client";
+import { parseRecipeFromHtml, repairRecipeFromEvidence } from "./ai-client";
 import { deleteCachedRecipe, getCachedRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
-import { getSocialPlatform, parseSocialUrl } from "./social-url-parser";
+import { parseSocialUrl } from "./social-url-parser";
+import { createSourceSnapshot } from "./source-snapshot";
 import {
-  acceptedBestCandidate,
-  acceptedCandidate,
+  evaluateRecipeCandidates,
   type RecipeCandidate,
+  selectBestRecipeCandidate,
 } from "./url-parse-utils";
 import {
   discoverAlternateRecipeUrls,
@@ -24,13 +25,17 @@ import {
   extractStepImageContext,
   focusRecipeContent,
 } from "../utils/html-cleaner";
-import { fetchHtml, isLikelyBotBlockedError } from "../utils/html-fetcher";
+import {
+  fetchHtml,
+  isLikelyBotBlockedError,
+  readLimitedText,
+} from "../utils/html-fetcher";
 import { fetchReaderMarkdown } from "../utils/reader-fetcher";
+import { extractRecipeOutline } from "../utils/recipe-outline-parser";
 import {
   evaluateRecipeQuality,
   mergeRecipeImages,
   normalizeRecipeForImport,
-  normalizeRecipeUrl,
 } from "../utils/recipe-quality";
 import { extractStructuredRecipeCandidates } from "../utils/structured-data";
 import {
@@ -43,17 +48,63 @@ export interface ParseUrlOptions {
   structuredOnly?: boolean;
 }
 
-async function tryReaderRecipe(url: string): Promise<ParsedRecipe | null> {
+async function collectReaderCandidates(
+  url: string,
+): Promise<RecipeCandidate[]> {
+  const startTime = Date.now();
   try {
     const markdown = await fetchReaderMarkdown(url);
-    return extractMarkdownRecipeCard(markdown, url);
+    const markdownRecipe = extractMarkdownRecipeCard(markdown, url);
+    const outlineRecipe = extractRecipeOutline(markdown, {
+      sourceUrl: url,
+      sourceType: "url",
+      images: markdownRecipe?.images ?? [],
+    });
+
+    return [
+      {
+        recipe: markdownRecipe,
+        source: "reader",
+        parseMethod: "reader",
+        elapsedMs: elapsed(startTime),
+        evidence: {
+          imageCount: markdownRecipe?.images?.length ?? 0,
+          textLength: markdown.length,
+          sourceUrl: url,
+        },
+      },
+      {
+        recipe: outlineRecipe,
+        source: "reader",
+        parseMethod: "outline_rules",
+        elapsedMs: elapsed(startTime),
+        evidence: {
+          imageCount: outlineRecipe?.images?.length ?? 0,
+          textLength: markdown.length,
+          sourceUrl: url,
+        },
+      },
+    ];
   } catch (error) {
     console.log(
       "Reader fallback failed:",
       error instanceof Error ? error.message : error,
     );
-    return null;
+    return [
+      {
+        recipe: null,
+        source: "reader",
+        parseMethod: "reader",
+        elapsedMs: elapsed(startTime),
+        evidence: { sourceUrl: url },
+        error,
+      },
+    ];
   }
+}
+
+function elapsed(startTime: number): number {
+  return Math.max(0, Date.now() - startTime);
 }
 
 function withOriginalSourceUrl(
@@ -73,64 +124,99 @@ function structuredRecipeCandidates(
     recipe: mergeRecipeImages({ ...recipe, sourceUrl }, imageUrls),
     source: "structured",
     parseMethod: "schema_org",
+    evidence: {
+      imageCount: recipe.images?.length ?? imageUrls.length,
+      sourceUrl: htmlUrl,
+    },
   }));
 }
 
-async function tryDeterministicHtmlRecipe(
-  env: Env,
-  cacheUrl: string,
+function deterministicHtmlCandidates(
   html: string,
   htmlUrl: string,
   sourceUrl: string,
-): Promise<ParseResult | null> {
+): RecipeCandidate[] {
   const imageUrls = extractImageUrls(html, htmlUrl);
-  const structuredResult = await acceptedBestCandidate(
-    env,
-    cacheUrl,
-    structuredRecipeCandidates(html, htmlUrl, sourceUrl, imageUrls),
-  );
-  if (structuredResult) return structuredResult;
-
   const visibleRecipe = withOriginalSourceUrl(
     extractVisibleRecipeCard(html, htmlUrl),
     sourceUrl,
   );
-  return acceptedCandidate(
-    env,
-    cacheUrl,
-    visibleRecipe ? mergeRecipeImages(visibleRecipe, imageUrls) : null,
-    "visible",
-    { parseMethod: "visible_card" },
-  );
+  const focusedText = focusRecipeContent(cleanHtml(html), 12_000);
+  const outlineRecipe = extractRecipeOutline(focusedText, {
+    sourceUrl,
+    sourceType: "url",
+    images: imageUrls,
+  });
+
+  return [
+    ...structuredRecipeCandidates(html, htmlUrl, sourceUrl, imageUrls),
+    {
+      recipe: visibleRecipe
+        ? mergeRecipeImages(visibleRecipe, imageUrls)
+        : null,
+      source: "visible",
+      parseMethod: "visible_card",
+      evidence: {
+        imageCount: imageUrls.length,
+        sourceUrl: htmlUrl,
+      },
+    },
+    {
+      recipe: outlineRecipe,
+      source: "reader",
+      parseMethod: "outline_rules",
+      evidence: {
+        imageCount: imageUrls.length,
+        textLength: focusedText.length,
+        sourceUrl: htmlUrl,
+      },
+    },
+  ];
 }
 
-async function tryAlternateRecipePages(
-  env: Env,
+async function collectAlternateRecipePageCandidates(
   sourceUrl: string,
   html: string,
-): Promise<ParseResult | null> {
+): Promise<RecipeCandidate[]> {
   const alternateUrls = discoverAlternateRecipeUrls(html, sourceUrl);
+  const candidates: RecipeCandidate[] = [];
 
   for (const alternateUrl of alternateUrls) {
+    const startTime = Date.now();
     try {
       const alternateHtml = await fetchHtml(alternateUrl, 0);
-      const result = await tryDeterministicHtmlRecipe(
-        env,
-        sourceUrl,
-        alternateHtml,
-        alternateUrl,
-        sourceUrl,
+      candidates.push(
+        ...deterministicHtmlCandidates(
+          alternateHtml,
+          alternateUrl,
+          sourceUrl,
+        ).map((candidate) => ({
+          ...candidate,
+          id: `alternate-${candidate.parseMethod ?? candidate.source}-${candidates.length + 1}`,
+          elapsedMs: elapsed(startTime),
+          evidence: {
+            ...candidate.evidence,
+            sourceUrl: alternateUrl,
+          },
+        })),
       );
-      if (result) return result;
     } catch (error) {
       console.log(
         "Alternate recipe page failed:",
         error instanceof Error ? error.message : error,
       );
+      candidates.push({
+        recipe: null,
+        source: "reader",
+        parseMethod: "reader",
+        elapsedMs: elapsed(startTime),
+        evidence: { sourceUrl: alternateUrl },
+        error,
+      });
     }
   }
 
-  return null;
+  return candidates;
 }
 
 interface WordPressRestPost {
@@ -184,39 +270,83 @@ async function fetchWordPressRestHtml(restUrl: string): Promise<string | null> {
 
   if (!response.ok) return null;
 
-  const data: unknown = await response.json();
+  const data: unknown =
+    !response.body &&
+    typeof (response as { json?: () => Promise<unknown> }).json === "function"
+      ? await (response as { json: () => Promise<unknown> }).json()
+      : JSON.parse(await readLimitedText(response, 512 * 1024));
   const post = Array.isArray(data) ? data[0] : data;
   if (!post || typeof post !== "object") return null;
 
   return wordPressPostToHtml(post as WordPressRestPost);
 }
 
-async function tryWordPressRestRecipe(
-  env: Env,
+async function collectWordPressRestCandidates(
   sourceUrl: string,
   html: string,
-): Promise<ParseResult | null> {
+): Promise<RecipeCandidate[]> {
   const restUrl = getWordPressRestPostUrl(html, sourceUrl);
-  if (!restUrl) return null;
+  if (!restUrl) return [];
 
+  const startTime = Date.now();
   try {
     const restHtml = await fetchWordPressRestHtml(restUrl);
-    if (!restHtml) return null;
+    if (!restHtml) return [];
 
-    return tryDeterministicHtmlRecipe(
-      env,
-      sourceUrl,
-      restHtml,
-      sourceUrl,
-      sourceUrl,
+    return deterministicHtmlCandidates(restHtml, sourceUrl, sourceUrl).map(
+      (candidate) => ({
+        ...candidate,
+        id: `wordpress-${candidate.parseMethod ?? candidate.source}`,
+        elapsedMs: elapsed(startTime),
+        evidence: {
+          ...candidate.evidence,
+          sourceUrl: restUrl,
+        },
+      }),
     );
   } catch (error) {
     console.log(
       "WordPress REST fallback failed:",
       error instanceof Error ? error.message : error,
     );
-    return null;
+    return [
+      {
+        recipe: null,
+        source: "reader",
+        parseMethod: "reader",
+        elapsedMs: elapsed(startTime),
+        evidence: { sourceUrl: restUrl },
+        error,
+      },
+    ];
   }
+}
+
+function bestPartialCandidate(
+  candidates: RecipeCandidate[],
+): ParsedRecipe | null {
+  const partials = candidates
+    .map((candidate) => {
+      if (!candidate.recipe) return null;
+      const normalized = normalizeRecipeForImport(candidate.recipe);
+      if (ParsedRecipeSchema(normalized) instanceof Error) return null;
+
+      return {
+        recipe: normalized,
+        quality: evaluateRecipeQuality(normalized, candidate.source),
+      };
+    })
+    .filter(
+      (
+        partial,
+      ): partial is {
+        recipe: ParsedRecipe;
+        quality: ReturnType<typeof evaluateRecipeQuality>;
+      } => Boolean(partial),
+    )
+    .sort((a, b) => b.quality.score - a.quality.score);
+
+  return partials[0]?.recipe ?? null;
 }
 
 /**
@@ -236,18 +366,21 @@ export async function parseUrl(
   options?: ParseUrlOptions,
 ): Promise<ParseResult> {
   const { structuredOnly = false } = options ?? {};
-  let sourceUrl: string;
+  let sourceSnapshot: Awaited<ReturnType<typeof createSourceSnapshot>>;
   try {
-    sourceUrl = normalizeRecipeUrl(url);
-  } catch {
+    sourceSnapshot = await createSourceSnapshot(url);
+  } catch (error) {
     return {
       success: false,
       error: {
         code: "INVALID_URL",
-        message: "Invalid recipe URL",
+        message: error instanceof Error ? error.message : "Invalid recipe URL",
       },
     };
   }
+
+  const sourceUrl = sourceSnapshot.canonicalUrl;
+  const diagnostics = sourceSnapshot.diagnostics;
 
   const cached = await getCachedRecipe(env.RECIPE_CACHE, sourceUrl);
   if (cached) {
@@ -263,6 +396,24 @@ export async function parseUrl(
           source: "url",
           confidence: quality.confidence,
           cached: true,
+          canonicalUrl: sourceUrl,
+          diagnostics: {
+            ...diagnostics,
+            selectedAttempt: "cached",
+            attempts: [
+              {
+                id: "cached",
+                method: "cached",
+                source: "cached",
+                status: "accepted",
+                score: quality.score,
+                confidence: quality.confidence,
+                reasons: quality.reasons,
+                ingredientCount: quality.ingredientCount,
+                instructionCount: quality.instructionCount,
+              },
+            ],
+          },
         },
       };
     }
@@ -283,7 +434,7 @@ export async function parseUrl(
 
   // Check if this URL requires browser rendering (Instagram, TikTok, etc.)
   const needsBrowser = requiresBrowserRendering(sourceUrl);
-  const socialPlatform = getSocialPlatform(sourceUrl);
+  const socialPlatform = sourceSnapshot.platform;
 
   // Social media URLs don't have structured data - reject early for structuredOnly
   if (structuredOnly && socialPlatform) {
@@ -298,11 +449,14 @@ export async function parseUrl(
   }
 
   if (socialPlatform) {
-    return parseSocialUrl(env, sourceUrl, socialPlatform);
+    return parseSocialUrl(env, sourceUrl, socialPlatform, {
+      diagnostics,
+    });
   }
 
   // Fetch HTML (use browser for JS-heavy sites, regular fetch otherwise)
   let html: string;
+  const candidates: RecipeCandidate[] = [];
   try {
     if (needsBrowser) {
       console.log("Using browser rendering for:", sourceUrl);
@@ -311,16 +465,16 @@ export async function parseUrl(
       html = await fetchHtml(sourceUrl, 1);
     }
   } catch (error) {
-    if (!structuredOnly) {
-      const readerRecipe = await tryReaderRecipe(sourceUrl);
-      const readerResult = await acceptedCandidate(
-        env,
-        sourceUrl,
-        readerRecipe,
-        "reader",
-      );
-      if (readerResult) return readerResult;
-    }
+    const readerResult = await selectBestRecipeCandidate(
+      env,
+      sourceUrl,
+      await collectReaderCandidates(sourceUrl),
+      {
+        canonicalUrl: sourceUrl,
+        diagnostics,
+      },
+    );
+    if (readerResult) return readerResult;
 
     if (!needsBrowser && isLikelyBotBlockedError(error)) {
       try {
@@ -355,76 +509,73 @@ export async function parseUrl(
     }
   }
 
-  const imageUrls = extractImageUrls(html, sourceUrl);
-
-  // Try structured data extraction first (JSON-LD, hydration, microdata, recipe cards)
-  let structuredCandidates: RecipeCandidate[] = [];
+  // Try deterministic extraction first (JSON-LD, hydration, microdata, recipe cards,
+  // visible cards, outline rules, alternates, WordPress REST, and reader text).
+  const mainStart = Date.now();
   try {
-    structuredCandidates = structuredRecipeCandidates(
-      html,
-      sourceUrl,
-      sourceUrl,
-      imageUrls,
+    candidates.push(
+      ...deterministicHtmlCandidates(html, sourceUrl, sourceUrl).map(
+        (candidate) => ({
+          ...candidate,
+          elapsedMs: elapsed(mainStart),
+        }),
+      ),
     );
   } catch (error) {
-    console.error("Structured data extraction error:", error);
+    console.error("Deterministic extraction error:", error);
+    candidates.push({
+      recipe: null,
+      source: "structured",
+      parseMethod: "schema_org",
+      elapsedMs: elapsed(mainStart),
+      evidence: { sourceUrl },
+      error,
+    });
   }
 
-  // For Basic Import (structuredOnly): return structured data or error
-  if (structuredOnly) {
-    const structuredResult = await acceptedBestCandidate(
-      env,
-      sourceUrl,
-      structuredCandidates,
-    );
-    if (structuredResult) return structuredResult;
+  const mainDeterministicResult = await selectBestRecipeCandidate(
+    env,
+    sourceUrl,
+    candidates,
+    {
+      canonicalUrl: sourceUrl,
+      diagnostics,
+    },
+  );
+  if (mainDeterministicResult) return mainDeterministicResult;
 
-    // No structured data found - return error for Basic Import
+  candidates.push(
+    ...(await collectAlternateRecipePageCandidates(sourceUrl, html)),
+  );
+  candidates.push(...(await collectWordPressRestCandidates(sourceUrl, html)));
+
+  const initialEvaluation = evaluateRecipeCandidates(candidates);
+  const bestInitialScore = initialEvaluation.accepted[0]?.quality.score ?? 0;
+  if (structuredOnly || bestInitialScore < 75) {
+    candidates.push(...(await collectReaderCandidates(sourceUrl)));
+  }
+
+  const deterministicResult = await selectBestRecipeCandidate(
+    env,
+    sourceUrl,
+    candidates,
+    {
+      canonicalUrl: sourceUrl,
+      diagnostics,
+    },
+  );
+  if (deterministicResult) return deterministicResult;
+
+  if (structuredOnly) {
     return {
       success: false,
       error: {
         code: "NO_STRUCTURED_DATA",
         message:
-          "This website doesn't have structured recipe data that we can read.",
+          "This website doesn't have deterministic recipe data that we can read.",
       },
     };
   }
-
-  const structuredResult = await acceptedBestCandidate(
-    env,
-    sourceUrl,
-    structuredCandidates,
-  );
-  if (structuredResult) return structuredResult;
-
-  const visibleRecipe = extractVisibleRecipeCard(html, sourceUrl);
-  const visibleResult = await acceptedCandidate(
-    env,
-    sourceUrl,
-    visibleRecipe ? mergeRecipeImages(visibleRecipe, imageUrls) : null,
-    "visible",
-    { parseMethod: "visible_card" },
-  );
-  if (visibleResult) return visibleResult;
-
-  const alternateResult = await tryAlternateRecipePages(env, sourceUrl, html);
-  if (alternateResult) return alternateResult;
-
-  const wordPressRestResult = await tryWordPressRestRecipe(
-    env,
-    sourceUrl,
-    html,
-  );
-  if (wordPressRestResult) return wordPressRestResult;
-
-  const readerRecipe = await tryReaderRecipe(sourceUrl);
-  const readerResult = await acceptedCandidate(
-    env,
-    sourceUrl,
-    readerRecipe,
-    "reader",
-  );
-  if (readerResult) return readerResult;
 
   // For Smart Import: extract with AI when structured data is missing or incomplete.
   try {
@@ -441,23 +592,43 @@ export async function parseUrl(
     }
 
     // Extract step image context to help AI associate images with steps
+    const imageUrls = extractImageUrls(html, sourceUrl);
     const stepImageContext = extractStepImageContext(html, sourceUrl);
-
-    const aiResult = await parseRecipeFromHtml(
-      env.AI,
-      cleanedContent + stepImageContext,
-    );
+    const bestPartialRecipe = bestPartialCandidate(candidates);
+    const aiResult = bestPartialRecipe
+      ? await repairRecipeFromEvidence(
+          env.AI,
+          cleanedContent + stepImageContext,
+          bestPartialRecipe,
+        )
+      : await parseRecipeFromHtml(env.AI, cleanedContent + stepImageContext);
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "url",
       sourceUrl,
       images: imageUrls,
     });
-    const aiResultResponse = await acceptedCandidate(
+    const aiResultResponse = await selectBestRecipeCandidate(
       env,
       sourceUrl,
-      recipe,
-      "ai",
-      { parseMethod: structuredCandidates.length ? "ai_enhanced" : "ai_only" },
+      [
+        {
+          recipe,
+          source: "ai",
+          parseMethod: bestPartialRecipe ? "ai_repair" : "ai_only",
+          evidence: {
+            imageCount: imageUrls.length,
+            textLength: cleanedContent.length,
+            sourceUrl,
+          },
+        },
+      ],
+      {
+        canonicalUrl: sourceUrl,
+        diagnostics: {
+          ...diagnostics,
+          attempts: evaluateRecipeCandidates(candidates).diagnostics,
+        },
+      },
     );
 
     if (!aiResultResponse) {

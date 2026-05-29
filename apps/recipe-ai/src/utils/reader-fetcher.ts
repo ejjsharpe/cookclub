@@ -1,6 +1,7 @@
-import { validateFetchUrl } from "./html-fetcher";
+import { readLimitedText, validateFetchUrl } from "./html-fetcher";
 
 const READER_TIMEOUT_MS = 15_000;
+const MAX_READER_BYTES = 2 * 1024 * 1024;
 
 export function getReaderUrl(url: string): string {
   const parsed = validateFetchUrl(url);
@@ -22,5 +23,5 @@ export async function fetchReaderMarkdown(url: string): Promise<string> {
     );
   }
 
-  return response.text();
+  return readLimitedText(response, MAX_READER_BYTES);
 }

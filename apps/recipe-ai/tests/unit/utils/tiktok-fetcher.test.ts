@@ -134,4 +134,63 @@ Whisk until combined and bake.
 
     expect(result.images).toEqual(["https://example.com/cover.jpg"]);
   });
+
+  it("extracts current TikTok video-detail hydration captions with line breaks", async () => {
+    const hydration = {
+      __DEFAULT_SCOPE__: {
+        "webapp.video-detail": {
+          itemInfo: {
+            itemStruct: {
+              desc: "Flattened oEmbed-style caption",
+              contents: [
+                { desc: "COTTAGE PIE" },
+                { desc: "" },
+                { desc: "Serves 8:" },
+                { desc: "•1kg beef mince" },
+                { desc: "Method:" },
+                { desc: "* Fry the mince." },
+              ],
+              video: {
+                cover: "https://example.com/current-cover.jpg",
+              },
+            },
+          },
+        },
+      },
+    };
+
+    global.fetch = vi.fn((requestUrl: string | URL) => {
+      const url = String(requestUrl);
+      if (url.startsWith("https://www.tiktok.com/oembed")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              title: "Oembed title",
+            }),
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(`
+            <script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">
+              ${JSON.stringify(hydration)}
+            </script>
+          `),
+      });
+    }) as any;
+
+    const result = await extractTikTokContent(
+      "https://www.tiktok.com/@user/video/456",
+    );
+
+    expect(result.caption).toBe(
+      "COTTAGE PIE\n\nServes 8:\n•1kg beef mince\nMethod:\n* Fry the mince.",
+    );
+    expect(result.images).toEqual(["https://example.com/current-cover.jpg"]);
+  });
 });

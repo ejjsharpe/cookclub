@@ -184,8 +184,42 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.name).toBe("Recipe Title");
         expect(result.metadata.parseMethod).toBe("visible_card");
         expect(result.metadata.confidence).toBe("medium");
+        expect(result.metadata.canonicalUrl).toBe("https://example.com/recipe");
+        expect(result.metadata.diagnostics?.selectedAttempt).toBeTruthy();
         expect(mockEnv.AI.run).not.toHaveBeenCalled();
       }
+    });
+
+    it("does not fetch fallback sources after accepting a visible recipe card", async () => {
+      const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://example.com/recipe",
+      });
+
+      expect(result.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://example.com/recipe",
+        expect.anything(),
+      );
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+    });
+
+    it("lets basic import use deterministic visible cards without AI", async () => {
+      const result = await parser.parse({
+        type: "url",
+        data: "https://example.com/recipe",
+        structuredOnly: true,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Recipe Title");
+        expect(result.metadata.parseMethod).toBe("visible_card");
+      }
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
     });
 
     it("falls back to AI when deterministic extractors cannot produce a recipe", async () => {
@@ -498,6 +532,88 @@ describe("RecipeAI.parse()", () => {
         expect(result.error.code).toBe("VALIDATION_FAILED");
       }
       expect(mockEnv.AI.run).toHaveBeenCalled();
+    });
+
+    it("canonicalizes TikTok short URLs before parsing and metadata", async () => {
+      const canonicalTikTokUrl = "https://www.tiktok.com/@cook/video/123";
+      const caption =
+        "Tomato pasta Ingredients: 200 g spaghetti 1 cup tomato sauce Directions: 1. Boil the spaghetti. 2. Toss with tomato sauce.";
+
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Tomato Pasta",
+          description: null,
+          prepTime: null,
+          cookTime: 15,
+          totalTime: null,
+          servings: 2,
+          ingredientSections: [
+            {
+              name: null,
+              ingredients: [
+                { index: 0, quantity: 200, unit: "g", name: "spaghetti" },
+                { index: 1, quantity: 1, unit: "cup", name: "tomato sauce" },
+              ],
+            },
+          ],
+          instructionSections: [
+            {
+              name: null,
+              instructions: [
+                { index: 0, instruction: "Boil the spaghetti." },
+                { index: 1, instruction: "Toss with tomato sauce." },
+              ],
+            },
+          ],
+        }),
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (requested === "https://vm.tiktok.com/ZNRWJ2Wa9/") {
+          return Promise.resolve({
+            ok: false,
+            status: 302,
+            headers: new Headers({
+              location: `${canonicalTikTokUrl}?utm_source=share`,
+            }),
+          });
+        }
+
+        if (requested.startsWith("https://www.tiktok.com/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: caption,
+                thumbnail_url: "https://example.com/tiktok.jpg",
+              }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          headers: new Headers({ "content-type": "text/html" }),
+          text: () => Promise.resolve(""),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://vm.tiktok.com/ZNRWJ2Wa9/?utm_medium=social",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.sourceUrl).toBe(canonicalTikTokUrl);
+        expect(result.metadata.canonicalUrl).toBe(canonicalTikTokUrl);
+        expect(result.metadata.diagnostics?.originalUrl).toBe(
+          "https://vm.tiktok.com/ZNRWJ2Wa9/",
+        );
+      }
     });
 
     it("uses TikTok audio transcript enrichment when a video has no caption", async () => {
@@ -1206,6 +1322,22 @@ Bake the brownies for 40 minutes.
       }
     });
 
+    it("does not report short-link resolution network failures as invalid URLs", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+      global.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://bit.ly/example-recipe",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("FETCH_FAILED");
+      }
+    });
+
     it("uses reader fallback when regular fetch is blocked", async () => {
       vi.spyOn(console, "error").mockImplementation(() => undefined);
       vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -1336,6 +1468,57 @@ Serves 4
       if (result.success) {
         expect(result.data.name).toBe("Test Recipe");
         expect(result.metadata.source).toBe("image");
+      }
+    });
+
+    it("counts the uploaded source image before image recipe quality scoring", async () => {
+      (mockEnv as any).IMAGE_SERVICE = {
+        uploadImage: vi.fn().mockResolvedValue({
+          success: true,
+          publicUrl: "https://images.example.com/source.jpg",
+        }),
+      };
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Toast Plate",
+          description: null,
+          prepTime: null,
+          cookTime: null,
+          totalTime: null,
+          servings: null,
+          ingredientSections: [
+            {
+              name: null,
+              ingredients: [
+                { index: 0, quantity: 2, unit: "slices", name: "bread" },
+                { index: 1, quantity: 1, unit: "tbsp", name: "butter" },
+                { index: 2, quantity: 1, unit: "pinch", name: "salt" },
+              ],
+            },
+          ],
+          instructionSections: [
+            {
+              name: null,
+              instructions: [
+                { index: 0, instruction: "Toast the bread." },
+                { index: 1, instruction: "Butter and season it." },
+              ],
+            },
+          ],
+        }),
+      });
+
+      const result = await parser.parse({
+        type: "image",
+        data: btoa("fake image data that is long enough"),
+        mimeType: "image/jpeg",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.images).toEqual([
+          "https://images.example.com/source.jpg",
+        ]);
       }
     });
 

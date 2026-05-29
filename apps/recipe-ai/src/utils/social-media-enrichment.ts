@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { readLimitedBytes } from "./html-fetcher";
 
 const SPEECH_MODEL = "@cf/openai/whisper" as const;
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct" as const;
@@ -60,10 +61,7 @@ async function fetchMediaBytes(url: string): Promise<Uint8Array | null> {
     const contentLength = Number(response.headers.get("content-length") || 0);
     if (contentLength > MAX_MEDIA_BYTES) return null;
 
-    const body = await response.arrayBuffer();
-    if (body.byteLength > MAX_MEDIA_BYTES) return null;
-
-    return new Uint8Array(body);
+    return await readLimitedBytes(response, MAX_MEDIA_BYTES);
   } catch (error) {
     console.log(
       "Social media fetch for transcript failed:",

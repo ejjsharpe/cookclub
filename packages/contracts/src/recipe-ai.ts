@@ -30,11 +30,40 @@ export interface ParseMetadata {
     | "visible_card"
     | "reader"
     | "caption_rules"
+    | "outline_rules"
+    | "ai_repair"
     | "ai_enhanced"
     | "media_enriched"
     | "ai_only";
   confidence: "high" | "medium" | "low";
   cached?: boolean;
+  canonicalUrl?: string;
+  diagnostics?: ParseDiagnostics;
+}
+
+export interface ParseDiagnosticsAttempt {
+  id: string;
+  method: string;
+  source: string;
+  status: "accepted" | "rejected" | "error";
+  score?: number;
+  confidence?: "high" | "medium" | "low";
+  reasons?: string[];
+  ingredientCount?: number;
+  instructionCount?: number;
+  elapsedMs?: number;
+  evidence?: {
+    imageCount?: number;
+    textLength?: number;
+    sourceUrl?: string;
+  };
+}
+
+export interface ParseDiagnostics {
+  originalUrl?: string;
+  canonicalUrl?: string;
+  selectedAttempt?: string;
+  attempts?: ParseDiagnosticsAttempt[];
 }
 
 export type ParseResponse =

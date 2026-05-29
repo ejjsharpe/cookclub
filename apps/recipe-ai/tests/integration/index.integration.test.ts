@@ -95,7 +95,7 @@ describe("RecipeAI Integration Tests", () => {
     parser = new RecipeAI(createExecutionContext(), mockEnv);
   });
 
-  describe("URL parsing with AI", () => {
+  describe("URL parsing", () => {
     beforeEach(() => {
       vi.stubGlobal(
         "fetch",
@@ -103,7 +103,7 @@ describe("RecipeAI Integration Tests", () => {
       );
     });
 
-    it("parses recipe from HTML using AI", async () => {
+    it("parses visible recipe HTML without AI", async () => {
       const result = await parser.parse({
         type: "url",
         data: "https://example.com/cookies-recipe",
@@ -111,15 +111,15 @@ describe("RecipeAI Integration Tests", () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        // Name comes from AI mock response
         expect(result.data.name).toBe("Classic Chocolate Chip Cookies");
         expect(result.data.ingredientSections.length).toBe(1);
         expect(result.data.ingredientSections[0]?.ingredients.length).toBe(5);
         expect(result.data.instructionSections.length).toBe(1);
         expect(result.data.instructionSections[0]?.instructions.length).toBe(6);
-        expect(result.metadata.parseMethod).toBe("ai_only");
+        expect(result.metadata.parseMethod).toBe("visible_card");
         expect(result.metadata.source).toBe("url");
       }
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
     });
 
     it("extracts ingredients with quantities", async () => {

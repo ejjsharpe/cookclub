@@ -1,9 +1,11 @@
+import type { ParsedRecipe } from "../schema";
 import type { Env } from "../types";
 import {
   RECIPE_EXTRACTION_SYSTEM_PROMPT,
   IMAGE_EXTRACTION_SYSTEM_PROMPT,
   createTextExtractionPrompt,
   createHtmlExtractionPrompt,
+  createRepairExtractionPrompt,
   createImageExtractionPrompt,
 } from "../utils/prompts";
 
@@ -326,6 +328,30 @@ export async function parseRecipeFromHtml(
     messages: [
       { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: createHtmlExtractionPrompt(cleanedHtml) },
+    ],
+    max_tokens: 4096,
+  });
+
+  return parseAiResponse(response);
+}
+
+export async function repairRecipeFromEvidence(
+  ai: Env["AI"],
+  evidence: string,
+  partialRecipe: ParsedRecipe | null,
+): Promise<AiRecipeResult> {
+  const response = await (ai as any).run(TEXT_MODEL, {
+    messages: [
+      { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: createRepairExtractionPrompt({
+          evidence,
+          partialRecipeJson: partialRecipe
+            ? JSON.stringify(partialRecipe).slice(0, 8_000)
+            : null,
+        }),
+      },
     ],
     max_tokens: 4096,
   });
