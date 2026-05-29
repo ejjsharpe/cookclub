@@ -6,7 +6,14 @@ import {
 } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, TouchableOpacity, Alert } from "react-native";
+import { View, TouchableOpacity, Alert, type ViewToken } from "react-native";
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import {
   StyleSheet,
   useUnistyles,
@@ -28,6 +35,7 @@ import { Ionicons } from "@/components/Ionicons";
 import { MealPlanSkeleton } from "@/components/Skeleton";
 import { StackedAvatars } from "@/components/StackedAvatars";
 import { Text } from "@/components/Text";
+import { ScalePressable } from "@/components/buttons/ScalePressable";
 import { DayGroup, DayHeader } from "@/components/mealPlan";
 import { InvitationBanner } from "@/components/mealPlan/InvitationBanner";
 import {
@@ -54,6 +62,8 @@ import { useSelectedMealPlan } from "@/lib/mealPlanPreferences";
 
 // Constants
 const HEADER_HEIGHT = 52; // Height of the title row
+const BACK_TO_TODAY_ANIMATION_MS = 180;
+const BACK_TO_TODAY_SCROLL_SUPPRESSION_MS = 1500;
 
 export const MealPlanScreen = () => {
   const { theme } = useUnistyles();
@@ -63,6 +73,11 @@ export const MealPlanScreen = () => {
   // Refs
   const flashListRef = useRef<FlashListRef<MealPlanListItem>>(null);
   const hasAlignedInitialScrollRef = useRef(false);
+  const todayDateStringRef = useRef<string | null>(null);
+  const isReturningToTodayRef = useRef(false);
+  const backToTodayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Sheet refs
   const recipePickerSheetRef = useRef<RecipePickerSheetRef>(null);
@@ -76,6 +91,8 @@ export const MealPlanScreen = () => {
     date?: string;
     mealType?: "breakfast" | "lunch" | "dinner";
   }>({});
+  const [showBackToToday, setShowBackToToday] = useState(false);
+  const backToTodayProgress = useSharedValue(0);
 
   // Reactive meal plan selection from MMKV
   const {
@@ -116,6 +133,32 @@ export const MealPlanScreen = () => {
     DAY_CONTENT_HEIGHT,
     DAY_FOOTER_HEIGHT,
   } = useMealPlanDates();
+
+  const todayDateString = useMemo(() => {
+    return (
+      flattenedData.find((item) => item.type === "header" && item.isToday)
+        ?.dateString ?? null
+    );
+  }, [flattenedData]);
+
+  useEffect(() => {
+    todayDateStringRef.current = todayDateString;
+  }, [todayDateString]);
+
+  useEffect(() => {
+    backToTodayProgress.value = withTiming(showBackToToday ? 1 : 0, {
+      duration: BACK_TO_TODAY_ANIMATION_MS,
+      easing: Easing.bezier(0.2, 0, 0, 1),
+    });
+  }, [backToTodayProgress, showBackToToday]);
+
+  useEffect(() => {
+    return () => {
+      if (backToTodayTimeoutRef.current) {
+        clearTimeout(backToTodayTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const { data: entries } = useGetMealPlanEntries({
     mealPlanId: activePlan?.id ?? 0,
@@ -300,6 +343,54 @@ export const MealPlanScreen = () => {
   // Key extractor
   const keyExtractor = useCallback((item: MealPlanListItem) => item.id, []);
 
+  const clearBackToTodaySuppression = useCallback(() => {
+    isReturningToTodayRef.current = false;
+    if (backToTodayTimeoutRef.current) {
+      clearTimeout(backToTodayTimeoutRef.current);
+      backToTodayTimeoutRef.current = null;
+    }
+  }, []);
+
+  const suppressBackToTodayPrompt = useCallback(() => {
+    isReturningToTodayRef.current = true;
+    setShowBackToToday(false);
+
+    if (backToTodayTimeoutRef.current) {
+      clearTimeout(backToTodayTimeoutRef.current);
+    }
+
+    backToTodayTimeoutRef.current = setTimeout(() => {
+      isReturningToTodayRef.current = false;
+      backToTodayTimeoutRef.current = null;
+    }, BACK_TO_TODAY_SCROLL_SUPPRESSION_MS);
+  }, []);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 10,
+    minimumViewTime: 80,
+  }).current;
+
+  const handleViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const todayDateString = todayDateStringRef.current;
+      if (!todayDateString) return;
+
+      const isTodayVisible = viewableItems.some(({ item }) => {
+        return (item as MealPlanListItem).dateString === todayDateString;
+      });
+
+      if (isTodayVisible) {
+        clearBackToTodaySuppression();
+        setShowBackToToday(false);
+        return;
+      }
+
+      if (!isReturningToTodayRef.current) {
+        setShowBackToToday(true);
+      }
+    },
+  ).current;
+
   // Override item layout for proper sizing
   const overrideItemLayout = useCallback(
     (layout: { size?: number; span?: number }, item: MealPlanListItem) => {
@@ -333,14 +424,19 @@ export const MealPlanScreen = () => {
     (animated = true) => {
       if (todayHeaderIndex < 0) return;
 
+      suppressBackToTodayPrompt();
       flashListRef.current?.scrollToIndex({
         index: todayHeaderIndex,
         animated,
         viewOffset: todayScrollViewOffset,
       });
     },
-    [todayHeaderIndex, todayScrollViewOffset],
+    [suppressBackToTodayPrompt, todayHeaderIndex, todayScrollViewOffset],
   );
+
+  const handleBackToTodayPress = useCallback(() => {
+    scrollToToday(true);
+  }, [scrollToToday]);
 
   const handleListLoad = useCallback(() => {
     if (hasAlignedInitialScrollRef.current) return;
@@ -363,6 +459,18 @@ export const MealPlanScreen = () => {
 
     return unsubscribe;
   }, [navigation, scrollToToday, isFocused]);
+
+  const backToTodayAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: backToTodayProgress.value,
+    transform: [
+      {
+        translateY: interpolate(backToTodayProgress.value, [0, 1], [-8, 0]),
+      },
+      {
+        scale: interpolate(backToTodayProgress.value, [0, 1], [0.96, 1]),
+      },
+    ],
+  }));
 
   // List header component - includes safe area top + header height + invitation banners
   const ListHeaderComponent = useMemo(
@@ -434,6 +542,8 @@ export const MealPlanScreen = () => {
           maintainVisibleContentPosition={{ disabled: false }}
           ListHeaderComponent={ListHeaderComponent}
           contentContainerStyle={styles.listContent}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={handleViewableItemsChanged}
           initialScrollIndex={
             todayHeaderIndex >= 0 ? todayHeaderIndex : undefined
           }
@@ -488,6 +598,32 @@ export const MealPlanScreen = () => {
           </View>
         </View>
       </View>
+
+      <Animated.View
+        style={[styles.backToTodayContainer, backToTodayAnimatedStyle]}
+        pointerEvents={showBackToToday ? "box-none" : "none"}
+        accessibilityElementsHidden={!showBackToToday}
+        importantForAccessibility={
+          showBackToToday ? "auto" : "no-hide-descendants"
+        }
+      >
+        <ScalePressable
+          disabled={!showBackToToday}
+          onPress={handleBackToTodayPress}
+          style={styles.backToTodayButton}
+          accessibilityRole="button"
+          accessibilityLabel="Scroll back to today"
+        >
+          <Ionicons
+            name="calendar-outline"
+            size={16}
+            style={styles.backToTodayIcon}
+          />
+          <Text type="subheadline" style={styles.backToTodayText}>
+            Back to today
+          </Text>
+        </ScalePressable>
+      </Animated.View>
 
       {/* Sheets */}
       <RecipePickerSheet
@@ -585,5 +721,34 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   sectionFooter: {
     height: 16,
+  },
+  backToTodayContainer: {
+    position: "absolute",
+    top: rt.insets.top + HEADER_HEIGHT + 8,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 20,
+  },
+  backToTodayButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  backToTodayIcon: {
+    color: theme.colors.buttonText,
+  },
+  backToTodayText: {
+    color: theme.colors.buttonText,
+    fontWeight: "600",
   },
 }));
