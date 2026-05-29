@@ -165,14 +165,7 @@ export async function getUserCollectionsWithMetadata(
         search ? ilike(collections.name, `%${search}%`) : undefined,
       ),
     )
-    .orderBy(
-      sql`CASE
-        WHEN ${collections.defaultType} = 'want_to_cook' THEN 0
-        WHEN ${collections.defaultType} = 'cooked' THEN 1
-        ELSE 2
-      END`,
-      collections.createdAt,
-    );
+    .orderBy(desc(collections.createdAt), desc(collections.id));
 
   // Get collection IDs
   const collectionIds = results.map((r) => r.id);
@@ -406,7 +399,10 @@ export async function deleteCollection(
 
     // Move orphan recipes to "Want to cook" collection
     if (orphanRecipeIds.length > 0) {
-      const defaultCollections = await getOrCreateDefaultCollections(db, userId);
+      const defaultCollections = await getOrCreateDefaultCollections(
+        db,
+        userId,
+      );
       await db
         .insert(recipeCollections)
         .values(
@@ -427,6 +423,60 @@ export async function deleteCollection(
 }
 
 // ─── Update Recipe Collections (Batch) ─────────────────────────────────────────
+
+/**
+ * Add a recipe to one collection without changing any other memberships.
+ */
+export async function addRecipeToCollection(
+  db: DbClient,
+  params: {
+    userId: string;
+    recipeId: number;
+    collectionId: number;
+  },
+): Promise<{ recipeId: number; collectionId: number }> {
+  const { userId, recipeId, collectionId } = params;
+
+  const recipe = await db
+    .select({ id: recipes.id, ownerId: recipes.ownerId })
+    .from(recipes)
+    .where(eq(recipes.id, recipeId))
+    .then((rows) => rows[0]);
+
+  if (!recipe) {
+    throw new ServiceError("NOT_FOUND", "Recipe not found");
+  }
+
+  if (recipe.ownerId !== userId) {
+    throw new ServiceError(
+      "FORBIDDEN",
+      "You can only modify collections for your own recipes",
+    );
+  }
+
+  const collection = await db
+    .select({ id: collections.id })
+    .from(collections)
+    .where(
+      and(eq(collections.id, collectionId), eq(collections.userId, userId)),
+    )
+    .then((rows) => rows[0]);
+
+  if (!collection) {
+    throw new ServiceError("NOT_FOUND", "Collection not found");
+  }
+
+  await db
+    .insert(recipeCollections)
+    .values({
+      recipeId,
+      collectionId,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing();
+
+  return { recipeId, collectionId };
+}
 
 /**
  * Replace all collection memberships for a recipe.

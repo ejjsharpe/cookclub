@@ -134,6 +134,56 @@ export const useUpdateRecipeCollections = () => {
   return useMutation(mutationOptions);
 };
 
+// Add one recipe to one collection without replacing other memberships
+export const useAddRecipeToCollection = () => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const mutationOptions = trpc.collection.addRecipeToCollection.mutationOptions(
+    {
+      onSuccess: (_data, variables) => {
+        const { recipeId, collectionId } = variables;
+
+        queryClient.setQueriesData<any>(
+          trpc.recipe.getRecipeDetail.pathFilter(),
+          (old: any) => {
+            if (!old || old.id !== recipeId) return old;
+
+            const collectionIds = Array.isArray(old.collectionIds)
+              ? old.collectionIds
+              : [];
+
+            if (collectionIds.includes(collectionId)) return old;
+
+            return {
+              ...old,
+              collectionIds: [...collectionIds, collectionId],
+            };
+          },
+        );
+
+        queryClient.invalidateQueries(
+          trpc.collection.getCollectionDetail.queryFilter({ collectionId }),
+        );
+        queryClient.invalidateQueries(
+          trpc.collection.getUserCollections.pathFilter(),
+        );
+        queryClient.invalidateQueries(
+          trpc.recipe.getRecipeDetail.queryFilter({ recipeId }),
+        );
+      },
+      onError: () => {
+        Alert.alert(
+          "Error",
+          "Failed to add recipe to collection. Please try again.",
+        );
+      },
+    },
+  );
+
+  return useMutation(mutationOptions);
+};
+
 // Get collections for a specific user (with metadata)
 interface UseGetUserCollectionsByIdParams {
   userId: string;

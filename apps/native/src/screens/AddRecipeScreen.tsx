@@ -642,7 +642,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     flex: 1,
   },
   container: {
-    paddingBottom: 40,
+    paddingBottom: rt.insets.bottom + 72,
   },
   fixedHeader: {
     position: "absolute",

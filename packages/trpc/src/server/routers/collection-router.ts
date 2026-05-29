@@ -3,12 +3,13 @@ import {
   getUserCollectionsWithMetadata as getUserCollectionsWithMetadataService,
   getCollectionDetail as getCollectionDetailService,
   deleteCollection as deleteCollectionService,
+  addRecipeToCollection as addRecipeToCollectionService,
   updateRecipeCollections as updateRecipeCollectionsService,
   getOrCreateDefaultCollections,
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import { router, authedProcedure } from "../trpc";
 import { mapServiceError } from "../utils";
@@ -37,7 +38,7 @@ export const collectionRouter = router({
       }
 
       try {
-        // Get all user's collections (default collections first: want_to_cook, then cooked, then custom)
+        // Get all user's collections, newest first.
         const userCollections = await ctx.db
           .select({
             id: collections.id,
@@ -47,14 +48,7 @@ export const collectionRouter = router({
           })
           .from(collections)
           .where(eq(collections.userId, ctx.user.id))
-          .orderBy(
-            sql`CASE
-              WHEN ${collections.defaultType} = 'want_to_cook' THEN 0
-              WHEN ${collections.defaultType} = 'cooked' THEN 1
-              ELSE 2
-            END`,
-            collections.createdAt,
-          );
+          .orderBy(desc(collections.createdAt), desc(collections.id));
 
         // If recipeId provided, also check which collections contain this recipe
         if (recipeId !== undefined) {
@@ -160,6 +154,26 @@ export const collectionRouter = router({
         });
       } catch (err) {
         console.error("Error deleting collection:", err);
+        throw mapServiceError(err);
+      }
+    }),
+
+  addRecipeToCollection: authedProcedure
+    .input(
+      type({
+        recipeId: "number",
+        collectionId: "number",
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await addRecipeToCollectionService(ctx.db, {
+          userId: ctx.user.id,
+          recipeId: input.recipeId,
+          collectionId: input.collectionId,
+        });
+      } catch (err) {
+        console.error("Error adding recipe to collection:", err);
         throw mapServiceError(err);
       }
     }),

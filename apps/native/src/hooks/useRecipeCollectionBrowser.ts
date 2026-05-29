@@ -75,6 +75,7 @@ export const useRecipeCollectionBrowser = ({
     isPending: isPendingRecipes,
     error: recipesError,
     isFetchingNext: isFetchingNextRecipes,
+    hasMore: hasMoreRecipes,
     handleLoadMore: handleLoadMoreRecipes,
     refetch: refetchRecipes,
   } = useRecipeData({
@@ -137,6 +138,7 @@ export const useRecipeCollectionBrowser = ({
     isPendingRecipes,
     recipesError,
     isFetchingNextRecipes,
+    hasMoreRecipes,
     handleLoadMoreRecipes,
 
     // Collections data

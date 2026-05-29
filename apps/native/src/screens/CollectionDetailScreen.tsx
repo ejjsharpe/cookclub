@@ -3,7 +3,7 @@ import {
   useNavigation,
   type RouteProp,
 } from "@react-navigation/native";
-import { useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   ScrollView,
@@ -13,6 +13,9 @@ import {
   TouchableOpacity,
 } from "react-native";
 import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -20,15 +23,27 @@ import Animated, {
 } from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
-import { useGetCollectionDetail, useDeleteCollection } from "@/api/collection";
+import {
+  useGetCollectionDetail,
+  useDeleteCollection,
+  useAddRecipeToCollection,
+} from "@/api/collection";
 import { Ionicons } from "@/components/Ionicons";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import {
+  RecipeBrowserSheet,
+  type RecipeBrowserSheetRef,
+} from "@/components/RecipeBrowserSheet";
 import { RecipeCard } from "@/components/RecipeCard";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import type { AppParamList } from "@/navigation/navigationRef";
 
 const NAVIGATION_HEADER_HEIGHT = 60;
+const RECIPE_ROW_LAYOUT = LinearTransition.duration(220);
+const RECIPE_ROW_ENTERING = FadeIn.duration(180);
+const RECIPE_EMPTY_ENTERING = FadeIn.duration(180);
+const RECIPE_EMPTY_EXITING = FadeOut.duration(120);
 
 const ReanimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
@@ -40,6 +55,7 @@ export const CollectionDetailScreen = () => {
   const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const { collectionId } = route.params;
+  const recipeBrowserSheetRef = useRef<RecipeBrowserSheetRef>(null);
   const headerOpacity = useSharedValue(1);
   const headerHidden = useSharedValue(false);
 
@@ -51,13 +67,33 @@ export const CollectionDetailScreen = () => {
   } = useGetCollectionDetail({ collectionId });
 
   const deleteCollectionMutation = useDeleteCollection();
+  const addRecipeToCollectionMutation = useAddRecipeToCollection();
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const excludedRecipeIds = useMemo(
+    () => collection?.recipes.map((recipe) => recipe.id) ?? [],
+    [collection?.recipes],
+  );
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refetch();
     setIsRefreshing(false);
   };
+
+  const handleOpenAddRecipe = useCallback(() => {
+    recipeBrowserSheetRef.current?.present();
+  }, []);
+
+  const handleSelectRecipe = useCallback(
+    async (recipeId: number) => {
+      await addRecipeToCollectionMutation.mutateAsync({
+        recipeId,
+        collectionId,
+      });
+    },
+    [addRecipeToCollectionMutation, collectionId],
+  );
 
   const handleDeleteCollection = () => {
     if (!collection) return;
@@ -133,15 +169,38 @@ export const CollectionDetailScreen = () => {
     );
   }
 
+  const addButton = (
+    <TouchableOpacity
+      onPress={handleOpenAddRecipe}
+      style={[
+        styles.headerButton,
+        addRecipeToCollectionMutation.isPending && styles.headerButtonDisabled,
+      ]}
+      disabled={addRecipeToCollectionMutation.isPending}
+      accessibilityRole="button"
+      accessibilityLabel="Add recipe to collection"
+    >
+      <Ionicons name="add" size={28} style={styles.addIcon} />
+    </TouchableOpacity>
+  );
+
   const deleteButton =
     collection.defaultType === null ? (
       <TouchableOpacity
         onPress={handleDeleteCollection}
-        style={styles.deleteButton}
+        style={styles.headerButton}
+        accessibilityRole="button"
+        accessibilityLabel="Delete collection"
       >
         <Ionicons name="trash-outline" size={22} color="#ff3b30" />
       </TouchableOpacity>
     ) : undefined;
+  const headerActions = (
+    <View style={styles.headerActions}>
+      {addButton}
+      {deleteButton}
+    </View>
+  );
   const refreshOffset = insets.top + NAVIGATION_HEADER_HEIGHT;
 
   return (
@@ -177,13 +236,22 @@ export const CollectionDetailScreen = () => {
         <VSpace size={16} />
 
         {collection.recipes.length === 0 ? (
-          <View style={styles.emptyState}>
+          <Animated.View
+            entering={RECIPE_EMPTY_ENTERING}
+            exiting={RECIPE_EMPTY_EXITING}
+            layout={RECIPE_ROW_LAYOUT}
+            style={styles.emptyState}
+          >
             <Text type="bodyFaded">No recipes in this collection yet</Text>
-          </View>
+          </Animated.View>
         ) : (
           <>
             {collection.recipes.map((recipe, index) => (
-              <View key={recipe.id}>
+              <Animated.View
+                key={recipe.id}
+                entering={RECIPE_ROW_ENTERING}
+                layout={RECIPE_ROW_LAYOUT}
+              >
                 <RecipeCard
                   recipe={
                     {
@@ -209,15 +277,25 @@ export const CollectionDetailScreen = () => {
                   }
                 />
                 {index < collection.recipes.length - 1 && <VSpace size={16} />}
-              </View>
+              </Animated.View>
             ))}
           </>
         )}
         <VSpace size={40} />
       </ReanimatedScrollView>
       <Animated.View style={[styles.fixedHeader, headerAnimatedStyle]}>
-        <NavigationHeader title={collection.name} rightElement={deleteButton} />
+        <NavigationHeader
+          title={collection.name}
+          rightElement={headerActions}
+        />
       </Animated.View>
+      <RecipeBrowserSheet
+        ref={recipeBrowserSheetRef}
+        title={`Add to ${collection.name}`}
+        onSelectRecipe={handleSelectRecipe}
+        excludedRecipeIds={excludedRecipeIds}
+        excludedRecipesEmptyMessage="All recipes are already in this collection"
+      />
     </View>
   );
 };
@@ -245,13 +323,24 @@ const styles = StyleSheet.create((theme, rt) => ({
   recipeCount: {
     paddingHorizontal: 20,
   },
-  deleteButton: {
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     backgroundColor: theme.colors.inputBackground,
     justifyContent: "center",
     alignItems: "center",
+  },
+  headerButtonDisabled: {
+    opacity: 0.5,
+  },
+  addIcon: {
+    color: theme.colors.text,
   },
   emptyState: {
     paddingVertical: 60,

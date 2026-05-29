@@ -21,7 +21,12 @@ import {
   ProPaywallSheet,
   type ProPaywallSheetRef,
 } from "@/components/ProPaywallSheet";
-import { adapty, identifyAdaptyUser, isAdaptyConfigured } from "@/lib/adapty";
+import {
+  adapty,
+  hasActiveAdaptyAccess,
+  identifyAdaptyUser,
+  isAdaptyConfigured,
+} from "@/lib/adapty";
 import { useSessionContext } from "@/lib/sessionContext";
 
 interface SubscriptionContextValue {
@@ -145,9 +150,21 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       if (session?.user.id) {
         await identifyAdaptyUser(session.user.id);
       }
-      await adapty.restorePurchases();
-      await refresh();
-      Alert.alert("Purchases restored", "Your subscription status is updated.");
+      const profile = await adapty.restorePurchases();
+      const refreshedStatus = await refresh().catch((error) => {
+        console.log("Subscription refresh failed:", error);
+        return undefined;
+      });
+
+      if (hasActiveAdaptyAccess(profile) || refreshedStatus?.isPro) {
+        Alert.alert("Purchases restored", "Cook Club Pro is active.");
+        return;
+      }
+
+      Alert.alert(
+        "No active subscription",
+        "We couldn't find an active Cook Club Pro subscription.",
+      );
     } catch (error: any) {
       Alert.alert(
         "Restore failed",

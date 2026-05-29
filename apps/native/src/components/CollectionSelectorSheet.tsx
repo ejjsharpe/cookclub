@@ -15,10 +15,10 @@ import {
   ScrollView,
   Alert,
 } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
 import { AppSheet } from "./AppSheet";
-import { VSpace } from "./Space";
 import { Text } from "./Text";
 import {
   useGetUserCollections,
@@ -42,6 +42,8 @@ export const CollectionSelectorSheet = forwardRef<
   CollectionSelectorSheetRef,
   CollectionSelectorSheetProps
 >(({ recipeId }, ref) => {
+  const theme = UnistylesRuntime.getTheme();
+  const insets = useSafeAreaInsets();
   const sheetRef = useRef<TrueSheet>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
@@ -80,11 +82,17 @@ export const CollectionSelectorSheet = forwardRef<
 
   const isSaving =
     updateCollectionsMutation.isPending || deleteRecipeMutation.isPending;
+  const selectedCount = selectedIds.size;
 
   useImperativeHandle(ref, () => ({
     present: () => sheetRef.current?.present(),
     dismiss: () => sheetRef.current?.dismiss(),
   }));
+
+  const handleSheetDismiss = () => {
+    setNewCollectionName("");
+    setIsCreatingCollection(false);
+  };
 
   const handleToggleCollection = (collectionId: number) => {
     setSelectedIds((prev) => {
@@ -150,254 +158,305 @@ export const CollectionSelectorSheet = forwardRef<
   };
 
   const hasCollections = collections && collections.length > 0;
+  const isSaveDisabled = !hasChanges || isSaving;
+
+  const renderFooter = () => (
+    <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
+      <TouchableOpacity
+        style={[
+          styles.saveButton,
+          selectedCount === 0 && hasChanges && styles.deleteSaveButton,
+          isSaveDisabled && styles.saveButtonDisabled,
+        ]}
+        onPress={handleSave}
+        disabled={isSaveDisabled}
+        activeOpacity={0.78}
+      >
+        {isSaving ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            <Ionicons
+              name={
+                selectedCount === 0 && hasChanges
+                  ? "trash-outline"
+                  : "save-outline"
+              }
+              size={20}
+              style={styles.saveButtonIcon}
+            />
+            <Text style={styles.saveButtonText}>
+              {selectedCount === 0 && hasChanges
+                ? "Remove Recipe"
+                : "Save Changes"}
+            </Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
-    <AppSheet ref={sheetRef} title="Save to collection" detents={["auto"]}>
-      <View>
-        <ScrollView style={styles.scrollView}>
-          <View style={styles.scrollContent}>
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" />
+    <AppSheet
+      ref={sheetRef}
+      title="Manage Collections"
+      subtitle={
+        isLoading
+          ? null
+          : hasCollections
+            ? `${selectedCount} selected`
+            : "Create a collection"
+      }
+      detents={[0.62, 1]}
+      scrollable
+      backgroundColor={theme.colors.background}
+      footer={renderFooter()}
+      onDidDismiss={handleSheetDismiss}
+    >
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.scrollContent}>
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" />
+            </View>
+          ) : (
+            <>
+              <View style={styles.sectionHeadingRow}>
+                <View>
+                  <Text type="heading">Collections</Text>
+                  <Text type="caption" style={styles.sectionSubtitle}>
+                    {selectedCount} of {collections?.length ?? 0} selected
+                  </Text>
+                </View>
               </View>
-            ) : (
-              <>
-                {/* Collections List */}
-                {hasCollections ? (
-                  <>
-                    <Text type="heading" style={styles.sectionTitle}>
-                      Your collections
-                    </Text>
-                    <VSpace size={12} />
-                    {collections.map((collection) => {
-                      const isSelected = selectedIds.has(collection.id);
-                      return (
-                        <TouchableOpacity
-                          key={collection.id}
-                          style={styles.collectionRow}
-                          onPress={() => handleToggleCollection(collection.id)}
-                          disabled={isSaving}
-                        >
-                          <View style={styles.collectionInfo}>
-                            {collection.defaultType && (
-                              <Ionicons
-                                name="bookmark"
-                                size={18}
-                                style={styles.defaultIcon}
-                              />
-                            )}
-                            <Text type="body">{collection.name}</Text>
-                            {collection.defaultType && (
-                              <View style={styles.defaultBadge}>
-                                <Text style={styles.defaultText}>
-                                  {collection.defaultType === "want_to_cook"
-                                    ? "Want to cook"
-                                    : "Cooked"}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          <View
-                            style={[
-                              styles.checkbox,
-                              isSelected && styles.checkboxSelected,
-                            ]}
-                          >
-                            {isSelected && (
-                              <Ionicons
-                                name="checkmark"
-                                size={18}
-                                style={styles.checkIcon}
-                              />
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                    <VSpace size={16} />
-                  </>
-                ) : (
-                  <>
-                    <Text type="bodyFaded" style={styles.emptyText}>
-                      You don't have any collections yet. Create your first one
-                      below!
-                    </Text>
-                    <VSpace size={24} />
-                  </>
-                )}
 
-                {/* Create New Collection */}
-                {isCreatingCollection ? (
-                  <>
-                    <Text type="heading" style={styles.sectionTitle}>
-                      New collection name
-                    </Text>
-                    <VSpace size={12} />
-                    <View style={styles.inputRow}>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="e.g., Breakfast Ideas"
-                        placeholderTextColor="#999"
-                        value={newCollectionName}
-                        onChangeText={setNewCollectionName}
-                        autoFocus
-                      />
-                    </View>
-                    <VSpace size={12} />
-                    <View style={styles.createActions}>
+              {hasCollections ? (
+                <View style={styles.group}>
+                  {collections.map((collection, index) => {
+                    const isSelected = selectedIds.has(collection.id);
+                    return (
                       <TouchableOpacity
-                        style={styles.cancelButton}
-                        onPress={() => {
-                          setNewCollectionName("");
-                          setIsCreatingCollection(false);
-                        }}
-                      >
-                        <Text type="body">Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
+                        key={collection.id}
                         style={[
-                          styles.createCollectionButton,
-                          (!newCollectionName.trim() ||
-                            createCollectionMutation.isPending) &&
-                            styles.saveButtonDisabled,
+                          styles.collectionRow,
+                          index === collections.length - 1 &&
+                            styles.lastGroupRow,
+                          isSaving && styles.collectionRowDisabled,
                         ]}
-                        onPress={handleCreateCollection}
-                        disabled={
-                          !newCollectionName.trim() ||
-                          createCollectionMutation.isPending
-                        }
+                        onPress={() => handleToggleCollection(collection.id)}
+                        disabled={isSaving}
+                        activeOpacity={0.78}
                       >
-                        {createCollectionMutation.isPending ? (
-                          <ActivityIndicator size="small" color="#fff" />
+                        <View style={styles.collectionInfo}>
+                          <Ionicons
+                            name={
+                              collection.defaultType
+                                ? "bookmark-outline"
+                                : "albums-outline"
+                            }
+                            size={20}
+                            style={styles.collectionIcon}
+                          />
+                          <View style={styles.collectionTextWrap}>
+                            <Text type="body" numberOfLines={1}>
+                              {collection.name}
+                            </Text>
+                            {collection.defaultType ? (
+                              <Text
+                                type="caption"
+                                style={styles.collectionMeta}
+                              >
+                                Default collection
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                        {isSelected ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            style={styles.selectedIcon}
+                          />
                         ) : (
-                          <Text type="highlight" style={styles.saveButtonText}>
-                            Create
-                          </Text>
+                          <View style={styles.radio} />
                         )}
                       </TouchableOpacity>
-                    </View>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.createButton}
-                    onPress={() => setIsCreatingCollection(true)}
-                  >
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={24}
-                      style={styles.createIcon}
-                    />
-                    <Text type="body" style={styles.createText}>
-                      Create new collection
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text type="bodyFaded" style={styles.emptyText}>
+                    Create a collection to keep this recipe saved.
+                  </Text>
+                </View>
+              )}
 
-                {/* Save Button */}
-                <VSpace size={24} />
+              {isCreatingCollection ? (
+                <View style={styles.createCollectionPanel}>
+                  <Text type="heading">New collection name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Breakfast Ideas"
+                    placeholderTextColor={theme.colors.placeholderText}
+                    value={newCollectionName}
+                    onChangeText={setNewCollectionName}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={handleCreateCollection}
+                  />
+                  <View style={styles.createActions}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => {
+                        setNewCollectionName("");
+                        setIsCreatingCollection(false);
+                      }}
+                      activeOpacity={0.78}
+                    >
+                      <Text type="body">Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.createButton,
+                        (!newCollectionName.trim() ||
+                          createCollectionMutation.isPending) &&
+                          styles.createButtonDisabled,
+                      ]}
+                      onPress={handleCreateCollection}
+                      disabled={
+                        !newCollectionName.trim() ||
+                        createCollectionMutation.isPending
+                      }
+                      activeOpacity={0.78}
+                    >
+                      {createCollectionMutation.isPending ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text type="highlight" style={styles.createButtonText}>
+                          Create
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
                 <TouchableOpacity
-                  style={[
-                    styles.saveButton,
-                    (!hasChanges || isSaving) && styles.saveButtonDisabled,
-                  ]}
-                  onPress={handleSave}
-                  disabled={!hasChanges || isSaving}
+                  style={styles.newCollectionButton}
+                  onPress={() => setIsCreatingCollection(true)}
+                  activeOpacity={0.78}
                 >
-                  {isSaving ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text type="highlight" style={styles.saveButtonText}>
-                      Save
-                    </Text>
-                  )}
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={22}
+                    style={styles.newCollectionIcon}
+                  />
+                  <Text type="body" style={styles.newCollectionText}>
+                    Create new collection
+                  </Text>
                 </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </ScrollView>
-      </View>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
     </AppSheet>
   );
 });
 
 const styles = StyleSheet.create((theme) => ({
   scrollView: {
-    maxHeight: 500,
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
+    gap: 14,
   },
   loadingContainer: {
     alignItems: "center",
-    paddingVertical: 40,
+    paddingVertical: 32,
   },
-  sectionTitle: {
-    marginBottom: 4,
+  sectionHeadingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  sectionSubtitle: {
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  group: {
+    overflow: "hidden",
+    borderRadius: theme.borderRadius.medium,
+    backgroundColor: theme.colors.inputBackground,
   },
   collectionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 13,
     paddingHorizontal: 16,
-    borderRadius: theme.borderRadius.medium,
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: 8,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  collectionRowDisabled: {
+    opacity: 0.5,
+  },
+  lastGroupRow: {
+    borderBottomWidth: 0,
   },
   collectionInfo: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    gap: 8,
+    gap: 10,
   },
-  defaultIcon: {
+  collectionIcon: {
+    color: theme.colors.textSecondary,
+  },
+  collectionTextWrap: {
+    flex: 1,
+  },
+  collectionMeta: {
+    color: theme.colors.textSecondary,
+    marginTop: 1,
+  },
+  selectedIcon: {
     color: theme.colors.primary,
   },
-  defaultBadge: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.small,
-  },
-  defaultText: {
-    color: theme.colors.buttonText,
-    fontSize: 11,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
     borderColor: theme.colors.border,
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: theme.colors.background,
   },
-  checkboxSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
-  },
-  checkIcon: {
-    color: theme.colors.buttonText,
+  emptyState: {
+    padding: 18,
+    borderRadius: theme.borderRadius.medium,
+    backgroundColor: theme.colors.inputBackground,
   },
   emptyText: {
     textAlign: "center",
-    paddingVertical: 20,
   },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  createCollectionPanel: {
+    gap: 12,
+    padding: 14,
+    borderRadius: theme.borderRadius.medium,
+    backgroundColor: theme.colors.inputBackground,
   },
   input: {
-    flex: 1,
+    minHeight: 48,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.medium,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     fontSize: 16,
     lineHeight: 21,
     includeFontPadding: false,
@@ -407,57 +466,77 @@ const styles = StyleSheet.create((theme) => ({
   },
   createActions: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: theme.borderRadius.medium,
+    minHeight: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.background,
   },
-  createCollectionButton: {
+  createButton: {
     flex: 1,
-    backgroundColor: theme.colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: theme.borderRadius.medium,
+    minHeight: 44,
+    borderRadius: 22,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.primary,
+  },
+  createButtonDisabled: {
+    opacity: 0.5,
+  },
+  createButtonText: {
+    color: theme.colors.buttonText,
+  },
+  newCollectionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 48,
+    borderRadius: theme.borderRadius.medium,
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
+    borderStyle: "dashed",
+  },
+  newCollectionIcon: {
+    color: theme.colors.textSecondary,
+  },
+  newCollectionText: {
+    color: theme.colors.textSecondary,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
   },
   saveButton: {
-    flex: 1,
-    backgroundColor: theme.colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: theme.borderRadius.medium,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 50,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 25,
+  },
+  deleteSaveButton: {
+    backgroundColor: "#ff3b30",
   },
   saveButtonDisabled: {
     opacity: 0.5,
   },
-  saveButtonText: {
+  saveButtonIcon: {
     color: theme.colors.buttonText,
   },
-  createButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: theme.borderRadius.medium,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
-    borderStyle: "dashed",
-  },
-  createIcon: {
-    color: theme.colors.text,
-    opacity: 0.6,
-    marginRight: 8,
-  },
-  createText: {
-    color: theme.colors.text,
-    opacity: 0.6,
+  saveButtonText: {
+    color: theme.colors.buttonText,
+    fontSize: 17,
+    fontFamily: theme.fonts.semiBold,
   },
 }));
