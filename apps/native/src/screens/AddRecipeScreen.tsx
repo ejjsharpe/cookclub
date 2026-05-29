@@ -1,16 +1,18 @@
 import { useNavigation } from "@react-navigation/native";
+import { Image } from "expo-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  type LayoutChangeEvent,
   Pressable,
   View,
   ScrollView,
-  useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
 import Animated, {
+  cancelAnimation,
   FadeIn,
   LinearTransition,
   Easing,
@@ -51,6 +53,7 @@ import {
   type BackgroundImport,
 } from "@/lib/backgroundImportQueue";
 import { useSubscription } from "@/lib/subscription";
+import { getImageUrl } from "@/utils/imageUrl";
 
 const HEADER_HEIGHT = 52;
 const IMPORT_PROGRESS_TRACK_WIDTH = 160;
@@ -158,13 +161,14 @@ const getImportStatusCopy = (importItem: BackgroundImport) => {
 };
 
 const ImportProgressBar = ({ active }: { active: boolean }) => {
-  const progress = useSharedValue(0);
-  const { width } = useWindowDimensions();
-  const trackWidth = Math.max(IMPORT_PROGRESS_TRACK_WIDTH, width - 72);
+  const [trackWidth, setTrackWidth] = useState(IMPORT_PROGRESS_TRACK_WIDTH);
+  const positionProgress = useSharedValue(0);
+  const completionProgress = useSharedValue(active ? 0 : 1);
 
   useEffect(() => {
     if (active) {
-      progress.value = withRepeat(
+      completionProgress.value = 0;
+      positionProgress.value = withRepeat(
         withTiming(1, {
           duration: 1400,
           easing: Easing.inOut(Easing.ease),
@@ -173,30 +177,40 @@ const ImportProgressBar = ({ active }: { active: boolean }) => {
         true,
       );
     } else {
-      progress.value = withTiming(1, { duration: 220 });
+      cancelAnimation(positionProgress);
+      completionProgress.value = withTiming(1, {
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+      });
     }
-  }, [active, progress]);
+  }, [active, completionProgress, positionProgress]);
 
-  const indicatorStyle = useAnimatedStyle(
-    () => ({
-      transform: [
-        {
-          translateX: progress.value * (trackWidth - IMPORT_PROGRESS_BAR_WIDTH),
-        },
-      ],
-    }),
-    [trackWidth],
-  );
+  const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
+    const measuredWidth = event.nativeEvent.layout.width;
+    if (measuredWidth > 0) {
+      setTrackWidth(measuredWidth);
+    }
+  }, []);
+
+  const segmentWidth = Math.min(IMPORT_PROGRESS_BAR_WIDTH, trackWidth);
+  const travelWidth = Math.max(0, trackWidth - segmentWidth);
+
+  const indicatorStyle = useAnimatedStyle(() => {
+    const activeLeft = positionProgress.value * travelWidth;
+    const activeRight = activeLeft + segmentWidth;
+    const completion = completionProgress.value;
+    const left = activeLeft * (1 - completion);
+    const right = activeRight + (trackWidth - activeRight) * completion;
+
+    return {
+      width: right - left,
+      transform: [{ translateX: left }],
+    };
+  }, [segmentWidth, trackWidth, travelWidth]);
 
   return (
-    <View style={styles.importProgressTrack}>
-      <Animated.View
-        style={[
-          styles.importProgressIndicator,
-          !active && styles.importProgressIndicatorDone,
-          active && indicatorStyle,
-        ]}
-      />
+    <View style={styles.importProgressTrack} onLayout={handleTrackLayout}>
+      <Animated.View style={[styles.importProgressIndicator, indicatorStyle]} />
     </View>
   );
 };
@@ -259,6 +273,10 @@ const BackgroundImportCard = ({
   const isFailed = importItem.status === "failed";
   const isPending =
     importItem.status === "pending" || importItem.status === "processing";
+  const thumbnailUrl = isReady
+    ? getImageUrl(importItem.recipe?.data.images?.[0], "recipe-thumb")
+    : undefined;
+  const shouldEmphasizeTitle = isPending || isReady;
 
   return (
     <Animated.View
@@ -277,9 +295,17 @@ const BackgroundImportCard = ({
           styles.importIconContainer,
           isFailed && styles.importIconContainerFailed,
           isReady && styles.importIconContainerReady,
+          thumbnailUrl && styles.importThumbnailContainer,
         ]}
       >
-        {importItem.status === "pending" ? (
+        {thumbnailUrl ? (
+          <Image
+            source={{ uri: thumbnailUrl }}
+            style={styles.importThumbnailImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : importItem.status === "pending" ? (
           <ActivityIndicator size="small" color={theme.colors.primary} />
         ) : (
           <Ionicons
@@ -293,7 +319,14 @@ const BackgroundImportCard = ({
       </View>
 
       <View style={styles.importTextContainer}>
-        <Text type="body" numberOfLines={1} style={styles.importTitle}>
+        <Text
+          type="body"
+          numberOfLines={1}
+          style={[
+            styles.importTitle,
+            shouldEmphasizeTitle && styles.importTitleEmphasized,
+          ]}
+        >
           {importItem.title}
         </Text>
         <Text
@@ -679,9 +712,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.primary,
   },
-  importProgressIndicatorDone: {
-    width: IMPORT_PROGRESS_TRACK_WIDTH,
-  },
   importProgressLabel: {
     color: theme.colors.primary,
     fontFamily: theme.fonts.semiBold,
@@ -717,9 +747,17 @@ const styles = StyleSheet.create((theme, rt) => ({
     backgroundColor: theme.colors.primary + "18",
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
   },
   importIconContainerReady: {
     backgroundColor: theme.colors.primary + "22",
+  },
+  importThumbnailContainer: {
+    backgroundColor: theme.colors.background,
+  },
+  importThumbnailImage: {
+    width: "100%",
+    height: "100%",
   },
   importIconContainerFailed: {
     backgroundColor: theme.colors.destructive + "16",
@@ -730,6 +768,9 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   importTitle: {
     position: "relative",
+  },
+  importTitleEmphasized: {
+    fontFamily: theme.fonts.semiBold,
   },
   importSubtitle: {
     color: theme.colors.textSecondary,
