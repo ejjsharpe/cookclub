@@ -15,10 +15,20 @@ import {
   Keyboard,
   Alert,
 } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+} from "react-native-reanimated";
+import {
+  StyleSheet,
+  UnistylesRuntime,
+  useUnistyles,
+} from "react-native-unistyles";
 
 import { AppSheet } from "./AppSheet";
 import { CommentCard } from "./CommentCard";
+import { SEARCH_BAR_HEIGHT } from "./SearchBar";
 import { Text } from "./Text";
 
 import {
@@ -29,6 +39,11 @@ import {
 } from "@/api/comment";
 import { useUser } from "@/api/user";
 import { Ionicons } from "@/components/Ionicons";
+
+const KEYBOARD_OPEN_BOTTOM_PADDING = 12;
+const COMMENT_INPUT_LINE_HEIGHT = 22;
+const COMMENT_INPUT_VERTICAL_PADDING =
+  (SEARCH_BAR_HEIGHT - COMMENT_INPUT_LINE_HEIGHT) / 2;
 
 export interface CommentsSheetProps {
   activityEventId: number;
@@ -43,6 +58,8 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
   ({ activityEventId }, ref) => {
     const sheetRef = useRef<TrueSheet>(null);
     const { theme } = useUnistyles();
+    const insets = UnistylesRuntime.insets;
+    const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
     const { data: currentUser } = useUser();
     const currentUserId = currentUser?.user?.id;
 
@@ -98,8 +115,16 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
     const canSubmit =
       commentText.trim().length > 0 && !createCommentMutation.isPending;
 
+    const inputAreaAnimatedStyle = useAnimatedStyle(() => ({
+      paddingBottom: interpolate(
+        keyboardProgress.value,
+        [0, 1],
+        [insets.bottom, KEYBOARD_OPEN_BOTTOM_PADDING],
+      ),
+    }));
+
     const FooterComponent = (
-      <View style={styles.inputArea}>
+      <Animated.View style={[styles.inputArea, inputAreaAnimatedStyle]}>
         {replyingTo && (
           <View style={styles.replyingToBar}>
             <Text type="footnote" style={styles.replyingToText}>
@@ -133,14 +158,14 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
             )}
           </TouchableOpacity>
         </View>
-      </View>
+      </Animated.View>
     );
 
     return (
       <AppSheet
         ref={sheetRef}
         title="Comments"
-        detents={[0.8]}
+        detents={[1]}
         footer={FooterComponent}
         scrollable
         backgroundColor={theme.colors.background}
@@ -208,10 +233,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 60,
   },
   listContent: {
-    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 20,
+    height: "80%",
   },
   emptyContainer: {
     flex: 1,
@@ -235,7 +260,6 @@ const styles = StyleSheet.create((theme) => ({
     borderTopColor: theme.colors.border,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 34,
     backgroundColor: theme.colors.background,
   },
   replyingToBar: {
@@ -262,15 +286,18 @@ const styles = StyleSheet.create((theme) => ({
   input: {
     flex: 1,
     backgroundColor: theme.colors.inputBackground,
-    borderRadius: theme.borderRadius.extraLarge,
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    fontSize: 16,
+    borderRadius: SEARCH_BAR_HEIGHT / 2,
+    paddingHorizontal: 16,
+    paddingTop: COMMENT_INPUT_VERTICAL_PADDING,
+    paddingBottom: COMMENT_INPUT_VERTICAL_PADDING,
+    fontSize: 17,
+    lineHeight: COMMENT_INPUT_LINE_HEIGHT,
+    includeFontPadding: false,
+    textAlignVertical: "center",
     color: theme.colors.text,
     fontFamily: theme.fonts.regular,
     maxHeight: 100,
-    minHeight: 50,
-    justifyContent: "center",
+    minHeight: SEARCH_BAR_HEIGHT,
   },
   sendButton: {
     width: 44,
