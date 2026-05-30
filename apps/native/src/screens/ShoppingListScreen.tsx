@@ -334,6 +334,7 @@ ShoppingRecipeCard.displayName = "ShoppingRecipeCard";
 
 const TAB_BAR_HEIGHT = 76; // Approximate native tab bar height
 const LIST_BOTTOM_CLEARANCE = 180;
+const KEYBOARD_OPEN_INPUT_GAP = 4;
 
 export const ShoppingListScreen = () => {
   const navigation = useNavigation();
@@ -799,7 +800,10 @@ export const ShoppingListScreen = () => {
         </View>
       </View>
       {/* Bottom Input - sticks to keyboard */}
-      <KeyboardStickyView style={styles.inputWrapper}>
+      <KeyboardStickyView
+        offset={{ opened: -KEYBOARD_OPEN_INPUT_GAP }}
+        style={styles.inputWrapper}
+      >
         <Animated.View style={inputTransformAnimatedStyle}>
           <LinearGradient
             colors={[
