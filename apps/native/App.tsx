@@ -29,6 +29,7 @@ import { ShareIntentStorageHandler } from "@/components/ShareIntentStorageHandle
 import { WelcomeOverlayProvider } from "@/components/WelcomeOverlay";
 import { activateAdaptyAtStartup } from "@/lib/adapty";
 import { BackgroundImportQueueProvider } from "@/lib/backgroundImportQueue";
+import { CookTimerOverlay, CookTimerProvider } from "@/lib/cook-timer";
 import { PushNotificationsProvider } from "@/lib/pushNotifications";
 import { ReactQueryProvider } from "@/lib/reactQuery";
 import { SessionProvider } from "@/lib/sessionContext";
@@ -176,19 +177,22 @@ function App() {
                       <ShareIntentStorageHandler />
                       <GestureHandlerRootView style={styles.rootView}>
                         <BackgroundImportQueueProvider>
-                          <WelcomeOverlayProvider>
-                            <Navigation
-                              ref={navigationRef}
-                              key={navigationKey}
-                              onReady={onNavigationReady}
-                              initialState={navigationStateRef.current}
-                              onStateChange={(state) => {
-                                navigationStateRef.current = state;
-                              }}
-                              linking={linking}
-                              theme={navigationTheme}
-                            />
-                          </WelcomeOverlayProvider>
+                          <CookTimerProvider>
+                            <WelcomeOverlayProvider>
+                              <Navigation
+                                ref={navigationRef}
+                                key={navigationKey}
+                                onReady={onNavigationReady}
+                                initialState={navigationStateRef.current}
+                                onStateChange={(state) => {
+                                  navigationStateRef.current = state;
+                                }}
+                                linking={linking}
+                                theme={navigationTheme}
+                              />
+                            </WelcomeOverlayProvider>
+                            <CookTimerOverlay />
+                          </CookTimerProvider>
                         </BackgroundImportQueueProvider>
                       </GestureHandlerRootView>
                     </PushNotificationsProvider>

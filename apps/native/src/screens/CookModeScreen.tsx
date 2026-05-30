@@ -4,7 +4,6 @@ import { Image } from "expo-image";
 import { useKeepAwake } from "expo-keep-awake";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   FlatList,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -29,6 +28,7 @@ import { AppSheet } from "@/components/AppSheet";
 import { Ionicons } from "@/components/Ionicons";
 import { Text } from "@/components/Text";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
+import { CookTimerOverlay, useCookTimer } from "@/lib/cook-timer";
 import { getImageUrl } from "@/utils/imageUrl";
 
 interface Instruction {
@@ -90,14 +90,9 @@ interface InstructionPageLayout {
   fadeAfter: number;
 }
 
-interface CookingTimer {
-  remainingSeconds: number;
-  endsAt: number | null;
-  isPaused: boolean;
-}
-
 const TIMER_HOURS = Array.from({ length: 24 }, (_, index) => index);
 const TIMER_MINUTES = Array.from({ length: 60 }, (_, index) => index);
+const TIMER_SECONDS = Array.from({ length: 60 }, (_, index) => index);
 const QUICK_TIMER_SHORTCUTS = [1, 5, 10, 20, 30];
 const TIMER_WHEEL_ITEM_HEIGHT = 46;
 const TIMER_WHEEL_VISIBLE_ITEMS = 5;
@@ -171,20 +166,6 @@ const formatIngredient = (ingredient: Ingredient) => {
   ].filter(Boolean);
 
   return parts.join(" ");
-};
-
-const formatTimer = (seconds: number) => {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainingSeconds = seconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${remainingSeconds
-      .toString()
-      .padStart(2, "0")}`;
-  }
-
-  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 };
 
 interface TimerWheelItemProps {
@@ -352,6 +333,7 @@ export const CookModeScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { theme } = useUnistyles();
+  const { startTimer } = useCookTimer();
   const { height: windowHeight } = useWindowDimensions();
   const scrollY = useSharedValue(0);
   const timerSheetRef = useRef<TrueSheet>(null);
@@ -383,11 +365,13 @@ export const CookModeScreen = () => {
   const totalSteps = flattenedInstructions.length;
   const [timerHours, setTimerHours] = useState(0);
   const [timerMinutes, setTimerMinutes] = useState(10);
-  const [timer, setTimer] = useState<CookingTimer | null>(null);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [isStartingTimer, setIsStartingTimer] = useState(false);
   const [instructionHeights, setInstructionHeights] = useState<
     Record<number, number>
   >({});
-  const selectedTimerDurationSeconds = timerHours * 60 * 60 + timerMinutes * 60;
+  const selectedTimerDurationSeconds =
+    timerHours * 60 * 60 + timerMinutes * 60 + timerSeconds;
 
   const minInstructionPageHeight = Math.max(
     Math.min(windowHeight * 0.36, 350),
@@ -477,60 +461,29 @@ export const CookModeScreen = () => {
     [],
   );
 
-  useEffect(() => {
-    if (!timer?.endsAt || timer.isPaused) {
-      return;
-    }
-
-    const endsAt = timer.endsAt;
-
-    const tick = () => {
-      const nextRemainingSeconds = Math.max(
-        Math.ceil((endsAt - Date.now()) / 1000),
-        0,
-      );
-
-      if (nextRemainingSeconds <= 0) {
-        setTimer(null);
-        Alert.alert("Timer done", "Your cook mode timer has finished.");
-        return;
-      }
-
-      setTimer((currentTimer) => {
-        if (!currentTimer || currentTimer.endsAt !== endsAt) {
-          return currentTimer;
-        }
-
-        return {
-          ...currentTimer,
-          remainingSeconds: nextRemainingSeconds,
-        };
-      });
-    };
-
-    tick();
-    const interval = setInterval(tick, 1000);
-
-    return () => clearInterval(interval);
-  }, [timer?.endsAt, timer?.isPaused]);
-
-  const handleStartTimer = () => {
+  const handleStartTimer = async () => {
     const hours = timerHours;
     const minutes = timerMinutes;
-    const durationSeconds = hours * 60 * 60 + minutes * 60;
+    const seconds = timerSeconds;
+    const durationSeconds = hours * 60 * 60 + minutes * 60 + seconds;
 
-    if (durationSeconds <= 0) {
+    if (durationSeconds <= 0 || isStartingTimer) {
       return;
     }
 
-    setTimer({
-      remainingSeconds: durationSeconds,
-      endsAt: Date.now() + durationSeconds * 1000,
-      isPaused: false,
-    });
-    setTimerHours(hours);
-    setTimerMinutes(minutes);
-    timerSheetRef.current?.dismiss();
+    setIsStartingTimer(true);
+    try {
+      await startTimer({
+        recipeName,
+        durationSeconds,
+      });
+      setTimerHours(hours);
+      setTimerMinutes(minutes);
+      setTimerSeconds(seconds);
+      timerSheetRef.current?.dismiss();
+    } finally {
+      setIsStartingTimer(false);
+    }
   };
 
   const handleShortcutPress = (totalMinutes: number) => {
@@ -539,38 +492,7 @@ export const CookModeScreen = () => {
 
     setTimerHours(hours);
     setTimerMinutes(minutes);
-  };
-
-  const handlePauseTimer = () => {
-    setTimer((currentTimer) => {
-      if (!currentTimer?.endsAt) {
-        return currentTimer;
-      }
-
-      return {
-        ...currentTimer,
-        remainingSeconds: Math.max(
-          Math.ceil((currentTimer.endsAt - Date.now()) / 1000),
-          0,
-        ),
-        endsAt: null,
-        isPaused: true,
-      };
-    });
-  };
-
-  const handleResumeTimer = () => {
-    setTimer((currentTimer) => {
-      if (!currentTimer || !currentTimer.isPaused) {
-        return currentTimer;
-      }
-
-      return {
-        ...currentTimer,
-        endsAt: Date.now() + currentTimer.remainingSeconds * 1000,
-        isPaused: false,
-      };
-    });
+    setTimerSeconds(0);
   };
 
   return (
@@ -644,48 +566,12 @@ export const CookModeScreen = () => {
         </View>
       )}
 
-      {timer && (
-        <View style={[styles.timerPanel, { bottom: insets.bottom + 16 }]}>
-          <View style={styles.timerStatus}>
-            <Ionicons name="timer-outline" size={18} style={styles.timerIcon} />
-            <Text style={styles.timerText}>
-              {formatTimer(timer.remainingSeconds)}
-            </Text>
-          </View>
-          <View style={styles.timerControls}>
-            <TouchableOpacity
-              style={styles.timerControlButton}
-              onPress={timer.isPaused ? handleResumeTimer : handlePauseTimer}
-              accessibilityLabel={
-                timer.isPaused ? "Resume timer" : "Pause timer"
-              }
-            >
-              <Ionicons
-                name={timer.isPaused ? "play" : "pause"}
-                size={16}
-                style={styles.timerControlIcon}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.timerControlButton}
-              onPress={() => setTimer(null)}
-              accessibilityLabel="Clear timer"
-            >
-              <Ionicons
-                name="close"
-                size={18}
-                style={styles.timerControlIcon}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
       <AppSheet
         ref={timerSheetRef}
         title="Timer"
         detents={["auto"]}
         backgroundColor={theme.colors.background}
+        headerStyle={styles.sheetHeader}
         footer={
           <View
             style={[
@@ -696,15 +582,17 @@ export const CookModeScreen = () => {
             <TouchableOpacity
               style={[
                 styles.startTimerButton,
-                selectedTimerDurationSeconds <= 0 &&
+                (selectedTimerDurationSeconds <= 0 || isStartingTimer) &&
                   styles.startTimerButtonDisabled,
               ]}
               onPress={handleStartTimer}
-              disabled={selectedTimerDurationSeconds <= 0}
+              disabled={selectedTimerDurationSeconds <= 0 || isStartingTimer}
               activeOpacity={0.82}
             >
               <Ionicons name="timer" size={20} style={styles.startTimerIcon} />
-              <Text style={styles.startTimerText}>Start timer</Text>
+              <Text style={styles.startTimerText}>
+                {isStartingTimer ? "Starting..." : "Start timer"}
+              </Text>
             </TouchableOpacity>
           </View>
         }
@@ -725,6 +613,12 @@ export const CookModeScreen = () => {
                   values={TIMER_MINUTES}
                   onValueChange={setTimerMinutes}
                 />
+                <TimerWheel
+                  label="sec"
+                  value={timerSeconds}
+                  values={TIMER_SECONDS}
+                  onValueChange={setTimerSeconds}
+                />
               </View>
             </View>
 
@@ -733,7 +627,9 @@ export const CookModeScreen = () => {
                 const hoursValue = Math.floor(minutes / 60);
                 const minutesValue = minutes % 60;
                 const isSelected =
-                  timerHours === hoursValue && timerMinutes === minutesValue;
+                  timerHours === hoursValue &&
+                  timerMinutes === minutesValue &&
+                  timerSeconds === 0;
 
                 return (
                   <TouchableOpacity
@@ -767,7 +663,7 @@ export const CookModeScreen = () => {
         detents={[0.6, 1]}
         scrollable
         backgroundColor={theme.colors.background}
-        headerStyle={styles.ingredientsSheetHeader}
+        headerStyle={styles.sheetHeader}
       >
         <ScrollView
           style={styles.ingredientsSheetScroll}
@@ -796,6 +692,8 @@ export const CookModeScreen = () => {
           ))}
         </ScrollView>
       </AppSheet>
+
+      <CookTimerOverlay topOffset={64} />
     </View>
   );
 };
@@ -906,53 +804,7 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     height: "100%",
   },
-  timerPanel: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    zIndex: 20,
-    minHeight: 64,
-    borderRadius: theme.borderRadius.extraLarge,
-    borderCurve: "continuous",
-    backgroundColor: theme.colors.text,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    boxShadow: "0 8px 28px rgba(0, 0, 0, 0.14)",
-  },
-  timerStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  timerIcon: {
-    color: theme.colors.background,
-  },
-  timerText: {
-    color: theme.colors.background,
-    fontSize: 22,
-    lineHeight: 28,
-    fontFamily: theme.fonts.bold,
-    fontVariant: ["tabular-nums"],
-  },
-  timerControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  timerControlButton: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: "rgba(255, 255, 255, 0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  timerControlIcon: {
-    color: theme.colors.background,
-  },
-  ingredientsSheetHeader: {
+  sheetHeader: {
     backgroundColor: theme.colors.background,
   },
   ingredientsSheetScroll: {
@@ -965,7 +817,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 24,
   },
   timerSheetContent: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingTop: 18,
     backgroundColor: theme.colors.background,
   },
@@ -977,7 +829,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 24,
   },
   timerControlGroup: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 0,
     paddingTop: 12,
     paddingBottom: 18,
     borderRadius: theme.borderRadius.extraLarge,
@@ -985,13 +837,16 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.background,
   },
   timerPicker: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 18,
+    gap: 8,
   },
   timerWheelColumn: {
-    width: 126,
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 104,
     height: TIMER_WHEEL_HEIGHT + 28,
     alignItems: "center",
   },

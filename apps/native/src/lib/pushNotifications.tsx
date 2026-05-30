@@ -6,11 +6,13 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Platform } from "react-native";
 
+import { isCookTimerNotificationData } from "./cook-timer-notifications";
 import { useSessionContext } from "./sessionContext";
 
 import { navigationRef } from "@/navigation/navigationRef";
 
 type PushNotificationData = {
+  kind?: unknown;
   notificationId?: unknown;
   type?: unknown;
   actorId?: unknown;
@@ -21,12 +23,18 @@ type PushNotificationData = {
 };
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const isCookTimer = isCookTimerNotificationData(
+      notification.request.content.data,
+    );
+
+    return {
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: isCookTimer,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 function getProjectId(): string | null {
@@ -57,6 +65,10 @@ function invalidateNotificationQueries(
 }
 
 function navigateWhenReady(data: PushNotificationData, attempts = 0) {
+  if (isCookTimerNotificationData(data)) {
+    return;
+  }
+
   if (!navigationRef.isReady()) {
     if (attempts < 20) {
       setTimeout(() => navigateWhenReady(data, attempts + 1), 250);
@@ -177,13 +189,25 @@ export const PushNotificationsProvider = ({
 
   useEffect(() => {
     const receivedSubscription = Notifications.addNotificationReceivedListener(
-      () => {
+      (notification) => {
+        if (isCookTimerNotificationData(notification.request.content.data)) {
+          return;
+        }
+
         invalidateNotificationQueries(queryClient, trpc);
       },
     );
 
     const responseSubscription =
       Notifications.addNotificationResponseReceivedListener((response) => {
+        if (
+          isCookTimerNotificationData(
+            response.notification.request.content.data,
+          )
+        ) {
+          return;
+        }
+
         invalidateNotificationQueries(queryClient, trpc);
         navigateWhenReady(
           response.notification.request.content.data as PushNotificationData,
@@ -194,6 +218,14 @@ export const PushNotificationsProvider = ({
     Notifications.getLastNotificationResponseAsync()
       .then((response) => {
         if (!cancelled && response) {
+          if (
+            isCookTimerNotificationData(
+              response.notification.request.content.data,
+            )
+          ) {
+            return;
+          }
+
           invalidateNotificationQueries(queryClient, trpc);
           navigateWhenReady(
             response.notification.request.content.data as PushNotificationData,
