@@ -513,7 +513,7 @@ export const RecipeBrowserSheet = forwardRef<
   },
 );
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((theme, rt) => ({
   container: {
     flex: 1,
   },
@@ -583,7 +583,7 @@ const styles = StyleSheet.create((theme) => ({
 
   // Recipe list
   recipeListContent: {
-    paddingBottom: 40,
+    paddingBottom: 60 + rt.insets.bottom,
     flexGrow: 1,
   },
   footer: {
@@ -594,7 +594,7 @@ const styles = StyleSheet.create((theme) => ({
   // Collection grid
   collectionGridContent: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 60 + rt.insets.bottom,
   },
   collectionItem: {
     flex: 1,
@@ -615,7 +615,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 60,
   },
   listContent: {
-    paddingBottom: 40,
+    paddingBottom: 60 + rt.insets.bottom,
     flexGrow: 1,
   },
   emptyContainer: {
