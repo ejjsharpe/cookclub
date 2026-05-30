@@ -15,6 +15,7 @@ import { Text } from "./Text";
 import type { CookingReviewFeedItem } from "@/api/activity";
 import { ActivityActionRow } from "@/components/ActivityActionRow";
 import { Ionicons } from "@/components/Ionicons";
+import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
 import { getImageUrl } from "@/utils/imageUrl";
 
 interface Props {
@@ -196,6 +197,12 @@ const ReviewContentCard = memo(
           style={styles.recipePreview}
           onPress={recipe.sourceType === "url" ? onViewSource : onRecipePress}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${recipe.name}. Opens ${
+            recipe.sourceType === "url"
+              ? `recipe website, ${recipe.sourceDomain}`
+              : "in app"
+          }`}
         >
           {recipe.image && (
             <Image
@@ -208,9 +215,15 @@ const ReviewContentCard = memo(
             <Text type="headline" numberOfLines={2} style={styles.recipeTitle}>
               {recipe.name}
             </Text>
-            <Text type="footnote" style={styles.recipeSource}>
-              {recipe.sourceType === "url" ? recipe.sourceDomain : "View recipe"}
-            </Text>
+            <RecipeDestinationLabel
+              isExternal={recipe.sourceType === "url"}
+              sourceLabel={
+                recipe.sourceType === "url" ? recipe.sourceDomain : undefined
+              }
+              sourceUrl={
+                recipe.sourceType === "url" ? recipe.sourceUrl : undefined
+              }
+            />
           </View>
         </TouchableOpacity>
       </View>
@@ -434,10 +447,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   recipeInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   recipeTitle: {},
-  recipeSource: {
-    color: theme.colors.textSecondary,
-  },
 }));

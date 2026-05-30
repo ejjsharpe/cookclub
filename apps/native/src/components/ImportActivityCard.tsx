@@ -10,6 +10,7 @@ import { Text } from "./Text";
 
 import type { RecipeImportFeedItem } from "@/api/activity";
 import { ActivityActionRow } from "@/components/ActivityActionRow";
+import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
 import { getImageUrl } from "@/utils/imageUrl";
 
 interface Props {
@@ -113,6 +114,12 @@ const ImportRecipeHero = memo(
       style={styles.imageContainer}
       onPress={recipe.sourceType === "url" ? onViewSource : onRecipePress}
       activeOpacity={0.9}
+      accessibilityRole="button"
+      accessibilityLabel={`${recipe.name}. Opens ${
+        recipe.sourceType === "url"
+          ? `recipe website, ${recipe.sourceDomain}`
+          : "in app"
+      }`}
     >
       {recipe.image && (
         <Image
@@ -128,11 +135,14 @@ const ImportRecipeHero = memo(
         <Text type="title3" numberOfLines={2} style={styles.recipeTitle}>
           {recipe.name}
         </Text>
-        {recipe.sourceType === "url" && (
-          <Text type="caption" style={styles.recipeSource}>
-            {recipe.sourceDomain}
-          </Text>
-        )}
+        <RecipeDestinationLabel
+          isExternal={recipe.sourceType === "url"}
+          sourceLabel={
+            recipe.sourceType === "url" ? recipe.sourceDomain : undefined
+          }
+          sourceUrl={recipe.sourceType === "url" ? recipe.sourceUrl : undefined}
+          variant="image"
+        />
       </LinearGradient>
     </TouchableOpacity>
   ),
@@ -332,8 +342,5 @@ const styles = StyleSheet.create((theme) => ({
   },
   recipeTitle: {
     color: "#FFFFFF",
-  },
-  recipeSource: {
-    color: "rgba(255,255,255,0.8)",
   },
 }));
