@@ -2876,10 +2876,15 @@ const styles = StyleSheet.create((theme) => ({
   emptyHeroActions: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 10,
     marginTop: 8,
+    width: "100%",
+    paddingHorizontal: 20,
   },
   emptyHeroButton: {
+    flex: 1,
+    maxWidth: 156,
     height: 38,
     paddingHorizontal: 14,
     borderRadius: 19,
@@ -2888,6 +2893,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
   },
   emptyHeroButtonPrimary: {
