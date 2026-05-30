@@ -7,6 +7,7 @@ import { useSignOut } from "@/api/auth";
 import { useDeleteAccount, useUpdateProfile, useUser } from "@/api/user";
 import { Ionicons } from "@/components/Ionicons";
 import { NavigationHeader } from "@/components/NavigationHeader";
+import { ProBadge } from "@/components/ProBadge";
 import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
@@ -96,6 +97,23 @@ const ToggleOption = ({
         <Ionicons name="checkmark" size={20} style={styles.checkmark} />
       )}
     </TouchableOpacity>
+  );
+};
+
+const ProStatusCard = () => {
+  return (
+    <View style={styles.proStatusCard}>
+      <View style={styles.proStatusIcon}>
+        <Ionicons name="sparkles" size={18} style={styles.proStatusIconGlyph} />
+      </View>
+      <View style={styles.proStatusText}>
+        <Text type="heading">Cook Club Pro</Text>
+        <Text type="bodyFaded" style={styles.proStatusSubtitle}>
+          Active
+        </Text>
+      </View>
+      <ProBadge variant="solid" />
+    </View>
   );
 };
 
@@ -238,6 +256,12 @@ export const SettingsScreen = () => {
           Cook Club Pro
         </Text>
         <VSpace size={12} />
+        {isPro && (
+          <>
+            <ProStatusCard />
+            <VSpace size={12} />
+          </>
+        )}
         <View style={styles.section}>
           <SettingsRow
             icon="sparkles-outline"
@@ -309,6 +333,34 @@ const styles = StyleSheet.create((theme, rt) => ({
     backgroundColor: theme.colors.inputBackground,
     borderRadius: theme.borderRadius.large,
     overflow: "hidden",
+  },
+  proStatusCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: theme.borderRadius.large,
+    borderWidth: 1,
+    borderColor: theme.colors.primary + "26",
+    backgroundColor: theme.colors.primary + "10",
+  },
+  proStatusIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  proStatusIconGlyph: {
+    color: theme.colors.buttonText,
+  },
+  proStatusText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  proStatusSubtitle: {
+    fontSize: 14,
   },
   row: {
     flexDirection: "row",

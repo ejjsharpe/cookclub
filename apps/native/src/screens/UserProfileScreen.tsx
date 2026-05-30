@@ -30,6 +30,7 @@ import {
 } from "@/components/CommentsSheet";
 import { ImportActivityCard } from "@/components/ImportActivityCard";
 import { Ionicons } from "@/components/Ionicons";
+import { ProBadge } from "@/components/ProBadge";
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { SkeletonContainer, UserProfileSkeleton } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
@@ -84,6 +85,7 @@ export const UserProfileScreen = () => {
   } = useUserActivities({ userId });
 
   const isOwnProfile = currentUserId === userId;
+  const shouldShowProIndicators = profile?.user.subscriptionTier === "pro";
 
   const handleFollow = () => {
     followMutation.mutate({ userId });
@@ -191,7 +193,6 @@ export const UserProfileScreen = () => {
             onImportRecipePress={handleImportExistingRecipe}
             currentUserId={currentUserId}
             timeAgo={item._display.timeAgo}
-            userInitials={item._display.userInitials}
           />
         );
       }
@@ -205,7 +206,6 @@ export const UserProfileScreen = () => {
           onImportRecipePress={handleImportExistingRecipe}
           currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
-          userInitials={item._display.userInitials}
           sourceDescription={item._display.sourceDescription}
         />
       );
@@ -280,29 +280,48 @@ export const UserProfileScreen = () => {
       <View style={styles.headerContent}>
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <View style={styles.avatar}>
-            {profile.user.image && !imageError ? (
-              <Image
-                source={{ uri: profile.user.image }}
-                style={styles.avatarImage}
-                onError={() => setImageError(true)}
-                cachePolicy="memory-disk"
-                transition={100}
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text type="largeTitle" style={styles.avatarText}>
-                  {profile.user.name.charAt(0).toUpperCase()}
-                </Text>
+          <View
+            style={[
+              styles.avatarFrame,
+              shouldShowProIndicators && styles.proAvatarFrame,
+            ]}
+          >
+            <View style={styles.avatar}>
+              {profile.user.image && !imageError ? (
+                <Image
+                  source={{ uri: profile.user.image }}
+                  style={styles.avatarImage}
+                  onError={() => setImageError(true)}
+                  cachePolicy="memory-disk"
+                  transition={100}
+                />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text type="largeTitle" style={styles.avatarText}>
+                    {profile.user.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {shouldShowProIndicators && (
+              <View style={styles.profileProSparkle}>
+                <Ionicons
+                  name="sparkles"
+                  size={14}
+                  style={styles.profileProSparkleIcon}
+                />
               </View>
             )}
           </View>
 
           <VSpace size={16} />
 
-          <Text type="title1" style={styles.name}>
-            {profile.user.name}
-          </Text>
+          <View style={styles.profileNameBlock}>
+            <Text type="title1" numberOfLines={2} style={styles.name}>
+              {profile.user.name}
+            </Text>
+            {shouldShowProIndicators && <ProBadge variant="solid" />}
+          </View>
 
           {profile.user.username && (
             <Text type="bodyFaded" style={styles.username}>
@@ -531,6 +550,21 @@ const styles = StyleSheet.create((theme, rt) => ({
   profileHeader: {
     alignItems: "center",
   },
+  avatarFrame: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  proAvatarFrame: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    backgroundColor: theme.colors.primary + "14",
+    borderWidth: 2,
+    borderColor: theme.colors.primary + "70",
+  },
   avatar: {
     width: 100,
     height: 100,
@@ -552,6 +586,27 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   avatarText: {
     color: theme.colors.primary,
+  },
+  profileProSparkle: {
+    position: "absolute",
+    right: 4,
+    bottom: 4,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: theme.colors.primary,
+    borderWidth: 3,
+    borderColor: theme.colors.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  profileProSparkleIcon: {
+    color: theme.colors.buttonText,
+  },
+  profileNameBlock: {
+    alignItems: "center",
+    gap: 8,
+    maxWidth: "100%",
   },
   name: {
     textAlign: "center",

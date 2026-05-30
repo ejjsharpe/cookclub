@@ -1,12 +1,12 @@
 import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
-import { formatDistanceToNow } from "date-fns";
 import {
   useInfiniteQuery,
   useMutation,
   useQueryClient,
   useQuery,
 } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
 import { useRef } from "react";
 
 // API Response Types
@@ -19,7 +19,6 @@ export type CookingReviewFeedItem = Extract<
 export type ActivityFeedListItem = FeedItem & {
   _display: {
     timeAgo: string;
-    userInitials: string;
     sourceDescription?: string;
   };
 };
@@ -32,21 +31,6 @@ interface UseActivityFeedParams {
 }
 
 type ActivityPage = { items: FeedItem[] };
-
-const getInitials = (name: string): string => {
-  const words = name
-    .trim()
-    .split(" ")
-    .filter((word) => word.length > 0);
-  if (words.length >= 2) {
-    const firstWord = words[0];
-    const lastWord = words[words.length - 1];
-    if (firstWord && lastWord && firstWord[0] && lastWord[0]) {
-      return (firstWord[0] + lastWord[0]).toUpperCase();
-    }
-  }
-  return name.substring(0, 2).toUpperCase();
-};
 
 const getSourceDescription = (item: FeedItem): string | undefined => {
   if (item.type !== "recipe_import") return undefined;
@@ -99,7 +83,6 @@ function useActivityItemsSelector<TPage extends ActivityPage>() {
             timeAgo: formatDistanceToNow(new Date(item.createdAt), {
               addSuffix: true,
             }),
-            userInitials: getInitials(item.actor.name),
             sourceDescription: getSourceDescription(item),
           },
         } as ActivityFeedListItem;
@@ -317,7 +300,10 @@ export const useToggleActivityLike = () => {
       onSuccess: (data, { activityEventId }) => {
         // Sync server-returned count with cache (in case of race conditions)
         const updateWithServerData = (item: FeedItem): FeedItem => {
-          if (item.isLiked === data.liked && item.likeCount === data.likeCount) {
+          if (
+            item.isLiked === data.liked &&
+            item.likeCount === data.likeCount
+          ) {
             return item;
           }
           return {

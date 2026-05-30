@@ -1,17 +1,16 @@
-import { Image } from "expo-image";
 import { View, TouchableOpacity } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
+import { Avatar } from "./Avatar";
 import { HSpace } from "./Space";
 import { Text } from "./Text";
-
-import { getImageUrl } from "@/utils/imageUrl";
 
 interface User {
   id: string;
   name: string;
   email: string;
   image?: string | null;
+  subscriptionTier?: string | null;
 }
 
 interface Props {
@@ -22,20 +21,12 @@ interface Props {
 export const UserCard = ({ user, onPress }: Props) => {
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.avatar}>
-        {user.image ? (
-          <Image
-            source={{ uri: getImageUrl(user.image, "avatar-sm") }}
-            style={styles.avatarImage}
-          />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text type="heading" style={styles.avatarText}>
-              {user.name.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
-      </View>
+      <Avatar
+        imageUrl={user.image}
+        name={user.name}
+        size={44}
+        subscriptionTier={user.subscriptionTier}
+      />
 
       <HSpace size={12} />
 
@@ -61,27 +52,6 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     padding: 12,
     marginVertical: 4,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-  },
-  avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  avatarPlaceholder: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.primary + "20",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    fontSize: 18,
-    color: theme.colors.primary,
   },
   info: {
     flex: 1,

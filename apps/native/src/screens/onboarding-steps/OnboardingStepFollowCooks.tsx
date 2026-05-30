@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Image, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, TouchableOpacity, ActivityIndicator } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import {
@@ -9,6 +9,7 @@ import {
   useUnfollowUser,
   useFollowing,
 } from "@/api/follows";
+import { Avatar } from "@/components/Avatar";
 import { Input } from "@/components/Input";
 import { HSpace, VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
@@ -20,6 +21,7 @@ interface UserRowProps {
     name: string;
     username?: string | null;
     image?: string | null;
+    subscriptionTier?: string | null;
   };
   isFollowing: boolean;
 }
@@ -62,17 +64,12 @@ function UserRow({ user, isFollowing: isFollowingServer }: UserRowProps) {
   return (
     <View style={styles.userRow}>
       <View style={styles.userInfo}>
-        <View style={styles.avatar}>
-          {user.image ? (
-            <Image source={{ uri: user.image }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text type="heading" style={styles.avatarText}>
-                {user.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
-        </View>
+        <Avatar
+          imageUrl={user.image}
+          name={user.name}
+          size={44}
+          subscriptionTier={user.subscriptionTier}
+        />
         <HSpace size={12} />
         <View style={styles.nameContainer}>
           <Text type="heading" numberOfLines={1}>
@@ -191,30 +188,6 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-  },
-  avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  avatarPlaceholder: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.primary + "20",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    fontSize: 20,
-    lineHeight: 24,
-    includeFontPadding: false,
-    textAlign: "center",
-    color: theme.colors.primary,
   },
   nameContainer: {
     flex: 1,

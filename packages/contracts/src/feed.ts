@@ -6,6 +6,8 @@ export type FeedSourceType =
   | "manual"
   | "user";
 
+export type PublicSubscriptionTier = "free" | "pro";
+
 interface BaseRecipeMetadata {
   id: number;
   ownerId: string;
@@ -30,6 +32,7 @@ interface Actor {
   name: string;
   username: string | null;
   image: string | null;
+  subscriptionTier: PublicSubscriptionTier;
 }
 
 interface BaseFeedItem {

@@ -6,6 +6,7 @@ export type {
   FeedItem,
   RecipeMetadata,
   SourceType,
+  PublicSubscriptionTier,
   RecipeImportFeedItem,
   CookingReviewFeedItem,
   GetFeedResponse,

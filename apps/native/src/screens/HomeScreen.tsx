@@ -70,6 +70,7 @@ interface HeaderProps {
   onAvatarPress: () => void;
   onNotificationPress: () => void;
   unreadCount: number;
+  isPro: boolean;
   titleOpacity: SharedValue<number>;
   avatarOpacity: SharedValue<number>;
 }
@@ -80,6 +81,7 @@ const Header = memo(
     onAvatarPress,
     onNotificationPress,
     unreadCount,
+    isPro,
     titleOpacity,
     avatarOpacity,
   }: HeaderProps) => {
@@ -162,6 +164,7 @@ const Header = memo(
                     imageVersion={user.updatedAt}
                     name={user.name}
                     size={44}
+                    isPro={isPro}
                   />
                 </Pressable>
               </Animated.View>
@@ -227,7 +230,7 @@ export const HomeScreen = () => {
   const importRecipeMutation = useImportRecipe();
   const { startImport } = useBackgroundImportQueue();
   const session = useSessionContext();
-  const { requireSmartImport } = useSubscription();
+  const { isPro, requireSmartImport } = useSubscription();
 
   // ─── State ────────────────────────────────────────────────────────────────────
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -598,7 +601,6 @@ export const HomeScreen = () => {
             onImportRecipePress={handleImportExistingRecipe}
             currentUserId={currentUserId}
             timeAgo={item._display.timeAgo}
-            userInitials={item._display.userInitials}
           />
         );
       }
@@ -614,7 +616,6 @@ export const HomeScreen = () => {
           onImportRecipePress={handleImportExistingRecipe}
           currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
-          userInitials={item._display.userInitials}
           sourceDescription={item._display.sourceDescription}
         />
       );
@@ -840,6 +841,7 @@ export const HomeScreen = () => {
             onAvatarPress={handleAvatarPress}
             onNotificationPress={handleNotificationPress}
             unreadCount={unreadCount}
+            isPro={isPro}
             titleOpacity={titleOpacity}
             avatarOpacity={avatarOpacity}
           />

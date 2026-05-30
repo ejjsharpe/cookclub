@@ -1,4 +1,4 @@
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 
 import {
   adaptyWebhookEvents,
@@ -9,6 +9,8 @@ import type { DbClient, TransactionClient } from "../types";
 
 export const FREE_SMART_IMPORT_LIMIT = 5;
 export const DEFAULT_PRO_ACCESS_LEVEL_ID = "pro";
+
+export type PublicSubscriptionTier = "free" | "pro";
 
 export interface SubscriptionStatus {
   isPro: boolean;
@@ -55,7 +57,7 @@ export function getSmartImportPeriodStart(now = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-function isEntitlementCurrentlyActive(
+export function isSubscriptionEntitlementActive(
   entitlement:
     | Pick<
         typeof subscriptionEntitlements.$inferSelect,
@@ -67,6 +69,33 @@ function isEntitlementCurrentlyActive(
 ) {
   if (!entitlement?.isActive) return false;
   return !entitlement.expiresAt || entitlement.expiresAt > now;
+}
+
+export function getPublicSubscriptionTierForEntitlement(
+  entitlement:
+    | Pick<
+        typeof subscriptionEntitlements.$inferSelect,
+        "isActive" | "expiresAt"
+      >
+    | null
+    | undefined,
+  now = new Date(),
+): PublicSubscriptionTier {
+  return isSubscriptionEntitlementActive(entitlement, now) ? "pro" : "free";
+}
+
+export function publicSubscriptionTierSql(
+  userId: SQLWrapper,
+): SQL<PublicSubscriptionTier> {
+  return sql<PublicSubscriptionTier>`CASE WHEN EXISTS (
+    SELECT 1 FROM ${subscriptionEntitlements}
+    WHERE ${subscriptionEntitlements.userId} = ${userId}
+      AND ${subscriptionEntitlements.isActive} = true
+      AND (
+        ${subscriptionEntitlements.expiresAt} IS NULL
+        OR ${subscriptionEntitlements.expiresAt} > now()
+      )
+  ) THEN 'pro' ELSE 'free' END`;
 }
 
 async function getSmartImportUsedCount(
@@ -104,7 +133,7 @@ export async function getSubscriptionStatus(
     getSmartImportUsedCount(db, userId, periodStart),
   ]);
 
-  const isPro = isEntitlementCurrentlyActive(entitlement, now);
+  const isPro = isSubscriptionEntitlementActive(entitlement, now);
 
   return {
     isPro,

@@ -2,13 +2,19 @@ import { follows, user } from "../../schemas";
 import { eq, and } from "drizzle-orm";
 
 import { ServiceError } from "../errors";
+import {
+  publicSubscriptionTierSql,
+  type PublicSubscriptionTier,
+} from "../subscription";
 import type { DbClient } from "../types";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type FollowListItem = {
   followId: number;
-  user: Pick<typeof user.$inferSelect, "id" | "name" | "email" | "image">;
+  user: Pick<typeof user.$inferSelect, "id" | "name" | "email" | "image"> & {
+    subscriptionTier: PublicSubscriptionTier;
+  };
   followedAt: Date;
 };
 
@@ -111,6 +117,7 @@ export async function getFollowList(
     .select({
       follow: follows,
       user,
+      subscriptionTier: publicSubscriptionTierSql(user.id),
     })
     .from(follows)
     .innerJoin(
@@ -132,6 +139,7 @@ export async function getFollowList(
       name: item.user.name,
       email: item.user.email,
       image: item.user.image,
+      subscriptionTier: item.subscriptionTier,
     },
     followedAt: item.follow.createdAt,
   }));

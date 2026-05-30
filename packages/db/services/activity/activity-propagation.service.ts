@@ -11,6 +11,7 @@ import {
   recipes,
   recipeImages,
 } from "../../schemas";
+import { publicSubscriptionTierSql } from "../subscription";
 
 /**
  * Extract domain from a URL.
@@ -62,6 +63,7 @@ export async function hydrateActivityIds(
       name: user.name,
       username: user.username,
       image: user.image,
+      subscriptionTier: publicSubscriptionTierSql(user.id),
     })
     .from(user)
     .where(inArray(user.id, userIds));
@@ -213,6 +215,7 @@ export async function hydrateActivityIds(
         name: actor.name,
         username: actor.username ?? null,
         image: actor.image ?? null,
+        subscriptionTier: actor.subscriptionTier,
       },
       createdAt: activity.createdAt.getTime(),
       likeCount: activity.likeCount,

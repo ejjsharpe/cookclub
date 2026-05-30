@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   followUser: vi.fn(),
   unfollowUser: vi.fn(),
   getFollowList: vi.fn(),
+  publicSubscriptionTierSql: vi.fn(() => ({ type: "publicSubscriptionTier" })),
   createAndSendNotification: vi.fn().mockResolvedValue(undefined),
   createAndSendNotificationInBackground: vi.fn(),
   ServiceError: class ServiceError extends Error {
@@ -31,6 +32,7 @@ vi.mock("@repo/db/services", () => ({
   followUser: mocks.followUser,
   unfollowUser: mocks.unfollowUser,
   getFollowList: mocks.getFollowList,
+  publicSubscriptionTierSql: mocks.publicSubscriptionTierSql,
   ServiceError: mocks.ServiceError,
 }));
 

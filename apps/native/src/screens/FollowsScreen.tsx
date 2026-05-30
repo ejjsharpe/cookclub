@@ -26,6 +26,7 @@ interface FollowUser {
     name: string;
     email: string;
     image?: string | null;
+    subscriptionTier?: string | null;
   };
   followedAt: string;
 }
@@ -35,6 +36,7 @@ interface User {
   name: string;
   email: string;
   image?: string | null;
+  subscriptionTier?: string | null;
 }
 
 type FollowsScreenRouteProp = RouteProp<AppParamList, "FollowsList">;

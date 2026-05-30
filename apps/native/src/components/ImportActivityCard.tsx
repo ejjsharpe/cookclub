@@ -10,6 +10,7 @@ import { Text } from "./Text";
 
 import type { RecipeImportFeedItem } from "@/api/activity";
 import { ActivityActionRow } from "@/components/ActivityActionRow";
+import { Avatar } from "@/components/Avatar";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
 import { getImageUrl } from "@/utils/imageUrl";
 
@@ -24,36 +25,18 @@ interface Props {
   onCommentPress?: (activityEventId: number) => void;
   currentUserId?: string;
   timeAgo?: string;
-  userInitials?: string;
   sourceDescription?: string;
 }
-
-const getInitials = (name: string): string => {
-  const words = name
-    .trim()
-    .split(" ")
-    .filter((w) => w.length > 0);
-  if (words.length >= 2) {
-    const firstWord = words[0];
-    const lastWord = words[words.length - 1];
-    if (firstWord && lastWord && firstWord[0] && lastWord[0]) {
-      return (firstWord[0] + lastWord[0]).toUpperCase();
-    }
-  }
-  return name.substring(0, 2).toUpperCase();
-};
 
 const ImportUserHeader = memo(
   ({
     actor,
     timeAgo,
-    userInitials,
     sourceDescription,
     onPress,
   }: {
     actor: RecipeImportFeedItem["actor"];
     timeAgo: string;
-    userInitials: string;
     sourceDescription: string;
     onPress: () => void;
   }) => (
@@ -62,28 +45,22 @@ const ImportUserHeader = memo(
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={styles.avatar}>
-        {actor.image ? (
-          <Image
-            source={{ uri: getImageUrl(actor.image, "avatar-sm") }}
-            style={styles.avatarImage}
-            cachePolicy="memory-disk"
-            transition={100}
-          />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarInitials}>{userInitials}</Text>
-          </View>
-        )}
-      </View>
+      <Avatar
+        imageUrl={actor.image}
+        name={actor.name}
+        size={44}
+        subscriptionTier={actor.subscriptionTier}
+      />
       <View style={styles.userInfo}>
         <View style={styles.userNameRow}>
           <View style={styles.nameGroup}>
-            <Text type="headline" style={styles.userName}>
-              {actor.name}
-            </Text>
+            <View style={styles.displayNameRow}>
+              <Text type="headline" numberOfLines={1} style={styles.userName}>
+                {actor.name}
+              </Text>
+            </View>
             {actor.username && (
-              <Text type="footnote" style={styles.username}>
+              <Text type="footnote" numberOfLines={1} style={styles.username}>
                 @{actor.username}
               </Text>
             )}
@@ -159,7 +136,6 @@ export const ImportActivityCard = memo(
     onCommentPress,
     currentUserId,
     timeAgo: providedTimeAgo,
-    userInitials: providedUserInitials,
     sourceDescription: providedSourceDescription,
   }: Props) => {
     const activityId = useMemo(() => parseInt(activity.id, 10), [activity.id]);
@@ -172,11 +148,6 @@ export const ImportActivityCard = memo(
         providedTimeAgo ??
         formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true }),
       [activity.createdAt, providedTimeAgo],
-    );
-
-    const userInitials = useMemo(
-      () => providedUserInitials ?? getInitials(activity.actor.name),
-      [activity.actor.name, providedUserInitials],
     );
 
     const handleViewSource = useCallback(async () => {
@@ -237,7 +208,6 @@ export const ImportActivityCard = memo(
         <ImportUserHeader
           actor={activity.actor}
           timeAgo={timeAgo}
-          userInitials={userInitials}
           sourceDescription={sourceDescription}
           onPress={handleUserPress}
         />
@@ -275,49 +245,41 @@ const styles = StyleSheet.create((theme) => ({
     gap: 12,
     paddingHorizontal: 20,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    overflow: "hidden",
-  },
-  avatarImage: {
-    width: "100%",
-    height: "100%",
-  },
-  avatarPlaceholder: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: theme.colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarInitials: {
-    color: theme.colors.buttonText,
-    fontSize: 17,
-    fontFamily: theme.fonts.semiBold,
-  },
   userInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   userNameRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 8,
   },
   nameGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     flex: 1,
+    minWidth: 0,
   },
-  userName: {},
+  displayNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  userName: {
+    flexShrink: 1,
+  },
   username: {
     color: theme.colors.textSecondary,
+    flexShrink: 2,
   },
   timeAgo: {
     color: theme.colors.textSecondary,
+    flexShrink: 0,
   },
   activityText: {
     color: theme.colors.textSecondary,

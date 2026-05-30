@@ -4,6 +4,7 @@ export type {
   FeedItem,
   FeedSourceType as SourceType,
   GetFeedResponse,
+  PublicSubscriptionTier,
   RecipeImportFeedItem,
   RecipeMetadata,
 } from "@repo/contracts/feed";
