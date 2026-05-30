@@ -7,7 +7,6 @@ import {
   Alert,
   FlatList,
   type LayoutChangeEvent,
-  Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   ScrollView,
@@ -356,6 +355,7 @@ export const CookModeScreen = () => {
   const { height: windowHeight } = useWindowDimensions();
   const scrollY = useSharedValue(0);
   const timerSheetRef = useRef<TrueSheet>(null);
+  const ingredientsSheetRef = useRef<TrueSheet>(null);
 
   const { recipeName, ingredientSections, instructionSections } = route.params;
 
@@ -381,7 +381,6 @@ export const CookModeScreen = () => {
   }, [instructionSections]);
 
   const totalSteps = flattenedInstructions.length;
-  const [ingredientsVisible, setIngredientsVisible] = useState(false);
   const [timerHours, setTimerHours] = useState(0);
   const [timerMinutes, setTimerMinutes] = useState(10);
   const [timer, setTimer] = useState<CookingTimer | null>(null);
@@ -599,7 +598,7 @@ export const CookModeScreen = () => {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.ingredientsButton}
-          onPress={() => setIngredientsVisible(true)}
+          onPress={() => ingredientsSheetRef.current?.present()}
         >
           <Ionicons
             name="list"
@@ -761,56 +760,42 @@ export const CookModeScreen = () => {
         </View>
       </AppSheet>
 
-      <Modal
-        visible={ingredientsVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setIngredientsVisible(false)}
+      <AppSheet
+        ref={ingredientsSheetRef}
+        title="Ingredients"
+        subtitle={recipeName}
+        detents={[0.6, 1]}
+        scrollable
+        backgroundColor={theme.colors.background}
+        headerStyle={styles.ingredientsSheetHeader}
       >
-        <View style={styles.ingredientsSheet}>
-          <View
-            style={[
-              styles.ingredientsSheetHeader,
-              { paddingTop: insets.top + 8 },
-            ]}
-          >
-            <Text type="headline" style={styles.ingredientsSheetTitle}>
-              Ingredients
-            </Text>
-            <TouchableOpacity
-              style={styles.sheetCloseButton}
-              onPress={() => setIngredientsVisible(false)}
-            >
-              <Ionicons name="close" size={24} style={styles.closeIcon} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView
-            contentInsetAdjustmentBehavior="automatic"
-            contentContainerStyle={[
-              styles.ingredientsList,
-              { paddingBottom: insets.bottom + 24 },
-            ]}
-          >
-            {ingredientSections.map((section) => (
-              <View key={section.id} style={styles.ingredientsSection}>
-                {section.name && (
-                  <Text style={styles.ingredientsSectionTitle}>
-                    {section.name}
+        <ScrollView
+          style={styles.ingredientsSheetScroll}
+          contentContainerStyle={[
+            styles.ingredientsList,
+            { paddingBottom: Math.max(insets.bottom, 16) + 12 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {ingredientSections.map((section) => (
+            <View key={section.id} style={styles.ingredientsSection}>
+              {section.name && (
+                <Text style={styles.ingredientsSectionTitle}>
+                  {section.name}
+                </Text>
+              )}
+              {section.ingredients.map((ingredient) => (
+                <View key={ingredient.id} style={styles.ingredientRow}>
+                  <View style={styles.ingredientBullet} />
+                  <Text style={styles.ingredientText}>
+                    {formatIngredient(ingredient)}
                   </Text>
-                )}
-                {section.ingredients.map((ingredient) => (
-                  <View key={ingredient.id} style={styles.ingredientRow}>
-                    <View style={styles.ingredientBullet} />
-                    <Text style={styles.ingredientText}>
-                      {formatIngredient(ingredient)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      </Modal>
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      </AppSheet>
     </View>
   );
 };
@@ -967,35 +952,17 @@ const styles = StyleSheet.create((theme) => ({
   timerControlIcon: {
     color: theme.colors.background,
   },
-  ingredientsSheet: {
+  ingredientsSheetHeader: {
+    backgroundColor: theme.colors.background,
+  },
+  ingredientsSheetScroll: {
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  ingredientsSheetHeader: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  ingredientsSheetTitle: {
-    flex: 1,
-  },
-  sheetCloseButton: {
-    width: 44,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.inputBackground,
-  },
   ingredientsList: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    gap: 28,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    gap: 24,
   },
   timerSheetContent: {
     paddingHorizontal: 24,
