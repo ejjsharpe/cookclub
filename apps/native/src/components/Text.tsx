@@ -60,7 +60,6 @@ const styles = StyleSheet.create((theme) => ({
           lineHeight: 28,
           color: theme.colors.text,
           fontFamily: theme.fonts.black,
-          letterSpacing: 0.35,
         },
         // iOS Title 3: 20pt Regular
         title3: {
@@ -68,7 +67,7 @@ const styles = StyleSheet.create((theme) => ({
           lineHeight: 25,
           color: theme.colors.text,
           fontFamily: theme.fonts.bold,
-          letterSpacing: 0.38,
+          letterSpacing: -0.4,
         },
         // iOS Headline: 17pt Semibold
         headline: {
@@ -76,7 +75,7 @@ const styles = StyleSheet.create((theme) => ({
           lineHeight: 22,
           color: theme.colors.text,
           fontFamily: theme.fonts.semiBold,
-          letterSpacing: -0.41,
+          letterSpacing: -0.4,
         },
         // iOS Body: 17pt Regular
         body: {
@@ -84,7 +83,7 @@ const styles = StyleSheet.create((theme) => ({
           lineHeight: 22,
           color: theme.colors.text,
           fontFamily: theme.fonts.regular,
-          letterSpacing: -0.41,
+          letterSpacing: -0.4,
         },
         // Highlight variant (same as body but primary color)
         highlight: {
@@ -92,7 +91,7 @@ const styles = StyleSheet.create((theme) => ({
           lineHeight: 22,
           color: theme.colors.primary,
           fontFamily: theme.fonts.semiBold,
-          letterSpacing: -0.41,
+          letterSpacing: -0.4,
         },
         // Body faded variant
         bodyFaded: {
@@ -100,7 +99,7 @@ const styles = StyleSheet.create((theme) => ({
           lineHeight: 22,
           color: theme.colors.textSecondary,
           fontFamily: theme.fonts.regular,
-          letterSpacing: -0.41,
+          letterSpacing: -0.4,
         },
         // iOS Callout: 16pt Regular
         callout: {
@@ -148,7 +147,7 @@ const styles = StyleSheet.create((theme) => ({
           lineHeight: 22,
           color: theme.colors.text,
           fontFamily: theme.fonts.semiBold,
-          letterSpacing: -0.41,
+          letterSpacing: -0.4,
         },
         // Alias: caption -> footnote (for backwards compatibility)
         caption: {
