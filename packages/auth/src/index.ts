@@ -1,5 +1,5 @@
 import { expo } from "@better-auth/expo";
-import { getDb } from "@repo/db";
+import { getDb, type DbEnv } from "@repo/db";
 import * as schema from "@repo/db/schemas";
 import { getOrCreateDefaultCollections } from "@repo/db/services";
 import { betterAuth } from "better-auth";
@@ -13,8 +13,7 @@ const AUTH_BASE_PATH = "/auth";
 const SOCIAL_PROVIDERS = ["google", "apple"] as const;
 type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
 
-export interface AuthEnv {
-  DATABASE_URL: string;
+export interface AuthEnv extends DbEnv {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   APPLE_CLIENT_ID?: string;

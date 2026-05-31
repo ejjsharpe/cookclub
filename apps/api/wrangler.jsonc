@@ -105,6 +105,12 @@
   "durable_objects": {
     "bindings": [{ "name": "USER_FEED", "class_name": "FeedDO" }],
   },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "d94ba4dcc5ac4b2a822f5f47797c78dc",
+    },
+  ],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FeedDO"] }],
   // Production environment overrides
   "env": {
@@ -125,6 +131,12 @@
       "durable_objects": {
         "bindings": [{ "name": "USER_FEED", "class_name": "FeedDO" }],
       },
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "2a9bbe9a36694961823475897388c2a0",
+        },
+      ],
       "queues": {
         "producers": [
           {

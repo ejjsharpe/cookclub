@@ -29,16 +29,18 @@
     "@repo/contracts": "workspace:*",
     "@repo/shared": "workspace:*",
     "bcryptjs": "3.0.3",
-    "drizzle-orm": "0.45.2"
+    "drizzle-orm": "0.45.2",
+    "pg": "8.21.0"
   },
   "devDependencies": {
-    "@dotenvx/dotenvx": "1.68.1",
     "@cloudflare/workers-types": "4.20260525.1",
+    "@dotenvx/dotenvx": "1.68.1",
     "@repo/tsconfig": "workspace:*",
     "@types/bcrypt": "6.0.0",
     "@types/bcryptjs": "3.0.0",
-    "eslint-config-universe": "15.2.0",
+    "@types/pg": "8.20.0",
     "drizzle-kit": "0.31.10",
+    "eslint-config-universe": "15.2.0",
     "typescript": "6.0.3",
     "vitest": "4.1.7"
   },

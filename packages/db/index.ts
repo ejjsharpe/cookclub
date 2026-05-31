@@ -1,17 +1,28 @@
-import { Pool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import type { NeonDatabase } from "drizzle-orm/neon-serverless";
+import { drizzle } from "drizzle-orm/node-postgres";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 
 import * as schema from "./schemas";
 
-interface Env {
-  DATABASE_URL: string;
+export interface DbEnv {
+  DATABASE_URL?: string;
+  HYPERDRIVE?: {
+    connectionString: string;
+  };
 }
 
-export type DbType = NeonDatabase<typeof schema>;
+export type DbType = NodePgDatabase<typeof schema>;
 
-export function getDb(env: Env): DbType {
-  const pool = new Pool({ connectionString: env.DATABASE_URL });
+export function getDb(env: DbEnv): DbType {
+  const connectionString = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
+
+  if (!connectionString) {
+    throw new Error(
+      "Missing HYPERDRIVE binding or DATABASE_URL environment variable",
+    );
+  }
+
+  const pool = new Pool({ connectionString, max: 1 });
 
   const db = drizzle(pool, { schema });
 
