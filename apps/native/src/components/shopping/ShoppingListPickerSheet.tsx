@@ -16,10 +16,11 @@ import {
   type ShoppingListWithMeta,
 } from "../../api/shopping";
 import { AppSheet } from "../AppSheet";
-import { VSpace } from "../Space";
 import { Text } from "../Text";
 
 import { Ionicons } from "@/components/Ionicons";
+
+const LIST_PREVIEW_SIZE = 58;
 
 interface ListItemProps {
   list: ShoppingListWithMeta;
@@ -36,29 +37,32 @@ const ListItem = ({
   onDelete,
   showDelete,
 }: ListItemProps) => {
+  const metadata = list.isDefault
+    ? "Default list"
+    : list.isOwner
+      ? "Personal list"
+      : `Shared by ${list.owner.name}`;
+
   return (
-    <TouchableOpacity style={styles.planRow} onPress={onSelect}>
-      <View style={styles.planInfo}>
-        <View style={styles.planNameRow}>
-          <Text type="body">{list.name}</Text>
-          {list.isDefault && (
-            <View style={styles.defaultBadge}>
-              <Text type="caption" style={styles.defaultBadgeText}>
-                Default
-              </Text>
-            </View>
-          )}
-          {!list.isOwner && (
-            <View style={styles.sharedBadge}>
-              <Ionicons name="people" size={12} style={styles.sharedIcon} />
-              <Text type="caption" style={styles.sharedBadgeText}>
-                {list.owner.name}
-              </Text>
-            </View>
-          )}
+    <TouchableOpacity
+      style={styles.listRow}
+      onPress={onSelect}
+      activeOpacity={0.78}
+    >
+      <View style={styles.listInfo}>
+        <View style={styles.listPreview}>
+          <Ionicons name="cart-outline" size={28} style={styles.previewIcon} />
+        </View>
+        <View style={styles.listTextWrap}>
+          <Text type="headline" numberOfLines={1}>
+            {list.name}
+          </Text>
+          <Text type="caption" style={styles.listMeta} numberOfLines={1}>
+            {metadata}
+          </Text>
         </View>
       </View>
-      <View style={styles.planActions}>
+      <View style={styles.listActions}>
         {showDelete && !list.isDefault && list.isOwner && (
           <TouchableOpacity
             onPress={(e) => {
@@ -75,12 +79,14 @@ const ListItem = ({
             />
           </TouchableOpacity>
         )}
-        {isActive && (
+        {isActive ? (
           <Ionicons
             name="checkmark-circle"
             size={24}
             style={styles.checkIcon}
           />
+        ) : (
+          <View style={styles.radio} />
         )}
       </View>
     </TouchableOpacity>
@@ -164,25 +170,24 @@ export const ShoppingListPickerSheet = forwardRef<
     <AppSheet
       ref={sheetRef}
       title="Select Shopping List"
-      detents={["auto"]}
+      detents={[0.62, 1]}
+      scrollable
       backgroundColor={theme.colors.background}
     >
-      <View>
-        <ScrollView style={styles.scrollView}>
-          <View style={styles.scrollContent}>
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" />
-              </View>
-            ) : (
-              <>
-                {/* Your Lists */}
-                {ownedLists.length > 0 && (
-                  <>
-                    <Text type="heading" style={styles.sectionTitle}>
-                      Your Lists
-                    </Text>
-                    <VSpace size={12} />
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.scrollContent}>
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" />
+            </View>
+          ) : (
+            <>
+              {ownedLists.length > 0 && (
+                <View style={styles.section}>
+                  <Text type="caption" style={styles.sectionTitle}>
+                    Your Lists
+                  </Text>
+                  <View style={styles.listGroup}>
                     {ownedLists.map((list) => (
                       <ListItem
                         key={list.id}
@@ -193,17 +198,16 @@ export const ShoppingListPickerSheet = forwardRef<
                         showDelete={listToDelete !== list.id}
                       />
                     ))}
-                    <VSpace size={20} />
-                  </>
-                )}
+                  </View>
+                </View>
+              )}
 
-                {/* Shared Lists */}
-                {sharedLists.length > 0 && (
-                  <>
-                    <Text type="heading" style={styles.sectionTitle}>
-                      Shared With You
-                    </Text>
-                    <VSpace size={12} />
+              {sharedLists.length > 0 && (
+                <View style={styles.section}>
+                  <Text type="caption" style={styles.sectionTitle}>
+                    Shared With You
+                  </Text>
+                  <View style={styles.listGroup}>
                     {sharedLists.map((list) => (
                       <ListItem
                         key={list.id}
@@ -214,145 +218,147 @@ export const ShoppingListPickerSheet = forwardRef<
                         showDelete={false}
                       />
                     ))}
-                    <VSpace size={20} />
-                  </>
-                )}
+                  </View>
+                </View>
+              )}
 
-                {/* Create New List */}
-                {isCreating ? (
-                  <>
-                    <Text type="heading" style={styles.sectionTitle}>
-                      New List Name
-                    </Text>
-                    <VSpace size={12} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="e.g., Weekend BBQ"
-                      placeholderTextColor="#999"
-                      value={newListName}
-                      onChangeText={setNewListName}
-                      autoFocus
-                    />
-                    <VSpace size={12} />
-                    <View style={styles.createActions}>
-                      <TouchableOpacity
-                        style={styles.cancelButton}
-                        onPress={() => {
-                          setNewListName("");
-                          setIsCreating(false);
-                        }}
-                      >
-                        <Text type="body">Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.saveButton,
-                          (!newListName.trim() || createMutation.isPending) &&
-                            styles.saveButtonDisabled,
-                        ]}
-                        onPress={handleCreateList}
-                        disabled={
-                          !newListName.trim() || createMutation.isPending
-                        }
-                      >
-                        {createMutation.isPending ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Text type="highlight" style={styles.saveButtonText}>
-                            Create
-                          </Text>
-                        )}
-                      </TouchableOpacity>
+              {isCreating ? (
+                <View style={styles.createPanel}>
+                  <Text type="heading">New list name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Weekend BBQ"
+                    placeholderTextColor={theme.colors.placeholderText}
+                    value={newListName}
+                    onChangeText={setNewListName}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={handleCreateList}
+                  />
+                  <View style={styles.createActions}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => {
+                        setNewListName("");
+                        setIsCreating(false);
+                      }}
+                      activeOpacity={0.78}
+                    >
+                      <Text type="body">Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.saveButton,
+                        (!newListName.trim() || createMutation.isPending) &&
+                          styles.saveButtonDisabled,
+                      ]}
+                      onPress={handleCreateList}
+                      disabled={!newListName.trim() || createMutation.isPending}
+                      activeOpacity={0.78}
+                    >
+                      {createMutation.isPending ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text type="highlight" style={styles.saveButtonText}>
+                          Create
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.listRow, styles.newListButton]}
+                  onPress={() => setIsCreating(true)}
+                  activeOpacity={0.78}
+                >
+                  <View style={styles.listInfo}>
+                    <View style={styles.newListPreview}>
+                      <Ionicons
+                        name="add"
+                        size={28}
+                        style={styles.newListPreviewIcon}
+                      />
                     </View>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.createButton}
-                    onPress={() => setIsCreating(true)}
-                  >
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={24}
-                      style={styles.createIcon}
-                    />
-                    <Text type="body" style={styles.createText}>
-                      Create new list
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </>
-            )}
-          </View>
-        </ScrollView>
-      </View>
+                    <View style={styles.listTextWrap}>
+                      <Text type="headline" numberOfLines={1}>
+                        New List
+                      </Text>
+                      <Text type="caption" style={styles.listMeta}>
+                        Create shopping list
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={24}
+                    style={styles.newListIcon}
+                  />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      </ScrollView>
     </AppSheet>
   );
 });
 
 const styles = StyleSheet.create((theme) => ({
   scrollView: {
-    maxHeight: 500,
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
+    gap: 18,
   },
   loadingContainer: {
     alignItems: "center",
-    paddingVertical: 40,
+    paddingVertical: 32,
+  },
+  section: {
+    gap: 10,
   },
   sectionTitle: {
-    marginBottom: 4,
+    color: theme.colors.textSecondary,
   },
-  planRow: {
+  listGroup: {
+    gap: 12,
+  },
+  listRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: theme.borderRadius.medium,
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: 8,
+    paddingVertical: 4,
+    gap: 14,
   },
-  planInfo: {
+  listInfo: {
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
-    marginRight: 12,
+    gap: 12,
   },
-  planNameRow: {
-    flexDirection: "row",
+  listPreview: {
+    width: LIST_PREVIEW_SIZE,
+    height: LIST_PREVIEW_SIZE,
+    borderRadius: LIST_PREVIEW_SIZE * 0.12,
     alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  defaultBadge: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.small,
-  },
-  defaultBadgeText: {
-    color: theme.colors.buttonText,
-    fontWeight: "600",
-  },
-  sharedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+    justifyContent: "center",
     backgroundColor: theme.colors.inputBackground,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.small,
   },
-  sharedIcon: {
+  previewIcon: {
     color: theme.colors.textSecondary,
   },
-  sharedBadgeText: {
+  listTextWrap: {
+    flex: 1,
+    gap: 3,
+  },
+  listMeta: {
     color: theme.colors.textSecondary,
   },
-  planActions: {
+  listActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -366,12 +372,27 @@ const styles = StyleSheet.create((theme) => ({
   checkIcon: {
     color: theme.colors.primary,
   },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  createPanel: {
+    gap: 12,
+    padding: 14,
+    borderRadius: theme.borderRadius.medium,
+    backgroundColor: theme.colors.inputBackground,
+  },
   input: {
+    minHeight: 48,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.medium,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     fontSize: 16,
     lineHeight: 21,
     includeFontPadding: false,
@@ -381,24 +402,25 @@ const styles = StyleSheet.create((theme) => ({
   },
   createActions: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: theme.borderRadius.medium,
+    minHeight: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.background,
   },
   saveButton: {
     flex: 1,
-    backgroundColor: theme.colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: theme.borderRadius.medium,
+    minHeight: 44,
+    borderRadius: 22,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.primary,
   },
   saveButtonDisabled: {
     opacity: 0.5,
@@ -406,24 +428,21 @@ const styles = StyleSheet.create((theme) => ({
   saveButtonText: {
     color: theme.colors.buttonText,
   },
-  createButton: {
-    flexDirection: "row",
+  newListButton: {
+    opacity: 0.9,
+  },
+  newListPreview: {
+    width: LIST_PREVIEW_SIZE,
+    height: LIST_PREVIEW_SIZE,
+    borderRadius: LIST_PREVIEW_SIZE * 0.12,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: theme.borderRadius.medium,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
-    borderStyle: "dashed",
+    backgroundColor: theme.colors.inputBackground,
   },
-  createIcon: {
-    color: theme.colors.text,
-    opacity: 0.6,
-    marginRight: 8,
+  newListPreviewIcon: {
+    color: theme.colors.textSecondary,
   },
-  createText: {
-    color: theme.colors.text,
-    opacity: 0.6,
+  newListIcon: {
+    color: theme.colors.textSecondary,
   },
 }));
