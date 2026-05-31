@@ -3,7 +3,7 @@ import { eq, and } from "drizzle-orm";
 
 import { ServiceError } from "../errors";
 import {
-  publicSubscriptionTierSql,
+  publicSubscriptionTierSqlForUserTable,
   type PublicSubscriptionTier,
 } from "../subscription";
 import type { DbClient } from "../types";
@@ -117,7 +117,7 @@ export async function getFollowList(
     .select({
       follow: follows,
       user,
-      subscriptionTier: publicSubscriptionTierSql(user.id),
+      subscriptionTier: publicSubscriptionTierSqlForUserTable(),
     })
     .from(follows)
     .innerJoin(

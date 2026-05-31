@@ -1,0 +1,23 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cookclub-admin-development",
+  "main": "@tanstack/react-start/server-entry",
+  "account_id": "46fa47bc2bba51d75383b4dfe6e3deb1",
+  "compatibility_date": "2026-05-31",
+  "compatibility_flags": ["nodejs_compat"],
+  "dev": {
+    "port": 3000,
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "env": {
+    "production": {
+      "name": "cookclub-admin-production",
+      "routes": [{ "pattern": "admin.cookclub.app", "custom_domain": true }],
+      "observability": {
+        "enabled": true,
+      },
+    },
+  },
+}

@@ -11,7 +11,7 @@ import {
   recipes,
   recipeImages,
 } from "../../schemas";
-import { publicSubscriptionTierSql } from "../subscription";
+import { publicSubscriptionTierSqlForUserTable } from "../subscription";
 
 /**
  * Extract domain from a URL.
@@ -63,7 +63,7 @@ export async function hydrateActivityIds(
       name: user.name,
       username: user.username,
       image: user.image,
-      subscriptionTier: publicSubscriptionTierSql(user.id),
+      subscriptionTier: publicSubscriptionTierSqlForUserTable(),
     })
     .from(user)
     .where(inArray(user.id, userIds));

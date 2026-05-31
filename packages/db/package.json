@@ -20,7 +20,9 @@
     "reset:dev-schema": "dotenvx run -- bun run scripts/reset-dev-schema.ts",
     "seed": "dotenvx run -- bun run seed.ts",
     "seed:reset": "dotenvx run -- bun run seed.ts --clear",
-    "seed:prod": "dotenvx run -f .env.production -- bun run seed.ts"
+    "seed:prod": "dotenvx run -f .env.production -- bun run seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@neondatabase/serverless": "1.1.0",
@@ -37,7 +39,8 @@
     "@types/bcryptjs": "3.0.0",
     "eslint-config-universe": "15.2.0",
     "drizzle-kit": "0.31.10",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "4.1.7"
   },
   "eslintConfig": {
     "extends": "universe/node"

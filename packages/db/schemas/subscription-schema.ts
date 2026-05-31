@@ -44,6 +44,32 @@ export const subscriptionEntitlements = pgTable(
   ],
 );
 
+export const subscriptionAdminOverrides = pgTable(
+  "subscription_admin_overrides",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    reason: text("reason").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: text("updated_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("subscription_admin_overrides_status_idx").on(table.status),
+    check(
+      "subscription_admin_overrides_status_check",
+      sql`${table.status} IN ('pro', 'free')`,
+    ),
+  ],
+);
+
 export const smartImportUsage = pgTable(
   "smart_import_usage",
   {

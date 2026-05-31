@@ -126,12 +126,10 @@ function imageReferenceFromPublicUrl(
 }
 
 async function getCandidateImageReferencesForAccountDeletion(
-  ctx: Pick<Context, "db" | "env"> & {
-    user: NonNullable<Context["user"]>;
-  },
+  ctx: Pick<Context, "db" | "env">,
+  userId: string,
 ) {
   const publicUrl = ctx.env.IMAGE_PUBLIC_URL;
-  const userId = ctx.user.id;
   const keys = new Set<string>();
   const urls = new Set<string>();
   const addReference = (url: string | null | undefined) => {
@@ -234,6 +232,49 @@ async function getRemainingReferencedImageKeys(
   ].forEach((rows) => rows.forEach((row) => addIfCandidate(row.url)));
 
   return referencedKeys;
+}
+
+export async function deleteUserAccountData(
+  ctx: Pick<Context, "db" | "env" | "waitUntil">,
+  userId: string,
+) {
+  const imageCandidates = await getCandidateImageReferencesForAccountDeletion(
+    ctx,
+    userId,
+  );
+
+  const [deletedUser] = await ctx.db
+    .delete(user)
+    .where(eq(user.id, userId))
+    .returning({ id: user.id });
+
+  if (!deletedUser) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Account not found",
+    });
+  }
+
+  const referencedImageKeys = await getRemainingReferencedImageKeys(
+    ctx,
+    imageCandidates,
+  );
+  const imageKeys = Array.from(imageCandidates.keys).filter(
+    (key) => !referencedImageKeys.has(key),
+  );
+
+  if (imageKeys.length > 0) {
+    ctx.waitUntil(
+      ctx.env.IMAGE_SERVICE.delete(imageKeys).catch((error) => {
+        console.error("Failed to delete account images:", error);
+      }),
+    );
+  }
+
+  return {
+    success: true,
+    deletedImageCount: imageKeys.length,
+  };
 }
 
 export const userRouter = router({
@@ -410,40 +451,6 @@ export const userRouter = router({
     }),
 
   deleteAccount: authedProcedure.mutation(async ({ ctx }) => {
-    const imageCandidates =
-      await getCandidateImageReferencesForAccountDeletion(ctx);
-
-    const [deletedUser] = await ctx.db
-      .delete(user)
-      .where(eq(user.id, ctx.user.id))
-      .returning({ id: user.id });
-
-    if (!deletedUser) {
-      throw new TRPCError({
-        code: "NOT_FOUND",
-        message: "Account not found",
-      });
-    }
-
-    const referencedImageKeys = await getRemainingReferencedImageKeys(
-      ctx,
-      imageCandidates,
-    );
-    const imageKeys = Array.from(imageCandidates.keys).filter(
-      (key) => !referencedImageKeys.has(key),
-    );
-
-    if (imageKeys.length > 0) {
-      ctx.waitUntil(
-        ctx.env.IMAGE_SERVICE.delete(imageKeys).catch((error) => {
-          console.error("Failed to delete account images:", error);
-        }),
-      );
-    }
-
-    return {
-      success: true,
-      deletedImageCount: imageKeys.length,
-    };
+    return deleteUserAccountData(ctx, ctx.user.id);
   }),
 });

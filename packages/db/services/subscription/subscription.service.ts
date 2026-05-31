@@ -3,6 +3,7 @@ import { and, eq, gt, lt, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import {
   adaptyWebhookEvents,
   smartImportUsage,
+  subscriptionAdminOverrides,
   subscriptionEntitlements,
 } from "../../schemas";
 import type { DbClient, TransactionClient } from "../types";
@@ -11,6 +12,7 @@ export const FREE_SMART_IMPORT_LIMIT = 5;
 export const DEFAULT_PRO_ACCESS_LEVEL_ID = "pro";
 
 export type PublicSubscriptionTier = "free" | "pro";
+export type SubscriptionAdminOverrideStatus = "free" | "pro";
 
 export interface SubscriptionStatus {
   isPro: boolean;
@@ -38,6 +40,13 @@ export interface UpsertSubscriptionEntitlementInput {
   willRenew?: boolean | null;
   expiresAt?: Date | null;
   lastEventAt?: Date | null;
+}
+
+export interface SubscriptionAdminOverrideInput {
+  userId: string;
+  status: SubscriptionAdminOverrideStatus;
+  reason: string;
+  actorUserId: string;
 }
 
 export interface RecordAdaptyWebhookEventInput {
@@ -87,7 +96,18 @@ export function getPublicSubscriptionTierForEntitlement(
 export function publicSubscriptionTierSql(
   userId: SQLWrapper,
 ): SQL<PublicSubscriptionTier> {
-  return sql<PublicSubscriptionTier>`CASE WHEN EXISTS (
+  return sql<PublicSubscriptionTier>`CASE
+    WHEN EXISTS (
+      SELECT 1 FROM ${subscriptionAdminOverrides}
+      WHERE ${subscriptionAdminOverrides.userId} = ${userId}
+        AND ${subscriptionAdminOverrides.status} = 'pro'
+    ) THEN 'pro'
+    WHEN EXISTS (
+      SELECT 1 FROM ${subscriptionAdminOverrides}
+      WHERE ${subscriptionAdminOverrides.userId} = ${userId}
+        AND ${subscriptionAdminOverrides.status} = 'free'
+    ) THEN 'free'
+    WHEN EXISTS (
     SELECT 1 FROM ${subscriptionEntitlements}
     WHERE ${subscriptionEntitlements.userId} = ${userId}
       AND ${subscriptionEntitlements.isActive} = true
@@ -96,6 +116,13 @@ export function publicSubscriptionTierSql(
         OR ${subscriptionEntitlements.expiresAt} > now()
       )
   ) THEN 'pro' ELSE 'free' END`;
+}
+
+export function publicSubscriptionTierSqlForUserTable(): SQL<PublicSubscriptionTier> {
+  // Drizzle renders an outer table column as just "id" inside these nested SQL
+  // subqueries. Use the qualified user table column so it cannot resolve to an
+  // inner table's id column.
+  return publicSubscriptionTierSql(sql.raw('"user"."id"'));
 }
 
 async function getSmartImportUsedCount(
@@ -124,28 +151,37 @@ export async function getSubscriptionStatus(
 ): Promise<SubscriptionStatus> {
   const periodStart = getSmartImportPeriodStart(now);
 
-  const [entitlement, used] = await Promise.all([
+  const [entitlement, override, used] = await Promise.all([
     db
       .select()
       .from(subscriptionEntitlements)
       .where(eq(subscriptionEntitlements.userId, userId))
       .then((rows) => rows[0] ?? null),
+    db
+      .select()
+      .from(subscriptionAdminOverrides)
+      .where(eq(subscriptionAdminOverrides.userId, userId))
+      .then((rows) => rows[0] ?? null),
     getSmartImportUsedCount(db, userId, periodStart),
   ]);
 
-  const isPro = isSubscriptionEntitlementActive(entitlement, now);
+  const isPro =
+    override?.status === "pro" ||
+    (!override && isSubscriptionEntitlementActive(entitlement, now));
 
   return {
     isPro,
-    accessLevelId: entitlement?.accessLevelId ?? null,
-    expiresAt: entitlement?.expiresAt ?? null,
-    willRenew: entitlement?.willRenew ?? null,
+    accessLevelId: override
+      ? override.status === "pro"
+        ? "manual"
+        : null
+      : (entitlement?.accessLevelId ?? null),
+    expiresAt: override ? null : (entitlement?.expiresAt ?? null),
+    willRenew: override ? null : (entitlement?.willRenew ?? null),
     smartImports: {
       used,
       limit: isPro ? null : FREE_SMART_IMPORT_LIMIT,
-      remaining: isPro
-        ? null
-        : Math.max(0, FREE_SMART_IMPORT_LIMIT - used),
+      remaining: isPro ? null : Math.max(0, FREE_SMART_IMPORT_LIMIT - used),
       periodStart,
     },
   };
@@ -305,6 +341,48 @@ export async function upsertSubscriptionEntitlement(
         updatedAt: now,
       },
     });
+}
+
+export async function setSubscriptionAdminOverride(
+  db: DbClient | TransactionClient,
+  input: SubscriptionAdminOverrideInput,
+) {
+  const now = new Date();
+  const [override] = await db
+    .insert(subscriptionAdminOverrides)
+    .values({
+      userId: input.userId,
+      status: input.status,
+      reason: input.reason,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: input.actorUserId,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: subscriptionAdminOverrides.userId,
+      set: {
+        status: input.status,
+        reason: input.reason,
+        updatedByUserId: input.actorUserId,
+        updatedAt: now,
+      },
+    })
+    .returning();
+
+  return override;
+}
+
+export async function clearSubscriptionAdminOverride(
+  db: DbClient | TransactionClient,
+  userId: string,
+) {
+  const [override] = await db
+    .delete(subscriptionAdminOverrides)
+    .where(eq(subscriptionAdminOverrides.userId, userId))
+    .returning();
+
+  return override ?? null;
 }
 
 export async function recordAdaptyWebhookEvent(

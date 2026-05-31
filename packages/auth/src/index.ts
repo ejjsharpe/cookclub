@@ -4,6 +4,7 @@ import * as schema from "@repo/db/schemas";
 import { getOrCreateDefaultCollections } from "@repo/db/services";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { admin } from "better-auth/plugins";
 import { Resend } from "resend";
 
 const FROM_EMAIL = "Cook Club <noreply@cookclub.app>";
@@ -21,6 +22,7 @@ export interface AuthEnv {
   APPLE_BUNDLE_IDENTIFIER?: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  BETTER_AUTH_ADMIN_USER_IDS?: string;
   RESEND_API_KEY: string;
   TRUSTED_ORIGINS?: string;
 }
@@ -62,6 +64,9 @@ function getTrustedOrigins(env: AuthEnv): string[] {
       "https://cookclub.app",
       "https://www.cookclub.app",
       "https://api.cookclub.app",
+      "https://admin.cookclub.app",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
       "https://appleid.apple.com",
       env.BETTER_AUTH_URL,
       ...configured,
@@ -75,6 +80,14 @@ function getAuthBaseUrl(env: AuthEnv): string {
 
 function getCallbackUrl(env: AuthEnv, provider: SocialProvider): string {
   return `${getAuthBaseUrl(env)}/callback/${provider}`;
+}
+
+function getAdminUserIds(env: AuthEnv): string[] {
+  return (
+    env.BETTER_AUTH_ADMIN_USER_IDS?.split(",")
+      .map((userId) => userId.trim())
+      .filter(Boolean) ?? []
+  );
 }
 
 export function getAuth(env: AuthEnv) {
@@ -121,11 +134,27 @@ export function getAuth(env: AuthEnv) {
         },
       },
     },
-    plugins: [expo()],
+    plugins: [
+      expo(),
+      admin({
+        adminUserIds: getAdminUserIds(env),
+        defaultRole: "user",
+        adminRoles: ["admin"],
+      }),
+    ],
     trustedOrigins: getTrustedOrigins(env),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification,
+      customSyntheticUser: ({ coreFields, additionalFields, id }) => ({
+        ...coreFields,
+        role: "user",
+        banned: false,
+        banReason: null,
+        banExpires: null,
+        ...additionalFields,
+        id,
+      }),
     },
     emailVerification: {
       sendOnSignUp: requireEmailVerification,

@@ -317,10 +317,14 @@ export const UserProfileScreen = () => {
           <VSpace size={16} />
 
           <View style={styles.profileNameBlock}>
-            <Text type="title1" numberOfLines={2} style={styles.name}>
-              {profile.user.name}
-            </Text>
-            {shouldShowProIndicators && <ProBadge variant="solid" />}
+            <View style={styles.nameRow}>
+              <Text type="title1" numberOfLines={2} style={styles.name}>
+                {profile.user.name}
+              </Text>
+              {shouldShowProIndicators && (
+                <ProBadge variant="solid" style={styles.profileProBadge} />
+              )}
+            </View>
           </View>
 
           {profile.user.username && (
@@ -605,11 +609,21 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   profileNameBlock: {
     alignItems: "center",
+    maxWidth: "100%",
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     maxWidth: "100%",
   },
   name: {
+    flexShrink: 1,
     textAlign: "center",
+  },
+  profileProBadge: {
+    alignSelf: "center",
   },
   username: {
     textAlign: "center",

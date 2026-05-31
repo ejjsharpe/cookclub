@@ -1,5 +1,6 @@
 import { createContext } from "./context";
 import { activityRouter } from "./routers/activity-router";
+import { adminRouter } from "./routers/admin-router";
 import { collectionRouter } from "./routers/collection-router";
 import { commentRouter } from "./routers/comment-router";
 import { followsRouter } from "./routers/follows-router";
@@ -33,6 +34,7 @@ export const appRouter = router({
   mealPlan: mealPlanRouter,
   notification: notificationRouter,
   subscription: subscriptionRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;

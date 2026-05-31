@@ -743,7 +743,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   importProgressLabel: {
     color: theme.colors.primary,
-    fontFamily: theme.fonts.semiBold,
+    fontFamily: theme.fonts.medium,
     fontVariant: ["tabular-nums"],
   },
   importCard: {
@@ -799,7 +799,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     position: "relative",
   },
   importTitleEmphasized: {
-    fontFamily: theme.fonts.semiBold,
+    fontFamily: theme.fonts.medium,
   },
   importSubtitle: {
     color: theme.colors.textSecondary,
@@ -818,7 +818,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   importReviewButtonText: {
     color: theme.colors.buttonText,
-    fontFamily: theme.fonts.semiBold,
+    fontFamily: theme.fonts.medium,
   },
   importDismissButton: {
     width: 34,
@@ -878,7 +878,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     gap: 8,
   },
   actionLabel: {
-    fontFamily: theme.fonts.semiBold,
+    fontFamily: theme.fonts.medium,
   },
   badge: {
     backgroundColor: theme.colors.primary,

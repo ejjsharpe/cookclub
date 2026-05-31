@@ -8,6 +8,7 @@ export * from "./collection";
 export * from "./meal-plan";
 export * from "./notification";
 export * from "./subscription";
+export * from "./admin";
 
 // Re-export activity service (db-only functions - no DO coordination)
 export { hydrateActivityIds, buildFeedItem } from "./activity";

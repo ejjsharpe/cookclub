@@ -3,7 +3,7 @@ import {
   followUser as followUserService,
   unfollowUser as unfollowUserService,
   getFollowList,
-  publicSubscriptionTierSql,
+  publicSubscriptionTierSqlForUserTable,
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
@@ -142,7 +142,7 @@ export const followsRouter = router({
             username: user.username,
             email: user.email,
             image: user.image,
-            subscriptionTier: publicSubscriptionTierSql(user.id),
+            subscriptionTier: publicSubscriptionTierSqlForUserTable(),
           })
           .from(user)
           .where(
@@ -189,7 +189,7 @@ export const followsRouter = router({
             name: user.name,
             username: user.username,
             image: user.image,
-            subscriptionTier: publicSubscriptionTierSql(user.id),
+            subscriptionTier: publicSubscriptionTierSqlForUserTable(),
             recipeCount: sql<number>`(
               SELECT COUNT(*)::int FROM recipes WHERE owner_id = "user"."id"
             )`,
@@ -240,7 +240,7 @@ export const followsRouter = router({
             email: user.email,
             image: user.image,
             createdAt: user.createdAt,
-            subscriptionTier: publicSubscriptionTierSql(user.id),
+            subscriptionTier: publicSubscriptionTierSqlForUserTable(),
             followersCount: sql<number>`(
               SELECT COUNT(*)::int FROM follows WHERE following_id = "user"."id"
             )`,
@@ -310,7 +310,7 @@ export const followsRouter = router({
           .select({
             follow: follows,
             user,
-            subscriptionTier: publicSubscriptionTierSql(user.id),
+            subscriptionTier: publicSubscriptionTierSqlForUserTable(),
           })
           .from(follows)
           .innerJoin(user, eq(follows.followerId, user.id))
@@ -350,7 +350,7 @@ export const followsRouter = router({
           .select({
             follow: follows,
             user,
-            subscriptionTier: publicSubscriptionTierSql(user.id),
+            subscriptionTier: publicSubscriptionTierSqlForUserTable(),
           })
           .from(follows)
           .innerJoin(user, eq(follows.followingId, user.id))
