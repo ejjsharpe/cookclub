@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "packageManager": "bun@1.3.14",
   "scripts": {
-    "kill-ports": "for port in 8787 8788 8789; do lsof -ti :$port | xargs kill -9 2>/dev/null; done; true",
+    "kill-ports": "for port in 8787 8788 8789 3000; do lsof -ti :$port | xargs kill -9 2>/dev/null; done; true",
     "dev": "nx run-many -t dev --parallel=10",
     "dev:api": "nx run-many -t dev --exclude=cook-club-app,cookclub-web --parallel=10",
     "build": "nx run-many -t build",

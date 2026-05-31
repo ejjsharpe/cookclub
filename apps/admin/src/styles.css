@@ -251,6 +251,42 @@ h3 {
   width: 56px;
 }
 
+.signin-divider {
+  align-items: center;
+  color: var(--ink-muted);
+  display: grid;
+  font-size: 0.78rem;
+  font-weight: 740;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  text-transform: uppercase;
+}
+
+.signin-divider::before,
+.signin-divider::after {
+  background: var(--line);
+  content: "";
+  height: 1px;
+}
+
+.signin-panel .primary-button,
+.google-signin-button {
+  min-height: var(--field-height);
+  width: 100%;
+}
+
+.google-signin-button {
+  background: var(--surface-strong);
+  border-color: var(--line);
+}
+
+.google-logo {
+  display: block;
+  flex: 0 0 18px;
+  height: 18px;
+  width: 18px;
+}
+
 .eyebrow {
   color: var(--ink-muted);
   font-size: 0.75rem;
