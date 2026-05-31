@@ -4,7 +4,7 @@
     "./service-types": "./src/service-types.ts"
   },
   "scripts": {
-    "dev": "wait-on tcp:8788 && wait-on tcp:8789 && wrangler dev --ip 0.0.0.0 --inspector-port 9229",
+    "dev": "wait-on tcp:8788 && wait-on tcp:8789 && bun scripts/dev.mjs",
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify",
     "deploy:prod": "wrangler deploy --env production --minify",
