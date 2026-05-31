@@ -131,7 +131,10 @@ export interface InstructionSectionWithItems {
 }
 
 export type RecipeWithDetails = Omit<typeof recipes.$inferSelect, "ownerId"> & {
-  owner: Pick<typeof user.$inferSelect, "id" | "name" | "email" | "image">;
+  owner: Pick<
+    typeof user.$inferSelect,
+    "id" | "name" | "username" | "image"
+  >;
   images: Pick<typeof recipeImages.$inferSelect, "id" | "url">[];
   ingredientSections: IngredientSectionWithItems[];
   instructionSections: InstructionSectionWithItems[];
@@ -697,7 +700,7 @@ export async function getRecipeDetail(
       uploader: {
         id: user.id,
         name: user.name,
-        email: user.email,
+        username: user.username,
         image: user.image,
       },
       originalOwner: {
@@ -998,6 +1001,13 @@ export async function importRecipe(
       throw new ServiceError(
         "BAD_REQUEST",
         "You cannot import your own recipe",
+      );
+    }
+
+    if (sourceRecipe.sourceType === "url") {
+      throw new ServiceError(
+        "FORBIDDEN",
+        "This recipe can only be viewed on the original source website.",
       );
     }
 

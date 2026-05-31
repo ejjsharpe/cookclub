@@ -116,6 +116,34 @@ describe("adminRouter", () => {
     );
   });
 
+  it("requires set-role permission for subscription overrides", async () => {
+    mocks.userHasPermission.mockImplementation(
+      (input: { body: { permissions: { user: string[] } } }) =>
+        Promise.resolve({
+          success: input.body.permissions.user.includes("list"),
+        }),
+    );
+    const caller = adminRouter.createCaller(createContext() as any);
+
+    await expect(
+      caller.setSubscriptionOverride({
+        userId: "user-1",
+        status: "pro",
+        reason: "support",
+      }),
+    ).rejects.toHaveProperty("code", "FORBIDDEN");
+
+    await expect(
+      caller.clearSubscriptionOverride({
+        userId: "user-1",
+        reason: "support",
+      }),
+    ).rejects.toHaveProperty("code", "FORBIDDEN");
+
+    expect(mocks.setSubscriptionAdminOverride).not.toHaveBeenCalled();
+    expect(mocks.clearSubscriptionAdminOverride).not.toHaveBeenCalled();
+  });
+
   it("allows a bootstrap admin user id through Better Auth permissions", async () => {
     mocks.userHasPermission.mockImplementation((_input, env) =>
       Promise.resolve({

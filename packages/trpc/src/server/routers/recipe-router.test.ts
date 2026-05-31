@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { recipeRouter } from "./recipe-router";
@@ -17,6 +18,7 @@ const mockUpdateRecipe = vi.fn();
 const mockGetRecipeDetail = vi.fn();
 const mockGetStoredRecipeNutrition = vi.fn();
 const mockUpsertRecipeNutrition = vi.fn();
+const mockImportRecipe = vi.fn();
 const mockGetSubscriptionStatus = vi.fn();
 const mockValidateTagIds = vi.fn().mockResolvedValue(undefined);
 
@@ -28,7 +30,7 @@ vi.mock("@repo/db/services", () => ({
     mockGetStoredRecipeNutrition(...args),
   upsertRecipeNutrition: (...args: unknown[]) =>
     mockUpsertRecipeNutrition(...args),
-  importRecipe: vi.fn(),
+  importRecipe: (...args: unknown[]) => mockImportRecipe(...args),
   queryPopularRecipesThisWeek: vi.fn(),
   DEFAULT_PRO_ACCESS_LEVEL_ID: "pro",
   getSubscriptionStatus: (...args: unknown[]) =>
@@ -222,6 +224,7 @@ describe("recipeRouter - activity integration", () => {
     mockEnv = createMockEnv();
     mockCreateRecipe.mockResolvedValue({ id: 1, name: "Test Recipe" });
     mockUpdateRecipe.mockResolvedValue({ id: 1 });
+    mockImportRecipe.mockResolvedValue({ id: 2 });
     mockGetRecipeDetail.mockResolvedValue({
       id: 1,
       name: "Creamy Pasta",
@@ -370,6 +373,86 @@ describe("recipeRouter - activity integration", () => {
       expect(mockDb.where).toHaveBeenCalledWith(
         expect.objectContaining({ type: "and" }),
       );
+    });
+  });
+
+  describe("importRecipe", () => {
+    it("checks recipe detail visibility before importing", async () => {
+      mockGetRecipeDetail.mockRejectedValueOnce(
+        new TRPCError({
+          code: "FORBIDDEN",
+          message: "Recipe is restricted",
+        }),
+      );
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.importRecipe({ recipeId: 123 }),
+      ).rejects.toHaveProperty("code", "FORBIDDEN");
+
+      expect(mockGetRecipeDetail).toHaveBeenCalledWith(
+        mockDb,
+        123,
+        "test-user-id",
+      );
+      expect(mockImportRecipe).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("imports visible recipes through the recipe service", async () => {
+      mockDb._setInsertReturning([{ id: 200, createdAt: new Date() }]);
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(caller.importRecipe({ recipeId: 123 })).resolves.toEqual({
+        id: 2,
+      });
+
+      expect(mockGetRecipeDetail).toHaveBeenCalledWith(
+        mockDb,
+        123,
+        "test-user-id",
+      );
+      expect(mockImportRecipe).toHaveBeenCalledWith(
+        mockDb,
+        "test-user-id",
+        123,
+      );
+    });
+  });
+
+  describe("direct AI payload limits", () => {
+    it("rejects oversized recipe text before calling the parser", async () => {
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.parseRecipeFromText({ text: "x".repeat(100_001) }),
+      ).rejects.toHaveProperty("code", "PAYLOAD_TOO_LARGE");
+
+      expect(mockEnv.RECIPE_AI.parse).not.toHaveBeenCalled();
+    });
+
+    it("rejects oversized chat messages before calling the parser", async () => {
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.generateRecipeChat({
+          messages: [{ role: "user", content: "x".repeat(4_001) }],
+          conversationState: {
+            ingredients: null,
+            cuisinePreference: null,
+            willingToShop: null,
+            maxCookingTime: null,
+          },
+        }),
+      ).rejects.toHaveProperty("code", "PAYLOAD_TOO_LARGE");
+
+      expect(mockEnv.RECIPE_AI.chat).not.toHaveBeenCalled();
     });
   });
 

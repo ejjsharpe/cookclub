@@ -24,7 +24,7 @@ interface FollowUser {
   user: {
     id: string;
     name: string;
-    email: string;
+    username?: string | null;
     image?: string | null;
     subscriptionTier?: string | null;
   };
@@ -34,7 +34,7 @@ interface FollowUser {
 interface User {
   id: string;
   name: string;
-  email: string;
+  username?: string | null;
   image?: string | null;
   subscriptionTier?: string | null;
 }

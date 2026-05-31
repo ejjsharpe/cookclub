@@ -10,7 +10,7 @@ import { useFollowUser } from "@/api/follows";
 interface User {
   id: string;
   name: string;
-  email: string;
+  username?: string | null;
   image?: string | null;
   subscriptionTier?: string | null;
 }
@@ -22,6 +22,7 @@ interface Props {
 
 export const UserSearchCard = ({ user, onUserPress }: Props) => {
   const followMutation = useFollowUser();
+  const userMeta = user.username ? `@${user.username}` : "Cook Club member";
 
   const handleFollow = () => {
     followMutation.mutate({ userId: user.id });
@@ -47,8 +48,8 @@ export const UserSearchCard = ({ user, onUserPress }: Props) => {
           <Text type="heading" numberOfLines={1}>
             {user.name}
           </Text>
-          <Text type="bodyFaded" numberOfLines={1} style={styles.email}>
-            {user.email}
+          <Text type="bodyFaded" numberOfLines={1} style={styles.meta}>
+            {userMeta}
           </Text>
         </View>
       </TouchableOpacity>
@@ -85,7 +86,7 @@ const styles = StyleSheet.create((theme) => ({
   info: {
     flex: 1,
   },
-  email: {
+  meta: {
     fontSize: 14,
     marginTop: 2,
   },

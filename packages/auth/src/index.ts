@@ -52,6 +52,15 @@ async function sendEmail(
   }
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function getTrustedOrigins(env: AuthEnv): string[] {
   const configured =
     env.TRUSTED_ORIGINS?.split(",")
@@ -160,10 +169,13 @@ export function getAuth(env: AuthEnv) {
       sendOnSignUp: requireEmailVerification,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
+        const safeName = escapeHtml(user.name);
+        const safeUrl = escapeHtml(url);
+
         return sendEmail(env, {
           to: user.email,
           subject: "Verify your email - Cook Club",
-          html: `<p>Hi ${user.name},</p><p>Welcome to Cook Club! Please verify your email by clicking the link below:</p><p><a href="${url}">Verify Email</a></p><p>If you didn't create an account, you can ignore this email.</p>`,
+          html: `<p>Hi ${safeName},</p><p>Welcome to Cook Club! Please verify your email by clicking the link below:</p><p><a href="${safeUrl}">Verify Email</a></p><p>If you didn't create an account, you can ignore this email.</p>`,
         });
       },
     },
@@ -171,10 +183,13 @@ export function getAuth(env: AuthEnv) {
       changeEmail: {
         enabled: true,
         sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
+          const safeName = escapeHtml(user.name);
+          const safeUrl = escapeHtml(url);
+
           return sendEmail(env, {
             to: newEmail,
             subject: "Verify your new email - Cook Club",
-            html: `<p>Hi ${user.name},</p><p>You requested to change your email address. Please verify your new email by clicking the link below:</p><p><a href="${url}">Verify Email</a></p><p>If you didn't request this change, you can ignore this email.</p>`,
+            html: `<p>Hi ${safeName},</p><p>You requested to change your email address. Please verify your new email by clicking the link below:</p><p><a href="${safeUrl}">Verify Email</a></p><p>If you didn't request this change, you can ignore this email.</p>`,
           });
         },
       },

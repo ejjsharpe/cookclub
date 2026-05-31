@@ -14,6 +14,13 @@ import { createAndSendNotificationInBackground } from "../services/push-notifica
 import { router, authedProcedure } from "../trpc";
 import { mapServiceError } from "../utils";
 
+const MAX_USER_SEARCH_LIMIT = 50;
+const MAX_USER_SEARCH_QUERY_LENGTH = 100;
+
+function normalizeUserSearchLimit(limit: number) {
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_USER_SEARCH_LIMIT);
+}
+
 export const followsRouter = router({
   // Follow a user
   followUser: authedProcedure
@@ -125,12 +132,19 @@ export const followsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { query, limit } = input;
+      const query = input.query.trim();
+      const limit = normalizeUserSearchLimit(input.limit);
 
       if (query.length < 2) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Search query must be at least 2 characters",
+        });
+      }
+      if (query.length > MAX_USER_SEARCH_QUERY_LENGTH) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Search query is too long",
         });
       }
 
@@ -140,7 +154,6 @@ export const followsRouter = router({
             id: user.id,
             name: user.name,
             username: user.username,
-            email: user.email,
             image: user.image,
             subscriptionTier: publicSubscriptionTierSqlForUserTable(),
           })
@@ -150,7 +163,6 @@ export const followsRouter = router({
               ne(user.id, ctx.user.id),
               or(
                 like(user.name, `%${query}%`),
-                like(user.email, `%${query}%`),
                 like(user.username, `%${query}%`),
               ),
             ),
@@ -174,7 +186,7 @@ export const followsRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { limit } = input;
+      const limit = normalizeUserSearchLimit(input.limit);
 
       try {
         // Get IDs of users the current user already follows
@@ -237,7 +249,6 @@ export const followsRouter = router({
             id: user.id,
             name: user.name,
             username: user.username,
-            email: user.email,
             image: user.image,
             createdAt: user.createdAt,
             subscriptionTier: publicSubscriptionTierSqlForUserTable(),
@@ -275,7 +286,6 @@ export const followsRouter = router({
             id: profileData.id,
             name: profileData.name,
             username: profileData.username,
-            email: profileData.email,
             image: profileData.image,
             createdAt: profileData.createdAt,
             subscriptionTier: profileData.subscriptionTier,
@@ -321,7 +331,7 @@ export const followsRouter = router({
           user: {
             id: item.user.id,
             name: item.user.name,
-            email: item.user.email,
+            username: item.user.username,
             image: item.user.image,
             subscriptionTier: item.subscriptionTier,
           },
@@ -361,7 +371,7 @@ export const followsRouter = router({
           user: {
             id: item.user.id,
             name: item.user.name,
-            email: item.user.email,
+            username: item.user.username,
             image: item.user.image,
             subscriptionTier: item.subscriptionTier,
           },

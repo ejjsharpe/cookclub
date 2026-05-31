@@ -18,7 +18,7 @@ export type RecipeListItem = Omit<typeof recipes.$inferSelect, "ownerId"> & {
   owner: {
     id: string;
     name: string;
-    email: string;
+    username: string | null;
     image: string | null;
   };
   coverImage: string | null;
@@ -79,6 +79,7 @@ export async function queryPopularRecipesThisWeek(
   userId: string,
   limit: number = 10,
 ): Promise<RecipeListItem[]> {
+  const normalizedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -94,7 +95,7 @@ export async function queryPopularRecipesThisWeek(
       uploader: {
         id: user.id,
         name: user.name,
-        email: user.email,
+        username: user.username,
         image: user.image,
       },
       firstImage: min(recipeImages.url),
@@ -111,10 +112,17 @@ export async function queryPopularRecipesThisWeek(
         eq(follows.followerId, userId),
       ),
     )
-    .groupBy(recipes.id, user.id, user.name, user.email, user.image, follows.id)
+    .groupBy(
+      recipes.id,
+      user.id,
+      user.name,
+      user.username,
+      user.image,
+      follows.id,
+    )
     .having(sql`${recentEngagementExpr} > 0`)
     .orderBy(desc(recentEngagementExpr), desc(recipes.id))
-    .limit(limit);
+    .limit(normalizedLimit);
 
   // Fetch related data
   const recipeIds = queryResults.map((item) => item.recipe.id);

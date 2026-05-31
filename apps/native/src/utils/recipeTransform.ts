@@ -88,7 +88,7 @@ export function transformParsedRecipeForPreview(
     owner: {
       id: "",
       name: "Unknown",
-      email: "",
+      username: null,
       image: null,
     },
 

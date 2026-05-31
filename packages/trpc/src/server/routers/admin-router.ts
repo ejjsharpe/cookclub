@@ -389,6 +389,7 @@ export const adminRouter = router({
   setSubscriptionOverride: adminProcedure
     .input(SetSubscriptionOverrideValidator)
     .mutation(async ({ ctx, input }) => {
+      await requireAdminPermission(ctx, "set-role");
       await assertTargetUserExists(ctx, input.userId);
 
       const override = await ctx.db.transaction(async (tx) => {
@@ -416,6 +417,7 @@ export const adminRouter = router({
   clearSubscriptionOverride: adminProcedure
     .input(ClearSubscriptionOverrideValidator)
     .mutation(async ({ ctx, input }) => {
+      await requireAdminPermission(ctx, "set-role");
       await assertTargetUserExists(ctx, input.userId);
 
       const override = await ctx.db.transaction(async (tx) => {

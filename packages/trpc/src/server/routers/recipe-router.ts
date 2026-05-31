@@ -177,6 +177,20 @@ const MAX_IMPORT_DATA_LENGTH: Record<ImportJobMode, number> = {
   image: 2_500_000,
 };
 
+const MAX_AI_TEXT_LENGTH = MAX_IMPORT_DATA_LENGTH.text;
+const MAX_AI_IMAGE_BASE64_LENGTH = MAX_IMPORT_DATA_LENGTH.image;
+const MAX_CHAT_MESSAGES = 30;
+const MAX_CHAT_MESSAGE_LENGTH = 4_000;
+const MAX_CONVERSATION_STATE_FIELD_LENGTH = 1_000;
+const MAX_CONVERSATION_INGREDIENTS = 100;
+const MAX_RECIPE_IMAGE_NAME_LENGTH = 200;
+const MAX_RECIPE_IMAGE_DESCRIPTION_LENGTH = 2_000;
+const MAX_RECIPE_IMAGE_ITEMS = 100;
+const MAX_RECIPE_IMAGE_ITEM_LENGTH = 1_000;
+const MAX_RECIPE_LIST_LIMIT = 100;
+const MAX_PERSONALIZATION_GOALS = 10;
+const MAX_PERSONALIZATION_NOTES_LENGTH = 2_000;
+
 // Chat types for AI recipe generation
 const ChatMessageValidator = type({
   role: "'user' | 'assistant'",
@@ -322,6 +336,116 @@ function isHttpUrl(value: string) {
     return url.protocol === "http:" || url.protocol === "https:";
   } catch {
     return false;
+  }
+}
+
+function normalizeRecipeListLimit(limit: number) {
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_RECIPE_LIST_LIMIT);
+}
+
+function assertMaxLength(value: string, label: string, maxLength: number) {
+  if (value.length <= maxLength) return;
+
+  throw new TRPCError({
+    code: "PAYLOAD_TOO_LARGE",
+    message: `${label} is too large.`,
+  });
+}
+
+function assertMaxArrayLength(
+  value: unknown[],
+  label: string,
+  maxLength: number,
+) {
+  if (value.length <= maxLength) return;
+
+  throw new TRPCError({
+    code: "PAYLOAD_TOO_LARGE",
+    message: `${label} has too many items.`,
+  });
+}
+
+function validateChatInput(input: typeof ChatInputValidator.infer) {
+  assertMaxArrayLength(input.messages, "Chat history", MAX_CHAT_MESSAGES);
+
+  for (const message of input.messages) {
+    assertMaxLength(message.content, "Chat message", MAX_CHAT_MESSAGE_LENGTH);
+  }
+
+  const { conversationState } = input;
+  if (conversationState.ingredients) {
+    assertMaxArrayLength(
+      conversationState.ingredients,
+      "Conversation ingredients",
+      MAX_CONVERSATION_INGREDIENTS,
+    );
+    for (const ingredient of conversationState.ingredients) {
+      assertMaxLength(
+        ingredient,
+        "Conversation ingredient",
+        MAX_CONVERSATION_STATE_FIELD_LENGTH,
+      );
+    }
+  }
+
+  for (const field of [
+    conversationState.cuisinePreference,
+    conversationState.maxCookingTime,
+  ]) {
+    if (field) {
+      assertMaxLength(
+        field,
+        "Conversation state",
+        MAX_CONVERSATION_STATE_FIELD_LENGTH,
+      );
+    }
+  }
+}
+
+function validateGenerateRecipeImageInput(
+  input: typeof GenerateRecipeImageValidator.infer,
+) {
+  assertMaxLength(input.name, "Recipe name", MAX_RECIPE_IMAGE_NAME_LENGTH);
+  if (input.description) {
+    assertMaxLength(
+      input.description,
+      "Recipe description",
+      MAX_RECIPE_IMAGE_DESCRIPTION_LENGTH,
+    );
+  }
+
+  for (const [label, items] of [
+    ["Recipe ingredients", input.ingredients ?? []],
+    ["Recipe instructions", input.instructions ?? []],
+  ] as const) {
+    assertMaxArrayLength(items, label, MAX_RECIPE_IMAGE_ITEMS);
+    for (const item of items) {
+      assertMaxLength(item, label, MAX_RECIPE_IMAGE_ITEM_LENGTH);
+    }
+  }
+}
+
+function validatePersonalizeRecipeInput(
+  input: typeof PersonalizeRecipeValidator.infer,
+) {
+  assertMaxArrayLength(
+    input.goals,
+    "Personalization goals",
+    MAX_PERSONALIZATION_GOALS,
+  );
+  if (input.allergyNotes) {
+    assertMaxLength(
+      input.allergyNotes,
+      "Allergy notes",
+      MAX_PERSONALIZATION_NOTES_LENGTH,
+    );
+  }
+  if (input.customNotes) {
+    assertMaxLength(
+      input.customNotes,
+      "Custom notes",
+      MAX_PERSONALIZATION_NOTES_LENGTH,
+    );
   }
 }
 
@@ -651,6 +775,7 @@ export const recipeRouter = router({
   parseRecipeFromText: authedProcedure
     .input(type({ text: "string" }))
     .mutation(async ({ ctx, input }) => {
+      assertMaxLength(input.text, "Recipe text", MAX_AI_TEXT_LENGTH);
       await enforceRateLimit(ctx, "recipe_parse_text");
       await assertSmartImportAllowance(ctx);
       const result = await ctx.env.RECIPE_AI.parse({
@@ -678,6 +803,11 @@ export const recipeRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      assertMaxLength(
+        input.imageBase64,
+        "Recipe image",
+        MAX_AI_IMAGE_BASE64_LENGTH,
+      );
       await enforceRateLimit(ctx, "recipe_parse_image");
       await assertSmartImportAllowance(ctx);
       const result = await ctx.env.RECIPE_AI.parse({
@@ -701,6 +831,7 @@ export const recipeRouter = router({
   generateRecipeChat: authedProcedure
     .input(ChatInputValidator)
     .mutation(async ({ ctx, input }) => {
+      validateChatInput(input);
       await requirePro(ctx);
       await enforceRateLimit(ctx, "recipe_chat");
       const result = await ctx.env.RECIPE_AI.chat({
@@ -727,6 +858,7 @@ export const recipeRouter = router({
           message: input.summary,
         });
       }
+      validatePersonalizeRecipeInput(input);
 
       const hasGoal = input.goals.length > 0;
       const hasNotes =
@@ -779,6 +911,7 @@ export const recipeRouter = router({
           message: input.summary,
         });
       }
+      validateGenerateRecipeImageInput(input);
 
       await requirePro(ctx);
       await enforceRateLimit(ctx, "recipe_generate_image");
@@ -920,7 +1053,8 @@ export const recipeRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { limit, cursor, search, tagIds, maxTotalTime } = input;
+      const { cursor, search, tagIds, maxTotalTime } = input;
+      const limit = normalizeRecipeListLimit(input.limit);
 
       try {
         // If filtering by tags, first get the recipe IDs that have any of the selected tags
@@ -946,7 +1080,7 @@ export const recipeRouter = router({
             uploader: {
               id: user.id,
               name: user.name,
-              email: user.email,
+              username: user.username,
               image: user.image,
             },
           })
@@ -963,7 +1097,7 @@ export const recipeRouter = router({
                 : undefined,
             ),
           )
-          .groupBy(recipes.id, user.id, user.name, user.email, user.image)
+          .groupBy(recipes.id, user.id, user.name, user.username, user.image)
           .orderBy(desc(recipes.createdAt))
           .limit(limit + 1);
 
@@ -1037,7 +1171,8 @@ export const recipeRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { userId, limit, cursor, search } = input;
+      const { userId, cursor, search } = input;
+      const limit = normalizeRecipeListLimit(input.limit);
 
       try {
         const userRecipesList = await ctx.db
@@ -1047,7 +1182,7 @@ export const recipeRouter = router({
             uploader: {
               id: user.id,
               name: user.name,
-              email: user.email,
+              username: user.username,
               image: user.image,
             },
           })
@@ -1061,7 +1196,7 @@ export const recipeRouter = router({
               search ? ilike(recipes.name, `%${search}%`) : undefined,
             ),
           )
-          .groupBy(recipes.id, user.id, user.name, user.email, user.image)
+          .groupBy(recipes.id, user.id, user.name, user.username, user.image)
           .orderBy(desc(recipes.createdAt))
           .limit(limit + 1);
 
@@ -1230,6 +1365,8 @@ export const recipeRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       try {
+        await getRecipeDetail(ctx.db, input.recipeId, ctx.user.id);
+
         // Import the recipe (creates a copy for the current user)
         const newRecipe = await importRecipe(
           ctx.db,
@@ -1405,7 +1542,7 @@ export const recipeRouter = router({
         return await queryPopularRecipesThisWeek(
           ctx.db,
           ctx.user.id,
-          input.limit,
+          normalizeRecipeListLimit(input.limit),
         );
       } catch (err) {
         console.error("Error fetching popular recipes:", err);

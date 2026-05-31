@@ -8,7 +8,7 @@ import { Text } from "./Text";
 interface User {
   id: string;
   name: string;
-  email: string;
+  username?: string | null;
   image?: string | null;
   subscriptionTier?: string | null;
 }
@@ -19,6 +19,8 @@ interface Props {
 }
 
 export const UserCard = ({ user, onPress }: Props) => {
+  const userMeta = user.username ? `@${user.username}` : "Cook Club member";
+
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
       <Avatar
@@ -34,8 +36,8 @@ export const UserCard = ({ user, onPress }: Props) => {
         <Text type="heading" numberOfLines={1}>
           {user.name}
         </Text>
-        <Text type="bodyFaded" numberOfLines={1} style={styles.email}>
-          {user.email}
+        <Text type="bodyFaded" numberOfLines={1} style={styles.meta}>
+          {userMeta}
         </Text>
       </View>
     </TouchableOpacity>
@@ -56,7 +58,7 @@ const styles = StyleSheet.create((theme) => ({
   info: {
     flex: 1,
   },
-  email: {
+  meta: {
     fontSize: 14,
     marginTop: 2,
   },

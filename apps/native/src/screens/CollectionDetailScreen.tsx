@@ -267,7 +267,7 @@ export const CollectionDetailScreen = () => {
                       owner: {
                         id: "current-user",
                         name: "You",
-                        email: "",
+                        username: null,
                         image: null,
                       },
                     } as any

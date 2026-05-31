@@ -4,11 +4,14 @@ import { type } from "arktype";
 import { eq, asc, sql } from "drizzle-orm";
 
 import { createAndSendNotificationInBackground } from "../services/push-notification.service";
-import { router, authedProcedure, publicProcedure } from "../trpc";
+import { router, authedProcedure } from "../trpc";
+
+const MAX_COMMENTS_PER_ACTIVITY = 500;
+const MAX_COMMENT_LENGTH = 2_000;
 
 export const commentRouter = router({
   // Get all comments for an activity event
-  getComments: publicProcedure
+  getComments: authedProcedure
     .input(
       type({
         activityEventId: "number",
@@ -34,7 +37,8 @@ export const commentRouter = router({
           .from(comments)
           .innerJoin(user, eq(comments.userId, user.id))
           .where(eq(comments.activityEventId, activityEventId))
-          .orderBy(asc(comments.createdAt));
+          .orderBy(asc(comments.createdAt))
+          .limit(MAX_COMMENTS_PER_ACTIVITY);
 
         // Group comments: top-level and replies
         const topLevelComments = allComments.filter(
@@ -73,6 +77,12 @@ export const commentRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Comment cannot be empty",
+        });
+      }
+      if (content.length > MAX_COMMENT_LENGTH) {
+        throw new TRPCError({
+          code: "PAYLOAD_TOO_LARGE",
+          message: "Comment is too large",
         });
       }
 

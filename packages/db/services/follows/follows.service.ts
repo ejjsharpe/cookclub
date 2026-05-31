@@ -12,7 +12,10 @@ import type { DbClient } from "../types";
 
 export type FollowListItem = {
   followId: number;
-  user: Pick<typeof user.$inferSelect, "id" | "name" | "email" | "image"> & {
+  user: Pick<
+    typeof user.$inferSelect,
+    "id" | "name" | "username" | "image"
+  > & {
     subscriptionTier: PublicSubscriptionTier;
   };
   followedAt: Date;
@@ -137,7 +140,7 @@ export async function getFollowList(
     user: {
       id: item.user.id,
       name: item.user.name,
-      email: item.user.email,
+      username: item.user.username,
       image: item.user.image,
       subscriptionTier: item.subscriptionTier,
     },

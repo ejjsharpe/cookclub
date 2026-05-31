@@ -8,6 +8,26 @@ import type { Hono } from "hono";
 
 import type { Env } from "../types";
 
+const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
+const textEncoder = new TextEncoder();
+
+function byteLength(value: string) {
+  return textEncoder.encode(value).byteLength;
+}
+
+function timingSafeEqualString(a: string, b: string) {
+  const aBytes = textEncoder.encode(a);
+  const bBytes = textEncoder.encode(b);
+  const length = Math.max(aBytes.byteLength, bBytes.byteLength);
+
+  let diff = aBytes.byteLength ^ bBytes.byteLength;
+  for (let i = 0; i < length; i += 1) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+
+  return diff === 0;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -79,11 +99,24 @@ export function registerAdaptyWebhookRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ error: "Webhook not configured" }, 503);
     }
 
-    if (c.req.header("authorization") !== expectedAuthorization) {
+    const authorization = c.req.header("authorization") ?? "";
+    if (!timingSafeEqualString(authorization, expectedAuthorization)) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
+    const contentLength = Number(c.req.header("content-length") ?? "0");
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_WEBHOOK_BODY_BYTES
+    ) {
+      return c.json({ error: "Payload too large" }, 413);
+    }
+
     const text = await c.req.text();
+    if (byteLength(text) > MAX_WEBHOOK_BODY_BYTES) {
+      return c.json({ error: "Payload too large" }, 413);
+    }
+
     if (!text.trim()) {
       return c.json({ ok: true });
     }
