@@ -21,7 +21,6 @@ export interface AuthEnv extends DbEnv {
   APPLE_BUNDLE_IDENTIFIER?: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
-  BETTER_AUTH_ADMIN_USER_IDS?: string;
   RESEND_API_KEY: string;
   TRUSTED_ORIGINS?: string;
 }
@@ -90,14 +89,6 @@ function getCallbackUrl(env: AuthEnv, provider: SocialProvider): string {
   return `${getAuthBaseUrl(env)}/callback/${provider}`;
 }
 
-function getAdminUserIds(env: AuthEnv): string[] {
-  return (
-    env.BETTER_AUTH_ADMIN_USER_IDS?.split(",")
-      .map((userId) => userId.trim())
-      .filter(Boolean) ?? []
-  );
-}
-
 export function getAuth(env: AuthEnv) {
   const db = getDb(env);
   const requireEmailVerification = shouldRequireEmailVerification(env);
@@ -145,7 +136,6 @@ export function getAuth(env: AuthEnv) {
     plugins: [
       expo(),
       admin({
-        adminUserIds: getAdminUserIds(env),
         defaultRole: "user",
         adminRoles: ["admin"],
       }),

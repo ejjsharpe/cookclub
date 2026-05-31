@@ -144,36 +144,6 @@ describe("adminRouter", () => {
     expect(mocks.clearSubscriptionAdminOverride).not.toHaveBeenCalled();
   });
 
-  it("allows a bootstrap admin user id through Better Auth permissions", async () => {
-    mocks.userHasPermission.mockImplementation((_input, env) =>
-      Promise.resolve({
-        success: env.BETTER_AUTH_ADMIN_USER_IDS === "admin-1",
-      }),
-    );
-    const ctx = createContext({
-      db: createDb([[{ id: "user-1" }]]),
-      env: {
-        ...createMockEnv(),
-        BETTER_AUTH_ADMIN_USER_IDS: "admin-1",
-      },
-    });
-    const caller = adminRouter.createCaller(ctx as any);
-
-    await expect(
-      caller.setSubscriptionOverride({
-        userId: "user-1",
-        status: "pro",
-        reason: "support",
-      }),
-    ).resolves.toEqual({
-      override: {
-        userId: "user-1",
-        status: "pro",
-        reason: "support",
-      },
-    });
-  });
-
   it("writes audit events for subscription override mutations", async () => {
     const ctx = createContext({ db: createDb([[{ id: "user-1" }]]) });
     const caller = adminRouter.createCaller(ctx as any);
