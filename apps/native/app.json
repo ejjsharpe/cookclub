@@ -21,7 +21,7 @@
       "@sentry/react-native/expo",
       {
         "url": "https://sentry.io/",
-        "project": "cook-club",
+        "project": "cook-club-native",
         "organization": "shaky-hand"
       }
     ],
