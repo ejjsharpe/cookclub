@@ -10,7 +10,7 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern",
     "deploy": "vite build && wrangler deploy",
-    "deploy:prod": "vite build && wrangler deploy --env production"
+    "deploy:prod": "CLOUDFLARE_ENV=production vite build && wrangler deploy --env production"
   },
   "dependencies": {
     "@repo/trpc": "workspace:*",
