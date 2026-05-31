@@ -41,6 +41,42 @@ describe("fetchHtml", () => {
     expect(result).toBe(mockHtml);
   });
 
+  it("prefers arrayBuffer over the raw body stream when both are available", async () => {
+    const mockHtml = "<html><body>Decoded</body></html>";
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: new Uint8Array([0x1f, 0x8b, 0x08, 0x00]),
+      })
+      .mockResolvedValueOnce({ done: true });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "text/html",
+          "content-encoding": "gzip",
+        }),
+        body: {
+          getReader: () => ({
+            read,
+            cancel: vi.fn(),
+          }),
+        },
+        arrayBuffer: () =>
+          Promise.resolve(new TextEncoder().encode(mockHtml).buffer),
+      }),
+    );
+
+    const result = await fetchHtml("https://example.com");
+
+    expect(result).toBe(mockHtml);
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("throws on HTTP error", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.stubGlobal(

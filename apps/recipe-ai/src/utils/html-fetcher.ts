@@ -137,16 +137,15 @@ export async function readLimitedBytes(
       return new Uint8Array(body);
     }
 
-    const readText = (response as { text?: () => Promise<string> }).text;
-    if (typeof readText !== "function") {
-      throw new Error("Response body is not readable");
-    }
+    return readTextBody(response, maxBytes);
+  }
 
-    const body = new TextEncoder().encode(await readText.call(response));
+  if (typeof response.arrayBuffer === "function") {
+    const body = await response.arrayBuffer();
     if (body.byteLength > maxBytes) {
       throw new Error(`HTML response too large: ${body.byteLength} bytes`);
     }
-    return body;
+    return new Uint8Array(body);
   }
 
   const reader = response.body.getReader();
@@ -178,6 +177,22 @@ export async function readLimitedBytes(
   }
 
   return bytes;
+}
+
+async function readTextBody(
+  response: Response,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const readText = (response as { text?: () => Promise<string> }).text;
+  if (typeof readText !== "function") {
+    throw new Error("Response body is not readable");
+  }
+
+  const body = new TextEncoder().encode(await readText.call(response));
+  if (body.byteLength > maxBytes) {
+    throw new Error(`HTML response too large: ${body.byteLength} bytes`);
+  }
+  return body;
 }
 
 export async function readLimitedText(
