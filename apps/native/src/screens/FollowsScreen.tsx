@@ -4,20 +4,19 @@ import { View, FlatList, ActivityIndicator } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import {
-  useSearchUsers,
+  useFollowing,
   useUserFollowers,
   useUserFollowing,
 } from "@/api/follows";
-import { Input } from "@/components/Input";
+import { FollowUserRow } from "@/components/FollowUserRow";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import { UserCard } from "@/components/UserCard";
-import { UserSearchCard } from "@/components/UserSearchCard";
+import { useSessionContext } from "@/lib/sessionContext";
 import type { AppParamList } from "@/navigation/navigationRef";
 
-type TabType = "following" | "followers" | "search";
+type TabType = "following" | "followers";
 
 interface FollowUser {
   followId: number;
@@ -31,50 +30,33 @@ interface FollowUser {
   followedAt: string;
 }
 
-interface User {
-  id: string;
-  name: string;
-  username?: string | null;
-  image?: string | null;
-  subscriptionTier?: string | null;
-}
-
 type FollowsScreenRouteProp = RouteProp<AppParamList, "FollowsList">;
+const UserSeparator = () => <VSpace size={6} />;
 
 export const FollowsScreen = () => {
   const route = useRoute<FollowsScreenRouteProp>();
   const navigation = useNavigation();
   const { userId, activeTab: initialTab, userName } = route.params;
+  const session = useSessionContext();
+  const currentUserId = session?.user.id;
 
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
-  const [searchQuery, setSearchQuery] = useState("");
 
   // Use specific user's data instead of current user's data
   const { data: userFollowing, isPending: isPendingUserFollowing } =
     useUserFollowing({ userId });
   const { data: userFollowers, isPending: isPendingUserFollowers } =
     useUserFollowers({ userId });
-
-  // Keep search functionality for current user
-  const { data: searchResults, isPending: isSearching } = useSearchUsers({
-    query: searchQuery,
-    limit: 20,
-  });
+  const { data: myFollowing } = useFollowing();
+  const followingIds = new Set(myFollowing?.map((f) => f.user.id) ?? []);
 
   const renderFollowUser = ({ item }: { item: FollowUser }) => (
-    <UserCard
+    <FollowUserRow
       user={item.user}
-      onPress={() => {
-        navigation.navigate("UserProfile", { userId: item.user.id });
-      }}
-    />
-  );
-
-  const renderSearchResult = ({ item }: { item: User }) => (
-    <UserSearchCard
-      user={item}
+      isFollowing={followingIds.has(item.user.id)}
+      showFollowButton={item.user.id !== currentUserId}
       onUserPress={() => {
-        navigation.navigate("UserProfile", { userId: item.id });
+        navigation.navigate("UserProfile", { userId: item.user.id });
       }}
     />
   );
@@ -119,7 +101,9 @@ export const FollowsScreen = () => {
             data={userFollowing}
             renderItem={renderFollowUser}
             keyExtractor={(item) => item.followId.toString()}
+            ItemSeparatorComponent={UserSeparator}
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
           />
         );
 
@@ -145,43 +129,10 @@ export const FollowsScreen = () => {
             data={userFollowers}
             renderItem={renderFollowUser}
             keyExtractor={(item) => item.followId.toString()}
+            ItemSeparatorComponent={UserSeparator}
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
           />
-        );
-
-      case "search":
-        return (
-          <View>
-            <Input
-              placeholder="Search for people to follow..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <VSpace size={16} />
-
-            {searchQuery.length < 2 ? (
-              <View style={styles.emptyState}>
-                <Text type="bodyFaded">Start typing to search for people</Text>
-              </View>
-            ) : isSearching ? (
-              <View style={styles.centered}>
-                <ActivityIndicator />
-              </View>
-            ) : !searchResults || searchResults.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text type="bodyFaded">No users found for "{searchQuery}"</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={searchResults}
-                renderItem={renderSearchResult}
-                keyExtractor={(item) => item.id}
-                showsVerticalScrollIndicator={false}
-              />
-            )}
-          </View>
         );
     }
   };
@@ -195,7 +146,6 @@ export const FollowsScreen = () => {
         <View style={styles.tabs}>
           {renderTab("following", "Following", userFollowing?.length)}
           {renderTab("followers", "Followers", userFollowers?.length)}
-          {renderTab("search", "Discover")}
         </View>
 
         <VSpace size={20} />
@@ -232,6 +182,9 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  listContent: {
+    paddingBottom: 24,
   },
   centered: {
     flex: 1,

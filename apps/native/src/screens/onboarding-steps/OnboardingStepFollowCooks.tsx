@@ -1,106 +1,13 @@
 import { useState } from "react";
-import { View, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
-import {
-  useSearchUsers,
-  useSuggestedUsers,
-  useFollowUser,
-  useUnfollowUser,
-  useFollowing,
-} from "@/api/follows";
-import { Avatar } from "@/components/Avatar";
+import { useSearchUsers, useSuggestedUsers, useFollowing } from "@/api/follows";
+import { FollowUserRow } from "@/components/FollowUserRow";
 import { Input } from "@/components/Input";
-import { HSpace, VSpace } from "@/components/Space";
+import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { useDebounce } from "@/hooks/useDebounce";
-
-interface UserRowProps {
-  user: {
-    id: string;
-    name: string;
-    username?: string | null;
-    image?: string | null;
-    subscriptionTier?: string | null;
-  };
-  isFollowing: boolean;
-}
-
-function UserRow({ user, isFollowing: isFollowingServer }: UserRowProps) {
-  const [optimisticFollowing, setOptimisticFollowing] = useState<
-    boolean | null
-  >(null);
-  const followMutation = useFollowUser();
-  const unfollowMutation = useUnfollowUser();
-
-  // Use optimistic state if set, otherwise fall back to server state
-  const isFollowing = optimisticFollowing ?? isFollowingServer;
-
-  // Sync optimistic state back to server state once it catches up
-  if (
-    optimisticFollowing !== null &&
-    optimisticFollowing === isFollowingServer
-  ) {
-    setOptimisticFollowing(null);
-  }
-
-  const handlePress = () => {
-    const newState = !isFollowing;
-    setOptimisticFollowing(newState);
-
-    if (isFollowing) {
-      unfollowMutation.mutate(
-        { userId: user.id },
-        { onError: () => setOptimisticFollowing(null) },
-      );
-    } else {
-      followMutation.mutate(
-        { userId: user.id },
-        { onError: () => setOptimisticFollowing(null) },
-      );
-    }
-  };
-
-  return (
-    <View style={styles.userRow}>
-      <View style={styles.userInfo}>
-        <Avatar
-          imageUrl={user.image}
-          name={user.name}
-          size={44}
-          subscriptionTier={user.subscriptionTier}
-        />
-        <HSpace size={12} />
-        <View style={styles.nameContainer}>
-          <Text type="heading" numberOfLines={1}>
-            {user.name}
-          </Text>
-          {user.username && (
-            <Text type="bodyFaded" numberOfLines={1} style={styles.username}>
-              @{user.username}
-            </Text>
-          )}
-        </View>
-      </View>
-      <TouchableOpacity
-        style={[styles.followButton, isFollowing && styles.followingButton]}
-        onPress={handlePress}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={`${isFollowing ? "Unfollow" : "Follow"} ${user.name}`}
-      >
-        <Text
-          style={[
-            styles.followButtonText,
-            isFollowing && styles.followingButtonText,
-          ]}
-        >
-          {isFollowing ? "Following" : "Follow"}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
 
 export const OnboardingStepFollowCooks = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -148,7 +55,11 @@ export const OnboardingStepFollowCooks = () => {
       ) : users && users.length > 0 ? (
         <View style={styles.usersList}>
           {users.map((u) => (
-            <UserRow key={u.id} user={u} isFollowing={followingIds.has(u.id)} />
+            <FollowUserRow
+              key={u.id}
+              user={u}
+              isFollowing={followingIds.has(u.id)}
+            />
           ))}
         </View>
       ) : (
@@ -176,48 +87,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   usersList: {
     gap: 6,
-  },
-  userRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 64,
-    paddingVertical: 8,
-    position: "relative",
-  },
-  userInfo: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  nameContainer: {
-    flex: 1,
-  },
-  username: {
-    fontSize: 13,
-    marginTop: 1,
-  },
-  followButton: {
-    minHeight: 30,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: theme.colors.primary,
-  },
-  followingButton: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  followButtonText: {
-    color: theme.colors.buttonText,
-    fontFamily: theme.fonts.semiBold,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  followingButtonText: {
-    color: theme.colors.text,
   },
   loadingContainer: {
     paddingVertical: 40,

@@ -14,7 +14,6 @@ import {
   ActivityIndicator,
   Dimensions,
 } from "react-native";
-import { useKeyboardHandler } from "react-native-keyboard-controller";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -33,7 +32,12 @@ import {
   useActivityFeed,
   useToggleActivityLike,
 } from "@/api/activity";
-import { useSearchUsers, SearchUser } from "@/api/follows";
+import {
+  useFollowing,
+  useSearchUsers,
+  useSuggestedUsers,
+  type SearchUser,
+} from "@/api/follows";
 import { useUnreadNotificationCount } from "@/api/notification";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser, User } from "@/api/user";
@@ -43,16 +47,15 @@ import {
   type CommentsSheetRef,
 } from "@/components/CommentsSheet";
 import { EmptyFeedState } from "@/components/EmptyFeedState";
+import { FollowUserRow } from "@/components/FollowUserRow";
 import { ImportActivityCard } from "@/components/ImportActivityCard";
 import { Ionicons } from "@/components/Ionicons";
 import { NotificationBadge } from "@/components/NotificationBadge";
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { SearchBar, SEARCH_BAR_HEIGHT } from "@/components/SearchBar";
-import { SearchEmptyState } from "@/components/SearchEmptyState";
 import { HomeFeedSkeleton, SkeletonContainer } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import { UserSearchCard } from "@/components/UserSearchCard";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
@@ -191,26 +194,38 @@ const SCROLL_DIRECTION_THRESHOLD = 2;
 const TAB_BAR_LIST_CLEARANCE = 112;
 
 const ActivitySeparator = () => <VSpace size={16} />;
+const SearchUserSeparator = () => <VSpace size={6} />;
 const ReanimatedFlashList = Animated.createAnimatedComponent(
   FlashList<ActivityFeedListItem>,
 );
 
+type HomeSearchUser = SearchUser & {
+  recipeCount?: number;
+  followerCount?: number;
+};
+
 interface SearchUserRowProps {
-  user: SearchUser;
+  user: HomeSearchUser;
+  isFollowing: boolean;
   onUserPress: (userId: string) => void;
 }
 
-const SearchUserRow = memo(({ user, onUserPress }: SearchUserRowProps) => {
-  const handlePress = useCallback(() => {
-    onUserPress(user.id);
-  }, [user.id, onUserPress]);
+const SearchUserRow = memo(
+  ({ user, isFollowing, onUserPress }: SearchUserRowProps) => {
+    const handlePress = useCallback(() => {
+      onUserPress(user.id);
+    }, [user.id, onUserPress]);
 
-  return (
-    <View style={styles.userCardWrapper}>
-      <UserSearchCard user={user} onUserPress={handlePress} />
-    </View>
-  );
-});
+    return (
+      <FollowUserRow
+        user={user}
+        isFollowing={isFollowing}
+        onUserPress={handlePress}
+        style={styles.userRow}
+      />
+    );
+  },
+);
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -257,20 +272,6 @@ export const HomeScreen = () => {
   const isScrollingTowardLatest = useSharedValue(false);
   const latestScrollMinY = useSharedValue(0);
   const loadLatestProgress = useSharedValue(0);
-
-  // Keyboard height as animated value for empty state centering
-  const keyboardHeight = useSharedValue(0);
-
-  useKeyboardHandler({
-    onMove: (e) => {
-      "worklet";
-      keyboardHeight.value = e.height;
-    },
-    onEnd: (e) => {
-      "worklet";
-      keyboardHeight.value = e.height;
-    },
-  });
 
   // Target Y position for search mode (at the top where the header is)
   const searchModeY = insets.top;
@@ -337,8 +338,8 @@ export const HomeScreen = () => {
     refetch: activityRefetch,
   } = useActivityFeed();
 
-  // Search condition - only search users
-  const shouldFetchUsers = isSearchActive && debouncedSearch.length >= 2;
+  // Search condition - only search users after two characters; otherwise show suggestions.
+  const isSearchingUsers = debouncedSearch.length >= 2;
 
   const {
     data: usersData,
@@ -347,14 +348,26 @@ export const HomeScreen = () => {
     isFetching: usersFetching,
   } = useSearchUsers({
     query: debouncedSearch,
+    limit: 20,
   });
+  const {
+    data: suggestedUsers,
+    isPending: suggestedUsersPending,
+    refetch: suggestedUsersRefetch,
+    isFetching: suggestedUsersFetching,
+  } = useSuggestedUsers(20, isSearchActive);
+  const { data: following } = useFollowing();
+  const followingIds = useMemo(
+    () => new Set(following?.map((f) => f.user.id) ?? []),
+    [following],
+  );
 
   const toggleLike = useToggleActivityLike();
 
-  const users: SearchUser[] = useMemo(() => {
-    if (!shouldFetchUsers) return [];
-    return usersData ?? [];
-  }, [usersData, shouldFetchUsers]);
+  const users: HomeSearchUser[] = useMemo(() => {
+    if (isSearchingUsers) return usersData ?? [];
+    return suggestedUsers ?? [];
+  }, [isSearchingUsers, suggestedUsers, usersData]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────────
   const handleAvatarPress = useCallback(() => {
@@ -426,13 +439,14 @@ export const HomeScreen = () => {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     if (isSearchActive) {
-      if (shouldFetchUsers) {
-        try {
+      try {
+        if (isSearchingUsers) {
           await usersRefetch();
-        } finally {
-          setIsRefreshing(false);
+        } else {
+          await suggestedUsersRefetch();
         }
-        return;
+      } finally {
+        setIsRefreshing(false);
       }
     } else {
       hideLoadLatest();
@@ -441,13 +455,12 @@ export const HomeScreen = () => {
       } finally {
         setIsRefreshing(false);
       }
-      return;
     }
-    setIsRefreshing(false);
   }, [
     isSearchActive,
-    shouldFetchUsers,
+    isSearchingUsers,
     usersRefetch,
+    suggestedUsersRefetch,
     activityRefetch,
     hideLoadLatest,
   ]);
@@ -575,10 +588,14 @@ export const HomeScreen = () => {
 
   // ─── Render Functions ─────────────────────────────────────────────────────────
   const renderUser = useCallback(
-    ({ item }: { item: SearchUser }) => (
-      <SearchUserRow user={item} onUserPress={handleUserPress} />
+    ({ item }: { item: HomeSearchUser }) => (
+      <SearchUserRow
+        user={item}
+        isFollowing={followingIds.has(item.id)}
+        onUserPress={handleUserPress}
+      />
     ),
-    [handleUserPress],
+    [followingIds, handleUserPress],
   );
 
   // ─── Activity Feed Render Function ────────────────────────────────────────────
@@ -654,7 +671,7 @@ export const HomeScreen = () => {
             <SearchBar
               value=""
               onChangeText={() => {}}
-              placeholder="Search users..."
+              placeholder="Search cooks..."
             />
           </View>
         </Pressable>
@@ -684,28 +701,53 @@ export const HomeScreen = () => {
   // The search bar and back button are rendered as fixed elements outside the FlatList.
   // FlatList only contains search results with top spacing for the fixed header.
   const SearchListHeader = useMemo(
-    () => <VSpace size={insets.top + SEARCH_BAR_HEIGHT + 16} />,
+    () => (
+      <View style={styles.searchListHeader}>
+        <VSpace size={insets.top + SEARCH_BAR_HEIGHT + 20} />
+        <Text type="title2" style={styles.searchTitle}>
+          Find cooks
+        </Text>
+        <VSpace size={6} />
+        <Text type="bodyFaded" style={styles.searchSubtitle}>
+          See what they're cooking in your feed
+        </Text>
+        <VSpace size={16} />
+      </View>
+    ),
     [insets.top],
   );
 
   // ─── Search Empty State ───────────────────────────────────────────────────────
-  const isFetching = usersPending || usersFetching;
+  const isFetching = isSearchingUsers
+    ? usersPending || usersFetching
+    : suggestedUsersPending || suggestedUsersFetching;
 
-  const fixedHeaderHeight = insets.top + SEARCH_BAR_HEIGHT;
   const browseRefreshOffset = insets.top + HEADER_HEIGHT + 8;
   const searchRefreshOffset = insets.top + SEARCH_BAR_HEIGHT + 16;
 
-  const renderSearchEmpty = () => (
-    <SearchEmptyState
-      activeTab="users"
-      isFetching={isFetching}
-      shouldFetch={shouldFetchUsers}
-      keyboardHeight={keyboardHeight}
-      fixedHeaderHeight={fixedHeaderHeight}
-    />
-  );
+  const renderSearchEmpty = () => {
+    if (isFetching) {
+      return (
+        <View style={styles.searchStateContainer}>
+          <ActivityIndicator size="large" />
+          <VSpace size={16} />
+          <Text type="bodyFaded">
+            {isSearchingUsers ? "Searching cooks..." : "Finding cooks..."}
+          </Text>
+        </View>
+      );
+    }
 
-  const searchKeyExtractor = (item: SearchUser) => item.id;
+    return (
+      <View style={styles.searchStateContainer}>
+        <Text type="bodyFaded" style={styles.searchStateText}>
+          {isSearchingUsers ? "No cooks found" : "No suggestions available"}
+        </Text>
+      </View>
+    );
+  };
+
+  const searchKeyExtractor = (item: HomeSearchUser) => item.id;
 
   // ─── Animation Styles ─────────────────────────────────────────────────────────
   // Use showFloatingSearch to control visibility so the animation plays out fully
@@ -887,12 +929,13 @@ export const HomeScreen = () => {
           keyExtractor={searchKeyExtractor}
           ListHeaderComponent={SearchListHeader}
           ListEmptyComponent={renderSearchEmpty}
+          ItemSeparatorComponent={SearchUserSeparator}
           onEndReachedThreshold={0.5}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing && isSearchActive}
               onRefresh={handleRefresh}
-              enabled={shouldFetchUsers}
+              enabled={isSearchActive}
               tintColor={theme.colors.primary}
               colors={[theme.colors.primary]}
               progressViewOffset={searchRefreshOffset}
@@ -929,7 +972,7 @@ export const HomeScreen = () => {
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoFocus={isSearchActive}
-                placeholder="Search users..."
+                placeholder="Search cooks..."
               />
             </Animated.View>
           </Animated.View>
@@ -959,6 +1002,25 @@ const styles = StyleSheet.create((theme, rt) => ({
   searchResultsContent: {
     flexGrow: 1,
     paddingBottom: rt.insets.bottom,
+  },
+  searchListHeader: {
+    paddingHorizontal: 20,
+  },
+  searchTitle: {
+    textAlign: "left",
+    letterSpacing: -1,
+    paddingHorizontal: 2,
+  },
+  searchSubtitle: {
+    paddingHorizontal: 2,
+  },
+  searchStateContainer: {
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    alignItems: "center",
+  },
+  searchStateText: {
+    textAlign: "center",
   },
   feedContainer: {
     flex: 1,
@@ -1030,7 +1092,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   backIcon: {
     color: theme.colors.text,
   },
-  userCardWrapper: {
+  userRow: {
     paddingHorizontal: 20,
   },
   footerLoader: {
