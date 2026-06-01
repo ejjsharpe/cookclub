@@ -34,6 +34,16 @@ export type RecipeImportJobContext = {
 export type ProcessRecipeImportJobResult = "processed" | "skipped" | "busy";
 
 export const RECIPE_IMPORT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
+export const RECIPE_IMPORT_JOB_STALE_MS = 60 * 1000;
+export const RECIPE_IMPORT_JOB_STALE_ERROR =
+  "Import timed out. Please try again.";
+
+export type StaleRecipeImportJobCandidate = {
+  id: string;
+  status: string;
+  updatedAt: Date;
+  processingStartedAt: Date | null;
+};
 
 function processingStartedAtMatches(processingStartedAt: Date | null) {
   return processingStartedAt
@@ -45,6 +55,45 @@ export function getImportErrorMessage(error: unknown) {
   if (error instanceof TRPCError) return error.message;
   if (error instanceof Error) return error.message;
   return "Something went wrong while importing.";
+}
+
+export function isRecipeImportJobStale(
+  job: StaleRecipeImportJobCandidate,
+  now = new Date(),
+) {
+  const staleBefore = new Date(now.getTime() - RECIPE_IMPORT_JOB_STALE_MS);
+
+  if (job.status === "pending") {
+    return job.updatedAt < staleBefore;
+  }
+
+  if (job.status === "processing") {
+    return (job.processingStartedAt ?? job.updatedAt) < staleBefore;
+  }
+
+  return false;
+}
+
+export async function failStaleRecipeImportJobs(
+  ctx: RecipeImportJobContext,
+  userId: string,
+  jobs: StaleRecipeImportJobCandidate[],
+  now = new Date(),
+) {
+  const failedJobIds = new Set<string>();
+
+  for (const job of jobs) {
+    if (!isRecipeImportJobStale(job, now)) continue;
+
+    const didFailJob = await failRecipeImportJob(
+      ctx,
+      { jobId: job.id, userId },
+      RECIPE_IMPORT_JOB_STALE_ERROR,
+    );
+    if (didFailJob) failedJobIds.add(job.id);
+  }
+
+  return failedJobIds;
 }
 
 export async function enqueueRecipeImportJob(

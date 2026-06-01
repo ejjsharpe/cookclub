@@ -18,6 +18,8 @@ interface InstagramOembedResponse {
   thumbnail_height?: number;
 }
 
+const INSTAGRAM_OEMBED_TIMEOUT_MS = 8_000;
+
 /**
  * Extract recipe content from Instagram using the oembed API.
  *
@@ -37,6 +39,7 @@ export async function extractInstagramContent(
   const oembedUrl = `https://www.instagram.com/api/v1/oembed/?url=${encodeURIComponent(cleanUrl)}`;
 
   const response = await fetch(oembedUrl, {
+    signal: AbortSignal.timeout(INSTAGRAM_OEMBED_TIMEOUT_MS),
     headers: {
       Accept: "application/json",
       "User-Agent":

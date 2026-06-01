@@ -47,6 +47,8 @@ import {
 } from "../services/recipe-image.service";
 import {
   enqueueRecipeImportJob,
+  failStaleRecipeImportJobs,
+  RECIPE_IMPORT_JOB_STALE_ERROR,
   failRecipeImportJob,
   type ImportJobMode,
   type ImportJobRecord,
@@ -520,6 +522,7 @@ export const recipeRouter = router({
           createdAt: recipeImportJobs.createdAt,
           updatedAt: recipeImportJobs.updatedAt,
           completedAt: recipeImportJobs.completedAt,
+          processingStartedAt: recipeImportJobs.processingStartedAt,
         })
         .from(recipeImportJobs)
         .where(
@@ -533,12 +536,26 @@ export const recipeRouter = router({
       getCurrentSubscriptionStatus(ctx),
     ]);
 
-    return jobs.map((job) => ({
-      ...job,
-      recipe: job.recipe
-        ? parseResponseForEntitlement(job.recipe, subscriptionStatus.isPro)
-        : job.recipe,
-    }));
+    const failedStaleJobIds = await failStaleRecipeImportJobs(
+      { db: ctx.db, env: ctx.env },
+      ctx.user.id,
+      jobs,
+    );
+
+    return jobs.map(({ processingStartedAt: _processingStartedAt, ...job }) => {
+      const didFailStaleJob = failedStaleJobIds.has(job.id);
+
+      return {
+        ...job,
+        status: didFailStaleJob ? "failed" : job.status,
+        error: didFailStaleJob ? RECIPE_IMPORT_JOB_STALE_ERROR : job.error,
+        completedAt: didFailStaleJob ? new Date() : job.completedAt,
+        recipe:
+          !didFailStaleJob && job.recipe
+            ? parseResponseForEntitlement(job.recipe, subscriptionStatus.isPro)
+            : null,
+      };
+    });
   }),
 
   createImportJob: authedProcedure

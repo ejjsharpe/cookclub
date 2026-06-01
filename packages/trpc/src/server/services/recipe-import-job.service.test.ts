@@ -44,6 +44,9 @@ vi.mock("drizzle-orm", () => ({
 // eslint-disable-next-line import/first
 import {
   failRecipeImportJob,
+  failStaleRecipeImportJobs,
+  isRecipeImportJobStale,
+  RECIPE_IMPORT_JOB_STALE_ERROR,
   processRecipeImportJob,
 } from "./recipe-import-job.service";
 
@@ -411,5 +414,80 @@ describe("recipe import job service", () => {
 
     expect(db._state.job?.status).toBe("failed");
     expect(db._state.job?.error).toBe("Cannot parse this recipe.");
+  });
+
+  it("detects pending and processing jobs that have exceeded the stale timeout", () => {
+    const now = new Date("2026-06-02T10:00:00.000Z");
+
+    expect(
+      isRecipeImportJobStale(
+        {
+          id: "job-1",
+          status: "pending",
+          updatedAt: new Date("2026-06-02T09:58:59.000Z"),
+          processingStartedAt: null,
+        },
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      isRecipeImportJobStale(
+        {
+          id: "job-1",
+          status: "processing",
+          updatedAt: new Date("2026-06-02T09:59:00.000Z"),
+          processingStartedAt: new Date("2026-06-02T09:58:59.000Z"),
+        },
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      isRecipeImportJobStale(
+        {
+          id: "job-1",
+          status: "processing",
+          updatedAt: new Date("2026-06-02T09:59:00.000Z"),
+          processingStartedAt: new Date("2026-06-02T09:59:00.000Z"),
+        },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      isRecipeImportJobStale(
+        {
+          id: "job-1",
+          status: "ready",
+          updatedAt: new Date("2026-06-02T09:00:00.000Z"),
+          processingStartedAt: null,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("marks stale active jobs failed", async () => {
+    const db = createFakeDb(
+      createJob({
+        updatedAt: new Date("2026-06-02T09:58:00.000Z"),
+      }),
+    );
+
+    const failedJobIds = await failStaleRecipeImportJobs(
+      { db: db as any, env: createEnv() as any },
+      "user-1",
+      [
+        {
+          id: "job-1",
+          status: "pending",
+          updatedAt: new Date("2026-06-02T09:58:00.000Z"),
+          processingStartedAt: null,
+        },
+      ],
+    );
+
+    expect(failedJobIds).toEqual(new Set(["job-1"]));
+    expect(db._state.job?.status).toBe("failed");
+    expect(db._state.job?.error).toBe(RECIPE_IMPORT_JOB_STALE_ERROR);
+    expect(db._state.job?.inputData).toBe("");
   });
 });

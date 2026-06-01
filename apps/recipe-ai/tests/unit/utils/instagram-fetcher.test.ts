@@ -128,7 +128,9 @@ describe("instagram-fetcher", () => {
       expect(result.images).toContain("https://example.com/thumb.jpg");
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining("instagram.com/api/v1/oembed"),
-        expect.any(Object),
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
       );
     });
 
