@@ -25,7 +25,7 @@
     "tooling/*"
   ],
   "devDependencies": {
-    "nx": "22.7.3"
+    "nx": "22.7.5"
   },
   "trustedDependencies": [
     "@sentry/cli",
