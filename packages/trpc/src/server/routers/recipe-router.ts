@@ -40,7 +40,7 @@ import {
 } from "drizzle-orm";
 
 import { enforceRateLimit } from "../rate-limit";
-import { propagateActivityToFollowers } from "../services/activity";
+import { propagateActivityToFollowersInBackground } from "../services/activity";
 import {
   cleanupMovedRecipeImages,
   prepareRecipeImages,
@@ -997,17 +997,15 @@ export const recipeRouter = router({
 
         const activityEvent = activityEventResult[0];
 
-        // Propagate to followers (fire and forget - don't block the response)
+        // Schedule propagation without blocking the response.
         if (activityEvent) {
-          propagateActivityToFollowers(
-            ctx.db,
-            ctx.env,
+          propagateActivityToFollowersInBackground(
+            ctx,
             activityEvent.id,
             ctx.user.id,
             activityEvent.createdAt,
-          ).catch((err) => {
-            console.error("Error propagating activity to followers:", err);
-          });
+            "Error propagating activity to followers:",
+          );
         }
 
         return recipe;
@@ -1402,16 +1400,14 @@ export const recipeRouter = router({
           })
           .returning();
 
-        // Propagate to followers (don't await to avoid blocking)
+        // Schedule propagation without blocking the response.
         if (activityEvent) {
-          propagateActivityToFollowers(
-            ctx.db,
-            ctx.env,
+          propagateActivityToFollowersInBackground(
+            ctx,
             activityEvent.id,
             ctx.user.id,
             activityEvent.createdAt,
-          ).catch((err) =>
-            console.error("Failed to propagate activity to followers:", err),
+            "Failed to propagate activity to followers:",
           );
         }
 

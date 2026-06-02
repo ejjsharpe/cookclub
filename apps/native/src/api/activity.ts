@@ -135,6 +135,13 @@ export const useCreateCookingReview = () => {
           trpc.activity.getRecipeRating.pathFilter(),
         );
         queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+        queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+        queryClient.invalidateQueries(
+          trpc.collection.getUserCollections.pathFilter(),
+        );
+        queryClient.invalidateQueries(
+          trpc.collection.getCollectionDetail.pathFilter(),
+        );
       },
     }),
   );

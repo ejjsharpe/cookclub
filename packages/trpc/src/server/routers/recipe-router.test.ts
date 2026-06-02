@@ -5,11 +5,12 @@ import { recipeRouter } from "./recipe-router";
 import { createMockEnv } from "../__mocks__/env";
 
 const mocks = vi.hoisted(() => ({
-  propagateActivityToFollowers: vi.fn().mockResolvedValue(undefined),
+  propagateActivityToFollowersInBackground: vi.fn(),
 }));
 
 vi.mock("../services/activity", () => ({
-  propagateActivityToFollowers: mocks.propagateActivityToFollowers,
+  propagateActivityToFollowersInBackground:
+    mocks.propagateActivityToFollowersInBackground,
 }));
 
 // Mock the recipe service
@@ -182,6 +183,7 @@ function createMockContext(
   overrides: Partial<{
     user: { id: string; name: string; image: string | null };
     env: ReturnType<typeof createMockEnv>;
+    waitUntil: (promise: Promise<unknown>) => void;
   }> = {},
 ) {
   return {
@@ -194,6 +196,7 @@ function createMockContext(
     },
     req: new Request("http://localhost"),
     resHeaders: new Headers(),
+    waitUntil: overrides.waitUntil ?? vi.fn(),
   };
 }
 
@@ -219,7 +222,7 @@ describe("recipeRouter - activity integration", () => {
     consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
-    mocks.propagateActivityToFollowers.mockResolvedValue(undefined);
+    mocks.propagateActivityToFollowersInBackground.mockReturnValue(undefined);
     mockDb = createMockDb();
     mockEnv = createMockEnv();
     mockCreateRecipe.mockResolvedValue({ id: 1, name: "Test Recipe" });
@@ -365,9 +368,9 @@ describe("recipeRouter - activity integration", () => {
       const ctx = createMockContext(mockDb, { env: mockEnv });
       const caller = recipeRouter.createCaller(ctx as any);
 
-      await expect(
-        caller.dismissImportJob({ id: "job-1" }),
-      ).resolves.toEqual({ success: true });
+      await expect(caller.dismissImportJob({ id: "job-1" })).resolves.toEqual({
+        success: true,
+      });
 
       expect(mockDb.delete).toHaveBeenCalledWith(expect.anything());
       expect(mockDb.where).toHaveBeenCalledWith(
@@ -402,7 +405,8 @@ describe("recipeRouter - activity integration", () => {
     });
 
     it("imports visible recipes through the recipe service", async () => {
-      mockDb._setInsertReturning([{ id: 200, createdAt: new Date() }]);
+      const createdAt = new Date();
+      mockDb._setInsertReturning([{ id: 200, createdAt }]);
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
       const caller = recipeRouter.createCaller(ctx as any);
@@ -420,6 +424,15 @@ describe("recipeRouter - activity integration", () => {
         mockDb,
         "test-user-id",
         123,
+      );
+      expect(
+        mocks.propagateActivityToFollowersInBackground,
+      ).toHaveBeenCalledWith(
+        ctx,
+        200,
+        "test-user-id",
+        createdAt,
+        "Failed to propagate activity to followers:",
       );
     });
   });
@@ -490,7 +503,7 @@ describe("recipeRouter - activity integration", () => {
       expect(mockDb.insert).toHaveBeenCalled();
     });
 
-    it("triggers propagation to followers", async () => {
+    it("schedules propagation to followers", async () => {
       mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
@@ -498,28 +511,23 @@ describe("recipeRouter - activity integration", () => {
 
       await caller.postRecipe(validRecipeInput);
 
-      // Allow async fire-and-forget to run
-      await new Promise((r) => setTimeout(r, 0));
-
-      expect(mocks.propagateActivityToFollowers).toHaveBeenCalledWith(
-        expect.anything(), // db
-        expect.anything(), // env
-        100, // activity event id
-        "test-user-id", // user id
+      expect(
+        mocks.propagateActivityToFollowersInBackground,
+      ).toHaveBeenCalledWith(
+        ctx,
+        100,
+        "test-user-id",
         expect.any(Date),
+        "Error propagating activity to followers:",
       );
     });
 
-    it("recipe creation succeeds even if propagation fails", async () => {
+    it("recipe creation succeeds after scheduling propagation", async () => {
       mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);
-      mocks.propagateActivityToFollowers.mockRejectedValueOnce(
-        new Error("Propagation failed"),
-      );
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
       const caller = recipeRouter.createCaller(ctx as any);
 
-      // Should not throw - propagation is fire-and-forget
       const result = await caller.postRecipe(validRecipeInput);
 
       expect(result.id).toBe(1);
@@ -536,11 +544,10 @@ describe("recipeRouter - activity integration", () => {
 
       await caller.postRecipe(validRecipeInput);
 
-      // Allow async to settle
-      await new Promise((r) => setTimeout(r, 0));
-
       // Propagation should not be called since no activity event was created
-      expect(mocks.propagateActivityToFollowers).not.toHaveBeenCalled();
+      expect(
+        mocks.propagateActivityToFollowersInBackground,
+      ).not.toHaveBeenCalled();
     });
 
     it("cleans up moved images when recipe creation fails", async () => {

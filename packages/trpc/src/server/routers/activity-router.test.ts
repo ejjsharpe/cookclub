@@ -10,6 +10,10 @@ const mockActivityServices = vi.hoisted(() => ({
 
 const mockDbServices = vi.hoisted(() => ({
   hydrateActivityIds: vi.fn().mockResolvedValue([]),
+  moveRecipeToCookedCollection: vi.fn().mockResolvedValue({
+    recipeId: 1,
+    collectionId: 2,
+  }),
   ServiceError: class ServiceError extends Error {
     code = "INTERNAL_ERROR";
   },
@@ -23,7 +27,7 @@ const mockPushServices = vi.hoisted(() => ({
 // Mock the activity propagation service (now in tRPC layer)
 vi.mock("../services/activity", () => mockActivityServices);
 
-// Mock the db services (only hydrateActivityIds remains here)
+// Mock the db services used by the activity router
 vi.mock("@repo/db/services", () => mockDbServices);
 
 vi.mock("../services/push-notification.service", () => mockPushServices);
@@ -92,9 +96,10 @@ function createMockDb() {
     return chain;
   };
 
-  return {
+  const db = {
     select: vi.fn().mockImplementation(() => createQueryChain()),
     insert: vi.fn().mockImplementation(() => createInsertChain()),
+    transaction: vi.fn((callback) => callback(db)),
     _setResults: (tableName: string, results: unknown[]) => {
       queryResults.set(tableName, results);
     },
@@ -104,6 +109,8 @@ function createMockDb() {
     _getInsertValues: () => insertValues,
     _queryResults: queryResults,
   };
+
+  return db;
 }
 
 type MockDb = ReturnType<typeof createMockDb>;
@@ -144,6 +151,10 @@ describe("activityRouter", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     mockDbServices.hydrateActivityIds.mockResolvedValue([]);
+    mockDbServices.moveRecipeToCookedCollection.mockResolvedValue({
+      recipeId: 1,
+      collectionId: 2,
+    });
     mockActivityServices.hydrateFeed.mockResolvedValue(0);
     mockActivityServices.propagateActivityToFollowers.mockResolvedValue(
       undefined,
@@ -323,6 +334,14 @@ describe("activityRouter", () => {
 
       expect(result.id).toBe(200);
       expect(result.activityEventId).toBe(100);
+      expect(mockDbServices.moveRecipeToCookedCollection).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          userId: "test-user-id",
+          recipeId: 1,
+          now: expect.any(Date),
+        },
+      );
     });
 
     it("creates review with rating and text", async () => {

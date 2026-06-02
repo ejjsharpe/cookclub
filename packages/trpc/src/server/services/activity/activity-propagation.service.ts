@@ -45,6 +45,30 @@ export async function propagateActivityToFollowers(
   );
 }
 
+export function propagateActivityToFollowersInBackground(
+  ctx: {
+    db: DbType;
+    env: ActivityServiceEnv;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
+  activityEventId: number,
+  userId: string,
+  createdAt: Date,
+  errorMessage: string,
+): void {
+  const promise = propagateActivityToFollowers(
+    ctx.db,
+    ctx.env,
+    activityEventId,
+    userId,
+    createdAt,
+  ).catch((err) => {
+    console.error(errorMessage, err);
+  });
+
+  ctx.waitUntil?.(promise);
+}
+
 /**
  * Backfill a user's feed with activity IDs from a newly followed user.
  */

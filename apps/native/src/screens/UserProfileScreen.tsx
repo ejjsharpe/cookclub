@@ -20,7 +20,7 @@ import type {
   CookingReviewFeedItem,
   RecipeImportFeedItem,
 } from "@/api/activity";
-import { useUserActivities } from "@/api/activity";
+import { useToggleActivityLike, useUserActivities } from "@/api/activity";
 import { useUserProfile, useFollowUser, useUnfollowUser } from "@/api/follows";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser } from "@/api/user";
@@ -73,6 +73,7 @@ export const UserProfileScreen = () => {
   const { data: profile, isLoading, error } = useUserProfile({ userId });
   const followMutation = useFollowUser();
   const unfollowMutation = useUnfollowUser();
+  const toggleLike = useToggleActivityLike();
   const currentUserId = currentUser?.user?.id ?? session?.user.id;
 
   // Fetch user activities
@@ -175,6 +176,13 @@ export const UserProfileScreen = () => {
     [navigation],
   );
 
+  const handleLikePress = useCallback(
+    (activityEventId: number) => {
+      toggleLike.mutate({ activityEventId });
+    },
+    [toggleLike],
+  );
+
   const handleCommentPress = useCallback((activityEventId: number) => {
     setCommentActivityId(activityEventId);
     commentsSheetRef.current?.present();
@@ -188,6 +196,7 @@ export const UserProfileScreen = () => {
             activity={item satisfies CookingReviewFeedItem}
             onRecipePress={handleRecipePress}
             onUserPress={handleUserPress}
+            onLikePress={handleLikePress}
             onCommentPress={handleCommentPress}
             onImportPress={handleImportRecipe}
             onImportRecipePress={handleImportExistingRecipe}
@@ -201,6 +210,7 @@ export const UserProfileScreen = () => {
           activity={item satisfies RecipeImportFeedItem}
           onRecipePress={handleRecipePress}
           onUserPress={handleUserPress}
+          onLikePress={handleLikePress}
           onCommentPress={handleCommentPress}
           onImportPress={handleImportRecipe}
           onImportRecipePress={handleImportExistingRecipe}
@@ -213,6 +223,7 @@ export const UserProfileScreen = () => {
     [
       handleRecipePress,
       handleUserPress,
+      handleLikePress,
       handleImportRecipe,
       handleImportExistingRecipe,
       handleCommentPress,

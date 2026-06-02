@@ -479,6 +479,61 @@ export async function addRecipeToCollection(
 }
 
 /**
+ * Move a recipe from the default "Want to cook" collection to the default
+ * "Cooked" collection, preserving any custom collection memberships.
+ */
+export async function moveRecipeToCookedCollection(
+  db: DbClient,
+  params: {
+    userId: string;
+    recipeId: number;
+    now?: Date;
+  },
+): Promise<{ recipeId: number; collectionId: number }> {
+  const { userId, recipeId } = params;
+
+  const recipe = await db
+    .select({ id: recipes.id, ownerId: recipes.ownerId })
+    .from(recipes)
+    .where(eq(recipes.id, recipeId))
+    .then((rows) => rows[0]);
+
+  if (!recipe) {
+    throw new ServiceError("NOT_FOUND", "Recipe not found");
+  }
+
+  if (recipe.ownerId !== userId) {
+    throw new ServiceError(
+      "FORBIDDEN",
+      "You can only mark your own recipes as cooked",
+    );
+  }
+
+  const defaultCollections = await getOrCreateDefaultCollections(db, userId);
+  const now = params.now ?? new Date();
+
+  await db
+    .insert(recipeCollections)
+    .values({
+      recipeId,
+      collectionId: defaultCollections.cooked.id,
+      createdAt: now,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .delete(recipeCollections)
+    .where(
+      and(
+        eq(recipeCollections.recipeId, recipeId),
+        eq(recipeCollections.collectionId, defaultCollections.wantToCook.id),
+      ),
+    );
+
+  return { recipeId, collectionId: defaultCollections.cooked.id };
+}
+
+/**
  * Replace all collection memberships for a recipe.
  * If collectionIds is empty, the recipe will be removed from all collections.
  */

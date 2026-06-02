@@ -6,7 +6,10 @@ import {
   recipes,
   user,
 } from "@repo/db/schemas";
-import { hydrateActivityIds } from "@repo/db/services";
+import {
+  hydrateActivityIds,
+  moveRecipeToCookedCollection,
+} from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
 import { eq, desc, lt, and, sql, inArray } from "drizzle-orm";
@@ -17,6 +20,7 @@ import {
 } from "../services/activity";
 import { createAndSendNotificationInBackground } from "../services/push-notification.service";
 import { router, authedProcedure } from "../trpc";
+import { mapServiceError } from "../utils";
 
 interface GetFeedIdsResponse {
   activityIds: number[];
@@ -99,93 +103,104 @@ export const activityRouter = router({
       const { recipeId, rating, reviewText, imageUrls } = input;
 
       try {
-        // Verify recipe exists
-        const recipe = await ctx.db
-          .select({ id: recipes.id, name: recipes.name })
-          .from(recipes)
-          .where(eq(recipes.id, recipeId))
-          .then((rows) => rows[0]);
+        const { activityEventId, createdAt, reviewId } =
+          await ctx.db.transaction(async (tx) => {
+            // Verify recipe exists
+            const recipe = await tx
+              .select({ id: recipes.id, name: recipes.name })
+              .from(recipes)
+              .where(eq(recipes.id, recipeId))
+              .then((rows) => rows[0]);
 
-        if (!recipe) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Recipe not found",
-          });
-        }
+            if (!recipe) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Recipe not found",
+              });
+            }
 
-        const now = new Date();
+            const now = new Date();
 
-        // Create activity event
-        const activityEventResult = await ctx.db
-          .insert(activityEvents)
-          .values({
-            userId: ctx.user.id,
-            type: "cooking_review",
-            recipeId,
-            createdAt: now,
-          })
-          .returning();
+            // Create activity event
+            const activityEventResult = await tx
+              .insert(activityEvents)
+              .values({
+                userId: ctx.user.id,
+                type: "cooking_review",
+                recipeId,
+                createdAt: now,
+              })
+              .returning();
 
-        const activityEvent = activityEventResult[0];
-        if (!activityEvent) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to create activity event",
-          });
-        }
+            const activityEvent = activityEventResult[0];
+            if (!activityEvent) {
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Failed to create activity event",
+              });
+            }
 
-        // Create cooking review
-        const reviewResult = await ctx.db
-          .insert(cookingReviews)
-          .values({
-            userId: ctx.user.id,
-            recipeId,
-            activityEventId: activityEvent.id,
-            rating: Math.round(rating), // Ensure integer
-            reviewText: reviewText ?? null,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning();
+            // Create cooking review
+            const reviewResult = await tx
+              .insert(cookingReviews)
+              .values({
+                userId: ctx.user.id,
+                recipeId,
+                activityEventId: activityEvent.id,
+                rating: Math.round(rating), // Ensure integer
+                reviewText: reviewText ?? null,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning();
 
-        const review = reviewResult[0];
-        if (!review) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to create review",
-          });
-        }
+            const review = reviewResult[0];
+            if (!review) {
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Failed to create review",
+              });
+            }
 
-        // Create review images if provided
-        if (imageUrls && imageUrls.length > 0) {
-          await ctx.db.insert(cookingReviewImages).values(
-            imageUrls.map((url, index) => ({
+            // Create review images if provided
+            if (imageUrls && imageUrls.length > 0) {
+              await tx.insert(cookingReviewImages).values(
+                imageUrls.map((url, index) => ({
+                  reviewId: review.id,
+                  url,
+                  index,
+                })),
+              );
+            }
+
+            await moveRecipeToCookedCollection(tx, {
+              userId: ctx.user.id,
+              recipeId,
+              now,
+            });
+
+            return {
+              activityEventId: activityEvent.id,
+              createdAt: now,
               reviewId: review.id,
-              url,
-              index,
-            })),
-          );
-        }
+            };
+          });
 
         // Propagate to followers
         await propagateActivityToFollowers(
           ctx.db,
           ctx.env,
-          activityEvent.id,
+          activityEventId,
           ctx.user.id,
-          now,
+          createdAt,
         );
 
         return {
-          id: review.id,
-          activityEventId: activityEvent.id,
+          id: reviewId,
+          activityEventId,
         };
       } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create cooking review",
-        });
+        throw mapServiceError(err);
       }
     }),
 
