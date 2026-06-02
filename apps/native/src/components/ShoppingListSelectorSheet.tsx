@@ -549,14 +549,14 @@ export const ShoppingListSelectorSheet = forwardRef<
   },
 );
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((theme, rt) => ({
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 24,
+    paddingBottom: 60 + rt.insets.bottom,
     gap: 14,
   },
   sectionHeadingRow: {
