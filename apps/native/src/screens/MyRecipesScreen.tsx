@@ -41,13 +41,12 @@ import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 import type {
-  Recipe,
   CollectionWithMetadata,
   TabType,
 } from "@/hooks/useRecipeCollectionBrowser";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const HORIZONTAL_PADDING = 20;
 const HEADER_HEIGHT = 52;
 const COLLECTION_CARD_WIDTH = 140;
@@ -66,6 +65,16 @@ const COLLECTION_GRID_PADDING = 30;
 const COLLECTION_GRID_GAP = 20; // GRID_GAP from CollectionGridCard
 const COLLECTION_ROW_GAP = 20;
 const COLLECTION_SEPARATOR_WIDTH = 12; // From CollectionSeparator
+const COLLECTION_OVERLAY_VERTICAL_BUFFER = 180;
+const EMPTY_COLLECTIONS: CollectionWithMetadata[] = [];
+const NOOP = () => {};
+
+type BrowserFilterState = {
+  hasActiveFilters: boolean;
+  onOpenFilters: () => void;
+  clearFilters: () => void;
+  activeTab: TabType;
+};
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -325,12 +334,31 @@ export const MyRecipesScreen = () => {
   const searchInputRef = useRef<TextInput>(null);
 
   // Filter state from RecipeCollectionBrowser
-  const [filterState, setFilterState] = useState<{
-    hasActiveFilters: boolean;
-    onOpenFilters: () => void;
-    clearFilters: () => void;
-    activeTab: TabType;
-  } | null>(null);
+  const [filterState, setFilterState] = useState<BrowserFilterState | null>(
+    null,
+  );
+  const hasFilterState = filterState !== null;
+  const activeSearchTab = filterState?.activeTab ?? "recipes";
+  const clearSearchFilters = filterState?.clearFilters;
+
+  const handleFilterStateChange = useCallback(
+    (nextState: BrowserFilterState) => {
+      setFilterState((currentState) => {
+        if (
+          currentState &&
+          currentState.hasActiveFilters === nextState.hasActiveFilters &&
+          currentState.onOpenFilters === nextState.onOpenFilters &&
+          currentState.clearFilters === nextState.clearFilters &&
+          currentState.activeTab === nextState.activeTab
+        ) {
+          return currentState;
+        }
+
+        return nextState;
+      });
+    },
+    [],
+  );
 
   // Track the search bar's Y position relative to the screen
   const searchBarRef = useAnimatedRef<Animated.View>();
@@ -365,6 +393,7 @@ export const MyRecipesScreen = () => {
 
   // Scroll-based title fade (like HomeScreen)
   const titleOpacity = useSharedValue(1);
+  const titleHidden = useSharedValue(false);
 
   // Filter button visibility (1 = visible on recipes tab, 0 = hidden on collections tab)
   const filterButtonProgress = useSharedValue(1);
@@ -420,13 +449,13 @@ export const MyRecipesScreen = () => {
 
   // Animate filter button visibility based on active tab
   useEffect(() => {
-    if (filterState) {
+    if (hasFilterState) {
       filterButtonProgress.value = withTiming(
-        filterState.activeTab === "recipes" ? 1 : 0,
+        activeSearchTab === "recipes" ? 1 : 0,
         ANIMATION_CONFIG,
       );
     }
-  }, [filterState]);
+  }, [activeSearchTab, filterButtonProgress, hasFilterState]);
 
   // ─── Data Fetching ─────────────────────────────────────────────────────────────
   const createCollectionMutation = useCreateCollection();
@@ -439,7 +468,8 @@ export const MyRecipesScreen = () => {
   } = useGetUserCollectionsWithMetadata({
     search: "",
   });
-  const collections = (collectionsData ?? []) as CollectionWithMetadata[];
+  const collections = (collectionsData ??
+    EMPTY_COLLECTIONS) as CollectionWithMetadata[];
 
   // Memoize collections list with create button to avoid recreating array every render
   const collectionsWithCreate = useMemo(
@@ -460,6 +490,14 @@ export const MyRecipesScreen = () => {
   const recentRecipes = useMemo(() => {
     return (recentRecipesData?.pages[0]?.items ?? []).slice(0, 5);
   }, [recentRecipesData]);
+  const recentRecipeIds = useMemo(
+    () => recentRecipes.map((recipe) => recipe.id),
+    [recentRecipes],
+  );
+  const collectionIds = useMemo(
+    () => collections.map((collection) => collection.id),
+    [collections],
+  );
 
   const handleBrowseRefresh = useCallback(async () => {
     setIsRefreshingBrowse(true);
@@ -472,8 +510,8 @@ export const MyRecipesScreen = () => {
 
   // ─── Handlers ─────────────────────────────────────────────────────────────────
   const handleRecipePress = useCallback(
-    (recipe: Recipe | RecipeListItem) => {
-      navigation.navigate("RecipeDetail", { recipeId: recipe.id });
+    (recipeId: number) => {
+      navigation.navigate("RecipeDetail", { recipeId });
     },
     [navigation],
   );
@@ -509,13 +547,11 @@ export const MyRecipesScreen = () => {
 
   const handleSearchFocus = useCallback(() => {
     // Determine which tab to animate based on last active tab
-    const tabToAnimate = filterState?.activeTab ?? "recipes";
+    const tabToAnimate = activeSearchTab;
 
     // Capture current data for position calculations (avoid closures in worklet)
-    const recipeCount = recentRecipes.length;
-    const collectionCount = collections.length;
-    const recipeIds = recentRecipes.map((r) => r.id);
-    const collectionIds = collections.map((c) => c.id);
+    const recipeCount = recentRecipeIds.length;
+    const collectionCount = collectionIds.length;
 
     // Helper to process measurements and start animation (called from RN thread)
     const processMeasurements = (measurements: {
@@ -523,7 +559,6 @@ export const MyRecipesScreen = () => {
       recipeY: number | undefined;
       collectionX: number | undefined;
       collectionY: number | undefined;
-      scrollOffset: number;
       searchCollectionX: number | undefined;
       searchCollectionY: number | undefined;
       searchCollectionWidth: number | undefined;
@@ -538,7 +573,7 @@ export const MyRecipesScreen = () => {
       const recipePositions: { id: number; y: number }[] = [];
       if (measurements.recipeY && measurements.recipeY > 0) {
         for (let i = 0; i < recipeCount; i++) {
-          const recipeId = recipeIds[i];
+          const recipeId = recentRecipeIds[i];
           if (recipeId !== undefined) {
             recipePositions.push({
               id: recipeId,
@@ -612,7 +647,6 @@ export const MyRecipesScreen = () => {
       const browseCollectionMeasurement = hasCollections
         ? measure(firstBrowseCollectionRef)
         : null;
-      const scrollOffset = collectionScrollX.value;
 
       // Only measure search collection if entering on collections tab
       let searchCollectionMeasured = null;
@@ -626,7 +660,6 @@ export const MyRecipesScreen = () => {
         recipeY: recipeMeasurement?.pageY,
         collectionX: browseCollectionMeasurement?.pageX,
         collectionY: browseCollectionMeasurement?.pageY,
-        scrollOffset,
         searchCollectionX: searchCollectionMeasured?.pageX,
         searchCollectionY: searchCollectionMeasured?.pageY,
         searchCollectionWidth: searchCollectionMeasured?.width,
@@ -636,31 +669,27 @@ export const MyRecipesScreen = () => {
   }, [
     searchBarRef,
     searchBarY,
-    recentRecipes,
+    activeSearchTab,
+    recentRecipeIds,
     firstRecipeRef,
-    collections,
+    collectionIds,
     firstBrowseCollectionRef,
     firstSearchCollectionRef,
-    collectionScrollX,
-    filterState,
     animatingTab,
   ]);
 
   const handleExitSearch = useCallback(() => {
-    const currentTab = filterState?.activeTab ?? "recipes";
+    const currentTab = activeSearchTab;
 
     // Capture current data for position calculations (avoid closures in worklet)
-    const recipeCount = recentRecipes.length;
-    const collectionCount = collections.length;
-    const recipeIds = recentRecipes.map((r) => r.id);
-    const collectionIds = collections.map((c) => c.id);
+    const recipeCount = recentRecipeIds.length;
+    const collectionCount = collectionIds.length;
 
     // Helper to process measurements and start exit animation (called from RN thread)
     const processMeasurements = (measurements: {
       recipeY: number | undefined;
       collectionX: number | undefined;
       collectionY: number | undefined;
-      scrollOffset: number;
       searchCollectionX: number | undefined;
       searchCollectionY: number | undefined;
       searchCollectionWidth: number | undefined;
@@ -670,7 +699,7 @@ export const MyRecipesScreen = () => {
       const recipePositions: { id: number; y: number }[] = [];
       if (measurements.recipeY && measurements.recipeY > 0) {
         for (let i = 0; i < recipeCount; i++) {
-          const recipeId = recipeIds[i];
+          const recipeId = recentRecipeIds[i];
           if (recipeId !== undefined) {
             recipePositions.push({
               id: recipeId,
@@ -738,7 +767,7 @@ export const MyRecipesScreen = () => {
       // Trigger exit animation
       setIsSearchActive(false);
       setSearchQuery("");
-      filterState?.clearFilters();
+      clearSearchFilters?.();
     };
 
     // Capture flags for worklet (refs are only attached when data exists)
@@ -753,7 +782,6 @@ export const MyRecipesScreen = () => {
       const browseCollectionMeasurement = hasCollections
         ? measure(firstBrowseCollectionRef)
         : null;
-      const scrollOffset = collectionScrollX.value;
 
       // Only measure search collection if on collections tab
       let searchCollectionMeasured = null;
@@ -766,7 +794,6 @@ export const MyRecipesScreen = () => {
         recipeY: recipeMeasurement?.pageY,
         collectionX: browseCollectionMeasurement?.pageX,
         collectionY: browseCollectionMeasurement?.pageY,
-        scrollOffset,
         searchCollectionX: searchCollectionMeasured?.pageX,
         searchCollectionY: searchCollectionMeasured?.pageY,
         searchCollectionWidth: searchCollectionMeasured?.width,
@@ -774,25 +801,25 @@ export const MyRecipesScreen = () => {
       });
     });
   }, [
-    filterState,
+    activeSearchTab,
+    clearSearchFilters,
     animatingTab,
     firstRecipeRef,
     firstBrowseCollectionRef,
     firstSearchCollectionRef,
-    collectionScrollX,
-    recentRecipes,
-    collections,
+    recentRecipeIds,
+    collectionIds,
   ]);
 
   const scrollToTop = useCallback(() => {
     if (isSearchActive) {
       setIsSearchActive(false);
       setSearchQuery("");
-      filterState?.clearFilters();
+      clearSearchFilters?.();
     }
 
     browseScrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, [filterState, isSearchActive]);
+  }, [clearSearchFilters, isSearchActive]);
 
   useEffect(() => {
     // @ts-expect-error navigation type
@@ -841,7 +868,7 @@ export const MyRecipesScreen = () => {
       const card = (
         <CollectionGridCard
           collection={collection}
-          onPress={() => handleCollectionPress(collection.id)}
+          onPressCollection={handleCollectionPress}
           width={COLLECTION_CARD_WIDTH}
         />
       );
@@ -875,9 +902,12 @@ export const MyRecipesScreen = () => {
       "worklet";
       // Fade out title when scrolling up (search bar would collide with header)
       const titleShouldHide = event.contentOffset.y > 5;
-      titleOpacity.value = withTiming(titleShouldHide ? 0 : 1, {
-        duration: 150,
-      });
+      if (titleHidden.value !== titleShouldHide) {
+        titleHidden.value = titleShouldHide;
+        titleOpacity.value = withTiming(titleShouldHide ? 0 : 1, {
+          duration: 150,
+        });
+      }
     },
   });
 
@@ -1049,7 +1079,7 @@ export const MyRecipesScreen = () => {
             <View pointerEvents="none">
               <SearchBar
                 value=""
-                onChangeText={() => {}}
+                onChangeText={NOOP}
                 placeholder="Search recipes, collections..."
               />
             </View>
@@ -1074,6 +1104,10 @@ export const MyRecipesScreen = () => {
                   ItemSeparatorComponent={CollectionSeparator}
                   onScroll={collectionsHorizontalScroll}
                   scrollEventThrottle={16}
+                  initialNumToRender={4}
+                  maxToRenderPerBatch={4}
+                  windowSize={5}
+                  removeClippedSubviews
                 />
               </FadeIn>
             )}
@@ -1098,7 +1132,7 @@ export const MyRecipesScreen = () => {
                     >
                       <RecipeCard
                         recipe={recipe}
-                        onPress={() => handleRecipePress(recipe)}
+                        onPressRecipeId={handleRecipePress}
                       />
                       {index < recentRecipes.length - 1 && <VSpace size={12} />}
                     </Animated.View>
@@ -1148,7 +1182,7 @@ export const MyRecipesScreen = () => {
             hideSearchBar
             externalSearchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
-            onFilterStateChange={setFilterState}
+            onFilterStateChange={handleFilterStateChange}
             headerAnimationProgress={searchProgress}
             initialTab={filterState?.activeTab ?? "recipes"}
             firstCollectionRef={firstSearchCollectionRef}
@@ -1246,12 +1280,24 @@ export const MyRecipesScreen = () => {
         if (!browsePos) {
           return null;
         }
-        // Cards completely off-screen should fade in at their search position
-        const isOffScreen =
-          browsePos.x < -COLLECTION_CARD_WIDTH || browsePos.x > SCREEN_WIDTH;
-        const searchTarget = searchCollectionTarget.current
-          ? getCollectionSearchTarget(index, searchCollectionTarget.current)
+
+        const searchMeasurement = searchCollectionTarget.current;
+        const searchTarget = searchMeasurement
+          ? getCollectionSearchTarget(index, searchMeasurement)
           : { x: COLLECTION_GRID_PADDING, y: 0, width: browsePos.width };
+        const isBrowseNearScreen =
+          browsePos.x > -COLLECTION_CARD_WIDTH &&
+          browsePos.x < SCREEN_WIDTH + COLLECTION_CARD_WIDTH;
+        const isSearchNearScreen = searchMeasurement
+          ? searchTarget.y < SCREEN_HEIGHT + COLLECTION_OVERLAY_VERTICAL_BUFFER
+          : index < 8;
+
+        if (!isBrowseNearScreen && !isSearchNearScreen) {
+          return null;
+        }
+
+        // Cards completely off-screen should fade in at their search position
+        const isOffScreen = !isBrowseNearScreen;
         return (
           <AnimatedCollectionOverlay
             key={`collection-overlay-${collection.id}`}

@@ -11,6 +11,8 @@ import { VSpace } from "./Space";
 import type { Recipe } from "@/hooks/useRecipeData";
 
 const RecipeSeparator = () => <View style={styles.recipeItemGap} />;
+const keyExtractor = (item: Recipe) => item.id.toString();
+const getItemType = () => "recipe";
 
 export interface RecipeListRef {
   scrollToTop: () => void;
@@ -73,7 +75,8 @@ export const RecipeList = forwardRef<RecipeListRef, RecipeListProps>(
         maintainVisibleContentPosition={{ disabled: true }}
         data={recipes}
         renderItem={renderItem}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={keyExtractor}
+        getItemType={getItemType}
         onEndReached={onLoadMore}
         onEndReachedThreshold={0.5}
         ListHeaderComponent={ListHeader}

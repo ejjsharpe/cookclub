@@ -38,7 +38,7 @@ export type { Recipe, CollectionWithMetadata, TabType };
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface RecipeCollectionBrowserProps {
-  onRecipePress: (recipe: Recipe) => void;
+  onRecipePress: (recipeId: number) => void;
   onCollectionPress: (collectionId: number) => void;
   showCreateCollectionCard?: boolean;
   onCreateCollection?: () => void;
@@ -188,7 +188,7 @@ export const RecipeCollectionBrowser = ({
   // Render item callbacks
   const renderRecipe = useCallback(
     ({ item }: { item: Recipe }) => (
-      <RecipeCard recipe={item} onPress={() => onRecipePress(item)} />
+      <RecipeCard recipe={item} onPressRecipeId={onRecipePress} />
     ),
     [onRecipePress],
   );
@@ -203,7 +203,7 @@ export const RecipeCollectionBrowser = ({
       return (
         <CollectionGridCard
           collection={collection}
-          onPress={() => onCollectionPress(collection.id)}
+          onPressCollection={onCollectionPress}
         />
       );
     },

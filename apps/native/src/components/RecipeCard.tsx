@@ -1,5 +1,5 @@
 import type { PublicImageAsset } from "@repo/contracts/images";
-import { memo } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Pressable, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -37,11 +37,35 @@ interface Recipe {
 interface Props {
   recipe: Recipe;
   onPress?: () => void;
+  onPressRecipeId?: (recipeId: number) => void;
 }
 
-export const RecipeCard = memo(function RecipeCard({ recipe, onPress }: Props) {
+export const RecipeCard = memo(function RecipeCard({
+  recipe,
+  onPress,
+  onPressRecipeId,
+}: Props) {
+  const sourceHost = useMemo(() => {
+    if (!recipe.sourceUrl) return null;
+
+    try {
+      return new URL(recipe.sourceUrl).hostname.replace(/^www\./, "");
+    } catch {
+      return recipe.sourceUrl.replace(/^https?:\/\/(www\.)?/, "").split("/")[0];
+    }
+  }, [recipe.sourceUrl]);
+
+  const handlePress = useCallback(() => {
+    if (onPressRecipeId) {
+      onPressRecipeId(recipe.id);
+      return;
+    }
+    onPress?.();
+  }, [onPress, onPressRecipeId, recipe.id]);
+  const pressHandler = onPress || onPressRecipeId ? handlePress : undefined;
+
   return (
-    <Pressable style={styles.card} onPress={onPress}>
+    <Pressable style={styles.card} onPress={pressHandler}>
       {({ pressed }) => (
         <>
           {pressed && (
@@ -83,7 +107,7 @@ export const RecipeCard = memo(function RecipeCard({ recipe, onPress }: Props) {
                 </Text>
               </View>
             )}
-            {recipe.sourceUrl && (
+            {sourceHost && (
               <View style={styles.metaItem}>
                 <Ionicons
                   name="link-outline"
@@ -95,7 +119,7 @@ export const RecipeCard = memo(function RecipeCard({ recipe, onPress }: Props) {
                   style={styles.metaText}
                   numberOfLines={1}
                 >
-                  {new URL(recipe.sourceUrl).hostname.replace(/^www\./, "")}
+                  {sourceHost}
                 </Text>
               </View>
             )}

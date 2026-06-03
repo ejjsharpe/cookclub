@@ -23,6 +23,10 @@ import type { CollectionWithMetadata } from "@/hooks/useCollectionData";
 type CreateCollectionItem = { id: "create"; type: "create" };
 export type CollectionListItem = CollectionWithMetadata | CreateCollectionItem;
 
+const keyExtractor = (item: CollectionListItem) => item.id.toString();
+const getItemType = (item: CollectionListItem) =>
+  "type" in item && item.type === "create" ? "create" : "collection";
+
 export interface CollectionGridRef {
   scrollToTop: () => void;
 }
@@ -96,12 +100,9 @@ export const CollectionGrid = forwardRef<
         const { item, index } = info;
         // Determine if this is in the left or right column
         const isLeftColumn = index % 2 === 0;
-        const itemStyle = {
-          flex: 1,
-          marginLeft: isLeftColumn ? 0 : GRID_GAP / 2,
-          marginRight: isLeftColumn ? GRID_GAP / 2 : 0,
-          marginBottom: GRID_GAP,
-        };
+        const itemStyle = isLeftColumn
+          ? styles.leftGridItem
+          : styles.rightGridItem;
 
         // Handle create collection item
         if ("type" in item && item.type === "create") {
@@ -149,7 +150,8 @@ export const CollectionGrid = forwardRef<
         maintainVisibleContentPosition={{ disabled: true }}
         data={collectionsList}
         renderItem={internalRenderItem}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={keyExtractor}
+        getItemType={getItemType}
         ListHeaderComponent={ListHeader}
         showsVerticalScrollIndicator={false}
         numColumns={2}
@@ -176,8 +178,14 @@ const styles = StyleSheet.create((_theme, rt) => ({
     paddingHorizontal: 20,
     paddingBottom: rt.insets.bottom + 48,
   },
-  gridRow: {
-    gap: GRID_GAP,
+  leftGridItem: {
+    flex: 1,
+    marginRight: GRID_GAP / 2,
+    marginBottom: GRID_GAP,
+  },
+  rightGridItem: {
+    flex: 1,
+    marginLeft: GRID_GAP / 2,
     marginBottom: GRID_GAP,
   },
   measureWrapper: {

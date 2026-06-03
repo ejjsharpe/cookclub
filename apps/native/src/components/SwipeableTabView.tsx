@@ -8,6 +8,7 @@ import Animated, {
   SharedValue,
 } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
+import { scheduleOnRN } from "react-native-worklets";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -110,10 +111,9 @@ export const SwipeableTabView = ({
 
       // Notify parent if index changed
       if (newIndex !== activeIndex) {
-        onIndexChange(newIndex);
+        scheduleOnRN(onIndexChange, newIndex);
       }
-    })
-    .runOnJS(true);
+    });
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],

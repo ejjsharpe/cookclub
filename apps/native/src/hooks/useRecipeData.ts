@@ -6,6 +6,8 @@ export type Recipe = NonNullable<
   ReturnType<typeof useGetUserRecipes>["data"]
 >["pages"][number]["items"][number];
 
+const EMPTY_RECIPES: Recipe[] = [];
+
 interface UseRecipeDataOptions {
   search?: string;
   tagIds?: number[];
@@ -32,7 +34,9 @@ export const useRecipeData = ({
   });
 
   const recipes = useMemo(() => {
-    return recipesData?.pages.flatMap((page) => page?.items ?? []) ?? [];
+    return (
+      recipesData?.pages.flatMap((page) => page?.items ?? []) ?? EMPTY_RECIPES
+    );
   }, [recipesData]);
 
   const handleLoadMore = useCallback(() => {

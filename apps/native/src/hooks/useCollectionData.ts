@@ -6,6 +6,8 @@ export type CollectionWithMetadata = NonNullable<
   ReturnType<typeof useGetUserCollectionsWithMetadata>["data"]
 >[number];
 
+const EMPTY_COLLECTIONS: CollectionWithMetadata[] = [];
+
 interface UseCollectionDataOptions {
   search?: string;
 }
@@ -23,7 +25,7 @@ export const useCollectionData = ({
   });
 
   const collections = useMemo(() => {
-    return collectionsData ?? [];
+    return collectionsData ?? EMPTY_COLLECTIONS;
   }, [collectionsData]);
 
   return {

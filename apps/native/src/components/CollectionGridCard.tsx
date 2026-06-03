@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { View, TouchableOpacity, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -9,6 +9,7 @@ import { Ionicons } from "@/components/Ionicons";
 import { getImageUrl } from "@/utils/imageUrl";
 
 const GRID_GAP = 20;
+const EMPTY_PREVIEW_IMAGES: string[] = [];
 
 // Proportional ratios relative to card width
 const ICON_SIZE_RATIO = 0.25;
@@ -24,20 +25,37 @@ interface Collection {
 interface Props {
   collection: Collection;
   onPress?: () => void;
+  onPressCollection?: (collectionId: number) => void;
   width?: number;
 }
 
-const ImageGrid = ({ images, width }: { images: string[]; width?: number }) => {
+const ImageGrid = memo(function ImageGrid({
+  images,
+  width,
+}: {
+  images: string[];
+  width?: number;
+}) {
   const count = Math.min(images.length, 4);
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
+  const imageSources = useMemo(
+    () =>
+      images
+        .slice(0, 4)
+        .map((image) => ({ uri: getImageUrl(image, "recipe-thumb") })),
+    [images],
+  );
 
-  const handleLayout = (event: LayoutChangeEvent) => {
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
     const { width: layoutWidth } = event.nativeEvent.layout;
-    setMeasuredWidth(layoutWidth);
-  };
+    setMeasuredWidth((currentWidth) =>
+      currentWidth === layoutWidth ? currentWidth : layoutWidth,
+    );
+  }, []);
 
   // Use explicit width prop if provided, otherwise use measured width
   const effectiveWidth = width ?? measuredWidth;
+  const layoutProps = width == null ? { onLayout: handleLayout } : undefined;
 
   // Calculate proportional values based on width
   const iconSize =
@@ -53,7 +71,7 @@ const ImageGrid = ({ images, width }: { images: string[]; width?: number }) => {
 
   if (count === 0) {
     return (
-      <View style={containerStyle} onLayout={handleLayout}>
+      <View style={containerStyle} {...layoutProps}>
         <View style={gridStyles.placeholder}>
           <Ionicons
             name="albums-outline"
@@ -67,12 +85,13 @@ const ImageGrid = ({ images, width }: { images: string[]; width?: number }) => {
 
   if (count === 1) {
     return (
-      <View style={containerStyle} onLayout={handleLayout}>
+      <View style={containerStyle} {...layoutProps}>
         <Image
-          source={{ uri: getImageUrl(images[0], "recipe-thumb") }}
+          source={imageSources[0]}
           style={gridStyles.fullImage}
           contentFit="cover"
           cachePolicy="memory-disk"
+          decodeFormat="rgb"
         />
       </View>
     );
@@ -80,22 +99,24 @@ const ImageGrid = ({ images, width }: { images: string[]; width?: number }) => {
 
   if (count === 2) {
     return (
-      <View style={containerStyle} onLayout={handleLayout}>
+      <View style={containerStyle} {...layoutProps}>
         <View style={gridStyles.row}>
           <View style={gridStyles.imageWrapper}>
             <Image
-              source={{ uri: getImageUrl(images[0], "recipe-thumb") }}
+              source={imageSources[0]}
               style={gridStyles.image}
               contentFit="cover"
               cachePolicy="memory-disk"
+              decodeFormat="rgb"
             />
           </View>
           <View style={gridStyles.imageWrapper}>
             <Image
-              source={{ uri: getImageUrl(images[1], "recipe-thumb") }}
+              source={imageSources[1]}
               style={gridStyles.image}
               contentFit="cover"
               cachePolicy="memory-disk"
+              decodeFormat="rgb"
             />
           </View>
         </View>
@@ -105,31 +126,34 @@ const ImageGrid = ({ images, width }: { images: string[]; width?: number }) => {
 
   if (count === 3) {
     return (
-      <View style={containerStyle} onLayout={handleLayout}>
+      <View style={containerStyle} {...layoutProps}>
         <View style={gridStyles.threeImageLayout}>
           <View style={gridStyles.largeImageWrapper}>
             <Image
-              source={{ uri: getImageUrl(images[0], "recipe-thumb") }}
+              source={imageSources[0]}
               style={gridStyles.image}
               contentFit="cover"
               cachePolicy="memory-disk"
+              decodeFormat="rgb"
             />
           </View>
           <View style={gridStyles.smallImagesColumn}>
             <View style={gridStyles.imageWrapper}>
               <Image
-                source={{ uri: getImageUrl(images[1], "recipe-thumb") }}
+                source={imageSources[1]}
                 style={gridStyles.image}
                 contentFit="cover"
                 cachePolicy="memory-disk"
+                decodeFormat="rgb"
               />
             </View>
             <View style={gridStyles.imageWrapper}>
               <Image
-                source={{ uri: getImageUrl(images[2], "recipe-thumb") }}
+                source={imageSources[2]}
                 style={gridStyles.image}
                 contentFit="cover"
                 cachePolicy="memory-disk"
+                decodeFormat="rgb"
               />
             </View>
           </View>
@@ -139,46 +163,50 @@ const ImageGrid = ({ images, width }: { images: string[]; width?: number }) => {
   }
 
   return (
-    <View style={containerStyle} onLayout={handleLayout}>
+    <View style={containerStyle} {...layoutProps}>
       <View style={gridStyles.row}>
         <View style={gridStyles.imageWrapper}>
           <Image
-            source={{ uri: getImageUrl(images[0], "recipe-thumb") }}
+            source={imageSources[0]}
             style={gridStyles.image}
             contentFit="cover"
             cachePolicy="memory-disk"
+            decodeFormat="rgb"
           />
         </View>
         <View style={gridStyles.imageWrapper}>
           <Image
-            source={{ uri: getImageUrl(images[1], "recipe-thumb") }}
+            source={imageSources[1]}
             style={gridStyles.image}
             contentFit="cover"
             cachePolicy="memory-disk"
+            decodeFormat="rgb"
           />
         </View>
       </View>
       <View style={gridStyles.row}>
         <View style={gridStyles.imageWrapper}>
           <Image
-            source={{ uri: getImageUrl(images[2], "recipe-thumb") }}
+            source={imageSources[2]}
             style={gridStyles.image}
             contentFit="cover"
             cachePolicy="memory-disk"
+            decodeFormat="rgb"
           />
         </View>
         <View style={gridStyles.imageWrapper}>
           <Image
-            source={{ uri: getImageUrl(images[3], "recipe-thumb") }}
+            source={imageSources[3]}
             style={gridStyles.image}
             contentFit="cover"
             cachePolicy="memory-disk"
+            decodeFormat="rgb"
           />
         </View>
       </View>
     </View>
   );
-};
+});
 
 const gridStyles = StyleSheet.create((theme) => ({
   container: {
@@ -225,14 +253,27 @@ const gridStyles = StyleSheet.create((theme) => ({
   },
 }));
 
-export const CollectionGridCard = ({ collection, onPress, width }: Props) => {
-  const previewImages = collection.previewImages || [];
+export const CollectionGridCard = memo(function CollectionGridCard({
+  collection,
+  onPress,
+  onPressCollection,
+  width,
+}: Props) {
+  const previewImages = collection.previewImages || EMPTY_PREVIEW_IMAGES;
   const recipeCount = collection.recipeCount ?? 0;
+  const handlePress = useCallback(() => {
+    if (onPressCollection) {
+      onPressCollection(collection.id);
+      return;
+    }
+    onPress?.();
+  }, [collection.id, onPress, onPressCollection]);
+  const pressHandler = onPress || onPressCollection ? handlePress : undefined;
 
   return (
     <TouchableOpacity
       style={[styles.card, width != null && { flex: undefined, width }]}
-      onPress={onPress}
+      onPress={pressHandler}
       activeOpacity={0.7}
     >
       <ImageGrid images={previewImages} width={width} />
@@ -246,7 +287,7 @@ export const CollectionGridCard = ({ collection, onPress, width }: Props) => {
       </View>
     </TouchableOpacity>
   );
-};
+});
 
 export { GRID_GAP, ImageGrid };
 

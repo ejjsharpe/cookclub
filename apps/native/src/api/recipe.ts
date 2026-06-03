@@ -6,6 +6,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 // API Response Types
 export type Recipe = Outputs["recipe"]["getRecipeDetail"];
@@ -76,11 +77,29 @@ export const useGetUserRecipes = ({
   limit = 20,
   tagIds,
   maxTotalTime,
-}: UseGetUserRecipesParams) => {
+}: UseGetUserRecipesParams = {}) => {
   const trpc = useTRPC();
+  const normalizedSearch = search?.trim() || undefined;
+  const normalizedTagIds = tagIds && tagIds.length > 0 ? tagIds : undefined;
+  const normalizedMaxTotalTime =
+    maxTotalTime != null && Number.isFinite(maxTotalTime)
+      ? maxTotalTime
+      : undefined;
+
+  const queryInput = useMemo(
+    () => ({
+      limit,
+      ...(normalizedSearch ? { search: normalizedSearch } : {}),
+      ...(normalizedTagIds ? { tagIds: normalizedTagIds } : {}),
+      ...(normalizedMaxTotalTime != null
+        ? { maxTotalTime: normalizedMaxTotalTime }
+        : {}),
+    }),
+    [limit, normalizedSearch, normalizedTagIds, normalizedMaxTotalTime],
+  );
 
   const infiniteQueryOptions = trpc.recipe.getUserRecipes.infiniteQueryOptions(
-    { search, limit, tagIds, maxTotalTime },
+    queryInput,
     { getNextPageParam: (lastPage) => lastPage?.nextCursor },
   );
 
