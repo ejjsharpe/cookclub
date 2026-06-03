@@ -58,6 +58,41 @@ const TRACKING_PARAMS = new Set([
 
 const GENERIC_SOCIAL_INSTRUCTION_PATTERN =
   /follow the method shown in the source video using the listed ingredients/i;
+const EMOJI_NUMBER_MARKER_PATTERN =
+  /^(?:[0-9#*]\uFE0F?\u20E3|[\u2460-\u2473\u24EA\u24F5-\u24FF\u2776-\u277F\u2780-\u2793])\s*[.)\]:：-]?\s*/u;
+const LEADING_INSTRUCTION_MARKER_PATTERN =
+  /^(?:[-*•·▪▫◦\s]+|(?:step\s*)?\d{1,3}\s*[.)\]:：-]\s*)+/iu;
+const GENERIC_TITLE_KEYS = new Set([
+  "explore",
+  "food",
+  "follow",
+  "following",
+  "imported recipe",
+  "imported social recipe",
+  "instagram",
+  "log in",
+  "open app",
+  "post",
+  "recipe",
+  "reel",
+  "reels",
+  "sign in",
+  "sign up",
+  "untitled",
+  "watch",
+]);
+const SOCIAL_SOURCE_DOMAINS = [
+  "instagram.com",
+  "tiktok.com",
+  "facebook.com",
+  "fb.com",
+  "youtube.com",
+  "youtu.be",
+  "pinterest.com",
+  "threads.net",
+  "x.com",
+  "twitter.com",
+];
 
 function countIngredients(sections: IngredientSection[]): number {
   return sections.reduce((sum, section) => sum + section.ingredients.length, 0);
@@ -75,6 +110,67 @@ function isBadDescription(description: string | null | undefined): boolean {
   const normalized = description.trim();
   if (normalized.length > 700) return true;
   return BAD_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function normalizedTitleKey(title: string): string {
+  return title
+    .replace(/[\u200D\uFE0F]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isGenericTitle(title: string): boolean {
+  const key = normalizedTitleKey(title);
+  return (
+    !key ||
+    GENERIC_TITLE_KEYS.has(key) ||
+    /^follow(?:\s+on\s+\w+)?$/.test(key) ||
+    /^(?:watch|view)\s+(?:on\s+)?(?:instagram|tiktok|facebook|youtube)$/.test(
+      key,
+    )
+  );
+}
+
+function isSocialSourceUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return SOCIAL_SOURCE_DOMAINS.some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function fallbackTitleForRecipe(recipe: ParsedRecipe): string {
+  return isSocialSourceUrl(recipe.sourceUrl)
+    ? "Imported Social Recipe"
+    : "Imported Recipe";
+}
+
+function cleanRecipeTitle(recipe: ParsedRecipe): string {
+  const title = recipe.name.replace(/\s+/g, " ").trim();
+  return isGenericTitle(title) ? fallbackTitleForRecipe(recipe) : title;
+}
+
+function cleanInstructionText(value: string): string {
+  let text = value.replace(/\s+/g, " ").trim();
+
+  for (let index = 0; index < 3; index++) {
+    const next = text
+      .replace(EMOJI_NUMBER_MARKER_PATTERN, "")
+      .replace(LEADING_INSTRUCTION_MARKER_PATTERN, "")
+      .trim();
+
+    if (next === text) break;
+    text = next;
+  }
+
+  return text;
 }
 
 function isBadImageUrl(url: string): boolean {
@@ -296,11 +392,14 @@ export function normalizeRecipeForImport(recipe: ParsedRecipe): ParsedRecipe {
     .map((section) => ({
       name: section.name?.trim() || null,
       instructions: section.instructions
-        .filter((instruction) => instruction.instruction.trim().length > 0)
+        .map((instruction) => ({
+          ...instruction,
+          instruction: cleanInstructionText(instruction.instruction),
+        }))
+        .filter((instruction) => instruction.instruction.length > 0)
         .map((instruction, index) => ({
           ...instruction,
           index,
-          instruction: instruction.instruction.trim(),
           imageUrl: instruction.imageUrl?.trim() || null,
         })),
     }))
@@ -310,7 +409,7 @@ export function normalizeRecipeForImport(recipe: ParsedRecipe): ParsedRecipe {
 
   return {
     ...recipe,
-    name: recipe.name.trim(),
+    name: cleanRecipeTitle(recipe),
     description:
       recipe.description && !isBadDescription(recipe.description)
         ? recipe.description.trim()
@@ -363,7 +462,7 @@ export function evaluateRecipeQuality(
     score -= 25;
   }
 
-  if (/^(recipe|untitled|food)$/i.test(recipe.name)) {
+  if (isGenericTitle(recipe.name)) {
     reasons.push("generic_title");
     score -= 20;
   }

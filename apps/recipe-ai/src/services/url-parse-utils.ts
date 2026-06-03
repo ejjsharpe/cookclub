@@ -4,6 +4,7 @@ import type { Env, ParseMetadata, ParseResult } from "../types";
 import { parseRecipeFromHtml } from "./ai-client";
 import { cacheRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
+import { polishRecipeForSmartImport } from "./recipe-polisher";
 import {
   evaluateRecipeQuality,
   normalizeRecipeForImport,
@@ -18,6 +19,7 @@ export type UrlParseMethod = NonNullable<ParseMetadata["parseMethod"]>;
 interface CandidateOptions {
   parseMethod?: UrlParseMethod;
   cache?: boolean;
+  polish?: boolean;
   metadataSource?: ParseMetadata["source"];
   canonicalUrl?: string;
   diagnostics?: ParseMetadata["diagnostics"];
@@ -285,9 +287,14 @@ async function resultFromEvaluatedCandidate(
   candidate: EvaluatedRecipeCandidate,
   options: CandidateOptions = {},
 ): Promise<ParseResult> {
+  const polishResult = options.polish
+    ? await polishRecipeForSmartImport(env.AI, candidate.recipe)
+    : null;
+  const recipe = polishResult?.recipe ?? candidate.recipe;
+
   if (candidate.cache !== false) {
     try {
-      await cacheRecipe(env.RECIPE_CACHE, cacheUrl, candidate.recipe);
+      await cacheRecipe(env.RECIPE_CACHE, cacheUrl, recipe);
     } catch (error) {
       console.log(
         "Recipe cache write failed:",
@@ -316,7 +323,7 @@ async function resultFromEvaluatedCandidate(
 
   return {
     success: true,
-    data: candidate.recipe,
+    data: recipe,
     metadata,
   };
 }

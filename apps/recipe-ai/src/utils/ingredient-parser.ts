@@ -12,6 +12,12 @@ const UNICODE_FRACTIONS: Record<string, string> = {
   "\u215d": "5/8",
   "\u215e": "7/8",
 };
+const MULTIPLIER_CONTAINER_PATTERN = new RegExp(
+  String.raw`^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\s+` +
+    String.raw`(?:(tin|tins|can|cans|packet|packets|package|packages|carton|cartons|container|containers)\s+)?` +
+    String.raw`(.+)$`,
+  "i",
+);
 
 function normalizeIngredientText(value: string): string {
   return value
@@ -22,6 +28,12 @@ function normalizeIngredientText(value: string): string {
         `${prefix.trim() ? `${prefix.trim()} ` : ""}${UNICODE_FRACTIONS[fraction]}`,
     )
     .trim();
+}
+
+function normalizeContainerUnit(value: string): string | null {
+  const normalized = value.toLowerCase();
+  if (normalized === "tin" || normalized === "tins") return "can";
+  return normalizeUnit(normalized);
 }
 
 export function parseFraction(value: string): number | null {
@@ -48,6 +60,23 @@ export function parseFraction(value: string): number | null {
 
 export function parseIngredientText(value: string): Omit<Ingredient, "index"> {
   const text = normalizeIngredientText(value);
+  const multiplierContainerMatch = text.match(MULTIPLIER_CONTAINER_PATTERN);
+  if (multiplierContainerMatch) {
+    const quantity = Number(multiplierContainerMatch[1]);
+    const packSize = multiplierContainerMatch[2];
+    const packUnit = multiplierContainerMatch[3]?.toLowerCase();
+    const containerUnit = multiplierContainerMatch[4]
+      ? normalizeContainerUnit(multiplierContainerMatch[4])
+      : null;
+    const name = `${packSize}${packUnit} ${multiplierContainerMatch[5]}`.trim();
+
+    return {
+      quantity: Number.isFinite(quantity) ? quantity : null,
+      unit: containerUnit,
+      name,
+    };
+  }
+
   const quantityMatch = text.match(/^(\d+(?:\.\d+)?(?:\s+\d+\/\d+|\/\d+)?)/);
   const quantity = quantityMatch ? parseFraction(quantityMatch[1]!) : null;
   let remaining = quantityMatch

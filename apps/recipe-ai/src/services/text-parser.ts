@@ -42,6 +42,7 @@ export async function parseText(env: Env, text: string): Promise<ParseResult> {
       {
         parseMethod: "outline_rules",
         cache: false,
+        polish: true,
         metadataSource: "text",
       },
     );
@@ -55,6 +56,7 @@ export async function parseText(env: Env, text: string): Promise<ParseResult> {
     const result = await acceptedCandidate(env, "text", recipe, "ai", {
       parseMethod: "ai_only",
       cache: false,
+      polish: true,
       metadataSource: "text",
     });
     if (result) return result;

@@ -189,6 +189,7 @@ async function parseSocialTextRecipe(
         cache: false,
         canonicalUrl: options.url,
         diagnostics: socialCandidateDiagnostics(options),
+        polish: true,
       },
     );
     if (deterministicResult) {
@@ -234,6 +235,7 @@ async function parseSocialTextRecipe(
       cache: false,
       canonicalUrl: options.url,
       diagnostics: socialCandidateDiagnostics(options),
+      polish: true,
     },
   );
   if (bestResult) {
@@ -634,6 +636,7 @@ async function parseTikTokUrl(
           cache: false,
           canonicalUrl: url,
           diagnostics: socialCandidateDiagnostics(options),
+          polish: true,
         },
       );
       if (captionResult) {
@@ -718,6 +721,7 @@ async function parseTikTokUrl(
         cache: false,
         canonicalUrl: url,
         diagnostics: socialCandidateDiagnostics(options),
+        polish: true,
       },
     );
     if (fallbackResult) {

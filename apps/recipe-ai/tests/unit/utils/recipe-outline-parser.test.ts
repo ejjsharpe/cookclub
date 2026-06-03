@@ -139,6 +139,48 @@ describe("extractRecipeOutline", () => {
     expect(recipe?.instructionSections[0]?.instructions).toHaveLength(2);
   });
 
+  it("uses recipe title lines after social follow boilerplate", () => {
+    const recipe = extractRecipeOutline(
+      `
+      🧑‍🍳🧑‍🍳 Follow @bosh.tv for more recipes 🧑‍🍳🧑‍🍳
+
+      CRISPY CAULI WITH SUPER GREEN CREAMED BEANS 🌱
+
+      Smokey, fiery cauliflower paired with a creamy, herby green bean blend. Full recipe below 👇
+
+      For the cauliflower
+      1 whole cauliflower
+      1 tbsp smoked paprika
+      2 tbsp olive oil
+
+      For the green bean blend
+      2 x 400g tin butter beans
+      50g spinach
+      20g fresh basil
+
+      METHOD
+      1️⃣ Prep the cauliflower. Cut into large florets and bite-sized stem chunks.
+      2️⃣ Roast the cauliflower at 200°C for 25-30 mins.
+      3️⃣ Make the green bean blend until smooth.
+      `,
+      {
+        sourceUrl: "https://www.instagram.com/reel/DFIyUJAo2nL/",
+        sourceType: "url",
+      },
+    );
+
+    expect(recipe?.name).toBe("Crispy Cauli With Super Green Creamed Beans");
+    expect(recipe?.ingredientSections).toHaveLength(2);
+    expect(recipe?.ingredientSections[1]?.ingredients[0]).toMatchObject({
+      quantity: 2,
+      unit: "can",
+      name: "400g butter beans",
+    });
+    expect(recipe?.instructionSections[0]?.instructions[0]?.instruction).toBe(
+      "Prep the cauliflower",
+    );
+  });
+
   it("rejects ingredient-only captions and non-recipe noise", () => {
     expect(
       extractRecipeOutline(

@@ -472,6 +472,7 @@ export async function parseUrl(
       {
         canonicalUrl: sourceUrl,
         diagnostics,
+        polish: !structuredOnly,
       },
     );
     if (readerResult) return readerResult;
@@ -540,6 +541,7 @@ export async function parseUrl(
     {
       canonicalUrl: sourceUrl,
       diagnostics,
+      polish: !structuredOnly,
     },
   );
   if (mainDeterministicResult) return mainDeterministicResult;
@@ -562,6 +564,7 @@ export async function parseUrl(
     {
       canonicalUrl: sourceUrl,
       diagnostics,
+      polish: !structuredOnly,
     },
   );
   if (deterministicResult) return deterministicResult;
@@ -624,6 +627,7 @@ export async function parseUrl(
       ],
       {
         canonicalUrl: sourceUrl,
+        polish: true,
         diagnostics: {
           ...diagnostics,
           attempts: evaluateRecipeCandidates(candidates).diagnostics,

@@ -18,6 +18,16 @@ const UNICODE_FRACTIONS: Record<string, string> = {
   "\u215d": "5/8",
   "\u215e": "7/8",
 };
+const EMOJI_NUMBER_MARKER =
+  String.raw`[0-9#*]\uFE0F?\u20E3|[\u2460-\u2473\u24EA\u24F5-\u24FF\u2776-\u277F\u2780-\u2793]`;
+const NUMBERED_INSTRUCTION_BOUNDARY_PATTERN = new RegExp(
+  String.raw`(?:^|\s)(?:(?:step\s*)?\d{1,3}[.)\]:：-]|${EMOJI_NUMBER_MARKER})\s*(?:[.)\]:：-]\s*)?`,
+  "giu",
+);
+const LEADING_INSTRUCTION_MARKER_PATTERN = new RegExp(
+  String.raw`^(?:[-*•·▪▫◦\s]+|(?:(?:step\s*)?\d{1,3}[.)\]:：-]|${EMOJI_NUMBER_MARKER})\s*(?:[.)\]:：-]\s*)?)+`,
+  "iu",
+);
 
 function normalizeText(value: string): string {
   return value
@@ -325,9 +335,8 @@ function parseExplicitIngredientSections(
 }
 
 function cleanInstructionStep(value: string): string {
-  return value
-    .replace(/^[-*•·\s]+/, "")
-    .replace(/^\d+[.)]\s+/, "")
+  return normalizeText(value)
+    .replace(LEADING_INSTRUCTION_MARKER_PATTERN, "")
     .trim();
 }
 
@@ -335,9 +344,12 @@ function parseExplicitInstructionSections(
   directionsText: string,
 ): InstructionSection[] {
   const text = removeSocialNoise(directionsText);
-  const matches = [...text.matchAll(/(?:^|\s)(\d+)\.\s+/g)].filter(
-    (match) => match.index != null,
-  );
+  const matches = [...text.matchAll(NUMBERED_INSTRUCTION_BOUNDARY_PATTERN)]
+    .filter((match) => match.index != null)
+    .filter((match, index, all) => {
+      const nextMatch = all[index + 1];
+      return nextMatch ? nextMatch.index! > match.index! : true;
+    });
 
   const instructions =
     matches.length >= 2

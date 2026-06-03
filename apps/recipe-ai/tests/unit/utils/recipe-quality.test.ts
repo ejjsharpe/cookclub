@@ -59,4 +59,33 @@ describe("normalizeRecipeForImport", () => {
       "https://example.com/six.jpg",
     ]);
   });
+
+  it("replaces social UI titles and strips emoji instruction numbers", () => {
+    const normalized = normalizeRecipeForImport({
+      ...recipeWithImages(["https://example.com/thumb.jpg"]),
+      name: "Follow",
+      sourceUrl: "https://www.instagram.com/reel/DFIyUJAo2nL/",
+      instructionSections: [
+        {
+          name: null,
+          instructions: [
+            { index: 0, instruction: "1️⃣ Preheat the oven." },
+            { index: 1, instruction: "② Mix the batter." },
+            { index: 2, instruction: "3. Bake until golden." },
+            { index: 3, instruction: "2 eggs are enough for this batter." },
+          ],
+        },
+      ],
+    });
+
+    expect(normalized.name).toBe("Imported Social Recipe");
+    expect(normalized.instructionSections[0]?.instructions).toEqual([
+      expect.objectContaining({ instruction: "Preheat the oven." }),
+      expect.objectContaining({ instruction: "Mix the batter." }),
+      expect.objectContaining({ instruction: "Bake until golden." }),
+      expect.objectContaining({
+        instruction: "2 eggs are enough for this batter.",
+      }),
+    ]);
+  });
 });

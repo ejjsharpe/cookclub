@@ -19,6 +19,15 @@ const UNICODE_FRACTIONS: Record<string, string> = {
   "\u215d": "5/8",
   "\u215e": "7/8",
 };
+const EMOJI_NUMBER_MARKER = String.raw`[0-9#*]\uFE0F?\u20E3|[\u2460-\u2473\u24EA\u24F5-\u24FF\u2776-\u277F\u2780-\u2793]`;
+const NUMBERED_INSTRUCTION_BOUNDARY_PATTERN = new RegExp(
+  String.raw`(?:^|\s)(?:(?:step\s*)?\d{1,3}[.)\]:：-]|${EMOJI_NUMBER_MARKER})\s*(?:[.)\]:：-]\s*)?`,
+  "giu",
+);
+const LEADING_INSTRUCTION_MARKER_PATTERN = new RegExp(
+  String.raw`^(?:[-*•·▪▫◦\s]+|(?:(?:step\s*)?\d{1,3}[.)\]:：-]|${EMOJI_NUMBER_MARKER})\s*(?:[.)\]:：-]\s*)?)+`,
+  "iu",
+);
 
 interface RecipeOutlineOptions {
   sourceUrl?: string | null;
@@ -206,13 +215,17 @@ function isLikelySectionHeading(line: string): boolean {
 function isContinuationQuantity(text: string, start: number): boolean {
   const before = text.slice(Math.max(0, start - 16), start);
   const after = text.slice(start, start + 24);
+  const multiplierContinuation =
+    /\b\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?\s*x\s+$/i.test(before);
   const eggContinuation =
     /\band\s+$/i.test(before) &&
     /^\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?\s+egg(?:s|\s+(?:yolk|white))\b/i.test(
       after,
     );
 
-  return /\bplus\s+$/i.test(before) || eggContinuation;
+  return (
+    /\bplus\s+$/i.test(before) || multiplierContinuation || eggContinuation
+  );
 }
 
 function quantityStarts(text: string): number[] {
@@ -265,14 +278,13 @@ function splitIngredientLine(line: string): string[] {
 
 function splitInstructionLine(line: string): string[] {
   const text = stripSocialNoise(line)
-    .replace(/^\d+[.)]\s+/, "")
-    .replace(/^[*-]\s+/, "")
+    .replace(LEADING_INSTRUCTION_MARKER_PATTERN, "")
     .trim();
   if (!text) return [];
 
-  const numberedMatches = [...text.matchAll(/(?:^|\s)(\d+[.)])\s+/g)].filter(
-    (match) => match.index != null,
-  );
+  const numberedMatches = [
+    ...text.matchAll(NUMBERED_INSTRUCTION_BOUNDARY_PATTERN),
+  ].filter((match) => match.index != null);
   if (numberedMatches.length >= 2) {
     return numberedMatches
       .map((match, index) => {
@@ -363,10 +375,44 @@ function leadingCapsTitle(value: string): string | null {
   return titleWords.length > 0 ? titleWords.join(" ") : null;
 }
 
+function isSocialActionLine(line: string): boolean {
+  const normalized = line
+    .replace(/@\w+/g, " ")
+    .replace(/#[\p{L}\p{N}_-]+/gu, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (!normalized) return true;
+
+  return (
+    /^(?:follow|save|share|comment|like|view|watch|open|sign|log)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:follow for more|link in bio|full recipe below)\b/.test(normalized)
+  );
+}
+
+function titleFromCapsLine(lines: string[]): string | null {
+  for (const line of lines) {
+    if (isSocialActionLine(line)) continue;
+
+    const title = leadingCapsTitle(line);
+    if (title && title.replace(/[^\p{L}\p{N}]/gu, "").length >= 3) {
+      return title;
+    }
+  }
+
+  return null;
+}
+
 function titleFromIntro(lines: string[], sourceUrl: string | null | undefined) {
   const intro = stripSocialNoise(lines.join(" "));
   const source =
-    leadingCapsTitle(intro) ?? lines.find((line) => line.length >= 3);
+    titleFromCapsLine(lines) ??
+    leadingCapsTitle(intro) ??
+    lines.find((line) => line.length >= 3 && !isSocialActionLine(line));
   const cleaned = stripSocialNoise(source ?? "")
     .replace(/[^\p{L}\p{N}\s'&-]/gu, " ")
     .replace(/\b(recipe|ingredients?|method|directions)\b/gi, " ")

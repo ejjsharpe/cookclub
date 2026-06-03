@@ -195,4 +195,26 @@ describe("extractSocialCaptionRecipe", () => {
       "Top with chopped chives & divide into portions. Enjoy!",
     );
   });
+
+  it("splits explicit directions with emoji number markers", () => {
+    const caption =
+      "Lemon pasta Ingredients: 200g spaghetti 1 lemon 2 tbsp olive oil Directions: 1️⃣ Boil the spaghetti until al dente. 2️⃣ Toss with lemon juice and olive oil. 3️⃣ Serve immediately. #recipe";
+
+    const recipe = extractSocialCaptionRecipe(
+      caption,
+      "https://www.instagram.com/reel/DFIyUJAo2nL/",
+      ["https://example.com/lemon-pasta.jpg"],
+    );
+
+    expect(recipe).not.toBeNull();
+    expect(recipe?.instructionSections[0]?.instructions).toEqual([
+      expect.objectContaining({
+        instruction: "Boil the spaghetti until al dente.",
+      }),
+      expect.objectContaining({
+        instruction: "Toss with lemon juice and olive oil.",
+      }),
+      expect.objectContaining({ instruction: "Serve immediately." }),
+    ]);
+  });
 });

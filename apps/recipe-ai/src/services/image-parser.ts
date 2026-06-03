@@ -100,6 +100,7 @@ export async function parseImage(
       {
         parseMethod: "ai_only",
         cache: false,
+        polish: true,
         metadataSource: "image",
       },
     );
