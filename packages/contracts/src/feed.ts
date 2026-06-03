@@ -1,3 +1,5 @@
+import type { PublicImageAsset } from "./images";
+
 export type FeedSourceType =
   | "url"
   | "image"
@@ -12,7 +14,7 @@ interface BaseRecipeMetadata {
   id: number;
   ownerId: string;
   name: string;
-  image: string | null;
+  image: PublicImageAsset | null;
 }
 
 interface UrlSourcedRecipe extends BaseRecipeMetadata {
@@ -55,7 +57,7 @@ export interface CookingReviewFeedItem extends BaseFeedItem {
   review: {
     rating: number;
     text: string | null;
-    images: string[];
+    images: PublicImageAsset[];
   };
 }
 

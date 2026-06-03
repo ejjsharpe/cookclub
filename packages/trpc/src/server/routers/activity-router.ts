@@ -19,12 +19,36 @@ import {
   hydrateFeed,
 } from "../services/activity";
 import { createAndSendNotificationInBackground } from "../services/push-notification.service";
+import { cleanupMovedRecipeImages } from "../services/recipe-image.service";
 import { router, authedProcedure } from "../trpc";
 import { mapServiceError } from "../utils";
+import type { PublicImageAsset } from "@repo/contracts/images";
 
 interface GetFeedIdsResponse {
   activityIds: number[];
   nextCursor: string | null;
+}
+
+function extensionFromKey(key: string) {
+  return key.split(".").pop()?.toLowerCase() || "jpg";
+}
+
+function reviewImageInsertValues(
+  reviewId: number,
+  image: PublicImageAsset,
+  index: number,
+) {
+  return {
+    reviewId,
+    url: image.url,
+    storageKey: image.storageKey,
+    width: image.width,
+    height: image.height,
+    contentType: image.contentType,
+    byteSize: image.byteSize,
+    previewDataUrl: image.previewDataUrl,
+    index,
+  };
 }
 
 export const activityRouter = router({
@@ -96,29 +120,72 @@ export const activityRouter = router({
         recipeId: "number",
         rating: "1 <= number <= 5",
         reviewText: "string?",
-        imageUrls: "string[]?",
+        imageUploadIds: "string[]?",
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { recipeId, rating, reviewText, imageUrls } = input;
+      const { recipeId, rating, reviewText, imageUploadIds } = input;
+      let movedReviewImageKeys: string[] = [];
+      let didPersistReview = false;
 
       try {
-        const { activityEventId, createdAt, reviewId } =
-          await ctx.db.transaction(async (tx) => {
-            // Verify recipe exists
-            const recipe = await tx
-              .select({ id: recipes.id, name: recipes.name })
-              .from(recipes)
-              .where(eq(recipes.id, recipeId))
-              .then((rows) => rows[0]);
+        const recipe = await ctx.db
+          .select({ id: recipes.id, name: recipes.name })
+          .from(recipes)
+          .where(eq(recipes.id, recipeId))
+          .then((rows) => rows[0]);
 
-            if (!recipe) {
+        if (!recipe) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Recipe not found",
+          });
+        }
+
+        const reviewImages: PublicImageAsset[] = [];
+        if (imageUploadIds && imageUploadIds.length > 0) {
+          const groupId = crypto.randomUUID();
+          const moves = imageUploadIds.map((uploadId) => ({
+            from: uploadId,
+            to: `reviews/${groupId}/${crypto.randomUUID()}.${extensionFromKey(uploadId)}`,
+          }));
+
+          const moveResult = await ctx.env.IMAGE_SERVICE.move(
+            moves,
+            ctx.user.id,
+          );
+          movedReviewImageKeys = moveResult.results
+            .filter((result) => result.success)
+            .map((result) => result.to);
+
+          if (!moveResult.success) {
+            const failedMoves = moveResult.results.filter(
+              (result) => !result.success,
+            );
+            const message = failedMoves
+              .map(
+                (result) => `${result.from} -> ${result.to}: ${result.error}`,
+              )
+              .join(", ");
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Failed to move uploaded review images: ${message}`,
+            });
+          }
+
+          for (const result of moveResult.results) {
+            if (!result.asset) {
               throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Recipe not found",
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Review image move did not return metadata for ${result.to}`,
               });
             }
+            reviewImages.push(result.asset);
+          }
+        }
 
+        const { activityEventId, createdAt, reviewId } =
+          await ctx.db.transaction(async (tx) => {
             const now = new Date();
 
             // Create activity event
@@ -163,14 +230,14 @@ export const activityRouter = router({
             }
 
             // Create review images if provided
-            if (imageUrls && imageUrls.length > 0) {
-              await tx.insert(cookingReviewImages).values(
-                imageUrls.map((url, index) => ({
-                  reviewId: review.id,
-                  url,
-                  index,
-                })),
-              );
+            if (reviewImages.length > 0) {
+              await tx
+                .insert(cookingReviewImages)
+                .values(
+                  reviewImages.map((image, index) =>
+                    reviewImageInsertValues(review.id, image, index),
+                  ),
+                );
             }
 
             await moveRecipeToCookedCollection(tx, {
@@ -185,6 +252,7 @@ export const activityRouter = router({
               reviewId: review.id,
             };
           });
+        didPersistReview = true;
 
         // Propagate to followers
         await propagateActivityToFollowers(
@@ -200,6 +268,12 @@ export const activityRouter = router({
           activityEventId,
         };
       } catch (err) {
+        if (!didPersistReview) {
+          await cleanupMovedRecipeImages(
+            ctx.env.IMAGE_SERVICE,
+            movedReviewImageKeys,
+          );
+        }
         throw mapServiceError(err);
       }
     }),
@@ -252,6 +326,12 @@ export const activityRouter = router({
                 .select({
                   reviewId: cookingReviewImages.reviewId,
                   url: cookingReviewImages.url,
+                  storageKey: cookingReviewImages.storageKey,
+                  width: cookingReviewImages.width,
+                  height: cookingReviewImages.height,
+                  contentType: cookingReviewImages.contentType,
+                  byteSize: cookingReviewImages.byteSize,
+                  previewDataUrl: cookingReviewImages.previewDataUrl,
                 })
                 .from(cookingReviewImages)
                 .where(inArray(cookingReviewImages.reviewId, reviewIds))
@@ -274,9 +354,15 @@ export const activityRouter = router({
           id: item.review.id,
           rating: item.review.rating,
           reviewText: item.review.reviewText,
-          images: (imagesByReview.get(item.review.id) ?? []).map(
-            (img) => img.url,
-          ),
+          images: (imagesByReview.get(item.review.id) ?? []).map((img) => ({
+            url: img.url,
+            storageKey: img.storageKey,
+            width: img.width,
+            height: img.height,
+            contentType: img.contentType as PublicImageAsset["contentType"],
+            byteSize: img.byteSize,
+            previewDataUrl: img.previewDataUrl,
+          })),
           createdAt: item.review.createdAt,
           user: item.user,
         }));

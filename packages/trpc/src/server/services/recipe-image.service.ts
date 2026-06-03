@@ -1,8 +1,8 @@
-import type { ImageService } from "@repo/contracts/images";
+import type { ImageService, PublicImageAsset } from "@repo/contracts/images";
 import { TRPCError } from "@trpc/server";
 
 interface RecipeImageInput {
-  images?: { url: string }[];
+  images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
 }
 
@@ -13,29 +13,59 @@ interface PrepareRecipeImagesDeps {
 }
 
 export interface PreparedRecipeImages {
-  images: { url: string }[];
+  images: PublicImageAsset[];
   movedKeys: string[];
 }
 
-export async function prepareRecipeImages(
+function extensionFromKey(key: string) {
+  return key.split(".").pop()?.toLowerCase() || "jpg";
+}
+
+function permanentRecipeImageKey(assetGroupId: string, extension = "jpg") {
+  return `recipes/covers/${assetGroupId}/${crypto.randomUUID()}.${extension}`;
+}
+
+function imageKeyFromPublicUrl(url: string, publicUrl: string): string | null {
+  const baseUrl = `${publicUrl.replace(/\/+$/, "")}/`;
+  if (!url.startsWith(baseUrl)) return null;
+
+  const encodedKey = url.slice(baseUrl.length).split(/[?#]/)[0] ?? "";
+  try {
+    const key = decodeURIComponent(encodedKey);
+    if (!key || key.startsWith("/") || key.split("/").includes("..")) {
+      return null;
+    }
+    return key;
+  } catch {
+    return null;
+  }
+}
+
+function isPublicImageAsset(
+  image: { url: string } | PublicImageAsset,
+): image is PublicImageAsset {
+  return (
+    "storageKey" in image &&
+    "width" in image &&
+    "height" in image &&
+    "contentType" in image &&
+    "byteSize" in image &&
+    "previewDataUrl" in image
+  );
+}
+
+async function prepareUploadedImages(
   input: RecipeImageInput,
   deps: PrepareRecipeImagesDeps,
+  assetGroupId: string,
 ): Promise<PreparedRecipeImages> {
-  const hasUploadIds = input.imageUploadIds && input.imageUploadIds.length > 0;
+  const imageUploadIds = input.imageUploadIds ?? [];
+  if (imageUploadIds.length === 0) return { images: [], movedKeys: [] };
 
-  if (!hasUploadIds) {
-    return { images: input.images ?? [], movedKeys: [] };
-  }
-
-  const assetGroupId = crypto.randomUUID();
-  const moves = input.imageUploadIds!.map((uploadId) => {
-    const ext = uploadId.split(".").pop()?.toLowerCase() || "jpg";
-    const imageId = crypto.randomUUID();
-    return {
-      from: uploadId,
-      to: `recipes/covers/${assetGroupId}/${imageId}.${ext}`,
-    };
-  });
+  const moves = imageUploadIds.map((uploadId) => ({
+    from: uploadId,
+    to: permanentRecipeImageKey(assetGroupId, extensionFromKey(uploadId)),
+  }));
 
   const moveResult = await deps.imageService.move(moves, deps.ownerId);
   const successfulMovedKeys = moveResult.results
@@ -55,13 +85,115 @@ export async function prepareRecipeImages(
     });
   }
 
-  const publicUrl = deps.imagePublicUrl.replace(/\/$/, "");
-  const movedImages = moves.map((move) => ({ url: `${publicUrl}/${move.to}` }));
+  const missingAssetResult = moveResult.results.find((result) => !result.asset);
+  if (missingAssetResult) {
+    await cleanupMovedRecipeImages(deps.imageService, successfulMovedKeys);
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Image move did not return asset metadata for ${missingAssetResult.to}`,
+    });
+  }
+
+  const images = moveResult.results.map((result) => result.asset!);
 
   return {
-    images: [...(input.images ?? []), ...movedImages],
+    images,
     movedKeys: moves.map((move) => move.to),
   };
+}
+
+async function prepareDirectImages(
+  input: RecipeImageInput,
+  deps: PrepareRecipeImagesDeps,
+  assetGroupId: string,
+): Promise<PreparedRecipeImages> {
+  const images = input.images ?? [];
+  if (images.length === 0) return { images: [], movedKeys: [] };
+
+  const preparedImages: PublicImageAsset[] = [];
+  const movedKeys: string[] = [];
+
+  for (const image of images) {
+    if (isPublicImageAsset(image) && !image.storageKey.startsWith("temp/")) {
+      preparedImages.push(image);
+      continue;
+    }
+
+    const existingKey = imageKeyFromPublicUrl(image.url, deps.imagePublicUrl);
+    const destinationKey = existingKey?.startsWith("temp/")
+      ? permanentRecipeImageKey(assetGroupId, extensionFromKey(existingKey))
+      : permanentRecipeImageKey(assetGroupId);
+
+    try {
+      if (existingKey?.startsWith("temp/")) {
+        const moveResult = await deps.imageService.move(
+          [{ from: existingKey, to: destinationKey }],
+          deps.ownerId,
+        );
+        const result = moveResult.results[0];
+        if (!moveResult.success || !result?.success) {
+          throw new Error(result?.error || "Failed to move temporary image");
+        }
+        movedKeys.push(result.to);
+        if (!result.asset) {
+          throw new Error("Moved image did not return asset metadata");
+        }
+        preparedImages.push(result.asset);
+      } else {
+        const result = await deps.imageService.uploadFromUrl(
+          image.url,
+          destinationKey,
+        );
+        if (!result.success) {
+          throw new Error(result.error || "Failed to store remote image");
+        }
+        movedKeys.push(destinationKey);
+        if (!result.asset) {
+          throw new Error("Stored remote image did not return asset metadata");
+        }
+        preparedImages.push(result.asset);
+      }
+    } catch (error) {
+      await cleanupMovedRecipeImages(deps.imageService, movedKeys);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message:
+          error instanceof Error
+            ? `Failed to prepare image: ${error.message}`
+            : "Failed to prepare image",
+      });
+    }
+  }
+
+  return { images: preparedImages, movedKeys };
+}
+
+export async function prepareRecipeImages(
+  input: RecipeImageInput,
+  deps: PrepareRecipeImagesDeps,
+): Promise<PreparedRecipeImages> {
+  const assetGroupId = crypto.randomUUID();
+  const movedKeys: string[] = [];
+
+  try {
+    const directImages = await prepareDirectImages(input, deps, assetGroupId);
+    movedKeys.push(...directImages.movedKeys);
+
+    const uploadedImages = await prepareUploadedImages(
+      input,
+      deps,
+      assetGroupId,
+    );
+    movedKeys.push(...uploadedImages.movedKeys);
+
+    return {
+      images: [...directImages.images, ...uploadedImages.images],
+      movedKeys,
+    };
+  } catch (error) {
+    await cleanupMovedRecipeImages(deps.imageService, movedKeys);
+    throw error;
+  }
 }
 
 export async function cleanupMovedRecipeImages(

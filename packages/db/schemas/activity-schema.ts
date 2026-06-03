@@ -34,13 +34,13 @@ export const activityEvents = pgTable(
     index("activity_events_created_at_idx").on(table.createdAt),
     index("activity_events_user_created_idx").on(
       table.userId,
-      table.createdAt.desc()
+      table.createdAt.desc(),
     ),
     check(
       "activity_events_type_check",
       sql`${table.type} IN ('recipe_import', 'cooking_review')`,
     ),
-  ]
+  ],
 );
 
 // ─── Cooking Reviews - new feature for recipe reviews ────────────────────────
@@ -56,7 +56,7 @@ export const cookingReviews = pgTable(
       .references(() => recipes.id, { onDelete: "cascade" }),
     activityEventId: integer("activity_event_id").references(
       () => activityEvents.id,
-      { onDelete: "cascade" }
+      { onDelete: "cascade" },
     ),
     rating: integer("rating").notNull(), // 1-5 stars
     reviewText: text("review_text"),
@@ -68,13 +68,10 @@ export const cookingReviews = pgTable(
     index("cooking_reviews_recipe_id_idx").on(table.recipeId),
     uniqueIndex("cooking_reviews_user_recipe_idx").on(
       table.userId,
-      table.recipeId
+      table.recipeId,
     ),
-    check(
-      "cooking_reviews_rating_check",
-      sql`${table.rating} BETWEEN 1 AND 5`,
-    ),
-  ]
+    check("cooking_reviews_rating_check", sql`${table.rating} BETWEEN 1 AND 5`),
+  ],
 );
 
 // ─── Review Images - multiple images per review ──────────────────────────────
@@ -86,15 +83,26 @@ export const cookingReviewImages = pgTable(
       .notNull()
       .references(() => cookingReviews.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
+    storageKey: text("storage_key").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    previewDataUrl: text("preview_data_url").notNull(),
     index: integer("index").notNull(), // for ordering
   },
   (table) => [
     index("cooking_review_images_review_id_idx").on(table.reviewId),
     index("cooking_review_images_review_id_index_idx").on(
       table.reviewId,
-      table.index
+      table.index,
     ),
-  ]
+    index("cooking_review_images_storage_key_idx").on(table.storageKey),
+    check(
+      "cooking_review_images_content_type_check",
+      sql`${table.contentType} IN ('image/jpeg', 'image/webp', 'image/png')`,
+    ),
+  ],
 );
 
 // ─── Activity Likes - user likes on activity feed items ─────────────────────
@@ -115,7 +123,7 @@ export const activityLikes = pgTable(
     index("activity_likes_user_id_idx").on(table.userId),
     uniqueIndex("activity_likes_user_activity_unique_idx").on(
       table.userId,
-      table.activityEventId
+      table.activityEventId,
     ),
-  ]
+  ],
 );

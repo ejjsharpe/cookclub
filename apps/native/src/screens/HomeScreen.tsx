@@ -4,6 +4,7 @@ import {
   type FlashListRef,
   type ListRenderItemInfo,
 } from "@shopify/flash-list";
+import { Image } from "expo-image";
 import { useState, useCallback, useMemo, useRef, memo, useEffect } from "react";
 import {
   View,
@@ -13,6 +14,7 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -64,6 +66,11 @@ import {
 } from "@/lib/backgroundImportQueue";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
+import {
+  getImageUrl,
+  IMAGE_REQUEST_HEADERS,
+  selectFeedImagePreset,
+} from "@/utils/imageUrl";
 import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 // ─── Header Component ─────────────────────────────────────────────────────────
@@ -192,6 +199,11 @@ const LOAD_LATEST_SCROLL_UP_DELAY_MS = 500;
 const LOAD_LATEST_ANIMATION_MS = 180;
 const SCROLL_DIRECTION_THRESHOLD = 2;
 const TAB_BAR_LIST_CLEARANCE = 112;
+const FEED_PREFETCH_AHEAD = 3;
+const FEED_PREFETCH_CONCURRENCY = 2;
+const activityViewabilityConfig = {
+  itemVisiblePercentThreshold: 35,
+};
 
 const ActivitySeparator = () => <VSpace size={16} />;
 const SearchUserSeparator = () => <VSpace size={6} />;
@@ -203,6 +215,13 @@ type HomeSearchUser = SearchUser & {
   recipeCount?: number;
   followerCount?: number;
 };
+
+function getPrimaryFeedImage(item: ActivityFeedListItem) {
+  if (item.type === "cooking_review") {
+    return item.review.images[0] ?? item.recipe.image;
+  }
+  return item.recipe.image;
+}
 
 interface SearchUserRowProps {
   user: HomeSearchUser;
@@ -241,6 +260,12 @@ export const HomeScreen = () => {
   const navigation = useNavigation();
   const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
+  const { width: windowWidth } = useWindowDimensions();
+  const feedImagePreset = useMemo(
+    () =>
+      selectFeedImagePreset(Math.max(windowWidth - HORIZONTAL_PADDING * 2, 1)),
+    [windowWidth],
+  );
   const listBottomPadding = TAB_BAR_LIST_CLEARANCE;
   const importRecipeMutation = useImportRecipe();
   const { startImport } = useBackgroundImportQueue();
@@ -254,6 +279,12 @@ export const HomeScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [commentActivityId, setCommentActivityId] = useState<number>(0);
   const [showLoadLatest, setShowLoadLatest] = useState(false);
+  const [visibleActivityIds, setVisibleActivityIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const prefetchQueueRef = useRef<string[]>([]);
+  const prefetchInFlightCountRef = useRef(0);
+  const prefetchedImageUrlsRef = useRef(new Set<string>());
 
   // Track the search bar's Y position relative to the screen
   const searchBarY = useSharedValue(0);
@@ -337,6 +368,95 @@ export const HomeScreen = () => {
     fetchNextPage: activityFetchNext,
     refetch: activityRefetch,
   } = useActivityFeed();
+
+  const processPrefetchQueue = useCallback(() => {
+    while (
+      prefetchInFlightCountRef.current < FEED_PREFETCH_CONCURRENCY &&
+      prefetchQueueRef.current.length > 0
+    ) {
+      const nextUrl = prefetchQueueRef.current.shift();
+      if (!nextUrl) return;
+      if (prefetchedImageUrlsRef.current.has(nextUrl)) continue;
+
+      prefetchedImageUrlsRef.current.add(nextUrl);
+      prefetchInFlightCountRef.current += 1;
+      Image.prefetch(nextUrl, {
+        cachePolicy: "memory-disk",
+        headers: IMAGE_REQUEST_HEADERS,
+      })
+        .catch(() => false)
+        .finally(() => {
+          prefetchInFlightCountRef.current = Math.max(
+            0,
+            prefetchInFlightCountRef.current - 1,
+          );
+          processPrefetchQueue();
+        });
+    }
+  }, []);
+
+  const scheduleFeedImagePrefetch = useCallback(
+    (visibleIndexes: number[]) => {
+      if (visibleIndexes.length === 0) {
+        prefetchQueueRef.current = [];
+        return;
+      }
+
+      const targetIndexes = new Set<number>();
+      for (const index of visibleIndexes) {
+        targetIndexes.add(index);
+      }
+
+      const lastVisibleIndex = Math.max(...visibleIndexes);
+      for (
+        let index = lastVisibleIndex + 1;
+        index <= lastVisibleIndex + FEED_PREFETCH_AHEAD;
+        index++
+      ) {
+        targetIndexes.add(index);
+      }
+
+      const nextUrls: string[] = [];
+      for (const index of targetIndexes) {
+        const item = activityFeedItems[index];
+        if (!item) continue;
+
+        const url = getImageUrl(getPrimaryFeedImage(item), feedImagePreset);
+        if (!url || prefetchedImageUrlsRef.current.has(url)) continue;
+        if (!nextUrls.includes(url)) {
+          nextUrls.push(url);
+        }
+      }
+
+      prefetchQueueRef.current = nextUrls;
+      processPrefetchQueue();
+    },
+    [activityFeedItems, feedImagePreset, processPrefetchQueue],
+  );
+
+  const handleActivityViewableItemsChanged = useCallback(
+    ({
+      viewableItems,
+    }: {
+      viewableItems: { item?: ActivityFeedListItem; index?: number | null }[];
+    }) => {
+      const ids = new Set<string>();
+      const indexes: number[] = [];
+
+      for (const viewableItem of viewableItems) {
+        if (viewableItem.item) {
+          ids.add(viewableItem.item.id);
+        }
+        if (typeof viewableItem.index === "number") {
+          indexes.push(viewableItem.index);
+        }
+      }
+
+      setVisibleActivityIds(ids);
+      scheduleFeedImagePrefetch(indexes);
+    },
+    [scheduleFeedImagePrefetch],
+  );
 
   // Search condition - only search users after two characters; otherwise show suggestions.
   const isSearchingUsers = debouncedSearch.length >= 2;
@@ -618,6 +738,7 @@ export const HomeScreen = () => {
             onImportRecipePress={handleImportExistingRecipe}
             currentUserId={currentUserId}
             timeAgo={item._display.timeAgo}
+            imagePriority={visibleActivityIds.has(item.id) ? "high" : "low"}
           />
         );
       }
@@ -634,6 +755,7 @@ export const HomeScreen = () => {
           currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
           sourceDescription={item._display.sourceDescription}
+          imagePriority={visibleActivityIds.has(item.id) ? "high" : "low"}
         />
       );
     },
@@ -645,6 +767,7 @@ export const HomeScreen = () => {
       handleImportRecipe,
       handleImportExistingRecipe,
       currentUserId,
+      visibleActivityIds,
     ],
   );
 
@@ -855,6 +978,8 @@ export const HomeScreen = () => {
               ItemSeparatorComponent={ActivitySeparator}
               onEndReached={handleActivityLoadMore}
               onEndReachedThreshold={0.5}
+              onViewableItemsChanged={handleActivityViewableItemsChanged}
+              viewabilityConfig={activityViewabilityConfig}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[
                 styles.feedContent,

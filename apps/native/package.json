@@ -13,6 +13,8 @@
     "prebuild": "expo prebuild",
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "web": "expo start --web"
   },
   "dependencies": {
@@ -22,6 +24,7 @@
     "@react-navigation/bottom-tabs": "7.16.1",
     "@react-navigation/native": "7.2.4",
     "@react-navigation/native-stack": "7.15.1",
+    "@repo/contracts": "workspace:*",
     "@repo/shared": "workspace:*",
     "@repo/trpc": "workspace:*",
     "@sentry/react-native": "8.12.0",
@@ -75,7 +78,8 @@
     "eslint": "8.57.1",
     "eslint-config-universe": "15.2.0",
     "prettier": "3.8.3",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "4.1.7"
   },
   "eslintConfig": {
     "extends": "universe/native"

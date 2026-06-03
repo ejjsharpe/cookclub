@@ -2,6 +2,11 @@ import { useTRPC } from "@repo/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 import { useState, useCallback } from "react";
 
+import {
+  normalizeImageForUpload,
+  type UploadImageKind,
+} from "@/utils/imageUtils";
+
 export interface UploadResult {
   key: string;
   publicUrl: string;
@@ -31,28 +36,25 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
   );
 
   const uploadSingleImage = useCallback(
-    async (localUri: string): Promise<UploadResult> => {
+    async (localUri: string, kind: UploadImageKind): Promise<UploadResult> => {
       // Update progress
       setUploadProgress((prev) => ({ ...prev, [localUri]: 0 }));
 
-      // Determine content type from URI
-      const extension = localUri.split(".").pop()?.toLowerCase();
-      let contentType: "image/jpeg" | "image/png" | "image/webp" = "image/jpeg";
-      if (extension === "png") {
-        contentType = "image/png";
-      } else if (extension === "webp") {
-        contentType = "image/webp";
-      }
+      const normalized = await normalizeImageForUpload(localUri, kind);
+      setUploadProgress((prev) => ({ ...prev, [localUri]: 20 }));
 
       // Get presigned URL
       const { uploadUrl, publicUrl, key, maxFileSize } =
         await requestUploadUrlMutation.mutateAsync({
-          contentType,
+          contentType: normalized.contentType,
+          kind,
         });
+      setUploadProgress((prev) => ({ ...prev, [localUri]: 35 }));
 
       // Fetch the local image as a blob
-      const imageResponse = await fetch(localUri);
+      const imageResponse = await fetch(normalized.uri);
       const imageBlob = await imageResponse.blob();
+      setUploadProgress((prev) => ({ ...prev, [localUri]: 50 }));
 
       // Validate file size on client before uploading
       if (imageBlob.size > maxFileSize) {
@@ -66,7 +68,7 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
         method: "PUT",
         body: imageBlob,
         headers: {
-          "Content-Type": contentType,
+          "Content-Type": normalized.contentType,
         },
       });
 
@@ -82,8 +84,11 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
     [requestUploadUrlMutation],
   );
 
-  const uploadImages = useCallback(
-    async (localUris: string[]): Promise<UploadResult[]> => {
+  const uploadImagesInternal = useCallback(
+    async (
+      localUris: string[],
+      kind: UploadImageKind = "recipe_photo",
+    ): Promise<UploadResult[]> => {
       const validUris = localUris.filter(Boolean);
       if (validUris.length === 0) return [];
 
@@ -101,7 +106,7 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
         const batchResults = await Promise.all(
           batch.map(async (uri) => {
             try {
-              return await uploadSingleImage(uri);
+              return await uploadSingleImage(uri, kind);
             } catch (error) {
               console.error(`Failed to upload image ${uri}:`, error);
               setUploadProgress((prev) => ({ ...prev, [uri]: -1 }));
@@ -119,7 +124,13 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
   );
 
   const uploadMutation = useMutation({
-    mutationFn: uploadImages,
+    mutationFn: ({
+      localUris,
+      kind,
+    }: {
+      localUris: string[];
+      kind?: UploadImageKind;
+    }) => uploadImagesInternal(localUris, kind),
     onSuccess: (data) => {
       setUploadProgress({});
       onSuccess?.(data);
@@ -136,7 +147,8 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
   }, [uploadMutation]);
 
   return {
-    uploadImages: uploadMutation.mutateAsync,
+    uploadImages: (localUris: string[], kind?: UploadImageKind) =>
+      uploadMutation.mutateAsync({ localUris, kind }),
     isUploading: uploadMutation.isPending,
     uploadProgress,
     error: uploadMutation.error,

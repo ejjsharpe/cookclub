@@ -20,10 +20,10 @@
   "vars": {
     "R2_ACCOUNT_ID": "46fa47bc2bba51d75383b4dfe6e3deb1",
     "R2_S3_API_URL": "https://46fa47bc2bba51d75383b4dfe6e3deb1.r2.cloudflarestorage.com/cook-club-images-development",
-    // Public URL for serving images (dev uses R2 public URL, prod uses custom domain)
-    "PUBLIC_URL": "https://pub-8a33f3240252485aa859a3ac8dd49465.r2.dev",
+    // Public URL for serving images through the transform Worker
+    "PUBLIC_URL": "http://localhost:8789",
     // Public origin URL used for image transformations
-    "R2_ORIGIN_URL": "https://pub-8a33f3240252485aa859a3ac8dd49465.r2.dev",
+    "R2_ORIGIN_URL": "http://localhost:8789",
     // R2 bucket name for presigned URLs (must match preview_bucket_name in dev, bucket_name in prod)
     "R2_BUCKET_NAME": "cook-club-images-development"
   },

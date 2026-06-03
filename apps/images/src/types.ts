@@ -29,11 +29,14 @@ export type {
 } from "./service";
 
 export interface TransformOptions {
-  width?: number;
+  width: number;
   height?: number;
-  fit?: "cover" | "contain" | "scale-down";
-  format?: "auto" | "webp" | "avif" | "jpeg" | "png";
-  quality?: number;
+  fit: "cover" | "contain" | "scale-down" | "crop";
+  format: "auto";
+  quality: number;
+  metadata: "none";
+  anim: false;
+  sharpen?: number;
 }
 
 export interface PresignedUrlRequest {

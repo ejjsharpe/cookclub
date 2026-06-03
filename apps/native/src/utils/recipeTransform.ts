@@ -3,9 +3,10 @@ import type { ParsedRecipe, Recipe } from "@/api/recipe";
 /**
  * Type for a parsed recipe that can be displayed in preview mode
  */
-export type PreviewRecipe = Omit<Recipe, "id"> & {
+export type PreviewRecipe = Omit<Recipe, "id" | "images"> & {
   isPreview: true;
   id: -1;
+  images: { id: number; url: string }[];
 };
 
 /**
@@ -108,9 +109,7 @@ export function transformParsedRecipeForPreview(
     originalOwner: null,
     userReviewRating: null,
     tags: [],
-    nutrition: data.nutrition
-      ? { ...data.nutrition, generatedAt: null }
-      : null,
+    nutrition: data.nutrition ? { ...data.nutrition, generatedAt: null } : null,
   };
 }
 

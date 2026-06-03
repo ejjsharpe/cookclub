@@ -8,7 +8,8 @@ import {
   follows,
   user,
 } from "../../schemas";
-import { eq, and, desc, min, sql, inArray } from "drizzle-orm";
+import type { PublicImageAsset } from "@repo/contracts/images";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 
 import type { DbClient } from "../types";
 
@@ -21,7 +22,7 @@ export type RecipeListItem = Omit<typeof recipes.$inferSelect, "ownerId"> & {
     username: string | null;
     image: string | null;
   };
-  coverImage: string | null;
+  coverImage: PublicImageAsset | null;
   collectionIds: number[];
   isFollowing: boolean;
   tags: (typeof tags.$inferSelect)[];
@@ -68,6 +69,26 @@ export function groupCollectionsByRecipeId(
   );
 }
 
+function toPublicImageAsset(row: {
+  url: string;
+  storageKey: string;
+  width: number;
+  height: number;
+  contentType: string;
+  byteSize: number;
+  previewDataUrl: string;
+}): PublicImageAsset {
+  return {
+    url: row.url,
+    storageKey: row.storageKey,
+    width: row.width,
+    height: row.height,
+    contentType: row.contentType as PublicImageAsset["contentType"],
+    byteSize: row.byteSize,
+    previewDataUrl: row.previewDataUrl,
+  };
+}
+
 // ─── Popular This Week Query ────────────────────────────────────────────────
 
 /**
@@ -98,13 +119,11 @@ export async function queryPopularRecipesThisWeek(
         username: user.username,
         image: user.image,
       },
-      firstImage: min(recipeImages.url),
       recentEngagement: recentEngagementExpr,
       isFollowing: sql<boolean>`${follows.id} IS NOT NULL`,
     })
     .from(recipes)
     .innerJoin(user, eq(recipes.ownerId, user.id))
-    .leftJoin(recipeImages, eq(recipes.id, recipeImages.recipeId))
     .leftJoin(
       follows,
       and(
@@ -127,7 +146,7 @@ export async function queryPopularRecipesThisWeek(
   // Fetch related data
   const recipeIds = queryResults.map((item) => item.recipe.id);
 
-  const [tagsData, collectionsData] = await Promise.all([
+  const [tagsData, collectionsData, imagesData] = await Promise.all([
     recipeIds.length > 0
       ? db
           .select({
@@ -156,16 +175,38 @@ export async function queryPopularRecipesThisWeek(
             ),
           )
       : [],
+    recipeIds.length > 0
+      ? db
+          .select({
+            recipeId: recipeImages.recipeId,
+            url: recipeImages.url,
+            storageKey: recipeImages.storageKey,
+            width: recipeImages.width,
+            height: recipeImages.height,
+            contentType: recipeImages.contentType,
+            byteSize: recipeImages.byteSize,
+            previewDataUrl: recipeImages.previewDataUrl,
+          })
+          .from(recipeImages)
+          .where(inArray(recipeImages.recipeId, recipeIds))
+          .orderBy(recipeImages.recipeId, recipeImages.id)
+      : [],
   ]);
 
   // Group related data
   const tagsByRecipe = groupTagsByRecipeId(tagsData);
   const collectionsByRecipe = groupCollectionsByRecipeId(collectionsData);
+  const firstImageByRecipe = new Map<number, PublicImageAsset>();
+  for (const image of imagesData) {
+    if (!firstImageByRecipe.has(image.recipeId)) {
+      firstImageByRecipe.set(image.recipeId, toPublicImageAsset(image));
+    }
+  }
 
   return queryResults.map((item) => ({
     ...item.recipe,
     owner: item.uploader,
-    coverImage: item.firstImage,
+    coverImage: firstImageByRecipe.get(item.recipe.id) ?? null,
     collectionIds: collectionsByRecipe[item.recipe.id] || [],
     isFollowing: item.isFollowing,
     tags: tagsByRecipe[item.recipe.id] || [],

@@ -171,8 +171,21 @@ export const recipeImages = pgTable(
       .notNull()
       .references(() => recipes.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
+    storageKey: text("storage_key").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    previewDataUrl: text("preview_data_url").notNull(),
   },
-  (table) => [index("recipe_images_recipe_id_idx").on(table.recipeId)],
+  (table) => [
+    index("recipe_images_recipe_id_idx").on(table.recipeId),
+    index("recipe_images_storage_key_idx").on(table.storageKey),
+    check(
+      "recipe_images_content_type_check",
+      sql`${table.contentType} IN ('image/jpeg', 'image/webp', 'image/png')`,
+    ),
+  ],
 );
 
 // ─── Section tables (normalized) ──────────────────────────────────────────────

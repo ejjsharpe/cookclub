@@ -5,6 +5,7 @@ import { authedProcedure, router } from "../trpc";
 
 const RequestUploadUrlValidator = type({
   contentType: "'image/jpeg' | 'image/png' | 'image/webp'",
+  kind: "'recipe_photo' | 'review_photo' | 'avatar'",
 });
 
 export const uploadRouter = router({
@@ -19,6 +20,7 @@ export const uploadRouter = router({
       return await ctx.env.IMAGE_SERVICE.presign(
         input.contentType,
         ctx.user.id,
+        input.kind,
       );
     }),
 });

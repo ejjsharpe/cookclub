@@ -1,4 +1,4 @@
-import { Image } from "expo-image";
+import type { PublicImageAsset } from "@repo/contracts/images";
 import { memo } from "react";
 import { Pressable, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -6,7 +6,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { Text } from "./Text";
 
 import { Ionicons } from "@/components/Ionicons";
-import { getImageUrl } from "@/utils/imageUrl";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import { formatMinutes } from "@/utils/timeUtils";
 
 interface Tag {
@@ -28,7 +28,7 @@ interface Recipe {
   prepTime?: number | null;
   cookTime?: number | null;
   totalTime?: number | null;
-  coverImage?: string | null;
+  coverImage?: PublicImageAsset | string | null;
   tags?: Tag[];
   owner?: User;
   sourceUrl?: string | null;
@@ -49,11 +49,12 @@ export const RecipeCard = memo(function RecipeCard({ recipe, onPress }: Props) {
           )}
           <View style={styles.thumbnail}>
             {recipe.coverImage ? (
-              <Image
-                source={{ uri: getImageUrl(recipe.coverImage, "recipe-thumb") }}
+              <OptimizedImage
+                image={recipe.coverImage}
+                preset="thumb_200"
                 style={styles.thumbnailImage}
                 contentFit="cover"
-                cachePolicy="memory-disk"
+                decodeFormat="rgb"
               />
             ) : (
               <View style={styles.thumbnailPlaceholder}>

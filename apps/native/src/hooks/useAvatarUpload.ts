@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image as ExpoImage } from "expo-image";
 import { useState, useCallback } from "react";
 
+import { normalizeImageForUpload } from "@/utils/imageUtils";
+
 export interface UseAvatarUploadOptions {
   onSuccess?: () => void;
   onError?: (error: Error) => void;
@@ -30,24 +32,19 @@ export function useAvatarUpload(options: UseAvatarUploadOptions = {}) {
     async (localUri: string): Promise<void> => {
       setProgress(10);
 
-      // Determine content type from URI
-      const extension = localUri.split(".").pop()?.toLowerCase();
-      let contentType: "image/jpeg" | "image/png" | "image/webp" = "image/jpeg";
-      if (extension === "png") {
-        contentType = "image/png";
-      } else if (extension === "webp") {
-        contentType = "image/webp";
-      }
+      const normalized = await normalizeImageForUpload(localUri, "avatar");
+      setProgress(20);
 
       // Get presigned URL
       const { uploadUrl, key, maxFileSize } =
         await requestUploadUrlMutation.mutateAsync({
-          contentType,
+          contentType: normalized.contentType,
+          kind: "avatar",
         });
       setProgress(25);
 
       // Fetch the local image as a blob
-      const imageResponse = await fetch(localUri);
+      const imageResponse = await fetch(normalized.uri);
       const imageBlob = await imageResponse.blob();
       setProgress(40);
 
@@ -63,7 +60,7 @@ export function useAvatarUpload(options: UseAvatarUploadOptions = {}) {
         method: "PUT",
         body: imageBlob,
         headers: {
-          "Content-Type": contentType,
+          "Content-Type": normalized.contentType,
         },
       });
 

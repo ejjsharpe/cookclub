@@ -37,7 +37,7 @@ function getR2S3BucketUrl(env: Env): string {
 export async function generatePresignedUploadUrl(
   env: Env,
   request: PresignedUrlRequest,
-): Promise<PresignedUrlResponse> {
+): Promise<Omit<PresignedUrlResponse, "kind">> {
   const {
     key,
     contentType,
@@ -107,6 +107,7 @@ export function validateKey(key: string): boolean {
     /^temp\/generated\/[a-zA-Z0-9-]+\.[a-z]+$/, // temp/generated/{uuid}.{ext}
     /^recipes\/covers\/[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\.[a-z]+$/, // recipes/covers/{recipeId}/{imageId}.{ext}
     /^recipes\/instructions\/[a-zA-Z0-9-]+\/\d+\/[a-zA-Z0-9-]+\.[a-z]+$/, // recipes/instructions/{recipeId}/{stepIndex}/{imageId}.{ext}
+    /^reviews\/[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+\.[a-z]+$/, // reviews/{groupId}/{imageId}.{ext}
     /^avatars\/[a-zA-Z0-9_-]+\.[a-z]+$/, // avatars/{userId}.{ext}
     new RegExp(
       `^social\\/${SOCIAL_IMAGE_PLATFORM_PATTERN}\\/[a-zA-Z0-9-]+\\.[a-z]+$`,
@@ -116,7 +117,10 @@ export function validateKey(key: string): boolean {
   return allowedPatterns.some((pattern) => pattern.test(key));
 }
 
-export function generateUserTempKey(ownerId: string, extension: string): string {
+export function generateUserTempKey(
+  ownerId: string,
+  extension: string,
+): string {
   return `temp/${sanitizeOwnerId(ownerId)}/${crypto.randomUUID()}.${extension}`;
 }
 

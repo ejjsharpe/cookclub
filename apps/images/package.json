@@ -11,7 +11,9 @@
     "deploy:prod": "wrangler deploy --env production --minify",
     "check-types": "tsc --noEmit",
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
-    "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix"
+    "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@repo/contracts": "workspace:*",
@@ -22,6 +24,7 @@
     "@cloudflare/workers-types": "4.20260525.1",
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
+    "vitest": "4.1.7",
     "wrangler": "4.94.0"
   },
   "eslintConfig": {

@@ -97,8 +97,8 @@
   ],
   "vars": {
     "BETTER_AUTH_URL": "http://localhost:8787",
-    // Public URL for images (dev uses R2 public URL, prod uses custom domain)
-    "IMAGE_PUBLIC_URL": "https://pub-8a33f3240252485aa859a3ac8dd49465.r2.dev",
+    // Public URL for images through the transform Worker
+    "IMAGE_PUBLIC_URL": "http://localhost:8789",
     "APPLE_BUNDLE_IDENTIFIER": "com.shakyhand.cookclub",
     "ADAPTY_PRO_ACCESS_LEVEL_ID": "pro",
   },

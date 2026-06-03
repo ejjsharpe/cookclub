@@ -1,4 +1,5 @@
 import { inArray, and, eq } from "drizzle-orm";
+import type { PublicImageAsset } from "@repo/contracts/images";
 
 import type { FeedItem, RecipeMetadata, SourceType } from "./feed-types";
 import type { DbType } from "../../index";
@@ -24,6 +25,26 @@ function extractDomain(url: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function toPublicImageAsset(row: {
+  url: string;
+  storageKey: string;
+  width: number;
+  height: number;
+  contentType: string;
+  byteSize: number;
+  previewDataUrl: string;
+}): PublicImageAsset {
+  return {
+    url: row.url,
+    storageKey: row.storageKey,
+    width: row.width,
+    height: row.height,
+    contentType: row.contentType as PublicImageAsset["contentType"],
+    byteSize: row.byteSize,
+    previewDataUrl: row.previewDataUrl,
+  };
 }
 
 // ─── Hydration Functions (convert IDs to FeedItems) ──────────────────────────
@@ -98,15 +119,21 @@ export async function hydrateActivityIds(
           .select({
             recipeId: recipeImages.recipeId,
             url: recipeImages.url,
+            storageKey: recipeImages.storageKey,
+            width: recipeImages.width,
+            height: recipeImages.height,
+            contentType: recipeImages.contentType,
+            byteSize: recipeImages.byteSize,
+            previewDataUrl: recipeImages.previewDataUrl,
           })
           .from(recipeImages)
           .where(inArray(recipeImages.recipeId, recipeIds))
       : [];
 
-  const recipeImageMap = new Map<number, string>();
+  const recipeImageMap = new Map<number, PublicImageAsset>();
   for (const img of recipeImagesData) {
     if (!recipeImageMap.has(img.recipeId)) {
-      recipeImageMap.set(img.recipeId, img.url);
+      recipeImageMap.set(img.recipeId, toPublicImageAsset(img));
     }
   }
 
@@ -140,19 +167,25 @@ export async function hydrateActivityIds(
           .select({
             reviewId: cookingReviewImages.reviewId,
             url: cookingReviewImages.url,
+            storageKey: cookingReviewImages.storageKey,
+            width: cookingReviewImages.width,
+            height: cookingReviewImages.height,
+            contentType: cookingReviewImages.contentType,
+            byteSize: cookingReviewImages.byteSize,
+            previewDataUrl: cookingReviewImages.previewDataUrl,
             index: cookingReviewImages.index,
           })
           .from(cookingReviewImages)
           .where(inArray(cookingReviewImages.reviewId, reviewIds))
-          .orderBy(cookingReviewImages.index)
+          .orderBy(cookingReviewImages.reviewId, cookingReviewImages.index)
       : [];
 
-  const reviewImageMap = new Map<number, string[]>();
+  const reviewImageMap = new Map<number, PublicImageAsset[]>();
   for (const img of reviewImagesData) {
     if (!reviewImageMap.has(img.reviewId)) {
       reviewImageMap.set(img.reviewId, []);
     }
-    reviewImageMap.get(img.reviewId)!.push(img.url);
+    reviewImageMap.get(img.reviewId)!.push(toPublicImageAsset(img));
   }
 
   // Batch fetch like status for current user

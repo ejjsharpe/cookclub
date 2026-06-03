@@ -15,6 +15,7 @@ import {
   tags,
   user,
 } from "../../schemas";
+import type { PublicImageAsset } from "@repo/contracts/images";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { normalizeUnit, parseIngredient } from "@repo/shared";
@@ -50,9 +51,7 @@ export interface CreateInstructionSection {
   instructions: CreateRecipeInstruction[];
 }
 
-export interface CreateRecipeImage {
-  url: string;
-}
+export type CreateRecipeImage = PublicImageAsset;
 
 export type RecipeNutritionSource =
   | "extracted"
@@ -131,11 +130,8 @@ export interface InstructionSectionWithItems {
 }
 
 export type RecipeWithDetails = Omit<typeof recipes.$inferSelect, "ownerId"> & {
-  owner: Pick<
-    typeof user.$inferSelect,
-    "id" | "name" | "username" | "image"
-  >;
-  images: Pick<typeof recipeImages.$inferSelect, "id" | "url">[];
+  owner: Pick<typeof user.$inferSelect, "id" | "name" | "username" | "image">;
+  images: (Pick<typeof recipeImages.$inferSelect, "id"> & PublicImageAsset)[];
   ingredientSections: IngredientSectionWithItems[];
   instructionSections: InstructionSectionWithItems[];
   userRecipesCount: number;
@@ -162,7 +158,9 @@ function optionalInteger(value: number | null | undefined): number | null {
     : null;
 }
 
-function optionalNumericString(value: number | null | undefined): string | null {
+function optionalNumericString(
+  value: number | null | undefined,
+): string | null {
   return typeof value === "number" && Number.isFinite(value)
     ? value.toFixed(2)
     : null;
@@ -233,7 +231,9 @@ function nutritionInsertValues(
   };
 }
 
-function hasNutritionValue(nutrition: CreateRecipeNutrition | null | undefined) {
+function hasNutritionValue(
+  nutrition: CreateRecipeNutrition | null | undefined,
+) {
   if (!nutrition) return false;
   return [
     nutrition.calories,
@@ -251,6 +251,19 @@ function hasNutritionValue(nutrition: CreateRecipeNutrition | null | undefined) 
     nutrition.calcium,
     nutrition.iron,
   ].some((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function recipeImageInsertValues(recipeId: number, image: CreateRecipeImage) {
+  return {
+    recipeId,
+    url: image.url,
+    storageKey: image.storageKey,
+    width: image.width,
+    height: image.height,
+    contentType: image.contentType,
+    byteSize: image.byteSize,
+    previewDataUrl: image.previewDataUrl,
+  };
 }
 
 function prepareRecipeIngredient(ing: CreateRecipeIngredient) {
@@ -495,19 +508,21 @@ export async function createRecipe(
         input.instructionSections,
       );
 
-    const imageUrls = input.images!.map((img) => img.url);
-
     // Insert images
     const images = await tx
       .insert(recipeImages)
       .values(
-        imageUrls.map((url) => ({
-          recipeId: recipe.id,
-          url,
-        })),
+        input.images!.map((image) => recipeImageInsertValues(recipe.id, image)),
       )
       .returning({
+        id: recipeImages.id,
         url: recipeImages.url,
+        storageKey: recipeImages.storageKey,
+        width: recipeImages.width,
+        height: recipeImages.height,
+        contentType: recipeImages.contentType,
+        byteSize: recipeImages.byteSize,
+        previewDataUrl: recipeImages.previewDataUrl,
       });
 
     await insertRecipeTagsForRecipe(tx, recipe.id, input.tagIds);
@@ -668,13 +683,13 @@ export async function updateRecipe(
       }
     }
 
-    const imageUrls = input.images!.map((img) => img.url);
-    await tx.insert(recipeImages).values(
-      imageUrls.map((url) => ({
-        recipeId: input.recipeId,
-        url,
-      })),
-    );
+    await tx
+      .insert(recipeImages)
+      .values(
+        input.images!.map((image) =>
+          recipeImageInsertValues(input.recipeId, image),
+        ),
+      );
 
     return { id: updatedRecipe.id };
   });
@@ -780,7 +795,16 @@ export async function getRecipeDetail(
     nutritionData,
   ] = await Promise.all([
     db
-      .select({ id: recipeImages.id, url: recipeImages.url })
+      .select({
+        id: recipeImages.id,
+        url: recipeImages.url,
+        storageKey: recipeImages.storageKey,
+        width: recipeImages.width,
+        height: recipeImages.height,
+        contentType: recipeImages.contentType,
+        byteSize: recipeImages.byteSize,
+        previewDataUrl: recipeImages.previewDataUrl,
+      })
       .from(recipeImages)
       .where(eq(recipeImages.recipeId, recipeId)),
 
@@ -898,6 +922,11 @@ export async function getRecipeDetail(
       ),
     }));
 
+  const imageAssets = images.map((image) => ({
+    ...image,
+    contentType: image.contentType as PublicImageAsset["contentType"],
+  }));
+
   // originalOwner is null if the recipe wasn't imported from another user
   const originalOwner =
     recipeData.recipe.originalOwnerId && recipeData.originalOwner?.id
@@ -907,7 +936,7 @@ export async function getRecipeDetail(
   return {
     ...recipeData.recipe,
     owner: recipeData.uploader,
-    images,
+    images: imageAssets,
     ingredientSections: ingredientSectionsNested,
     instructionSections: instructionSectionsNested,
     userRecipesCount: recipeData.ownerRecipeCount,
@@ -1088,7 +1117,15 @@ export async function importRecipe(
 
     // Fetch and copy images
     const sourceImages = await tx
-      .select({ url: recipeImages.url })
+      .select({
+        url: recipeImages.url,
+        storageKey: recipeImages.storageKey,
+        width: recipeImages.width,
+        height: recipeImages.height,
+        contentType: recipeImages.contentType,
+        byteSize: recipeImages.byteSize,
+        previewDataUrl: recipeImages.previewDataUrl,
+      })
       .from(recipeImages)
       .where(eq(recipeImages.recipeId, sourceRecipeId));
 
@@ -1097,6 +1134,12 @@ export async function importRecipe(
         sourceImages.map((img) => ({
           recipeId: newRecipe.id,
           url: img.url,
+          storageKey: img.storageKey,
+          width: img.width,
+          height: img.height,
+          contentType: img.contentType,
+          byteSize: img.byteSize,
+          previewDataUrl: img.previewDataUrl,
         })),
       );
     }

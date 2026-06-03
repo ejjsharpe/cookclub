@@ -8,6 +8,20 @@ const mocks = vi.hoisted(() => ({
   propagateActivityToFollowersInBackground: vi.fn(),
 }));
 
+function createAsset(key: string) {
+  return {
+    url: `https://images.example.com/${key}`,
+    storageKey: key,
+    width: 1200,
+    height: 900,
+    contentType: "image/jpeg" as const,
+    byteSize: 1234,
+    previewDataUrl: "data:image/jpeg;base64,abc",
+    key,
+    publicUrl: `https://images.example.com/${key}`,
+  };
+}
+
 vi.mock("../services/activity", () => ({
   propagateActivityToFollowersInBackground:
     mocks.propagateActivityToFollowersInBackground,
@@ -225,6 +239,24 @@ describe("recipeRouter - activity integration", () => {
     mocks.propagateActivityToFollowersInBackground.mockReturnValue(undefined);
     mockDb = createMockDb();
     mockEnv = createMockEnv();
+    mockEnv.IMAGE_SERVICE.uploadFromUrl.mockImplementation(
+      async (_url: string, key: string) => ({
+        success: true,
+        key,
+        publicUrl: `https://images.example.com/${key}`,
+        asset: createAsset(key),
+      }),
+    );
+    mockEnv.IMAGE_SERVICE.move.mockImplementation(
+      async (moves: { from: string; to: string }[]) => ({
+        success: true,
+        results: moves.map((move) => ({
+          ...move,
+          success: true,
+          asset: createAsset(move.to),
+        })),
+      }),
+    );
     mockCreateRecipe.mockResolvedValue({ id: 1, name: "Test Recipe" });
     mockUpdateRecipe.mockResolvedValue({ id: 1 });
     mockImportRecipe.mockResolvedValue({ id: 2 });
@@ -558,6 +590,7 @@ describe("recipeRouter - activity integration", () => {
             from: "temp/abc.jpg",
             to: "recipes/covers/group/img.jpg",
             success: true,
+            asset: createAsset("recipes/covers/group/img.jpg"),
           },
         ],
       });
@@ -587,6 +620,7 @@ describe("recipeRouter - activity integration", () => {
             from: "temp/abc.jpg",
             to: "recipes/covers/group/img.jpg",
             success: true,
+            asset: createAsset("recipes/covers/group/img.jpg"),
           },
         ],
       });
@@ -643,7 +677,17 @@ describe("recipeRouter - activity integration", () => {
         expect.objectContaining({
           recipeId: 1,
           name: "Updated Recipe",
-          images: [{ url: "https://example.com/image.jpg" }],
+          images: [
+            expect.objectContaining({
+              url: expect.stringMatching(
+                /^https:\/\/images\.example\.com\/recipes\/covers\/.+\/.+\.jpg$/,
+              ),
+              storageKey: expect.stringMatching(
+                /^recipes\/covers\/.+\/.+\.jpg$/,
+              ),
+              previewDataUrl: "data:image/jpeg;base64,abc",
+            }),
+          ],
           tagIds: [],
         }),
       );
@@ -678,6 +722,7 @@ describe("recipeRouter - activity integration", () => {
             from: "temp/abc.jpg",
             to: "recipes/covers/group/img.jpg",
             success: true,
+            asset: createAsset("recipes/covers/group/img.jpg"),
           },
         ],
       });

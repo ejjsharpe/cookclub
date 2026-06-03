@@ -1,3 +1,8 @@
+import type {
+  ImageContentType,
+  ImageUploadKind,
+  StoredImageAsset,
+} from "@repo/contracts/images";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -13,9 +18,10 @@ import {
 import type { UploadFromUrlResponse, UploadImageResponse } from "./service";
 import {
   buildCfImageOptions,
-  hasTransformParams,
-  isAllowedTransform,
-  parseTransformOptions,
+  getTransformPreset,
+  hasTransformPreset,
+  hasUnsupportedTransformParams,
+  parseTransformPreset,
 } from "./transform";
 import type {
   Env,
@@ -34,11 +40,16 @@ export type {
 } from "./types";
 export type { UploadFromUrlResponse, UploadImageResponse } from "./service";
 
-// Maximum file size: 10MB
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const PHOTO_MAX_FILE_SIZE = 4 * 1024 * 1024;
+const AVATAR_MAX_FILE_SIZE = 512 * 1024;
+const TRUSTED_SOURCE_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_REMOTE_IMAGE_REDIRECTS = 3;
 const ORIGIN_FETCH_HEADER = "x-cookclub-origin-fetch";
 const TRANSFORM_STATUS_HEADER = "x-cookclub-image-transform";
+const IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/*,*/*";
+const NORMALIZED_IMAGE_TYPE = "image/jpeg" satisfies ImageContentType;
+const FALLBACK_PREVIEW_DATA_URL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split(".").map((part) => Number(part));
@@ -82,6 +93,380 @@ function validateRemoteImageUrl(sourceUrl: string): URL {
   return url;
 }
 
+function getMaxFileSizeForKind(kind: ImageUploadKind): number {
+  return kind === "avatar" ? AVATAR_MAX_FILE_SIZE : PHOTO_MAX_FILE_SIZE;
+}
+
+function getMaxFileSizeForDestinationKey(key: string): number {
+  return key.startsWith("avatars/")
+    ? AVATAR_MAX_FILE_SIZE
+    : PHOTO_MAX_FILE_SIZE;
+}
+
+function isAllowedImageContentType(
+  contentType: string | null | undefined,
+): contentType is ImageContentType {
+  return (
+    contentType === "image/jpeg" ||
+    contentType === "image/png" ||
+    contentType === "image/webp"
+  );
+}
+
+function imageUrlForKey(env: Env, key: string): string {
+  return `${env.PUBLIC_URL.replace(/\/+$/, "")}/${key}`;
+}
+
+function originUrlForKey(env: Env, key: string): string {
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return `${env.R2_ORIGIN_URL.replace(/\/+$/, "")}/${encodedKey}`;
+}
+
+function isLocalUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "0.0.0.0"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function shouldUseDevImageFallback(env: Env): boolean {
+  return isLocalUrl(env.PUBLIC_URL) || isLocalUrl(env.R2_ORIGIN_URL);
+}
+
+function hasArrayBuffer(
+  value: unknown,
+): value is { arrayBuffer: () => Promise<ArrayBuffer> } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "arrayBuffer" in value &&
+    typeof value.arrayBuffer === "function"
+  );
+}
+
+function bytesToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+
+  return btoa(binary);
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function imageInfoNumber(
+  info: unknown,
+  paths: readonly (readonly string[])[],
+): number | null {
+  if (!info || typeof info !== "object") return null;
+
+  for (const path of paths) {
+    let current: unknown = info;
+
+    for (const key of path) {
+      if (!current || typeof current !== "object" || !(key in current)) {
+        current = null;
+        break;
+      }
+      current = (current as Record<string, unknown>)[key];
+    }
+
+    const value = numberFromUnknown(current);
+    if (value !== null) return value;
+  }
+
+  return null;
+}
+
+function parseJpegDimensions(data: ArrayBuffer) {
+  const bytes = new Uint8Array(data);
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return null;
+  }
+
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    while (bytes[offset] === 0xff) offset++;
+
+    const marker = bytes[offset++];
+    if (marker === undefined) return null;
+    if (marker === 0xd9 || marker === 0xda) return null;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+
+    if (offset + 2 > bytes.length) return null;
+
+    const segmentLength = (bytes[offset]! << 8) | bytes[offset + 1]!;
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) {
+      return null;
+    }
+
+    const isStartOfFrame =
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+
+    if (isStartOfFrame) {
+      return {
+        height: (bytes[offset + 3]! << 8) | bytes[offset + 4]!,
+        width: (bytes[offset + 5]! << 8) | bytes[offset + 6]!,
+      };
+    }
+
+    offset += segmentLength;
+  }
+
+  return null;
+}
+
+async function fetchStoredImageTransform(
+  env: Env,
+  key: string,
+  image: RequestInitCfPropertiesImage,
+  acceptHeader = IMAGE_ACCEPT_HEADER,
+): Promise<Response> {
+  return fetch(originUrlForKey(env, key), {
+    headers: {
+      Accept: acceptHeader,
+      [ORIGIN_FETCH_HEADER]: "1",
+    },
+    cf: {
+      image,
+      cacheEverything: true,
+      cacheTtl: 31536000,
+    },
+  });
+}
+
+async function getStoredImageInfo(env: Env, key: string) {
+  const response = await fetchStoredImageTransform(env, key, {
+    format: "json",
+    metadata: "none",
+    anim: false,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Image metadata fetch failed with ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+async function getStoredImageInfoForAsset(env: Env, key: string) {
+  if (!shouldUseDevImageFallback(env)) {
+    return await getStoredImageInfo(env, key);
+  }
+
+  try {
+    return await getStoredImageInfo(env, key);
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        event: "dev_image_metadata_fallback",
+        storageKey: key,
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
+    return null;
+  }
+}
+
+async function createPreviewDataUrl(env: Env, key: string): Promise<string> {
+  const response = await fetchStoredImageTransform(env, key, {
+    width: 48,
+    height: 36,
+    fit: "crop",
+    quality: 35,
+    format: "jpeg",
+    metadata: "none",
+    anim: false,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Image preview fetch failed with ${response.status}`);
+  }
+
+  const contentType =
+    response.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+  const data = await response.arrayBuffer();
+  return `data:${contentType};base64,${bytesToBase64(data)}`;
+}
+
+async function createPreviewDataUrlForAsset(
+  env: Env,
+  key: string,
+): Promise<string> {
+  if (!shouldUseDevImageFallback(env)) {
+    return await createPreviewDataUrl(env, key);
+  }
+
+  try {
+    const previewDataUrl = await createPreviewDataUrl(env, key);
+    return previewDataUrl.length <= 32_000
+      ? previewDataUrl
+      : FALLBACK_PREVIEW_DATA_URL;
+  } catch {
+    return FALLBACK_PREVIEW_DATA_URL;
+  }
+}
+
+async function buildStoredImageAsset(
+  env: Env,
+  key: string,
+): Promise<StoredImageAsset> {
+  const useDevFallback = shouldUseDevImageFallback(env);
+  const [object, info, previewDataUrl] = await Promise.all([
+    useDevFallback ? env.IMAGES.get(key) : env.IMAGES.head(key),
+    getStoredImageInfoForAsset(env, key),
+    createPreviewDataUrlForAsset(env, key),
+  ]);
+
+  if (!object) {
+    throw new Error("Stored image not found");
+  }
+
+  const width = imageInfoNumber(info, [
+    ["input", "width"],
+    ["source", "width"],
+    ["original", "width"],
+    ["image", "width"],
+    ["width"],
+  ]);
+  const height = imageInfoNumber(info, [
+    ["input", "height"],
+    ["source", "height"],
+    ["original", "height"],
+    ["image", "height"],
+    ["height"],
+  ]);
+  const contentType = object.httpMetadata?.contentType;
+  const fallbackDimensions =
+    useDevFallback &&
+    contentType === NORMALIZED_IMAGE_TYPE &&
+    hasArrayBuffer(object)
+      ? parseJpegDimensions(await object.arrayBuffer())
+      : null;
+  const imageWidth = width ?? fallbackDimensions?.width;
+  const imageHeight = height ?? fallbackDimensions?.height;
+
+  if (!imageWidth || !imageHeight || !isAllowedImageContentType(contentType)) {
+    throw new Error("Stored image metadata is incomplete");
+  }
+
+  const publicUrl = imageUrlForKey(env, key);
+
+  return {
+    url: publicUrl,
+    publicUrl,
+    storageKey: key,
+    key,
+    width: imageWidth,
+    height: imageHeight,
+    contentType,
+    byteSize: object.size,
+    previewDataUrl,
+  };
+}
+
+async function readNormalizedRemoteImage(
+  url: URL,
+  maxFileSize: number,
+): Promise<ArrayBuffer> {
+  const attempts = [
+    { width: 2560, quality: 84 },
+    { width: 2048, quality: 80 },
+  ];
+
+  let lastSize = 0;
+
+  for (const attempt of attempts) {
+    const response = await fetch(url.toString(), {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: IMAGE_ACCEPT_HEADER,
+      },
+      redirect: "manual",
+      cf: {
+        image: {
+          width: attempt.width,
+          fit: "scale-down",
+          quality: attempt.quality,
+          format: "jpeg",
+          metadata: "none",
+          anim: false,
+        },
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to normalize image: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data = await response.arrayBuffer();
+    lastSize = data.byteLength;
+    if (data.byteLength <= maxFileSize) {
+      return data;
+    }
+  }
+
+  throw new Error(`Image too large: ${lastSize} bytes (max ${maxFileSize})`);
+}
+
+async function normalizeStoredObjectToJpeg(
+  env: Env,
+  sourceKey: string,
+  destinationKey: string,
+  maxFileSize: number,
+): Promise<void> {
+  const attempts = [
+    { width: 2560, quality: 84 },
+    { width: 2048, quality: 80 },
+  ];
+
+  let lastSize = 0;
+
+  for (const attempt of attempts) {
+    const response = await fetchStoredImageTransform(env, sourceKey, {
+      width: attempt.width,
+      fit: "scale-down",
+      quality: attempt.quality,
+      format: "jpeg",
+      metadata: "none",
+      anim: false,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to normalize stored image: ${response.status}`);
+    }
+
+    const data = await response.arrayBuffer();
+    lastSize = data.byteLength;
+    if (data.byteLength > maxFileSize) continue;
+
+    await env.IMAGES.put(destinationKey, data, {
+      httpMetadata: { contentType: NORMALIZED_IMAGE_TYPE },
+    });
+    return;
+  }
+
+  throw new Error(`Image too large: ${lastSize} bytes (max ${maxFileSize})`);
+}
+
 /**
  * Image service RPC entrypoint.
  *
@@ -93,31 +478,29 @@ export class ImageService extends WorkerEntrypoint<Env> {
    * Generate a presigned URL for uploading an image to R2.
    *
    * @param contentType - The MIME type of the image
-   * @param maxFileSize - Maximum allowed file size in bytes (default: 10MB)
+   * @param kind - The normalized asset kind being uploaded
    * @returns Presigned upload URL, public URL, and storage key
    */
   async presign(
-    contentType: "image/jpeg" | "image/png" | "image/webp",
+    contentType: ImageContentType,
     ownerId: string,
-    maxFileSize: number = MAX_FILE_SIZE,
+    kind: ImageUploadKind,
   ): Promise<PresignedUrlResponse> {
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowedTypes.includes(contentType)) {
+    if (!isAllowedImageContentType(contentType)) {
       throw new Error("Invalid content type");
     }
 
-    if (maxFileSize > MAX_FILE_SIZE) {
-      throw new Error(`Maximum file size is ${MAX_FILE_SIZE} bytes`);
-    }
-
-    const extension = extensionFromContentType(contentType);
+    const maxFileSize = getMaxFileSizeForKind(kind);
+    const extension = extensionFromContentType(NORMALIZED_IMAGE_TYPE);
     const key = generateUserTempKey(ownerId, extension);
 
-    return await generatePresignedUploadUrl(this.env, {
+    const response = await generatePresignedUploadUrl(this.env, {
       key,
-      contentType,
+      contentType: NORMALIZED_IMAGE_TYPE,
       maxFileSize,
     });
+
+    return { ...response, kind };
   }
 
   /**
@@ -133,9 +516,8 @@ export class ImageService extends WorkerEntrypoint<Env> {
         const contentType = object?.httpMetadata?.contentType;
         const exists =
           !!object &&
-          object.size <= MAX_FILE_SIZE &&
-          !!contentType &&
-          ["image/jpeg", "image/png", "image/webp"].includes(contentType);
+          object.size <= TRUSTED_SOURCE_MAX_FILE_SIZE &&
+          isAllowedImageContentType(contentType);
         return { key, exists };
       }),
     );
@@ -167,7 +549,11 @@ export class ImageService extends WorkerEntrypoint<Env> {
             };
           }
 
-          if (ownerId && !isOwnedTempKey(from, ownerId)) {
+          if (
+            ownerId &&
+            !isOwnedTempKey(from, ownerId) &&
+            !from.startsWith("temp/generated/")
+          ) {
             return {
               from,
               to,
@@ -193,7 +579,7 @@ export class ImageService extends WorkerEntrypoint<Env> {
           }
 
           const contentType = source.httpMetadata?.contentType;
-          if (!contentType || !["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
+          if (!isAllowedImageContentType(contentType)) {
             return {
               from,
               to,
@@ -202,12 +588,13 @@ export class ImageService extends WorkerEntrypoint<Env> {
             };
           }
 
-          if (source.size > MAX_FILE_SIZE) {
+          const maxFileSize = getMaxFileSizeForDestinationKey(to);
+          if (source.size > maxFileSize) {
             return {
               from,
               to,
               success: false,
-              error: `Image too large: ${source.size} bytes (max ${MAX_FILE_SIZE})`,
+              error: `Image too large: ${source.size} bytes (max ${maxFileSize})`,
             };
           }
 
@@ -220,7 +607,9 @@ export class ImageService extends WorkerEntrypoint<Env> {
           // Delete source
           await this.env.IMAGES.delete(from);
 
-          return { from, to, success: true };
+          const asset = await buildStoredImageAsset(this.env, to);
+
+          return { from, to, success: true, asset };
         } catch (error) {
           return {
             from,
@@ -266,7 +655,8 @@ export class ImageService extends WorkerEntrypoint<Env> {
         };
       }
 
-      // Fetch the image from the source URL
+      // Fetch the image from the source URL once to validate redirects,
+      // content type, and source size before Cloudflare performs resizing.
       let currentUrl = validateRemoteImageUrl(sourceUrl);
       let response: Response | null = null;
       for (
@@ -278,7 +668,7 @@ export class ImageService extends WorkerEntrypoint<Env> {
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept: "image/*",
+            Accept: IMAGE_ACCEPT_HEADER,
           },
           redirect: "manual",
         });
@@ -327,37 +717,36 @@ export class ImageService extends WorkerEntrypoint<Env> {
 
       // Check content length if available
       const contentLength = response.headers.get("content-length");
-      if (contentLength && parseInt(contentLength, 10) > MAX_FILE_SIZE) {
+      if (
+        contentLength &&
+        parseInt(contentLength, 10) > TRUSTED_SOURCE_MAX_FILE_SIZE
+      ) {
         return {
           success: false,
-          error: `Image too large: ${contentLength} bytes (max ${MAX_FILE_SIZE})`,
+          error: `Image too large: ${contentLength} bytes (max ${TRUSTED_SOURCE_MAX_FILE_SIZE})`,
         };
       }
 
-      // Read the image data
-      const imageData = await response.arrayBuffer();
-
-      if (imageData.byteLength > MAX_FILE_SIZE) {
-        return {
-          success: false,
-          error: `Image too large: ${imageData.byteLength} bytes (max ${MAX_FILE_SIZE})`,
-        };
-      }
+      const maxFileSize = getMaxFileSizeForDestinationKey(destinationKey);
+      const imageData = await readNormalizedRemoteImage(
+        currentUrl,
+        maxFileSize,
+      );
 
       // Upload to R2
       await this.env.IMAGES.put(destinationKey, imageData, {
         httpMetadata: {
-          contentType: mediaType,
+          contentType: NORMALIZED_IMAGE_TYPE,
         },
       });
 
-      // Generate public URL
-      const publicUrl = `${this.env.PUBLIC_URL}/${destinationKey}`;
+      const asset = await buildStoredImageAsset(this.env, destinationKey);
 
       return {
         success: true,
-        publicUrl,
-        key: destinationKey,
+        publicUrl: asset.publicUrl,
+        key: asset.key,
+        asset,
       };
     } catch (error) {
       return {
@@ -373,38 +762,58 @@ export class ImageService extends WorkerEntrypoint<Env> {
    */
   async uploadImage(
     imageData: ArrayBuffer,
-    contentType: "image/jpeg" | "image/png" | "image/webp",
+    contentType: ImageContentType,
     ownerId?: string,
   ): Promise<UploadImageResponse> {
     try {
-      const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-      if (!allowedTypes.includes(contentType)) {
+      if (!isAllowedImageContentType(contentType)) {
         return {
           success: false,
           error: "Invalid content type",
         };
       }
 
-      if (imageData.byteLength > MAX_FILE_SIZE) {
+      if (imageData.byteLength > TRUSTED_SOURCE_MAX_FILE_SIZE) {
         return {
           success: false,
-          error: `Image too large: ${imageData.byteLength} bytes (max ${MAX_FILE_SIZE})`,
+          error: `Image too large: ${imageData.byteLength} bytes (max ${TRUSTED_SOURCE_MAX_FILE_SIZE})`,
         };
       }
 
       const key = ownerId
-        ? generateUserTempKey(ownerId, extensionFromContentType(contentType))
-        : generateGeneratedTempKey(extensionFromContentType(contentType));
-      await this.env.IMAGES.put(key, imageData, {
+        ? generateUserTempKey(
+            ownerId,
+            extensionFromContentType(NORMALIZED_IMAGE_TYPE),
+          )
+        : generateGeneratedTempKey(
+            extensionFromContentType(NORMALIZED_IMAGE_TYPE),
+          );
+      const rawKey = `${key}.source`;
+
+      await this.env.IMAGES.put(rawKey, imageData, {
         httpMetadata: {
           contentType,
         },
       });
 
+      try {
+        await normalizeStoredObjectToJpeg(
+          this.env,
+          rawKey,
+          key,
+          PHOTO_MAX_FILE_SIZE,
+        );
+      } finally {
+        await this.env.IMAGES.delete(rawKey);
+      }
+
+      const asset = await buildStoredImageAsset(this.env, key);
+
       return {
         success: true,
-        publicUrl: `${this.env.PUBLIC_URL}/${key}`,
-        key,
+        publicUrl: asset.publicUrl,
+        key: asset.key,
+        asset,
       };
     } catch (error) {
       return {
@@ -460,7 +869,7 @@ async function getOriginalImageResponse(
 
 /**
  * Serve images with optional transformations.
- * GET /{key}?w=400&h=300&fit=cover&format=auto
+ * GET /{key}?preset=feed_720
  *
  * Cloudflare Image Resizing requires fetching from an origin URL.
  * We use the R2 bucket's S3-compatible URL as the origin.
@@ -477,24 +886,9 @@ app.get("/*", async (c) => {
     return getOriginalImageResponse(c.env, key, "origin");
   }
 
-  // Parse transformation options
-  const transformOptions = parseTransformOptions(url.searchParams);
-  const transformRequested = hasTransformParams(url.searchParams);
-
-  if (transformRequested && !transformOptions) {
+  if (hasUnsupportedTransformParams(url.searchParams)) {
     return c.json(
-      { error: "Invalid image transformation parameters" },
-      400,
-      {
-        [TRANSFORM_STATUS_HEADER]: "invalid",
-        "Cache-Control": "no-store",
-      },
-    );
-  }
-
-  if (transformOptions && !isAllowedTransform(transformOptions)) {
-    return c.json(
-      { error: "Unsupported image transformation preset" },
+      { error: "Unsupported image transformation parameters" },
       400,
       {
         [TRANSFORM_STATUS_HEADER]: "unsupported",
@@ -503,19 +897,31 @@ app.get("/*", async (c) => {
     );
   }
 
+  const transformRequested = hasTransformPreset(url.searchParams);
+  const preset = parseTransformPreset(url.searchParams);
+
+  if (transformRequested && !preset) {
+    return c.json({ error: "Unsupported image transformation preset" }, 400, {
+      [TRANSFORM_STATUS_HEADER]: "unsupported",
+      "Cache-Control": "no-store",
+    });
+  }
+
   // If transformations requested, use Cloudflare Image Resizing via R2 origin
-  if (transformOptions) {
+  if (preset) {
     const acceptHeader = c.req.header("Accept") ?? null;
+    const transformOptions = getTransformPreset(preset);
     const cfImageOptions = buildCfImageOptions(transformOptions, acceptHeader);
 
     // Fetch from R2's S3-compatible URL (the actual origin)
     // This avoids recursive fetches to our own worker
-    const r2OriginUrl = `${c.env.R2_ORIGIN_URL}/${key}`;
+    const r2OriginUrl = originUrlForKey(c.env, key);
 
     try {
       const transformedResponse = await fetch(r2OriginUrl, {
         headers: {
           [ORIGIN_FETCH_HEADER]: "1",
+          Accept: acceptHeader ?? IMAGE_ACCEPT_HEADER,
         },
         cf: {
           image: cfImageOptions,
@@ -529,8 +935,24 @@ app.get("/*", async (c) => {
         headers.set("Cache-Control", "public, max-age=31536000, immutable");
         headers.set("Vary", "Accept");
         headers.set(TRANSFORM_STATUS_HEADER, "transformed");
+        if (!headers.has("ETag")) {
+          headers.set(
+            "ETag",
+            `W/"${encodeURIComponent(key)}:${preset}:${cfImageOptions.format ?? "source"}"`,
+          );
+        }
         return new Response(transformedResponse.body, { headers });
       }
+
+      console.log(
+        JSON.stringify({
+          event: "image_transform_failed",
+          storageKey: key,
+          preset,
+          status: transformedResponse.status,
+          contentType: transformedResponse.headers.get("content-type"),
+        }),
+      );
 
       return c.json(
         {
@@ -544,6 +966,17 @@ app.get("/*", async (c) => {
         },
       );
     } catch (error) {
+      console.log(
+        JSON.stringify({
+          event: "image_transform_failed",
+          storageKey: key,
+          preset,
+          status: "exception",
+          contentType: null,
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+      );
+
       return c.json(
         {
           error: "Image transformation failed",

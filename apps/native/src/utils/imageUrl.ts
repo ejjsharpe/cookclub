@@ -1,61 +1,136 @@
-/**
- * Image URL transformation utility.
- * Appends Cloudflare Image Resizing parameters to image URLs.
- */
+import {
+  IMAGE_TRANSFORM_PRESETS,
+  type ImageTransformPresetName,
+  type PublicImageAsset,
+} from "@repo/contracts/images";
+import { PixelRatio } from "react-native";
 
-export type ImagePreset =
-  | "avatar-sm" // 100x100 (for 40-50px display)
-  | "avatar-lg" // 200x200 (for 100px display)
-  | "recipe-thumb" // 200x200 (compact cards)
-  | "feed-review" // 900x675 (home review carousel)
-  | "recipe-card" // 800x533 (feed cards)
-  | "recipe-hero" // 1200x800 (detail screen carousel)
-  | "step-thumb" // 240x180 (instruction thumbnails)
-  | "step-full" // 1600 max (expanded step images)
-  | "full"; // No transformation
-
-const PRESETS: Record<Exclude<ImagePreset, "full">, string> = {
-  "avatar-sm": "w=100&h=100&fit=cover&format=auto",
-  "avatar-lg": "w=200&h=200&fit=cover&format=auto",
-  "recipe-thumb": "w=200&h=200&fit=cover&format=auto",
-  "feed-review": "w=900&h=675&fit=cover&format=auto&q=78",
-  "recipe-card": "w=800&h=533&fit=cover&format=auto",
-  "recipe-hero": "w=1200&h=800&fit=cover&format=auto",
-  "step-thumb": "w=240&h=180&fit=cover&format=auto",
-  "step-full": "w=1600&fit=scale-down&format=auto",
+export const IMAGE_REQUEST_HEADERS = {
+  Accept: "image/avif,image/webp,image/*,*/*",
 };
 
-// Image hosts that support the image worker's Cloudflare Image Resizing route.
-const TRANSFORMABLE_HOSTS = [
-  "images.cookclub.app", // Production
-];
+type LegacyImagePreset =
+  | "avatar-sm"
+  | "avatar-lg"
+  | "recipe-thumb"
+  | "feed-review"
+  | "recipe-card"
+  | "recipe-hero"
+  | "step-thumb"
+  | "step-full";
 
-/**
- * Transforms an image URL by appending Cloudflare Image Resizing parameters.
- *
- * @param url - The original image URL (can be null/undefined)
- * @param preset - The size preset to apply
- * @returns The transformed URL, or undefined if url is null/undefined
- *
- * @example
- * getImageUrl(recipe.coverImage, 'recipe-card')
- * // => "https://images.cookclub.app/recipes/covers/123/abc.jpg?w=800&h=533&fit=cover&format=auto"
- */
+export type ImagePreset = ImageTransformPresetName | LegacyImagePreset | "full";
+export type ImageSourceAsset = PublicImageAsset | string | null | undefined;
+
+const LEGACY_PRESET_MAP: Record<LegacyImagePreset, ImageTransformPresetName> = {
+  "avatar-sm": "avatar_96",
+  "avatar-lg": "avatar_192",
+  "recipe-thumb": "thumb_200",
+  "feed-review": "feed_960",
+  "recipe-card": "feed_960",
+  "recipe-hero": "detail_1600",
+  "step-thumb": "step_thumb",
+  "step-full": "detail_1600",
+};
+
+const TRANSFORMABLE_HOSTS = new Set([
+  "images.cookclub.app",
+  "images.example.com",
+]);
+const TRANSFORMABLE_LOCAL_PORTS = new Set(["8789"]);
+
+export function isPublicImageAsset(
+  image: ImageSourceAsset,
+): image is PublicImageAsset {
+  return (
+    typeof image === "object" &&
+    image !== null &&
+    "url" in image &&
+    "storageKey" in image
+  );
+}
+
+function getImageSourceUrl(image: ImageSourceAsset): string | undefined {
+  if (!image) return undefined;
+  return typeof image === "string" ? image : image.url;
+}
+
+function normalizePreset(preset: ImagePreset): ImageTransformPresetName | null {
+  if (preset === "full") return null;
+  if (preset in IMAGE_TRANSFORM_PRESETS) {
+    return preset as ImageTransformPresetName;
+  }
+  return LEGACY_PRESET_MAP[preset as LegacyImagePreset];
+}
+
+function isTransformableUrl(url: URL): boolean {
+  if (TRANSFORMABLE_HOSTS.has(url.hostname)) return true;
+  if (
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+    TRANSFORMABLE_LOCAL_PORTS.has(url.port)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function getImageUrl(
-  url: string | null | undefined,
+  image: ImageSourceAsset,
   preset: ImagePreset,
 ): string | undefined {
-  if (!url) return undefined;
-  if (preset === "full") return url;
+  const rawUrl = getImageSourceUrl(image);
+  if (!rawUrl) return undefined;
 
-  // Only transform our own images
-  const isTransformable = TRANSFORMABLE_HOSTS.some((host) =>
-    url.includes(host),
-  );
-  if (!isTransformable) return url;
+  const normalizedPreset = normalizePreset(preset);
+  if (!normalizedPreset) return rawUrl;
 
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}${PRESETS[preset]}`;
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+
+  if (!isTransformableUrl(url)) return rawUrl;
+
+  const version = url.searchParams.get("v");
+  url.search = "";
+  url.searchParams.set("preset", normalizedPreset);
+  if (version) {
+    url.searchParams.set("v", version);
+  }
+
+  return url.toString();
+}
+
+export function selectFeedImagePreset(
+  layoutWidth: number,
+  pixelRatio = PixelRatio.get(),
+): Extract<ImageTransformPresetName, "feed_720" | "feed_960" | "feed_1080"> {
+  const targetWidth = Math.ceil(layoutWidth * pixelRatio);
+  if (targetWidth <= 720) return "feed_720";
+  if (targetWidth <= 960) return "feed_960";
+  return "feed_1080";
+}
+
+export function selectDetailImagePreset(
+  layoutWidth: number,
+  pixelRatio = PixelRatio.get(),
+): Extract<
+  ImageTransformPresetName,
+  "detail_1600" | "detail_2048" | "detail_2560"
+> {
+  const targetWidth = Math.ceil(layoutWidth * pixelRatio);
+  if (targetWidth <= 1600) return "detail_1600";
+  if (targetWidth <= 2048) return "detail_2048";
+  return "detail_2560";
+}
+
+export function selectAvatarImagePreset(
+  size: number,
+  pixelRatio = PixelRatio.get(),
+): Extract<ImageTransformPresetName, "avatar_96" | "avatar_192"> {
+  return size * pixelRatio <= 96 ? "avatar_96" : "avatar_192";
 }
 
 export function appendImageVersion(
@@ -68,6 +143,12 @@ export function appendImageVersion(
     version instanceof Date ? version.getTime().toString() : String(version);
   if (!versionValue) return url;
 
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}v=${encodeURIComponent(versionValue)}`;
+  try {
+    const parsedUrl = new URL(url);
+    parsedUrl.searchParams.set("v", versionValue);
+    return parsedUrl.toString();
+  } catch {
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}v=${encodeURIComponent(versionValue)}`;
+  }
 }

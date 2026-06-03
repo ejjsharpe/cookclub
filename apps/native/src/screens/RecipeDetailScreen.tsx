@@ -4,6 +4,7 @@ import {
   useNavigation,
   type RouteProp,
 } from "@react-navigation/native";
+import type { PublicImageAsset } from "@repo/contracts/images";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -70,6 +71,7 @@ import {
   type CookingReviewSheetRef,
 } from "@/components/CookingReviewSheet";
 import { Ionicons } from "@/components/Ionicons";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import { PageIndicator } from "@/components/PageIndicator";
 import {
   PersonaliseRecipeSheet,
@@ -93,7 +95,7 @@ import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
 import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
-import { getImageUrl } from "@/utils/imageUrl";
+import { getImageUrl, selectDetailImagePreset } from "@/utils/imageUrl";
 import {
   isCompactUnit,
   formatUnit,
@@ -118,12 +120,38 @@ type RecipeLike =
 interface RecipeImage {
   id: number;
   url: string;
+  storageKey?: string;
+  width?: number;
+  height?: number;
+  contentType?: string;
+  byteSize?: number;
+  previewDataUrl?: string;
+}
+
+function recipeImageToSource(image: RecipeImage): PublicImageAsset | string {
+  return image.storageKey &&
+    image.width &&
+    image.height &&
+    image.contentType &&
+    image.byteSize !== undefined &&
+    image.previewDataUrl !== undefined
+    ? {
+        url: image.url,
+        storageKey: image.storageKey,
+        width: image.width,
+        height: image.height,
+        contentType: image.contentType as PublicImageAsset["contentType"],
+        byteSize: image.byteSize,
+        previewDataUrl: image.previewDataUrl,
+      }
+    : image.url;
 }
 
 interface DraftImage {
   id: string;
   uri: string;
   isRemote: boolean;
+  asset?: PublicImageAsset;
   uploadKey?: string;
 }
 
@@ -214,6 +242,7 @@ function draftFromRecipe(recipe: RecipeLike): RecipeDraft {
       id: `remote-${image.id ?? index}`,
       uri: image.url,
       isRemote: true,
+      ...("storageKey" in image && { asset: image }),
     })),
     ingredientSections:
       recipe.ingredientSections.length > 0
@@ -348,7 +377,7 @@ function nutritionForMutation(nutrition: RecipeDraft["nutrition"]) {
 function draftToMutationInput(draft: RecipeDraft) {
   const remoteImages = draft.images
     .filter((image) => image.isRemote)
-    .map((image) => ({ url: image.uri }));
+    .map((image) => image.asset ?? { url: image.uri });
   const imageUploadIds = draft.images
     .filter((image) => !image.isRemote && image.uploadKey)
     .map((image) => image.uploadKey!);
@@ -743,14 +772,14 @@ export const RecipeDetailScreen = () => {
     if (!recipe) return;
 
     const uploadedReviewImages = data.imageUrls?.length
-      ? await uploadImages(data.imageUrls)
+      ? await uploadImages(data.imageUrls, "review_photo")
       : [];
 
     await createCookingReviewMutation.mutateAsync({
       recipeId: recipe.id,
       rating: data.rating,
       reviewText: data.reviewText,
-      imageUrls: uploadedReviewImages.map((image) => image.publicUrl),
+      imageUploadIds: uploadedReviewImages.map((image) => image.key),
     });
     setRatingOverride(data.rating);
   };
@@ -810,9 +839,8 @@ export const RecipeDetailScreen = () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.85,
+        allowsEditing: false,
+        quality: 1,
       });
 
       const pickedAsset = result.assets?.[0];
@@ -1442,11 +1470,12 @@ export const RecipeDetailScreen = () => {
   }
 
   const renderImage = ({ item }: { item: RecipeImage }) => {
-    const imageUrl = getImageUrl(item.url, "recipe-hero") ?? item.url;
+    const preset = selectDetailImagePreset(SCREEN_WIDTH);
     return (
       <View style={styles.imageContainer}>
-        <Image
-          source={{ uri: imageUrl }}
+        <OptimizedImage
+          image={recipeImageToSource(item)}
+          preset={preset}
           style={styles.recipeImage}
           contentFit="cover"
           transition={200}
@@ -1459,18 +1488,29 @@ export const RecipeDetailScreen = () => {
     const progress = uploadProgress[item.uri];
     const isUploading =
       progress !== undefined && progress >= 0 && progress < 100;
+    const preset = selectDetailImagePreset(SCREEN_WIDTH);
     const imageUrl = item.isRemote
-      ? (getImageUrl(item.uri, "recipe-hero") ?? item.uri)
+      ? (getImageUrl(item.asset ?? item.uri, preset) ?? item.uri)
       : item.uri;
 
     return (
       <View style={styles.imageContainer}>
-        <Image
-          source={{ uri: imageUrl }}
-          style={styles.recipeImage}
-          contentFit="cover"
-          transition={200}
-        />
+        {item.asset ? (
+          <OptimizedImage
+            image={item.asset}
+            preset={preset}
+            style={styles.recipeImage}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.recipeImage}
+            contentFit="cover"
+            transition={200}
+          />
+        )}
         {isUploading && (
           <View style={styles.imageUploadOverlay}>
             <ActivityIndicator color="white" />

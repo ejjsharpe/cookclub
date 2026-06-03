@@ -24,6 +24,19 @@ const mockPushServices = vi.hoisted(() => ({
   createAndSendNotificationInBackground: vi.fn(),
 }));
 
+function createReviewImageRow(reviewId: number, key: string) {
+  return {
+    reviewId,
+    url: `http://example.com/${key}`,
+    storageKey: `reviews/group/${key}`,
+    width: 1200,
+    height: 900,
+    contentType: "image/jpeg",
+    byteSize: 1234,
+    previewDataUrl: "data:image/jpeg;base64,abc",
+  };
+}
+
 // Mock the activity propagation service (now in tRPC layer)
 vi.mock("../services/activity", () => mockActivityServices);
 
@@ -393,15 +406,49 @@ describe("activityRouter", () => {
       });
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
+      mockEnv.IMAGE_SERVICE.move.mockResolvedValue({
+        success: true,
+        results: [
+          {
+            from: "temp/user/photo1.jpg",
+            to: "reviews/group/photo1.jpg",
+            success: true,
+            asset: {
+              url: "http://images.example.com/reviews/group/photo1.jpg",
+              storageKey: "reviews/group/photo1.jpg",
+              width: 1200,
+              height: 900,
+              contentType: "image/jpeg",
+              byteSize: 1234,
+              previewDataUrl: "data:image/jpeg;base64,abc",
+              key: "reviews/group/photo1.jpg",
+              publicUrl: "http://images.example.com/reviews/group/photo1.jpg",
+            },
+          },
+          {
+            from: "temp/user/photo2.jpg",
+            to: "reviews/group/photo2.jpg",
+            success: true,
+            asset: {
+              url: "http://images.example.com/reviews/group/photo2.jpg",
+              storageKey: "reviews/group/photo2.jpg",
+              width: 1200,
+              height: 900,
+              contentType: "image/jpeg",
+              byteSize: 1234,
+              previewDataUrl: "data:image/jpeg;base64,abc",
+              key: "reviews/group/photo2.jpg",
+              publicUrl: "http://images.example.com/reviews/group/photo2.jpg",
+            },
+          },
+        ],
+      });
       const caller = activityRouter.createCaller(ctx as any);
 
       await caller.createCookingReview({
         recipeId: 1,
         rating: 4,
-        imageUrls: [
-          "http://example.com/photo1.jpg",
-          "http://example.com/photo2.jpg",
-        ],
+        imageUploadIds: ["temp/user/photo1.jpg", "temp/user/photo2.jpg"],
       });
 
       // Should have 3 insert calls: activity event, review, images
@@ -426,9 +473,8 @@ describe("activityRouter", () => {
     });
 
     it("propagates activity to followers", async () => {
-      const { propagateActivityToFollowers } = await import(
-        "../services/activity"
-      );
+      const { propagateActivityToFollowers } =
+        await import("../services/activity");
 
       mockDb._setResults("recipes", [{ id: 1, name: "Test Recipe" }]);
 
@@ -479,7 +525,7 @@ describe("activityRouter", () => {
         },
       ]);
       mockDb._setResults("cooking_review_images", [
-        { url: "http://example.com/photo.jpg" },
+        createReviewImageRow(1, "photo.jpg"),
       ]);
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
@@ -501,8 +547,8 @@ describe("activityRouter", () => {
         },
       ]);
       mockDb._setResults("cooking_review_images", [
-        { reviewId: 1, url: "http://example.com/img1.jpg" },
-        { reviewId: 1, url: "http://example.com/img2.jpg" },
+        createReviewImageRow(1, "img1.jpg"),
+        createReviewImageRow(1, "img2.jpg"),
       ]);
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
@@ -511,8 +557,24 @@ describe("activityRouter", () => {
       const result = await caller.getRecipeReviews({ recipeId: 1 });
 
       expect(result.items[0]!.images).toEqual([
-        "http://example.com/img1.jpg",
-        "http://example.com/img2.jpg",
+        {
+          url: "http://example.com/img1.jpg",
+          storageKey: "reviews/group/img1.jpg",
+          width: 1200,
+          height: 900,
+          contentType: "image/jpeg",
+          byteSize: 1234,
+          previewDataUrl: "data:image/jpeg;base64,abc",
+        },
+        {
+          url: "http://example.com/img2.jpg",
+          storageKey: "reviews/group/img2.jpg",
+          width: 1200,
+          height: 900,
+          contentType: "image/jpeg",
+          byteSize: 1234,
+          previewDataUrl: "data:image/jpeg;base64,abc",
+        },
       ]);
     });
 

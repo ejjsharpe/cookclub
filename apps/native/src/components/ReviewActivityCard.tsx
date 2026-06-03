@@ -1,13 +1,8 @@
+import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { formatDistanceToNow } from "date-fns";
-import { Image } from "expo-image";
 import * as WebBrowser from "expo-web-browser";
-import { memo, useMemo, useCallback } from "react";
-import {
-  ScrollView,
-  View,
-  TouchableOpacity,
-  useWindowDimensions,
-} from "react-native";
+import { memo, useMemo, useCallback, useState } from "react";
+import { View, TouchableOpacity, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Text } from "./Text";
@@ -16,8 +11,9 @@ import type { CookingReviewFeedItem } from "@/api/activity";
 import { ActivityActionRow } from "@/components/ActivityActionRow";
 import { Avatar } from "@/components/Avatar";
 import { Ionicons } from "@/components/Ionicons";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
-import { getImageUrl } from "@/utils/imageUrl";
+import { selectFeedImagePreset, type ImagePreset } from "@/utils/imageUrl";
 
 interface Props {
   activity: CookingReviewFeedItem;
@@ -29,6 +25,7 @@ interface Props {
   onCommentPress?: (activityEventId: number) => void;
   currentUserId?: string;
   timeAgo?: string;
+  imagePriority?: "low" | "normal" | "high";
 }
 
 const StarRating = ({ rating }: { rating: number }) => {
@@ -60,34 +57,54 @@ const starStyles = StyleSheet.create((theme) => ({
 }));
 
 const ReviewImageCarousel = memo(
-  ({ images, imageWidth }: { images: string[]; imageWidth: number }) => {
+  ({
+    images,
+    imageWidth,
+    preset,
+    priority,
+  }: {
+    images: CookingReviewFeedItem["review"]["images"];
+    imageWidth: number;
+    preset: ImagePreset;
+    priority: "low" | "normal" | "high";
+  }) => {
+    const renderImage = useCallback(
+      ({
+        item,
+        index,
+      }: ListRenderItemInfo<
+        CookingReviewFeedItem["review"]["images"][number]
+      >) => (
+        <View
+          style={[
+            styles.imageWrapper,
+            { width: imageWidth },
+            index < images.length - 1 && styles.imageItemGap,
+          ]}
+        >
+          <OptimizedImage
+            image={item}
+            preset={preset}
+            style={styles.reviewImage}
+            priority={index === 0 ? priority : "low"}
+            decodeFormat="rgb"
+          />
+        </View>
+      ),
+      [imageWidth, images.length, preset, priority],
+    );
+
     return (
-      <ScrollView
+      <FlashList
+        data={images}
         horizontal
+        renderItem={renderImage}
+        keyExtractor={(item) => item.storageKey}
         showsHorizontalScrollIndicator={false}
         snapToInterval={imageWidth + 8}
         decelerationRate="fast"
         contentContainerStyle={styles.carouselContent}
-      >
-        {images.map((imageUrl, index) => (
-          <View
-            key={`${imageUrl}-${index}`}
-            style={[
-              styles.imageWrapper,
-              { width: imageWidth },
-              index < images.length - 1 && styles.imageItemGap,
-            ]}
-          >
-            <Image
-              source={{
-                uri: getImageUrl(imageUrl, "feed-review") ?? imageUrl,
-              }}
-              style={styles.reviewImage}
-              cachePolicy="memory-disk"
-            />
-          </View>
-        ))}
-      </ScrollView>
+      />
     );
   },
 );
@@ -147,11 +164,13 @@ const ReviewContentCard = memo(
     recipe,
     onRecipePress,
     onViewSource,
+    imagePriority,
   }: {
     review: CookingReviewFeedItem["review"];
     recipe: CookingReviewFeedItem["recipe"];
     onRecipePress: () => void;
     onViewSource: () => void;
+    imagePriority: "low" | "normal" | "high";
   }) => (
     <View style={styles.contentCardWrapper}>
       <View style={styles.contentCard}>
@@ -182,10 +201,12 @@ const ReviewContentCard = memo(
           }`}
         >
           {recipe.image && (
-            <Image
-              source={{ uri: getImageUrl(recipe.image, "recipe-thumb") }}
+            <OptimizedImage
+              image={recipe.image}
+              preset="thumb_200"
               style={styles.recipeImage}
-              cachePolicy="memory-disk"
+              priority={imagePriority}
+              decodeFormat="rgb"
             />
           )}
           <View style={styles.recipeInfo}>
@@ -219,9 +240,14 @@ export const ReviewActivityCard = memo(
     onCommentPress,
     currentUserId,
     timeAgo: providedTimeAgo,
+    imagePriority = "normal",
   }: Props) => {
-    const { width: screenWidth } = useWindowDimensions();
-    const imageWidth = screenWidth - 40; // 20px padding on each side
+    const [carouselWidth, setCarouselWidth] = useState(0);
+    const imageWidth = Math.max(0, carouselWidth - 40);
+    const feedPreset = useMemo(
+      () => selectFeedImagePreset(Math.max(imageWidth, 1)),
+      [imageWidth],
+    );
     const activityId = useMemo(() => parseInt(activity.id, 10), [activity.id]);
     const isCurrentUserRecipe = activity.recipe.ownerId === currentUserId;
 
@@ -233,6 +259,10 @@ export const ReviewActivityCard = memo(
     );
 
     const hasImages = activity.review.images.length > 0;
+
+    const handleCarouselLayout = useCallback((event: LayoutChangeEvent) => {
+      setCarouselWidth(event.nativeEvent.layout.width);
+    }, []);
 
     const handleViewSource = useCallback(async () => {
       if (activity.recipe.sourceType === "url") {
@@ -277,11 +307,18 @@ export const ReviewActivityCard = memo(
 
         {/* Review Images Carousel */}
         {hasImages && (
-          <View style={styles.carouselContainer}>
-            <ReviewImageCarousel
-              images={activity.review.images}
-              imageWidth={imageWidth}
-            />
+          <View
+            style={styles.carouselContainer}
+            onLayout={handleCarouselLayout}
+          >
+            {imageWidth > 0 && (
+              <ReviewImageCarousel
+                images={activity.review.images}
+                imageWidth={imageWidth}
+                preset={feedPreset}
+                priority={imagePriority}
+              />
+            )}
           </View>
         )}
 
@@ -290,6 +327,7 @@ export const ReviewActivityCard = memo(
           recipe={activity.recipe}
           onRecipePress={handleRecipePress}
           onViewSource={handleViewSource}
+          imagePriority={imagePriority}
         />
 
         <ActivityActionRow

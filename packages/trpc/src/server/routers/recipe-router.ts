@@ -3,6 +3,7 @@ import type {
   ParsedRecipe,
   PersonalizationGoal,
 } from "@repo/contracts";
+import type { PublicImageAsset } from "@repo/contracts/images";
 import {
   recipeImages,
   recipes,
@@ -27,17 +28,7 @@ import {
 import { parseIngredients } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import {
-  eq,
-  lt,
-  desc,
-  and,
-  ilike,
-  count,
-  inArray,
-  min,
-  isNull,
-} from "drizzle-orm";
+import { eq, lt, desc, and, ilike, count, inArray, isNull } from "drizzle-orm";
 
 import { enforceRateLimit } from "../rate-limit";
 import { propagateActivityToFollowersInBackground } from "../services/activity";
@@ -62,9 +53,21 @@ import {
 import { router, authedProcedure } from "../trpc";
 import { mapServiceError } from "../utils";
 
-const ImageRecord = type({
+const ImageUrlRecord = type({
   url: "string.url",
 });
+
+const ImageAssetRecord = type({
+  url: "string.url",
+  storageKey: "string",
+  width: "number",
+  height: "number",
+  contentType: "'image/jpeg' | 'image/png' | 'image/webp'",
+  byteSize: "number",
+  previewDataUrl: "string",
+});
+
+const ImageRecord = type.or(ImageAssetRecord, ImageUrlRecord);
 
 // Support both unparsed and parsed ingredient formats for flexibility
 const IngredientRecordUnparsed = type({
@@ -231,7 +234,7 @@ const GetNutritionValidator = type({
 
 interface RecipePayloadInput {
   name: string;
-  images?: { url: string }[];
+  images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
   ingredientSections: {
     ingredients: (
@@ -339,6 +342,26 @@ function isHttpUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function toPublicImageAsset(row: {
+  url: string;
+  storageKey: string;
+  width: number;
+  height: number;
+  contentType: string;
+  byteSize: number;
+  previewDataUrl: string;
+}): PublicImageAsset {
+  return {
+    url: row.url,
+    storageKey: row.storageKey,
+    width: row.width,
+    height: row.height,
+    contentType: row.contentType as PublicImageAsset["contentType"],
+    byteSize: row.byteSize,
+    previewDataUrl: row.previewDataUrl,
+  };
 }
 
 function normalizeRecipeListLimit(limit: number) {
@@ -1091,7 +1114,6 @@ export const recipeRouter = router({
         const userRecipesList = await ctx.db
           .select({
             recipe: recipes,
-            firstImage: min(recipeImages.url),
             uploader: {
               id: user.id,
               name: user.name,
@@ -1101,7 +1123,6 @@ export const recipeRouter = router({
           })
           .from(recipes)
           .innerJoin(user, eq(recipes.ownerId, user.id))
-          .leftJoin(recipeImages, eq(recipes.id, recipeImages.recipeId))
           .where(
             and(
               eq(recipes.ownerId, ctx.user.id),
@@ -1112,24 +1133,39 @@ export const recipeRouter = router({
                 : undefined,
             ),
           )
-          .groupBy(recipes.id, user.id, user.name, user.username, user.image)
           .orderBy(desc(recipes.createdAt))
           .limit(limit + 1);
 
         // Get recipe IDs to fetch tags
         const recipeIds = userRecipesList.map((item) => item.recipe.id);
 
-        const tagsData =
+        const [tagsData, imagesData] =
           recipeIds.length > 0
-            ? await ctx.db
-                .select({
-                  recipeId: recipeTags.recipeId,
-                  tag: tags,
-                })
-                .from(recipeTags)
-                .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-                .where(inArray(recipeTags.recipeId, recipeIds))
-            : [];
+            ? await Promise.all([
+                ctx.db
+                  .select({
+                    recipeId: recipeTags.recipeId,
+                    tag: tags,
+                  })
+                  .from(recipeTags)
+                  .innerJoin(tags, eq(recipeTags.tagId, tags.id))
+                  .where(inArray(recipeTags.recipeId, recipeIds)),
+                ctx.db
+                  .select({
+                    recipeId: recipeImages.recipeId,
+                    url: recipeImages.url,
+                    storageKey: recipeImages.storageKey,
+                    width: recipeImages.width,
+                    height: recipeImages.height,
+                    contentType: recipeImages.contentType,
+                    byteSize: recipeImages.byteSize,
+                    previewDataUrl: recipeImages.previewDataUrl,
+                  })
+                  .from(recipeImages)
+                  .where(inArray(recipeImages.recipeId, recipeIds))
+                  .orderBy(recipeImages.recipeId, recipeImages.id),
+              ])
+            : [[], []];
 
         // Group tags by recipe
         const tagsByRecipe = tagsData.reduce(
@@ -1145,9 +1181,16 @@ export const recipeRouter = router({
           {} as Record<number, (typeof tags.$inferSelect)[]>,
         );
 
+        const firstImageByRecipe = new Map<number, PublicImageAsset>();
+        for (const image of imagesData) {
+          if (!firstImageByRecipe.has(image.recipeId)) {
+            firstImageByRecipe.set(image.recipeId, toPublicImageAsset(image));
+          }
+        }
+
         let items = userRecipesList.map((item) => ({
           ...item.recipe,
-          coverImage: item.firstImage,
+          coverImage: firstImageByRecipe.get(item.recipe.id) ?? null,
           owner: item.uploader,
           tags: tagsByRecipe[item.recipe.id] || [],
         }));
@@ -1193,7 +1236,6 @@ export const recipeRouter = router({
         const userRecipesList = await ctx.db
           .select({
             recipe: recipes,
-            firstImage: min(recipeImages.url),
             uploader: {
               id: user.id,
               name: user.name,
@@ -1203,7 +1245,6 @@ export const recipeRouter = router({
           })
           .from(recipes)
           .innerJoin(user, eq(recipes.ownerId, user.id))
-          .leftJoin(recipeImages, eq(recipes.id, recipeImages.recipeId))
           .where(
             and(
               eq(recipes.ownerId, userId),
@@ -1211,24 +1252,39 @@ export const recipeRouter = router({
               search ? ilike(recipes.name, `%${search}%`) : undefined,
             ),
           )
-          .groupBy(recipes.id, user.id, user.name, user.username, user.image)
           .orderBy(desc(recipes.createdAt))
           .limit(limit + 1);
 
         // Get recipe IDs to fetch tags
         const recipeIds = userRecipesList.map((item) => item.recipe.id);
 
-        const tagsData =
+        const [tagsData, imagesData] =
           recipeIds.length > 0
-            ? await ctx.db
-                .select({
-                  recipeId: recipeTags.recipeId,
-                  tag: tags,
-                })
-                .from(recipeTags)
-                .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-                .where(inArray(recipeTags.recipeId, recipeIds))
-            : [];
+            ? await Promise.all([
+                ctx.db
+                  .select({
+                    recipeId: recipeTags.recipeId,
+                    tag: tags,
+                  })
+                  .from(recipeTags)
+                  .innerJoin(tags, eq(recipeTags.tagId, tags.id))
+                  .where(inArray(recipeTags.recipeId, recipeIds)),
+                ctx.db
+                  .select({
+                    recipeId: recipeImages.recipeId,
+                    url: recipeImages.url,
+                    storageKey: recipeImages.storageKey,
+                    width: recipeImages.width,
+                    height: recipeImages.height,
+                    contentType: recipeImages.contentType,
+                    byteSize: recipeImages.byteSize,
+                    previewDataUrl: recipeImages.previewDataUrl,
+                  })
+                  .from(recipeImages)
+                  .where(inArray(recipeImages.recipeId, recipeIds))
+                  .orderBy(recipeImages.recipeId, recipeImages.id),
+              ])
+            : [[], []];
 
         // Group tags by recipe
         const tagsByRecipe = tagsData.reduce(
@@ -1244,9 +1300,16 @@ export const recipeRouter = router({
           {} as Record<number, (typeof tags.$inferSelect)[]>,
         );
 
+        const firstImageByRecipe = new Map<number, PublicImageAsset>();
+        for (const image of imagesData) {
+          if (!firstImageByRecipe.has(image.recipeId)) {
+            firstImageByRecipe.set(image.recipeId, toPublicImageAsset(image));
+          }
+        }
+
         const items = userRecipesList.map((item) => ({
           ...item.recipe,
-          coverImage: item.firstImage,
+          coverImage: firstImageByRecipe.get(item.recipe.id) ?? null,
           owner: item.uploader,
           tags: tagsByRecipe[item.recipe.id] || [],
         }));

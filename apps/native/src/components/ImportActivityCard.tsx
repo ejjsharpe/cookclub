@@ -1,9 +1,8 @@
 import { formatDistanceToNow } from "date-fns";
-import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
-import { memo, useMemo, useCallback } from "react";
-import { View, TouchableOpacity } from "react-native";
+import { memo, useMemo, useCallback, useState } from "react";
+import { View, TouchableOpacity, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Text } from "./Text";
@@ -11,8 +10,9 @@ import { Text } from "./Text";
 import type { RecipeImportFeedItem } from "@/api/activity";
 import { ActivityActionRow } from "@/components/ActivityActionRow";
 import { Avatar } from "@/components/Avatar";
+import { OptimizedImage } from "@/components/OptimizedImage";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
-import { getImageUrl } from "@/utils/imageUrl";
+import { selectFeedImagePreset } from "@/utils/imageUrl";
 
 interface Props {
   activity: RecipeImportFeedItem;
@@ -26,6 +26,7 @@ interface Props {
   currentUserId?: string;
   timeAgo?: string;
   sourceDescription?: string;
+  imagePriority?: "low" | "normal" | "high";
 }
 
 const ImportUserHeader = memo(
@@ -82,47 +83,65 @@ const ImportRecipeHero = memo(
     recipe,
     onRecipePress,
     onViewSource,
+    imagePriority,
   }: {
     recipe: RecipeImportFeedItem["recipe"];
     onRecipePress: () => void;
     onViewSource: () => void;
-  }) => (
-    <TouchableOpacity
-      style={styles.imageContainer}
-      onPress={recipe.sourceType === "url" ? onViewSource : onRecipePress}
-      activeOpacity={0.9}
-      accessibilityRole="button"
-      accessibilityLabel={`${recipe.name}. Opens ${
-        recipe.sourceType === "url"
-          ? `recipe website, ${recipe.sourceDomain}`
-          : "in app"
-      }`}
-    >
-      {recipe.image && (
-        <Image
-          source={{ uri: getImageUrl(recipe.image, "recipe-card") }}
-          style={styles.recipeImage}
-          cachePolicy="memory-disk"
-        />
-      )}
-      <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.6)"]}
-        style={styles.imageGradient}
+    imagePriority: "low" | "normal" | "high";
+  }) => {
+    const [layoutWidth, setLayoutWidth] = useState(0);
+    const preset = useMemo(
+      () => selectFeedImagePreset(Math.max(layoutWidth, 1)),
+      [layoutWidth],
+    );
+    const handleLayout = useCallback((event: LayoutChangeEvent) => {
+      setLayoutWidth(event.nativeEvent.layout.width);
+    }, []);
+
+    return (
+      <TouchableOpacity
+        style={styles.imageContainer}
+        onLayout={handleLayout}
+        onPress={recipe.sourceType === "url" ? onViewSource : onRecipePress}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={`${recipe.name}. Opens ${
+          recipe.sourceType === "url"
+            ? `recipe website, ${recipe.sourceDomain}`
+            : "in app"
+        }`}
       >
-        <Text type="title3" numberOfLines={2} style={styles.recipeTitle}>
-          {recipe.name}
-        </Text>
-        <RecipeDestinationLabel
-          isExternal={recipe.sourceType === "url"}
-          sourceLabel={
-            recipe.sourceType === "url" ? recipe.sourceDomain : undefined
-          }
-          sourceUrl={recipe.sourceType === "url" ? recipe.sourceUrl : undefined}
-          variant="image"
-        />
-      </LinearGradient>
-    </TouchableOpacity>
-  ),
+        {recipe.image && layoutWidth > 0 && (
+          <OptimizedImage
+            image={recipe.image}
+            preset={preset}
+            style={styles.recipeImage}
+            priority={imagePriority}
+            decodeFormat="rgb"
+          />
+        )}
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.6)"]}
+          style={styles.imageGradient}
+        >
+          <Text type="title3" numberOfLines={2} style={styles.recipeTitle}>
+            {recipe.name}
+          </Text>
+          <RecipeDestinationLabel
+            isExternal={recipe.sourceType === "url"}
+            sourceLabel={
+              recipe.sourceType === "url" ? recipe.sourceDomain : undefined
+            }
+            sourceUrl={
+              recipe.sourceType === "url" ? recipe.sourceUrl : undefined
+            }
+            variant="image"
+          />
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  },
 );
 
 export const ImportActivityCard = memo(
@@ -137,6 +156,7 @@ export const ImportActivityCard = memo(
     currentUserId,
     timeAgo: providedTimeAgo,
     sourceDescription: providedSourceDescription,
+    imagePriority = "normal",
   }: Props) => {
     const activityId = useMemo(() => parseInt(activity.id, 10), [activity.id]);
     const isCurrentUserRecipe =
@@ -216,6 +236,7 @@ export const ImportActivityCard = memo(
           recipe={activity.recipe}
           onRecipePress={handleRecipePress}
           onViewSource={handleViewSource}
+          imagePriority={imagePriority}
         />
 
         <ActivityActionRow
