@@ -1669,6 +1669,9 @@ export const RecipeDetailScreen = () => {
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
+              initialNumToRender={1}
+              maxToRenderPerBatch={1}
+              windowSize={3}
               onMomentumScrollEnd={handleImageScroll}
               getItemLayout={(_, index) => ({
                 length: SCREEN_WIDTH,
@@ -1723,7 +1726,15 @@ export const RecipeDetailScreen = () => {
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
+                initialNumToRender={1}
+                maxToRenderPerBatch={1}
+                windowSize={3}
                 onMomentumScrollEnd={handleImageScroll}
+                getItemLayout={(_, index) => ({
+                  length: SCREEN_WIDTH,
+                  offset: SCREEN_WIDTH * index,
+                  index,
+                })}
               />
             </Animated.View>
             <LinearGradient
