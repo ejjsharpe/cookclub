@@ -1,8 +1,7 @@
-import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { formatDistanceToNow } from "date-fns";
 import * as WebBrowser from "expo-web-browser";
-import { memo, useMemo, useCallback, useState } from "react";
-import { View, TouchableOpacity, type LayoutChangeEvent } from "react-native";
+import { memo, useMemo, useCallback } from "react";
+import { View, TouchableOpacity, ScrollView } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Text } from "./Text";
@@ -13,7 +12,7 @@ import { Avatar } from "@/components/Avatar";
 import { Ionicons } from "@/components/Ionicons";
 import { OptimizedImage } from "@/components/OptimizedImage";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
-import { selectFeedImagePreset, type ImagePreset } from "@/utils/imageUrl";
+import type { ImagePreset } from "@/utils/imageUrl";
 
 interface Props {
   activity: CookingReviewFeedItem;
@@ -25,6 +24,8 @@ interface Props {
   onCommentPress?: (activityEventId: number) => void;
   currentUserId?: string;
   timeAgo?: string;
+  imagePreset: ImagePreset;
+  imageWidth: number;
   imagePriority?: "low" | "normal" | "high";
 }
 
@@ -67,15 +68,17 @@ const ReviewImageCarousel = memo(
     imageWidth: number;
     preset: ImagePreset;
     priority: "low" | "normal" | "high";
-  }) => {
-    const renderImage = useCallback(
-      ({
-        item,
-        index,
-      }: ListRenderItemInfo<
-        CookingReviewFeedItem["review"]["images"][number]
-      >) => (
+  }) => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      snapToInterval={imageWidth + 8}
+      decelerationRate="fast"
+      contentContainerStyle={styles.carouselContent}
+    >
+      {images.map((item, index) => (
         <View
+          key={item.storageKey}
           style={[
             styles.imageWrapper,
             { width: imageWidth },
@@ -90,23 +93,9 @@ const ReviewImageCarousel = memo(
             decodeFormat="rgb"
           />
         </View>
-      ),
-      [imageWidth, images.length, preset, priority],
-    );
-
-    return (
-      <FlashList
-        data={images}
-        horizontal
-        renderItem={renderImage}
-        keyExtractor={(item) => item.storageKey}
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={imageWidth + 8}
-        decelerationRate="fast"
-        contentContainerStyle={styles.carouselContent}
-      />
-    );
-  },
+      ))}
+    </ScrollView>
+  ),
 );
 
 const ActivityUserHeader = memo(
@@ -240,14 +229,10 @@ export const ReviewActivityCard = memo(
     onCommentPress,
     currentUserId,
     timeAgo: providedTimeAgo,
+    imagePreset,
+    imageWidth,
     imagePriority = "normal",
   }: Props) => {
-    const [carouselWidth, setCarouselWidth] = useState(0);
-    const imageWidth = Math.max(0, carouselWidth - 40);
-    const feedPreset = useMemo(
-      () => selectFeedImagePreset(Math.max(imageWidth, 1)),
-      [imageWidth],
-    );
     const activityId = useMemo(() => parseInt(activity.id, 10), [activity.id]);
     const isCurrentUserRecipe = activity.recipe.ownerId === currentUserId;
 
@@ -259,10 +244,6 @@ export const ReviewActivityCard = memo(
     );
 
     const hasImages = activity.review.images.length > 0;
-
-    const handleCarouselLayout = useCallback((event: LayoutChangeEvent) => {
-      setCarouselWidth(event.nativeEvent.layout.width);
-    }, []);
 
     const handleViewSource = useCallback(async () => {
       if (activity.recipe.sourceType === "url") {
@@ -307,18 +288,13 @@ export const ReviewActivityCard = memo(
 
         {/* Review Images Carousel */}
         {hasImages && (
-          <View
-            style={styles.carouselContainer}
-            onLayout={handleCarouselLayout}
-          >
-            {imageWidth > 0 && (
-              <ReviewImageCarousel
-                images={activity.review.images}
-                imageWidth={imageWidth}
-                preset={feedPreset}
-                priority={imagePriority}
-              />
-            )}
+          <View style={styles.carouselContainer}>
+            <ReviewImageCarousel
+              images={activity.review.images}
+              imageWidth={imageWidth}
+              preset={imagePreset}
+              priority={imagePriority}
+            />
           </View>
         )}
 

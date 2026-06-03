@@ -261,10 +261,10 @@ export const HomeScreen = () => {
   const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const { width: windowWidth } = useWindowDimensions();
+  const feedImageWidth = Math.max(windowWidth - HORIZONTAL_PADDING * 2, 1);
   const feedImagePreset = useMemo(
-    () =>
-      selectFeedImagePreset(Math.max(windowWidth - HORIZONTAL_PADDING * 2, 1)),
-    [windowWidth],
+    () => selectFeedImagePreset(feedImageWidth),
+    [feedImageWidth],
   );
   const listBottomPadding = TAB_BAR_LIST_CLEARANCE;
   const importRecipeMutation = useImportRecipe();
@@ -279,9 +279,6 @@ export const HomeScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [commentActivityId, setCommentActivityId] = useState<number>(0);
   const [showLoadLatest, setShowLoadLatest] = useState(false);
-  const [visibleActivityIds, setVisibleActivityIds] = useState<Set<string>>(
-    () => new Set(),
-  );
   const prefetchQueueRef = useRef<string[]>([]);
   const prefetchInFlightCountRef = useRef(0);
   const prefetchedImageUrlsRef = useRef(new Set<string>());
@@ -294,7 +291,6 @@ export const HomeScreen = () => {
   const searchProgress = useSharedValue(0);
 
   // Scroll tracking for header fade
-  const scrollY = useSharedValue(0);
   const titleOpacity = useSharedValue(1);
   const avatarOpacity = useSharedValue(1);
   const titleHidden = useSharedValue(false);
@@ -440,19 +436,14 @@ export const HomeScreen = () => {
     }: {
       viewableItems: { item?: ActivityFeedListItem; index?: number | null }[];
     }) => {
-      const ids = new Set<string>();
       const indexes: number[] = [];
 
       for (const viewableItem of viewableItems) {
-        if (viewableItem.item) {
-          ids.add(viewableItem.item.id);
-        }
         if (typeof viewableItem.index === "number") {
           indexes.push(viewableItem.index);
         }
       }
 
-      setVisibleActivityIds(ids);
       scheduleFeedImagePrefetch(indexes);
     },
     [scheduleFeedImagePrefetch],
@@ -654,7 +645,6 @@ export const HomeScreen = () => {
   const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       const y = event.contentOffset.y;
-      scrollY.value = y;
 
       const nextTitleHidden = y > 5;
       if (titleHidden.value !== nextTitleHidden) {
@@ -738,7 +728,8 @@ export const HomeScreen = () => {
             onImportRecipePress={handleImportExistingRecipe}
             currentUserId={currentUserId}
             timeAgo={item._display.timeAgo}
-            imagePriority={visibleActivityIds.has(item.id) ? "high" : "low"}
+            imagePreset={feedImagePreset}
+            imageWidth={feedImageWidth}
           />
         );
       }
@@ -755,7 +746,7 @@ export const HomeScreen = () => {
           currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
           sourceDescription={item._display.sourceDescription}
-          imagePriority={visibleActivityIds.has(item.id) ? "high" : "low"}
+          imagePreset={feedImagePreset}
         />
       );
     },
@@ -767,7 +758,8 @@ export const HomeScreen = () => {
       handleImportRecipe,
       handleImportExistingRecipe,
       currentUserId,
-      visibleActivityIds,
+      feedImagePreset,
+      feedImageWidth,
     ],
   );
 
@@ -985,7 +977,6 @@ export const HomeScreen = () => {
                 styles.feedContent,
                 { paddingBottom: listBottomPadding },
               ]}
-              drawDistance={1200}
               onScroll={handleScroll}
               scrollEventThrottle={16}
               refreshControl={

@@ -5,13 +5,14 @@ import {
 } from "@react-navigation/native";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { Image } from "expo-image";
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useMemo, useState, useRef } from "react";
 import {
   View,
   ActivityIndicator,
   Alert,
   TouchableOpacity,
   Share,
+  useWindowDimensions,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 
@@ -45,6 +46,7 @@ import {
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
+import { selectFeedImagePreset } from "@/utils/imageUrl";
 import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 type UserProfileScreenRoute = RouteProp<AppParamList, "UserProfile">;
@@ -54,10 +56,17 @@ const ThemedActivityIndicator = withUnistyles(ActivityIndicator, (theme) => ({
 }));
 const ThemedFlashList = withUnistyles(FlashList<ActivityFeedListItem>);
 const HEADER_HEIGHT = 52;
+const HORIZONTAL_PADDING = 20;
 
 export const UserProfileScreen = () => {
   const route = useRoute<UserProfileScreenRoute>();
   const navigation = useNavigation();
+  const { width: windowWidth } = useWindowDimensions();
+  const feedImageWidth = Math.max(windowWidth - HORIZONTAL_PADDING * 2, 1);
+  const feedImagePreset = useMemo(
+    () => selectFeedImagePreset(feedImageWidth),
+    [feedImageWidth],
+  );
   const { userId } = route.params;
   const importRecipeMutation = useImportRecipe();
   const { startImport } = useBackgroundImportQueue();
@@ -202,6 +211,8 @@ export const UserProfileScreen = () => {
             onImportRecipePress={handleImportExistingRecipe}
             currentUserId={currentUserId}
             timeAgo={item._display.timeAgo}
+            imagePreset={feedImagePreset}
+            imageWidth={feedImageWidth}
           />
         );
       }
@@ -217,6 +228,7 @@ export const UserProfileScreen = () => {
           currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
           sourceDescription={item._display.sourceDescription}
+          imagePreset={feedImagePreset}
         />
       );
     },
@@ -228,6 +240,8 @@ export const UserProfileScreen = () => {
       handleImportExistingRecipe,
       handleCommentPress,
       currentUserId,
+      feedImagePreset,
+      feedImageWidth,
     ],
   );
 
