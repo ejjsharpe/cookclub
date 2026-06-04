@@ -70,8 +70,18 @@ export function useAvatarUpload(options: UseAvatarUploadOptions = {}) {
       setProgress(70);
 
       // Finalize: move to avatars/ and update DB
-      await uploadAvatarMutation.mutateAsync({ imageKey: key });
+      const updatedUser = await uploadAvatarMutation.mutateAsync({
+        imageKey: key,
+      });
       setProgress(90);
+
+      // Show the new avatar immediately on mounted screens; invalidation below
+      // refreshes other queries that may embed the old user image.
+      if (updatedUser.user) {
+        queryClient.setQueryData(trpc.user.getUser.queryFilter().queryKey, {
+          user: updatedUser.user,
+        });
+      }
 
       // Refresh screens and clear image caches that may still hold the old avatar URL.
       await Promise.all([
