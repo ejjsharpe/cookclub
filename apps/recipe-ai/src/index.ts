@@ -1,6 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import { parseImage } from "./services/image-parser";
+import { rehostParsedRecipeImagesForResponse } from "./services/hosted-images";
 import { processChat } from "./services/recipe-generator";
 import { generateRecipeImage } from "./services/recipe-image-generator";
 import { generateNutrition } from "./services/nutrition-generator";
@@ -76,17 +77,22 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
    */
   async parse(input: ParseInput): Promise<ParseResponse> {
     try {
+      let result: ParseResponse;
+
       switch (input.type) {
         case "url":
-          return await parseUrl(this.env, input.data, {
+          result = await parseUrl(this.env, input.data, {
             structuredOnly: input.structuredOnly,
           });
+          break;
 
         case "text":
-          return await parseText(this.env, input.data);
+          result = await parseText(this.env, input.data);
+          break;
 
         case "image":
-          return await parseImage(this.env, input.data, input.mimeType);
+          result = await parseImage(this.env, input.data, input.mimeType);
+          break;
 
         default:
           return {
@@ -97,6 +103,8 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
             },
           };
       }
+
+      return await rehostParsedRecipeImagesForResponse(this.env, result);
     } catch (error) {
       console.error(error);
       return {

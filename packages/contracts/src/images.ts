@@ -17,6 +17,43 @@ export interface StoredImageAsset extends PublicImageAsset {
   publicUrl: string;
 }
 
+export function normalizeImagePublicUrl(publicUrl: string): string {
+  return publicUrl.replace(/\/+$/, "");
+}
+
+export function publicImageUrlForKey(publicUrl: string, key: string): string {
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return `${normalizeImagePublicUrl(publicUrl)}/${encodedKey}`;
+}
+
+export function imageKeyFromPublicUrl(
+  url: string | null | undefined,
+  publicUrl: string,
+): string | null {
+  if (!url) return null;
+
+  const baseUrl = `${normalizeImagePublicUrl(publicUrl)}/`;
+  if (!url.startsWith(baseUrl)) return null;
+
+  const encodedKey = url.slice(baseUrl.length).split(/[?#]/)[0] ?? "";
+  try {
+    const key = decodeURIComponent(encodedKey);
+    if (!key || key.startsWith("/") || key.split("/").includes("..")) {
+      return null;
+    }
+    return key;
+  } catch {
+    return null;
+  }
+}
+
+export function isHostedImageUrl(
+  url: string | null | undefined,
+  publicUrl: string,
+): boolean {
+  return imageKeyFromPublicUrl(url, publicUrl) !== null;
+}
+
 export type ImageTransformFit = "crop" | "cover" | "contain" | "scale-down";
 export type ImageTransformFormat = "auto";
 

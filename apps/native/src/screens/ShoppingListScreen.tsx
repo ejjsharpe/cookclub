@@ -280,6 +280,9 @@ const ShoppingRecipeCard = memo(
       },
       [onRemoveRecipe, recipe.id, recipe.name],
     );
+    const recipeImageUrl = recipe.imageUrl
+      ? getImageUrl(recipe.imageUrl, "recipe-thumb")
+      : undefined;
 
     return (
       <TouchableOpacity
@@ -288,9 +291,9 @@ const ShoppingRecipeCard = memo(
         activeOpacity={0.7}
       >
         <View style={styles.recipeCardImageContainer}>
-          {recipe.imageUrl ? (
+          {recipeImageUrl ? (
             <Image
-              source={{ uri: getImageUrl(recipe.imageUrl, "recipe-thumb") }}
+              source={{ uri: recipeImageUrl }}
               style={styles.recipeCardImage}
               contentFit="cover"
             />

@@ -3,6 +3,10 @@ import type {
   ImageUploadKind,
   StoredImageAsset,
 } from "@repo/contracts/images";
+import {
+  imageKeyFromPublicUrl,
+  publicImageUrlForKey,
+} from "@repo/contracts/images";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -114,7 +118,7 @@ function isAllowedImageContentType(
 }
 
 function imageUrlForKey(env: Env, key: string): string {
-  return `${env.PUBLIC_URL.replace(/\/+$/, "")}/${key}`;
+  return publicImageUrlForKey(env.PUBLIC_URL, key);
 }
 
 function originUrlForKey(env: Env, key: string): string {
@@ -447,6 +451,36 @@ async function normalizeStoredObjectToJpeg(
   throw new Error(`Image too large: ${lastSize} bytes (max ${maxFileSize})`);
 }
 
+async function copyHostedImage(
+  env: Env,
+  sourceKey: string,
+  destinationKey: string,
+): Promise<StoredImageAsset> {
+  const source = await env.IMAGES.get(sourceKey);
+  if (!source) {
+    throw new Error("Source not found");
+  }
+
+  const contentType = source.httpMetadata?.contentType;
+  if (!isAllowedImageContentType(contentType)) {
+    throw new Error("Invalid stored image content type");
+  }
+
+  const maxFileSize = getMaxFileSizeForDestinationKey(destinationKey);
+  if (source.size > maxFileSize) {
+    throw new Error(
+      `Image too large: ${source.size} bytes (max ${maxFileSize})`,
+    );
+  }
+
+  await env.IMAGES.put(destinationKey, source.body, {
+    httpMetadata: source.httpMetadata,
+    customMetadata: source.customMetadata,
+  });
+
+  return await buildStoredImageAsset(env, destinationKey);
+}
+
 /**
  * Image service RPC entrypoint.
  *
@@ -632,6 +666,24 @@ export class ImageService extends WorkerEntrypoint<Env> {
         return {
           success: false,
           error: "Invalid destination key",
+        };
+      }
+
+      const hostedSourceKey = imageKeyFromPublicUrl(
+        sourceUrl,
+        this.env.PUBLIC_URL,
+      );
+      if (hostedSourceKey) {
+        const asset = await copyHostedImage(
+          this.env,
+          hostedSourceKey,
+          destinationKey,
+        );
+        return {
+          success: true,
+          publicUrl: asset.publicUrl,
+          key: asset.key,
+          asset,
         };
       }
 

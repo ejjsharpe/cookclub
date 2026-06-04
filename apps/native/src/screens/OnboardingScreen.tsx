@@ -23,6 +23,7 @@ import { Text } from "@/components/Text";
 import { useWelcomeOverlay } from "@/components/WelcomeOverlay";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
+import { useAvatarUpload } from "@/hooks/useAvatarUpload";
 import { useDebounce } from "@/hooks/useDebounce";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 
@@ -38,6 +39,8 @@ export default function OnboardingScreen() {
   const user = userData?.user;
   const { triggerWelcome } = useWelcomeOverlay();
   const completeOnboarding = useCompleteOnboarding();
+  const { upload: uploadAvatar, isUploading: isUploadingAvatar } =
+    useAvatarUpload();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,11 +101,14 @@ export default function OnboardingScreen() {
     } else {
       setIsSubmitting(true);
       try {
+        if (profileImage) {
+          await uploadAvatar(profileImage);
+        }
+
         await completeOnboarding.mutateAsync({
           username,
           name: name.trim(),
           bio: bio || null,
-          image: profileImage,
           measurementPreference: measurementSystem,
         });
         triggerWelcome();
@@ -209,9 +215,13 @@ export default function OnboardingScreen() {
             <View style={styles.nextButtonFlex}>
               <PrimaryButton
                 onPress={handleNext}
-                disabled={(currentStep !== 1 && !canProceed()) || isSubmitting}
+                disabled={
+                  (currentStep !== 1 && !canProceed()) ||
+                  isSubmitting ||
+                  isUploadingAvatar
+                }
               >
-                {isSubmitting
+                {isSubmitting || isUploadingAvatar
                   ? "Saving..."
                   : currentStep === TOTAL_STEPS
                     ? "Get Started"

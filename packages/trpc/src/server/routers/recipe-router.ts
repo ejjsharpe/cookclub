@@ -243,7 +243,11 @@ interface RecipePayloadInput {
     )[];
   }[];
   instructionSections: {
-    instructions: { instruction: string; index: number }[];
+    instructions: {
+      instruction: string;
+      index: number;
+      imageUrl?: string | null;
+    }[];
   }[];
 }
 
@@ -1001,6 +1005,7 @@ export const recipeRouter = router({
         const recipe = await createRecipe(ctx.db, ctx.user.id, {
           ...input,
           images: preparedImages.images,
+          instructionSections: preparedImages.instructionSections,
           nutrition: subscriptionStatus.isPro
             ? (input.nutrition as any)
             : undefined,
@@ -1066,6 +1071,7 @@ export const recipeRouter = router({
         const recipe = await updateRecipe(ctx.db, ctx.user.id, {
           ...input,
           images: preparedImages.images,
+          instructionSections: preparedImages.instructionSections,
           nutrition: subscriptionStatus.isPro
             ? (input.nutrition as any)
             : undefined,

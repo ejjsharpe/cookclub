@@ -70,16 +70,28 @@ function createSelectBuilder(result: unknown[]) {
 function createMockDb(
   selectResults: unknown[][],
   deleteReturning: unknown[] = [{ id: "user-1" }],
+  updateReturning: unknown[] = [{ id: "user-1" }],
 ) {
   const queuedSelectResults = [...selectResults];
   const deleteBuilder = {
     returning: vi.fn().mockResolvedValue(deleteReturning),
     where: vi.fn(() => deleteBuilder),
   };
+  let updateSet: unknown = null;
+  const updateBuilder = {
+    set: vi.fn((values: unknown) => {
+      updateSet = values;
+      return updateBuilder;
+    }),
+    where: vi.fn(() => updateBuilder),
+    returning: vi.fn().mockResolvedValue(updateReturning),
+  };
 
   return {
     delete: vi.fn(() => deleteBuilder),
     select: vi.fn(() => createSelectBuilder(queuedSelectResults.shift() ?? [])),
+    update: vi.fn(() => updateBuilder),
+    _getUpdateSet: () => updateSet,
   };
 }
 
@@ -100,6 +112,112 @@ function createMockContext(
     waitUntil: vi.fn(),
   };
 }
+
+describe("userRouter.getUser", () => {
+  it("rehosts external OAuth avatars through the image service", async () => {
+    const env = createMockEnv();
+    env.IMAGE_SERVICE.uploadFromUrl = vi.fn().mockResolvedValue({
+      success: true,
+      publicUrl: "https://images.example.com/avatars/user-1.jpg",
+      key: "avatars/user-1.jpg",
+    });
+    const updatedUser = {
+      id: "user-1",
+      name: "Test User",
+      image: "https://images.example.com/avatars/user-1.jpg",
+    };
+    const db = createMockDb(
+      [
+        [
+          {
+            id: "user-1",
+            name: "Test User",
+            image: "https://lh3.googleusercontent.com/avatar.jpg",
+          },
+        ],
+      ],
+      [{ id: "user-1" }],
+      [updatedUser],
+    );
+    const ctx = createMockContext(db, env);
+    const caller = userRouter.createCaller(ctx as any);
+
+    await expect(caller.getUser()).resolves.toEqual({ user: updatedUser });
+    expect(env.IMAGE_SERVICE.uploadFromUrl).toHaveBeenCalledWith(
+      "https://lh3.googleusercontent.com/avatar.jpg",
+      "avatars/user-1.jpg",
+    );
+    expect(db._getUpdateSet()).toEqual(
+      expect.objectContaining({
+        image: "https://images.example.com/avatars/user-1.jpg",
+      }),
+    );
+  });
+
+  it("clears external OAuth avatars when rehosting fails", async () => {
+    const env = createMockEnv();
+    env.IMAGE_SERVICE.uploadFromUrl = vi.fn().mockResolvedValue({
+      success: false,
+      error: "Avatar unavailable",
+    });
+    const db = createMockDb([
+      [
+        {
+          id: "user-1",
+          name: "Test User",
+          image: "https://lh3.googleusercontent.com/avatar.jpg",
+        },
+      ],
+    ]);
+    const ctx = createMockContext(db, env);
+    const caller = userRouter.createCaller(ctx as any);
+
+    await caller.getUser();
+
+    expect(db._getUpdateSet()).toEqual(
+      expect.objectContaining({
+        image: null,
+      }),
+    );
+  });
+});
+
+describe("userRouter profile inputs", () => {
+  it("ignores raw image input on profile updates", async () => {
+    const db = createMockDb([[], []]);
+    const ctx = createMockContext(db);
+    const caller = userRouter.createCaller(ctx as any);
+
+    await caller.updateProfile({
+      name: "Updated User",
+      image: "https://example.com/raw-avatar.jpg",
+    } as any);
+
+    expect(db._getUpdateSet()).toEqual(
+      expect.not.objectContaining({
+        image: "https://example.com/raw-avatar.jpg",
+      }),
+    );
+  });
+
+  it("ignores raw image input when completing onboarding", async () => {
+    const db = createMockDb([[]]);
+    const ctx = createMockContext(db);
+    const caller = userRouter.createCaller(ctx as any);
+
+    await caller.completeOnboarding({
+      username: "cook_user",
+      name: "Cook User",
+      image: "file:///tmp/avatar.jpg",
+    } as any);
+
+    expect(db._getUpdateSet()).toEqual(
+      expect.not.objectContaining({
+        image: "file:///tmp/avatar.jpg",
+      }),
+    );
+  });
+});
 
 describe("userRouter.deleteAccount", () => {
   it("deletes the account and schedules cleanup for unreferenced account image keys", async () => {

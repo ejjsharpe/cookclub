@@ -1,9 +1,12 @@
 import {
   IMAGE_TRANSFORM_PRESETS,
+  imageKeyFromPublicUrl,
   type ImageTransformPresetName,
   type PublicImageAsset,
 } from "@repo/contracts/images";
 import { PixelRatio } from "react-native";
+
+import { getImagePublicUrl } from "@/lib/runtimeConfig";
 
 export const IMAGE_REQUEST_HEADERS = {
   Accept: "image/avif,image/webp,image/*,*/*",
@@ -33,12 +36,6 @@ const LEGACY_PRESET_MAP: Record<LegacyImagePreset, ImageTransformPresetName> = {
   "step-full": "detail_1600",
 };
 
-const TRANSFORMABLE_HOSTS = new Set([
-  "images.cookclub.app",
-  "images.example.com",
-]);
-const TRANSFORMABLE_LOCAL_PORTS = new Set(["8789"]);
-
 export function isPublicImageAsset(
   image: ImageSourceAsset,
 ): image is PublicImageAsset {
@@ -63,15 +60,8 @@ function normalizePreset(preset: ImagePreset): ImageTransformPresetName | null {
   return LEGACY_PRESET_MAP[preset as LegacyImagePreset];
 }
 
-function isTransformableUrl(url: URL): boolean {
-  if (TRANSFORMABLE_HOSTS.has(url.hostname)) return true;
-  if (
-    (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
-    TRANSFORMABLE_LOCAL_PORTS.has(url.port)
-  ) {
-    return true;
-  }
-  return false;
+function isHttpUrl(url: URL): boolean {
+  return url.protocol === "http:" || url.protocol === "https:";
 }
 
 export function getImageUrl(
@@ -82,7 +72,6 @@ export function getImageUrl(
   if (!rawUrl) return undefined;
 
   const normalizedPreset = normalizePreset(preset);
-  if (!normalizedPreset) return rawUrl;
 
   let url: URL;
   try {
@@ -91,7 +80,12 @@ export function getImageUrl(
     return rawUrl;
   }
 
-  if (!isTransformableUrl(url)) return rawUrl;
+  if (!isHttpUrl(url)) return rawUrl;
+
+  const imagePublicUrl = getImagePublicUrl();
+  if (!imageKeyFromPublicUrl(rawUrl, imagePublicUrl)) return undefined;
+
+  if (!normalizedPreset) return rawUrl;
 
   const version = url.searchParams.get("v");
   url.search = "";

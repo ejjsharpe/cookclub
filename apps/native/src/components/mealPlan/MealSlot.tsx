@@ -106,6 +106,9 @@ const SlotContent = ({
 }) => {
   const { theme } = useUnistyles();
   const animatedTheme = useAnimatedTheme();
+  const recipeImageUrl = entry?.recipeImageUrl
+    ? getImageUrl(entry.recipeImageUrl, "avatar-sm")
+    : undefined;
 
   const backgroundStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
@@ -125,10 +128,10 @@ const SlotContent = ({
           <Animated.View style={[styles.slotInner, backgroundStyle]}>
             {/* Left: Image or Icon container */}
             {entry ? (
-              entry.recipeImageUrl ? (
+              recipeImageUrl ? (
                 <Image
                   source={{
-                    uri: getImageUrl(entry.recipeImageUrl, "avatar-sm"),
+                    uri: recipeImageUrl,
                   }}
                   style={styles.recipeImage}
                   contentFit="cover"

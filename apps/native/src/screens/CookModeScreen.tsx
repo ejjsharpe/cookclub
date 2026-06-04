@@ -128,6 +128,9 @@ const InstructionListItem = ({
 
     return { opacity };
   });
+  const imageUrl = item.imageUrl
+    ? getImageUrl(item.imageUrl, "step-full")
+    : undefined;
 
   return (
     <Animated.View
@@ -144,10 +147,10 @@ const InstructionListItem = ({
 
       <Text style={styles.instructionText}>{item.instruction}</Text>
 
-      {item.imageUrl && (
+      {imageUrl && (
         <View style={styles.imageContainer}>
           <Image
-            source={{ uri: getImageUrl(item.imageUrl, "step-full") }}
+            source={{ uri: imageUrl }}
             style={styles.instructionImage}
             contentFit="cover"
           />

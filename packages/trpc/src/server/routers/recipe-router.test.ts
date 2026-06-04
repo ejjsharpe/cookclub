@@ -639,6 +639,65 @@ describe("recipeRouter - activity integration", () => {
 
       expect(mockEnv.IMAGE_SERVICE.delete).not.toHaveBeenCalled();
     });
+
+    it("promotes instruction image URLs before creating a recipe", async () => {
+      mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.postRecipe({
+        ...validRecipeInput,
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                instruction: "Mix ingredients",
+                index: 0,
+                imageUrl:
+                  "https://images.example.com/temp/generated/step.jpg",
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(mockCreateRecipe).toHaveBeenCalledWith(
+        mockDb,
+        "test-user-id",
+        expect.objectContaining({
+          instructionSections: [
+            {
+              name: null,
+              instructions: [
+                expect.objectContaining({
+                  imageUrl: expect.stringMatching(
+                    /^https:\/\/images\.example\.com\/recipes\/instructions\/.+\/0\/.+\.jpg$/,
+                  ),
+                }),
+              ],
+            },
+          ],
+        }),
+      );
+    });
+
+    it("rejects recipe creation when required cover image preparation fails", async () => {
+      mockEnv.IMAGE_SERVICE.uploadFromUrl.mockResolvedValueOnce({
+        success: false,
+        error: "Remote cover unavailable",
+      });
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(caller.postRecipe(validRecipeInput)).rejects.toThrow(
+        "Failed to prepare image: Remote cover unavailable",
+      );
+
+      expect(mockCreateRecipe).not.toHaveBeenCalled();
+    });
   });
 
   describe("updateRecipe", () => {
@@ -742,6 +801,56 @@ describe("recipeRouter - activity integration", () => {
       expect(mockEnv.IMAGE_SERVICE.delete).toHaveBeenCalledWith([
         expect.stringMatching(/^recipes\/covers\/.+\/.+\.jpg$/),
       ]);
+    });
+
+    it("drops failed external instruction images before updating a recipe", async () => {
+      mockEnv.IMAGE_SERVICE.uploadFromUrl
+        .mockResolvedValueOnce({
+          success: true,
+          key: "recipes/covers/group/img.jpg",
+          publicUrl: "https://images.example.com/recipes/covers/group/img.jpg",
+          asset: createAsset("recipes/covers/group/img.jpg"),
+        })
+        .mockResolvedValueOnce({
+          success: false,
+          error: "Step image unavailable",
+        });
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.updateRecipe({
+        ...validRecipeInput,
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                instruction: "Mix ingredients",
+                index: 0,
+                imageUrl: "https://example.com/step.jpg",
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(mockUpdateRecipe).toHaveBeenCalledWith(
+        mockDb,
+        "test-user-id",
+        expect.objectContaining({
+          instructionSections: [
+            {
+              name: null,
+              instructions: [
+                expect.objectContaining({
+                  imageUrl: null,
+                }),
+              ],
+            },
+          ],
+        }),
+      );
     });
   });
 

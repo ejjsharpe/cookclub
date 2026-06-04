@@ -36,15 +36,18 @@ const ImageGrid = memo(function ImageGrid({
   images: string[];
   width?: number;
 }) {
-  const count = Math.min(images.length, 4);
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
   const imageSources = useMemo(
     () =>
       images
         .slice(0, 4)
-        .map((image) => ({ uri: getImageUrl(image, "recipe-thumb") })),
+        .flatMap((image) => {
+          const uri = getImageUrl(image, "recipe-thumb");
+          return uri ? [{ uri }] : [];
+        }),
     [images],
   );
+  const count = Math.min(imageSources.length, 4);
 
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     const { width: layoutWidth } = event.nativeEvent.layout;

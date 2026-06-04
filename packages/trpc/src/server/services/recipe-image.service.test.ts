@@ -290,6 +290,135 @@ describe("recipe image service", () => {
     ]);
   });
 
+  it("moves hosted temp instruction images into recipe-owned step keys", async () => {
+    const imageService = createImageService();
+    imageService.move.mockImplementation(
+      async (moves: { from: string; to: string }[]) => ({
+        success: true,
+        results: moves.map((move) => ({
+          ...move,
+          success: true,
+          asset: createAsset(move.to),
+        })),
+      }),
+    );
+
+    const result = await prepareRecipeImages(
+      {
+        images: [createAsset("recipes/covers/existing/img.jpg")],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                index: 0,
+                instruction: "Stir.",
+                imageUrl:
+                  "https://images.example.com/temp/generated/step-image.jpg",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        imageService,
+        imagePublicUrl: "https://images.example.com",
+        ownerId: "user-id",
+      },
+    );
+
+    expect(imageService.move).toHaveBeenCalledWith(
+      [
+        {
+          from: "temp/generated/step-image.jpg",
+          to: expect.stringMatching(
+            /^recipes\/instructions\/.+\/0\/.+\.jpg$/,
+          ),
+        },
+      ],
+      "user-id",
+    );
+    expect(result.instructionSections[0]?.instructions[0]?.imageUrl).toMatch(
+      /^https:\/\/images\.example\.com\/recipes\/instructions\/.+\/0\/.+\.jpg$/,
+    );
+  });
+
+  it("copies hosted non-temp instruction images into recipe-owned step keys", async () => {
+    const imageService = createImageService();
+    imageService.uploadFromUrl.mockImplementation(
+      async (_url: string, key: string) => ({
+        success: true,
+        key,
+        publicUrl: `https://images.example.com/${key}`,
+        asset: createAsset(key),
+      }),
+    );
+
+    const result = await prepareRecipeImages(
+      {
+        images: [createAsset("recipes/covers/existing/img.jpg")],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                index: 0,
+                instruction: "Serve.",
+                imageUrl: "https://images.example.com/social/youtube/step.jpg",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        imageService,
+        imagePublicUrl: "https://images.example.com",
+        ownerId: "user-id",
+      },
+    );
+
+    expect(imageService.uploadFromUrl).toHaveBeenCalledWith(
+      "https://images.example.com/social/youtube/step.jpg",
+      expect.stringMatching(/^recipes\/instructions\/.+\/0\/.+\.jpg$/),
+    );
+    expect(result.instructionSections[0]?.instructions[0]?.imageUrl).toMatch(
+      /^https:\/\/images\.example\.com\/recipes\/instructions\/.+\/0\/.+\.jpg$/,
+    );
+  });
+
+  it("drops external instruction images when upload fails", async () => {
+    const imageService = createImageService();
+    imageService.uploadFromUrl.mockResolvedValue({
+      success: false,
+      error: "Remote image unavailable",
+    });
+
+    const result = await prepareRecipeImages(
+      {
+        images: [createAsset("recipes/covers/existing/img.jpg")],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                index: 0,
+                instruction: "Garnish.",
+                imageUrl: "https://example.com/step.jpg",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        imageService,
+        imagePublicUrl: "https://images.example.com",
+        ownerId: "user-id",
+      },
+    );
+
+    expect(result.instructionSections[0]?.instructions[0]?.imageUrl).toBeNull();
+  });
+
   it("deletes moved objects during compensation cleanup", async () => {
     const imageService = createImageService();
 

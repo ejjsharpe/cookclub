@@ -8,6 +8,7 @@ import {
   selectFeedImagePreset,
   type ImageSourceAsset,
 } from "./imageUrl";
+import { getImagePublicUrl } from "@/lib/runtimeConfig";
 
 vi.mock("react-native", () => ({
   PixelRatio: {
@@ -15,32 +16,41 @@ vi.mock("react-native", () => ({
   },
 }));
 
+vi.mock("@/lib/runtimeConfig", () => ({
+  getImagePublicUrl: vi.fn(() => "https://images.cookclub.app"),
+}));
+
 describe("image URL transforms", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getImagePublicUrl).mockReturnValue(
+      "https://images.cookclub.app",
+    );
   });
 
-  it("adds named presets only for exact transformable hosts", () => {
+  it("adds named presets only for the configured image service host", () => {
     expect(
       getImageUrl("https://images.cookclub.app/recipes/a.jpg", "feed_720"),
     ).toBe("https://images.cookclub.app/recipes/a.jpg?preset=feed_720");
     expect(
       getImageUrl("https://cdn.example.com/recipes/a.jpg", "feed_720"),
-    ).toBe("https://cdn.example.com/recipes/a.jpg");
+    ).toBeUndefined();
     expect(
       getImageUrl(
         "https://images.cookclub.app.evil.test/recipes/a.jpg",
         "feed_720",
       ),
-    ).toBe("https://images.cookclub.app.evil.test/recipes/a.jpg");
+    ).toBeUndefined();
   });
 
   it("supports localhost image Worker URLs", () => {
+    vi.mocked(getImagePublicUrl).mockReturnValue("http://localhost:8789");
+
     expect(getImageUrl("http://localhost:8789/temp/a.jpg", "thumb_200")).toBe(
       "http://localhost:8789/temp/a.jpg?preset=thumb_200",
     );
     expect(getImageUrl("http://localhost:8790/temp/a.jpg", "thumb_200")).toBe(
-      "http://localhost:8790/temp/a.jpg",
+      undefined,
     );
   });
 
@@ -66,6 +76,15 @@ describe("image URL transforms", () => {
     expect(
       getImageUrl("https://images.cookclub.app/recipes/a.jpg?v=42", "full"),
     ).toBe("https://images.cookclub.app/recipes/a.jpg?v=42");
+    expect(getImageUrl("https://example.com/recipes/a.jpg", "full")).toBe(
+      undefined,
+    );
+  });
+
+  it("allows local file previews", () => {
+    expect(getImageUrl("file:///tmp/photo.jpg", "recipe-thumb")).toBe(
+      "file:///tmp/photo.jpg",
+    );
   });
 
   it("accepts PublicImageAsset values", () => {

@@ -109,6 +109,19 @@ function createMockEnv() {
         return Promise.resolve();
       }),
     },
+    IMAGE_PUBLIC_URL: "https://images.example.com",
+    IMAGE_SERVICE: {
+      uploadFromUrl: vi.fn(async (_sourceUrl: string, key: string) => ({
+        success: true,
+        publicUrl: `https://images.example.com/${key}`,
+        key,
+      })),
+      uploadImage: vi.fn(async () => ({
+        success: true,
+        publicUrl: "https://images.example.com/temp/generated/source.jpg",
+        key: "temp/generated/source.jpg",
+      })),
+    },
     _kvStore: kvStore,
   };
 }
@@ -187,6 +200,176 @@ describe("RecipeAI.parse()", () => {
         expect(result.metadata.canonicalUrl).toBe("https://example.com/recipe");
         expect(result.metadata.diagnostics?.selectedAttempt).toBeTruthy();
         expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      }
+    });
+
+    it("rehosts structured cover and HowToStep images before returning", async () => {
+      const structuredHtml = `
+        <html>
+          <head>
+            <script type="application/ld+json">
+              ${JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Recipe",
+                name: "Carrot Soup",
+                image: ["https://example.com/cover.jpg"],
+                recipeYield: "2 servings",
+                recipeIngredient: ["1 cup stock", "2 carrots"],
+                recipeInstructions: [
+                  {
+                    "@type": "HowToStep",
+                    text: "Chop the carrots.",
+                    image: "https://example.com/step.jpg",
+                  },
+                  {
+                    "@type": "HowToStep",
+                    text: "Simmer until tender.",
+                  },
+                ],
+              })}
+            </script>
+          </head>
+          <body></body>
+        </html>
+      `;
+      const uploadFromUrl = vi.fn(
+        async (_sourceUrl: string, destinationKey: string) => ({
+          success: true,
+          publicUrl: `https://images.example.com/${destinationKey}`,
+          key: destinationKey,
+        }),
+      );
+      mockEnv.IMAGE_SERVICE.uploadFromUrl = uploadFromUrl;
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "text/html" }),
+        arrayBuffer: () =>
+          Promise.resolve(new TextEncoder().encode(structuredHtml).buffer),
+        text: () => Promise.resolve(structuredHtml),
+      });
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://example.com/recipe",
+        structuredOnly: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(uploadFromUrl).toHaveBeenCalledWith(
+        "https://example.com/cover.jpg",
+        expect.stringMatching(/^temp\/generated\/[a-zA-Z0-9-]+\.jpg$/),
+      );
+      expect(uploadFromUrl).toHaveBeenCalledWith(
+        "https://example.com/step.jpg",
+        expect.stringMatching(/^temp\/generated\/[a-zA-Z0-9-]+\.jpg$/),
+      );
+
+      if (result.success) {
+        expect(result.data.images).toEqual([
+          expect.stringMatching(
+            /^https:\/\/images\.example\.com\/temp\/generated\/[a-zA-Z0-9-]+\.jpg$/,
+          ),
+        ]);
+        expect(
+          result.data.instructionSections[0]?.instructions[0]?.imageUrl,
+        ).toMatch(
+          /^https:\/\/images\.example\.com\/temp\/generated\/[a-zA-Z0-9-]+\.jpg$/,
+        );
+      }
+
+      const cachedRecipe = JSON.parse(
+        mockEnv.RECIPE_CACHE.put.mock.calls[0]?.[1] as string,
+      );
+      expect(cachedRecipe.images).toEqual(["https://example.com/cover.jpg"]);
+      expect(
+        cachedRecipe.instructionSections[0].instructions[0].imageUrl,
+      ).toBe("https://example.com/step.jpg");
+    });
+
+    it("drops failed step-image rehosting while keeping a hosted cover", async () => {
+      const cachedRecipe = {
+        name: "Cached Soup",
+        images: ["https://example.com/cover.jpg"],
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, name: "stock" },
+              { index: 1, name: "carrots" },
+            ],
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                index: 0,
+                instruction: "Chop the carrots.",
+                imageUrl: "https://example.com/step.jpg",
+              },
+            ],
+          },
+        ],
+      };
+      mockEnv.RECIPE_CACHE.get = vi.fn().mockResolvedValue(cachedRecipe);
+      mockEnv.IMAGE_SERVICE.uploadFromUrl = vi
+        .fn()
+        .mockResolvedValueOnce({
+          success: true,
+          publicUrl: "https://images.example.com/temp/generated/cover.jpg",
+          key: "temp/generated/cover.jpg",
+        })
+        .mockResolvedValueOnce({
+          success: false,
+          error: "Step unavailable",
+        });
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://example.com/cached",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.images).toEqual([
+          "https://images.example.com/temp/generated/cover.jpg",
+        ]);
+        expect(
+          result.data.instructionSections[0]?.instructions[0]?.imageUrl,
+        ).toBeNull();
+      }
+    });
+
+    it("rejects parsed recipes when all cover image rehosting fails", async () => {
+      const cachedRecipe = {
+        name: "Cached Soup",
+        images: ["https://example.com/cover.jpg"],
+        ingredientSections: [
+          { name: null, ingredients: [{ index: 0, name: "stock" }] },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [{ index: 0, instruction: "Simmer the soup." }],
+          },
+        ],
+      };
+      mockEnv.RECIPE_CACHE.get = vi.fn().mockResolvedValue(cachedRecipe);
+      mockEnv.IMAGE_SERVICE.uploadFromUrl = vi.fn().mockResolvedValue({
+        success: false,
+        error: "Cover unavailable",
+      });
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://example.com/cached",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("IMAGE_REHOST_FAILED");
       }
     });
 
@@ -413,7 +596,9 @@ describe("RecipeAI.parse()", () => {
           "https://example.com/alternate-cake",
         );
         expect(result.data.images).toEqual([
-          "https://example.com/amp-cake.jpg",
+          expect.stringMatching(
+            /^https:\/\/images\.example\.com\/temp\/generated\/[a-zA-Z0-9-]+\.jpg$/,
+          ),
         ]);
         expect(result.metadata.parseMethod).toBe("schema_org");
       }
@@ -812,7 +997,11 @@ describe("RecipeAI.parse()", () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.name).toBe("Tomato Pasta");
-        expect(result.data.images).toEqual(["https://example.com/youtube.jpg"]);
+        expect(result.data.images).toEqual([
+          expect.stringMatching(
+            /^https:\/\/images\.example\.com\/social\/youtube\/[a-zA-Z0-9-]+\.jpg$/,
+          ),
+        ]);
         expect(result.metadata.parseMethod).toBe("ai_only");
       }
     });

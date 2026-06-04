@@ -1,7 +1,9 @@
 import Constants from "expo-constants";
 
 const PRODUCTION_API_BASE_URL = "https://api.cookclub.app";
+const PRODUCTION_IMAGE_PUBLIC_URL = "https://images.cookclub.app";
 const LOCAL_SERVER_PORT = "8787";
+const LOCAL_IMAGE_PORT = "8789";
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -40,4 +42,19 @@ export function getApiUrl(): string {
   }
 
   return `${getAuthBaseUrl()}/trpc`;
+}
+
+export function getImagePublicUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_IMAGE_PUBLIC_URL;
+  if (configured) {
+    return trimTrailingSlash(configured);
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return PRODUCTION_IMAGE_PUBLIC_URL;
+  }
+
+  const debuggerHost = Constants.expoConfig?.hostUri;
+  const localhost = debuggerHost?.split(":")[0] || "localhost";
+  return `http://${localhost}:${LOCAL_IMAGE_PORT}`;
 }

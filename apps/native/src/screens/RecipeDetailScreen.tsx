@@ -1490,7 +1490,7 @@ export const RecipeDetailScreen = () => {
       progress !== undefined && progress >= 0 && progress < 100;
     const preset = selectDetailImagePreset(SCREEN_WIDTH);
     const imageUrl = item.isRemote
-      ? (getImageUrl(item.asset ?? item.uri, preset) ?? item.uri)
+      ? getImageUrl(item.asset ?? item.uri, preset)
       : item.uri;
 
     return (
@@ -1503,14 +1503,14 @@ export const RecipeDetailScreen = () => {
             contentFit="cover"
             transition={200}
           />
-        ) : (
+        ) : imageUrl ? (
           <Image
             source={{ uri: imageUrl }}
             style={styles.recipeImage}
             contentFit="cover"
             transition={200}
           />
-        )}
+        ) : null}
         {isUploading && (
           <View style={styles.imageUploadOverlay}>
             <ActivityIndicator color="white" />
@@ -1983,6 +1983,9 @@ export const RecipeDetailScreen = () => {
 
             {section.instructions.map((item) => {
               globalStepIndex++;
+              const stepImageUrl = item.imageUrl
+                ? getImageUrl(item.imageUrl, "step-thumb")
+                : undefined;
               return (
                 <View key={item.id} style={styles.instructionItem}>
                   <View style={styles.stepMarkerColumn}>
@@ -1994,7 +1997,7 @@ export const RecipeDetailScreen = () => {
                     <Text style={styles.instructionText}>
                       {item.instruction}
                     </Text>
-                    {item.imageUrl && (
+                    {stepImageUrl && (
                       <>
                         <VSpace size={14} />
                         <TouchableOpacity
@@ -2003,7 +2006,7 @@ export const RecipeDetailScreen = () => {
                         >
                           <Image
                             source={{
-                              uri: getImageUrl(item.imageUrl, "step-thumb"),
+                              uri: stepImageUrl,
                             }}
                             style={styles.stepImage}
                             contentFit="cover"
@@ -2060,6 +2063,9 @@ export const RecipeDetailScreen = () => {
 
             {section.instructions.map((instruction) => {
               globalStepIndex++;
+              const stepImageUrl = instruction.imageUrl
+                ? getImageUrl(instruction.imageUrl, "step-thumb")
+                : undefined;
               return (
                 <Animated.View
                   key={instruction.id}
@@ -2084,14 +2090,11 @@ export const RecipeDetailScreen = () => {
                       style={styles.editInstructionInput}
                       multiline
                     />
-                    {instruction.imageUrl ? (
+                    {stepImageUrl ? (
                       <View style={styles.editStepImageWrap}>
                         <Image
                           source={{
-                            uri: getImageUrl(
-                              instruction.imageUrl,
-                              "step-thumb",
-                            ),
+                            uri: stepImageUrl,
                           }}
                           style={styles.stepImage}
                           contentFit="cover"
@@ -2380,6 +2383,12 @@ export const RecipeDetailScreen = () => {
         (total, section) => total + section.instructions.length,
         0,
       ) ?? 0);
+  const expandedStepImageUrl = expandedImageUrl
+    ? getImageUrl(expandedImageUrl, "step-full")
+    : undefined;
+  const ownerAvatarUrl = recipe?.owner.image
+    ? getImageUrl(recipe.owner.image, "avatar-sm")
+    : undefined;
 
   return (
     <View style={styles.screen}>
@@ -2685,10 +2694,10 @@ export const RecipeDetailScreen = () => {
                     }
                     activeOpacity={0.7}
                   >
-                    {recipe.owner.image ? (
+                    {ownerAvatarUrl ? (
                       <Image
                         source={{
-                          uri: getImageUrl(recipe.owner.image, "avatar-sm"),
+                          uri: ownerAvatarUrl,
                         }}
                         style={styles.authorAvatarImage}
                       />
@@ -2842,7 +2851,7 @@ export const RecipeDetailScreen = () => {
       ) : null}
 
       <Modal
-        visible={expandedImageUrl !== null}
+        visible={expandedStepImageUrl !== undefined}
         transparent
         animationType="fade"
         onRequestClose={() => setExpandedImageUrl(null)}
@@ -2860,9 +2869,9 @@ export const RecipeDetailScreen = () => {
               <Ionicons name="close" size={32} color="#fff" />
             </TouchableOpacity>
 
-            {expandedImageUrl && (
+            {expandedStepImageUrl && (
               <Image
-                source={{ uri: getImageUrl(expandedImageUrl, "step-full") }}
+                source={{ uri: expandedStepImageUrl }}
                 style={styles.expandedImage}
                 contentFit="contain"
               />

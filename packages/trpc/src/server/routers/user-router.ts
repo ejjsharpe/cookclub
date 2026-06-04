@@ -1,4 +1,10 @@
 import {
+  imageKeyFromPublicUrl,
+  isHostedImageUrl,
+  normalizeImagePublicUrl,
+  publicImageUrlForKey,
+} from "@repo/contracts/images";
+import {
   cookingReviewImages,
   cookingReviews,
   instructionSections,
@@ -37,7 +43,6 @@ const UpdateProfileValidator = type({
   "name?": "string",
   "username?": "string",
   "bio?": "string | null",
-  "image?": "string | null",
   "measurementPreference?": "string",
 });
 
@@ -53,7 +58,6 @@ const CompleteOnboardingValidator = type({
   username: "string",
   "name?": "string",
   "bio?": "string | null",
-  "image?": "string | null",
   "measurementPreference?": "string",
 });
 
@@ -81,48 +85,57 @@ function validateUsername(username: string): {
   return { valid: true, reason: null };
 }
 
-function imageKeyFromPublicUrl(
-  url: string | null | undefined,
-  publicUrl: string,
-) {
-  if (!url) return null;
-
-  const baseUrl = `${publicUrl.replace(/\/+$/, "")}/`;
-  if (!url.startsWith(baseUrl)) return null;
-
-  const encodedKey = url.slice(baseUrl.length).split(/[?#]/)[0] ?? "";
-  let key: string;
-
-  try {
-    key = decodeURIComponent(encodedKey);
-  } catch {
-    return null;
-  }
-
-  if (!key || key.startsWith("/") || key.split("/").includes("..")) {
-    return null;
-  }
-
-  return key;
-}
-
 function imageReferenceFromPublicUrl(
   url: string | null | undefined,
   publicUrl: string,
 ) {
-  if (!url) return null;
-
-  const baseUrl = `${publicUrl.replace(/\/+$/, "")}/`;
-  if (!url.startsWith(baseUrl)) return null;
-
-  const encodedKey = url.slice(baseUrl.length).split(/[?#]/)[0] ?? "";
   const key = imageKeyFromPublicUrl(url, publicUrl);
   if (!key) return null;
+  const baseUrl = normalizeImagePublicUrl(publicUrl);
 
   return {
     key,
-    urls: [url, `${baseUrl}${encodedKey}`],
+    urls: [url!, publicImageUrlForKey(baseUrl, key)],
   };
+}
+
+function isHttpUrl(url: string | null | undefined): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function rehostExternalUserImage(
+  ctx: Pick<Context, "db" | "env"> & { user: { id: string } },
+  dbUser: typeof user.$inferSelect,
+) {
+  if (
+    !isHttpUrl(dbUser.image) ||
+    isHostedImageUrl(dbUser.image, ctx.env.IMAGE_PUBLIC_URL)
+  ) {
+    return dbUser;
+  }
+
+  const destinationKey = `avatars/${ctx.user.id}.jpg`;
+  const uploadResult = await ctx.env.IMAGE_SERVICE.uploadFromUrl(
+    dbUser.image,
+    destinationKey,
+  );
+  const imageUrl = uploadResult.success
+    ? (uploadResult.asset?.publicUrl ?? uploadResult.publicUrl ?? null)
+    : null;
+
+  const [updatedUser] = await ctx.db
+    .update(user)
+    .set({ image: imageUrl, updatedAt: new Date() })
+    .where(eq(user.id, ctx.user.id))
+    .returning();
+
+  return updatedUser ?? { ...dbUser, image: imageUrl };
 }
 
 async function getCandidateImageReferencesForAccountDeletion(
@@ -287,7 +300,7 @@ export const userRouter = router({
       .limit(1);
 
     return {
-      user: dbUser ?? null,
+      user: dbUser ? await rehostExternalUserImage(ctx, dbUser) : null,
     };
   }),
 
@@ -350,7 +363,6 @@ export const userRouter = router({
           ...(input.name !== undefined && { name: input.name }),
           ...(input.username !== undefined && { username: input.username }),
           ...(input.bio !== undefined && { bio: input.bio }),
-          ...(input.image !== undefined && { image: input.image }),
           ...(input.measurementPreference !== undefined && {
             measurementPreference: input.measurementPreference,
           }),
@@ -394,7 +406,6 @@ export const userRouter = router({
           username: input.username,
           ...(input.name !== undefined && { name: input.name }),
           ...(input.bio !== undefined && { bio: input.bio }),
-          ...(input.image !== undefined && { image: input.image }),
           ...(input.measurementPreference !== undefined && {
             measurementPreference: input.measurementPreference,
           }),
@@ -438,7 +449,9 @@ export const userRouter = router({
       }
 
       // Construct public URL
-      const imageUrl = `${ctx.env.IMAGE_PUBLIC_URL}/${destinationKey}`;
+      const imageUrl =
+        moveResult.results[0]?.asset?.publicUrl ??
+        publicImageUrlForKey(ctx.env.IMAGE_PUBLIC_URL, destinationKey);
 
       // Update user record
       const [updatedUser] = await ctx.db

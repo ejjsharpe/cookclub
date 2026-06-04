@@ -1,9 +1,25 @@
 import type { ImageService, PublicImageAsset } from "@repo/contracts/images";
+import {
+  imageKeyFromPublicUrl,
+  publicImageUrlForKey,
+} from "@repo/contracts/images";
 import { TRPCError } from "@trpc/server";
+
+interface RecipeInstructionImageInput {
+  index: number;
+  instruction: string;
+  imageUrl?: string | null;
+}
+
+interface RecipeInstructionSectionInput {
+  name: string | null;
+  instructions: RecipeInstructionImageInput[];
+}
 
 interface RecipeImageInput {
   images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
+  instructionSections?: RecipeInstructionSectionInput[];
 }
 
 interface PrepareRecipeImagesDeps {
@@ -14,6 +30,7 @@ interface PrepareRecipeImagesDeps {
 
 export interface PreparedRecipeImages {
   images: PublicImageAsset[];
+  instructionSections: RecipeInstructionSectionInput[];
   movedKeys: string[];
 }
 
@@ -25,20 +42,12 @@ function permanentRecipeImageKey(assetGroupId: string, extension = "jpg") {
   return `recipes/covers/${assetGroupId}/${crypto.randomUUID()}.${extension}`;
 }
 
-function imageKeyFromPublicUrl(url: string, publicUrl: string): string | null {
-  const baseUrl = `${publicUrl.replace(/\/+$/, "")}/`;
-  if (!url.startsWith(baseUrl)) return null;
-
-  const encodedKey = url.slice(baseUrl.length).split(/[?#]/)[0] ?? "";
-  try {
-    const key = decodeURIComponent(encodedKey);
-    if (!key || key.startsWith("/") || key.split("/").includes("..")) {
-      return null;
-    }
-    return key;
-  } catch {
-    return null;
-  }
+function permanentInstructionImageKey(
+  assetGroupId: string,
+  stepIndex: number,
+  extension = "jpg",
+) {
+  return `recipes/instructions/${assetGroupId}/${stepIndex}/${crypto.randomUUID()}.${extension}`;
 }
 
 function isPublicImageAsset(
@@ -60,7 +69,9 @@ async function prepareUploadedImages(
   assetGroupId: string,
 ): Promise<PreparedRecipeImages> {
   const imageUploadIds = input.imageUploadIds ?? [];
-  if (imageUploadIds.length === 0) return { images: [], movedKeys: [] };
+  if (imageUploadIds.length === 0) {
+    return { images: [], instructionSections: [], movedKeys: [] };
+  }
 
   const moves = imageUploadIds.map((uploadId) => ({
     from: uploadId,
@@ -98,6 +109,7 @@ async function prepareUploadedImages(
 
   return {
     images,
+    instructionSections: [],
     movedKeys: moves.map((move) => move.to),
   };
 }
@@ -108,7 +120,9 @@ async function prepareDirectImages(
   assetGroupId: string,
 ): Promise<PreparedRecipeImages> {
   const images = input.images ?? [];
-  if (images.length === 0) return { images: [], movedKeys: [] };
+  if (images.length === 0) {
+    return { images: [], instructionSections: [], movedKeys: [] };
+  }
 
   const preparedImages: PublicImageAsset[] = [];
   const movedKeys: string[] = [];
@@ -165,7 +179,126 @@ async function prepareDirectImages(
     }
   }
 
-  return { images: preparedImages, movedKeys };
+  return { images: preparedImages, instructionSections: [], movedKeys };
+}
+
+async function moveInstructionImage(
+  sourceKey: string,
+  destinationKey: string,
+  deps: PrepareRecipeImagesDeps,
+): Promise<string> {
+  const moveResult = await deps.imageService.move(
+    [{ from: sourceKey, to: destinationKey }],
+    deps.ownerId,
+  );
+  const result = moveResult.results[0];
+  if (!moveResult.success || !result?.success) {
+    throw new Error(result?.error || "Failed to move instruction image");
+  }
+
+  return publicImageUrlForKey(deps.imagePublicUrl, result.to);
+}
+
+async function uploadInstructionImage(
+  sourceUrl: string,
+  destinationKey: string,
+  deps: PrepareRecipeImagesDeps,
+): Promise<string> {
+  const result = await deps.imageService.uploadFromUrl(
+    sourceUrl,
+    destinationKey,
+  );
+  if (!result.success) {
+    throw new Error(result.error || "Failed to store instruction image");
+  }
+
+  return (
+    result.asset?.publicUrl ??
+    result.publicUrl ??
+    publicImageUrlForKey(deps.imagePublicUrl, result.key ?? destinationKey)
+  );
+}
+
+async function prepareInstructionImageUrl(
+  imageUrl: string | null | undefined,
+  deps: PrepareRecipeImagesDeps,
+  assetGroupId: string,
+  stepIndex: number,
+  movedKeys: string[],
+): Promise<string | null> {
+  if (!imageUrl) return null;
+
+  const existingKey = imageKeyFromPublicUrl(imageUrl, deps.imagePublicUrl);
+  const extension = existingKey ? extensionFromKey(existingKey) : "jpg";
+  const destinationKey = permanentInstructionImageKey(
+    assetGroupId,
+    stepIndex,
+    extension,
+  );
+
+  try {
+    if (existingKey?.startsWith("temp/")) {
+      const publicUrl = await moveInstructionImage(
+        existingKey,
+        destinationKey,
+        deps,
+      );
+      movedKeys.push(destinationKey);
+      return publicUrl;
+    }
+
+    const publicUrl = await uploadInstructionImage(
+      imageUrl,
+      destinationKey,
+      deps,
+    );
+    movedKeys.push(destinationKey);
+    return publicUrl;
+  } catch (error) {
+    console.warn(
+      "Dropping instruction image that could not be prepared:",
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
+
+async function prepareInstructionImages(
+  input: RecipeImageInput,
+  deps: PrepareRecipeImagesDeps,
+  assetGroupId: string,
+  movedKeys: string[],
+): Promise<RecipeInstructionSectionInput[]> {
+  const sections = input.instructionSections ?? [];
+  let stepIndex = 0;
+  const preparedSections: RecipeInstructionSectionInput[] = [];
+
+  for (const section of sections) {
+    const instructions: RecipeInstructionImageInput[] = [];
+
+    for (const instruction of section.instructions) {
+      const currentStepIndex = stepIndex;
+      stepIndex++;
+
+      instructions.push({
+        ...instruction,
+        imageUrl: await prepareInstructionImageUrl(
+          instruction.imageUrl,
+          deps,
+          assetGroupId,
+          currentStepIndex,
+          movedKeys,
+        ),
+      });
+    }
+
+    preparedSections.push({
+      ...section,
+      instructions,
+    });
+  }
+
+  return preparedSections;
 }
 
 export async function prepareRecipeImages(
@@ -186,8 +319,16 @@ export async function prepareRecipeImages(
     );
     movedKeys.push(...uploadedImages.movedKeys);
 
+    const instructionSections = await prepareInstructionImages(
+      input,
+      deps,
+      assetGroupId,
+      movedKeys,
+    );
+
     return {
       images: [...directImages.images, ...uploadedImages.images],
+      instructionSections,
       movedKeys,
     };
   } catch (error) {
