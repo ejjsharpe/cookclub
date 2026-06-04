@@ -125,7 +125,7 @@ interface RecipeImage {
   height?: number;
   contentType?: string;
   byteSize?: number;
-  previewDataUrl?: string;
+  thumbhash?: string;
 }
 
 function recipeImageToSource(image: RecipeImage): PublicImageAsset | string {
@@ -134,7 +134,7 @@ function recipeImageToSource(image: RecipeImage): PublicImageAsset | string {
     image.height &&
     image.contentType &&
     image.byteSize !== undefined &&
-    image.previewDataUrl !== undefined
+    image.thumbhash !== undefined
     ? {
         url: image.url,
         storageKey: image.storageKey,
@@ -142,7 +142,7 @@ function recipeImageToSource(image: RecipeImage): PublicImageAsset | string {
         height: image.height,
         contentType: image.contentType as PublicImageAsset["contentType"],
         byteSize: image.byteSize,
-        previewDataUrl: image.previewDataUrl,
+        thumbhash: image.thumbhash,
       }
     : image.url;
 }

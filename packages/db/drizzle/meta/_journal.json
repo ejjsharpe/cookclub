@@ -50,6 +50,13 @@
       "when": 1780483200000,
       "tag": "0006_image_asset_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780595156289,
+      "tag": "0007_smart_may_parker",
+      "breakpoints": true
     }
   ]
 }

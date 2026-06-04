@@ -9,7 +9,7 @@ export interface PublicImageAsset {
   height: number;
   contentType: ImageContentType;
   byteSize: number;
-  previewDataUrl: string;
+  thumbhash: string;
 }
 
 export interface StoredImageAsset extends PublicImageAsset {

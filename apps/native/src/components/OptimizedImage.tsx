@@ -26,8 +26,8 @@ export const OptimizedImage = memo(function OptimizedImage({
 }: OptimizedImageProps) {
   const uri = getImageUrl(image, preset);
   const placeholder =
-    isPublicImageAsset(image) && image.previewDataUrl
-      ? { uri: image.previewDataUrl }
+    isPublicImageAsset(image) && image.thumbhash
+      ? { thumbhash: image.thumbhash }
       : undefined;
   const resolvedRecyclingKey = useMemo(() => {
     if (recyclingKey) return recyclingKey;

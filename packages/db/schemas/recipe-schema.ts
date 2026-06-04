@@ -176,7 +176,7 @@ export const recipeImages = pgTable(
     height: integer("height").notNull(),
     contentType: text("content_type").notNull(),
     byteSize: integer("byte_size").notNull(),
-    previewDataUrl: text("preview_data_url").notNull(),
+    thumbhash: text("thumbhash").notNull(),
   },
   (table) => [
     index("recipe_images_recipe_id_idx").on(table.recipeId),

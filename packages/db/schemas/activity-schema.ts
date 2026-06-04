@@ -88,7 +88,7 @@ export const cookingReviewImages = pgTable(
     height: integer("height").notNull(),
     contentType: text("content_type").notNull(),
     byteSize: integer("byte_size").notNull(),
-    previewDataUrl: text("preview_data_url").notNull(),
+    thumbhash: text("thumbhash").notNull(),
     index: integer("index").notNull(), // for ordering
   },
   (table) => [

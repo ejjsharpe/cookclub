@@ -50,7 +50,7 @@ function isPublicImageAsset(
     "height" in image &&
     "contentType" in image &&
     "byteSize" in image &&
-    "previewDataUrl" in image
+    "thumbhash" in image
   );
 }
 

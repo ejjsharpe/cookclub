@@ -22,7 +22,7 @@ function createAsset(key: string) {
     height: 900,
     contentType: "image/jpeg" as const,
     byteSize: 1234,
-    previewDataUrl: "data:image/jpeg;base64,abc",
+    thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
     key,
     publicUrl: `https://images.example.com/${key}`,
   };
@@ -60,7 +60,7 @@ describe("recipe image service", () => {
       ),
       width: 1200,
       height: 900,
-      previewDataUrl: "data:image/jpeg;base64,abc",
+      thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
     });
     expect(result.movedKeys[0]).toMatch(/^recipes\/covers\/.+\/.+\.jpg$/);
   });
@@ -100,7 +100,7 @@ describe("recipe image service", () => {
     expect(result.images[0]?.url).toMatch(
       /^https:\/\/images\.example\.com\/recipes\/covers\/.+\/.+\.jpg$/,
     );
-    expect(result.images[0]?.previewDataUrl).toBe("data:image/jpeg;base64,abc");
+    expect(result.images[0]?.thumbhash).toBe("3OcRJYB4d3h/iIeHeEh3eIhw+j2w");
     expect(result.movedKeys[0]).toMatch(/^recipes\/covers\/.+\/.+\.jpg$/);
   });
 

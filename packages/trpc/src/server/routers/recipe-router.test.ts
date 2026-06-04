@@ -16,7 +16,7 @@ function createAsset(key: string) {
     height: 900,
     contentType: "image/jpeg" as const,
     byteSize: 1234,
-    previewDataUrl: "data:image/jpeg;base64,abc",
+    thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
     key,
     publicUrl: `https://images.example.com/${key}`,
   };
@@ -685,7 +685,7 @@ describe("recipeRouter - activity integration", () => {
               storageKey: expect.stringMatching(
                 /^recipes\/covers\/.+\/.+\.jpg$/,
               ),
-              previewDataUrl: "data:image/jpeg;base64,abc",
+              thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
             }),
           ],
           tagIds: [],

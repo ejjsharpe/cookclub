@@ -76,7 +76,7 @@ describe("image URL transforms", () => {
       height: 900,
       contentType: "image/jpeg",
       byteSize: 1234,
-      previewDataUrl: "data:image/jpeg;base64,abc",
+      thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
     };
 
     expect(getImageUrl(asset, "feed_720")).toBe(

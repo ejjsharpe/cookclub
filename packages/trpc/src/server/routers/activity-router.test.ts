@@ -33,7 +33,7 @@ function createReviewImageRow(reviewId: number, key: string) {
     height: 900,
     contentType: "image/jpeg",
     byteSize: 1234,
-    previewDataUrl: "data:image/jpeg;base64,abc",
+    thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
   };
 }
 
@@ -420,7 +420,7 @@ describe("activityRouter", () => {
               height: 900,
               contentType: "image/jpeg",
               byteSize: 1234,
-              previewDataUrl: "data:image/jpeg;base64,abc",
+              thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
               key: "reviews/group/photo1.jpg",
               publicUrl: "http://images.example.com/reviews/group/photo1.jpg",
             },
@@ -436,7 +436,7 @@ describe("activityRouter", () => {
               height: 900,
               contentType: "image/jpeg",
               byteSize: 1234,
-              previewDataUrl: "data:image/jpeg;base64,abc",
+              thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
               key: "reviews/group/photo2.jpg",
               publicUrl: "http://images.example.com/reviews/group/photo2.jpg",
             },
@@ -564,7 +564,7 @@ describe("activityRouter", () => {
           height: 900,
           contentType: "image/jpeg",
           byteSize: 1234,
-          previewDataUrl: "data:image/jpeg;base64,abc",
+          thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
         },
         {
           url: "http://example.com/img2.jpg",
@@ -573,7 +573,7 @@ describe("activityRouter", () => {
           height: 900,
           contentType: "image/jpeg",
           byteSize: 1234,
-          previewDataUrl: "data:image/jpeg;base64,abc",
+          thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
         },
       ]);
     });

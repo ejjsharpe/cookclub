@@ -16,6 +16,7 @@ import {
   validateKey,
 } from "./presign";
 import type { UploadFromUrlResponse, UploadImageResponse } from "./service";
+import { createThumbhashFromJpegBytes } from "./thumbhash";
 import {
   buildCfImageOptions,
   getTransformPreset,
@@ -48,8 +49,7 @@ const ORIGIN_FETCH_HEADER = "x-cookclub-origin-fetch";
 const TRANSFORM_STATUS_HEADER = "x-cookclub-image-transform";
 const IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/*,*/*";
 const NORMALIZED_IMAGE_TYPE = "image/jpeg" satisfies ImageContentType;
-const FALLBACK_PREVIEW_DATA_URL =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+const FALLBACK_THUMBHASH = "";
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split(".").map((part) => Number(part));
@@ -148,18 +148,6 @@ function hasArrayBuffer(
     "arrayBuffer" in value &&
     typeof value.arrayBuffer === "function"
   );
-}
-
-function bytesToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 0x8000;
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-
-  return btoa(binary);
 }
 
 function numberFromUnknown(value: unknown): number | null {
@@ -283,42 +271,34 @@ async function getStoredImageInfoForAsset(env: Env, key: string) {
   }
 }
 
-async function createPreviewDataUrl(env: Env, key: string): Promise<string> {
+async function createThumbhash(env: Env, key: string): Promise<string> {
   const response = await fetchStoredImageTransform(env, key, {
-    width: 48,
-    height: 36,
-    fit: "crop",
-    quality: 35,
+    width: 100,
+    height: 100,
+    fit: "scale-down",
+    quality: 50,
     format: "jpeg",
     metadata: "none",
     anim: false,
   });
 
   if (!response.ok) {
-    throw new Error(`Image preview fetch failed with ${response.status}`);
+    throw new Error(`Image thumbhash fetch failed with ${response.status}`);
   }
 
-  const contentType =
-    response.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
   const data = await response.arrayBuffer();
-  return `data:${contentType};base64,${bytesToBase64(data)}`;
+  return createThumbhashFromJpegBytes(data);
 }
 
-async function createPreviewDataUrlForAsset(
-  env: Env,
-  key: string,
-): Promise<string> {
+async function createThumbhashForAsset(env: Env, key: string): Promise<string> {
   if (!shouldUseDevImageFallback(env)) {
-    return await createPreviewDataUrl(env, key);
+    return await createThumbhash(env, key);
   }
 
   try {
-    const previewDataUrl = await createPreviewDataUrl(env, key);
-    return previewDataUrl.length <= 32_000
-      ? previewDataUrl
-      : FALLBACK_PREVIEW_DATA_URL;
+    return await createThumbhash(env, key);
   } catch {
-    return FALLBACK_PREVIEW_DATA_URL;
+    return FALLBACK_THUMBHASH;
   }
 }
 
@@ -327,10 +307,10 @@ async function buildStoredImageAsset(
   key: string,
 ): Promise<StoredImageAsset> {
   const useDevFallback = shouldUseDevImageFallback(env);
-  const [object, info, previewDataUrl] = await Promise.all([
+  const [object, info, thumbhash] = await Promise.all([
     useDevFallback ? env.IMAGES.get(key) : env.IMAGES.head(key),
     getStoredImageInfoForAsset(env, key),
-    createPreviewDataUrlForAsset(env, key),
+    createThumbhashForAsset(env, key),
   ]);
 
   if (!object) {
@@ -376,7 +356,7 @@ async function buildStoredImageAsset(
     height: imageHeight,
     contentType,
     byteSize: object.size,
-    previewDataUrl,
+    thumbhash,
   };
 }
 

@@ -262,7 +262,7 @@ function recipeImageInsertValues(recipeId: number, image: CreateRecipeImage) {
     height: image.height,
     contentType: image.contentType,
     byteSize: image.byteSize,
-    previewDataUrl: image.previewDataUrl,
+    thumbhash: image.thumbhash,
   };
 }
 
@@ -522,7 +522,7 @@ export async function createRecipe(
         height: recipeImages.height,
         contentType: recipeImages.contentType,
         byteSize: recipeImages.byteSize,
-        previewDataUrl: recipeImages.previewDataUrl,
+        thumbhash: recipeImages.thumbhash,
       });
 
     await insertRecipeTagsForRecipe(tx, recipe.id, input.tagIds);
@@ -803,7 +803,7 @@ export async function getRecipeDetail(
         height: recipeImages.height,
         contentType: recipeImages.contentType,
         byteSize: recipeImages.byteSize,
-        previewDataUrl: recipeImages.previewDataUrl,
+        thumbhash: recipeImages.thumbhash,
       })
       .from(recipeImages)
       .where(eq(recipeImages.recipeId, recipeId)),
@@ -1124,7 +1124,7 @@ export async function importRecipe(
         height: recipeImages.height,
         contentType: recipeImages.contentType,
         byteSize: recipeImages.byteSize,
-        previewDataUrl: recipeImages.previewDataUrl,
+        thumbhash: recipeImages.thumbhash,
       })
       .from(recipeImages)
       .where(eq(recipeImages.recipeId, sourceRecipeId));
@@ -1139,7 +1139,7 @@ export async function importRecipe(
           height: img.height,
           contentType: img.contentType,
           byteSize: img.byteSize,
-          previewDataUrl: img.previewDataUrl,
+          thumbhash: img.thumbhash,
         })),
       );
     }

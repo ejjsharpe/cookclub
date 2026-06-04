@@ -46,7 +46,7 @@ function reviewImageInsertValues(
     height: image.height,
     contentType: image.contentType,
     byteSize: image.byteSize,
-    previewDataUrl: image.previewDataUrl,
+    thumbhash: image.thumbhash,
     index,
   };
 }
@@ -331,7 +331,7 @@ export const activityRouter = router({
                   height: cookingReviewImages.height,
                   contentType: cookingReviewImages.contentType,
                   byteSize: cookingReviewImages.byteSize,
-                  previewDataUrl: cookingReviewImages.previewDataUrl,
+                  thumbhash: cookingReviewImages.thumbhash,
                 })
                 .from(cookingReviewImages)
                 .where(inArray(cookingReviewImages.reviewId, reviewIds))
@@ -361,7 +361,7 @@ export const activityRouter = router({
             height: img.height,
             contentType: img.contentType as PublicImageAsset["contentType"],
             byteSize: img.byteSize,
-            previewDataUrl: img.previewDataUrl,
+            thumbhash: img.thumbhash,
           })),
           createdAt: item.review.createdAt,
           user: item.user,

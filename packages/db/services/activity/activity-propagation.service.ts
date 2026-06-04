@@ -34,7 +34,7 @@ function toPublicImageAsset(row: {
   height: number;
   contentType: string;
   byteSize: number;
-  previewDataUrl: string;
+  thumbhash: string;
 }): PublicImageAsset {
   return {
     url: row.url,
@@ -43,7 +43,7 @@ function toPublicImageAsset(row: {
     height: row.height,
     contentType: row.contentType as PublicImageAsset["contentType"],
     byteSize: row.byteSize,
-    previewDataUrl: row.previewDataUrl,
+    thumbhash: row.thumbhash,
   };
 }
 
@@ -124,7 +124,7 @@ export async function hydrateActivityIds(
             height: recipeImages.height,
             contentType: recipeImages.contentType,
             byteSize: recipeImages.byteSize,
-            previewDataUrl: recipeImages.previewDataUrl,
+            thumbhash: recipeImages.thumbhash,
           })
           .from(recipeImages)
           .where(inArray(recipeImages.recipeId, recipeIds))
@@ -172,7 +172,7 @@ export async function hydrateActivityIds(
             height: cookingReviewImages.height,
             contentType: cookingReviewImages.contentType,
             byteSize: cookingReviewImages.byteSize,
-            previewDataUrl: cookingReviewImages.previewDataUrl,
+            thumbhash: cookingReviewImages.thumbhash,
             index: cookingReviewImages.index,
           })
           .from(cookingReviewImages)

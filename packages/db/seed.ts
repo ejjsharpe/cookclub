@@ -92,7 +92,7 @@ function seedImageAssetFields(url: string) {
     height: 900,
     contentType: "image/jpeg",
     byteSize: 0,
-    previewDataUrl: "",
+    thumbhash: "",
   };
 }
 
@@ -1031,7 +1031,7 @@ async function seedImportedRecipes(
           height: img.height,
           contentType: img.contentType,
           byteSize: img.byteSize,
-          previewDataUrl: img.previewDataUrl,
+          thumbhash: img.thumbhash,
         });
       }
 
