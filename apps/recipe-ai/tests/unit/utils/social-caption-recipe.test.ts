@@ -33,6 +33,142 @@ describe("extractSocialCaptionRecipe", () => {
     );
   });
 
+  it("extracts Instagram ingredient-only captions with section headings", () => {
+    const caption = `Sometimes life just calls for butter chicken and when it does, don’t be afraid to make it at home!
+
+Couldn’t fit the whole recipe below so I’ve just added the shopping list.
+
+BUTTER CHICKEN | Serves 4
+
+INGREDIENTS
+
+➡️MARINADE:
+160g / 2/3 cup full fat Plain Yoghurt
+1 tbsp Lemon Juice
+1 tbsp finely grated/minced Fresh Ginger
+3 cloves of Garlic, finely grated/minced
+2 tsp Garam Masala
+1 tsp EACH: Turmeric, Ground Coriander, Salt, Kashmiri Chilli Powder
+1/2 tsp Ground Cumin
+640g / 1.4lb boneless skinless Chicken Thighs, diced into large bite-sized pieces
+➡️SAUCE:
+1 tbsp Vegetable Oil, or as needed
+4 tbsp / 60g Unsalted Butter
+1 large White Onion, finely diced
+2 tsp finely grated/minced Fresh Ginger
+2 cloves of Garlic, finely diced
+1 tsp EACH: Garam Masala, Ground Fenugreek, Ground Coriander, Ground Cumin, Kashmiri Chilli Powder
+500g / 2 cups Tomato Passata
+160ml / 2/3 cup Water
+40g / 1/3 cup Unsalted Cashews
+180ml / 3/4 cup Double/Heavy Cream
+1 1/2 tbsp Sugar
+1 tsp Salt, or to taste
+Rice, Coriander/Cilantro, Flatbreads or Naan, to serve
+
+*You’ll find all of the spices in regular supermarkets.
+
+Method is on the blog.`;
+
+    const recipe = extractSocialCaptionRecipe(
+      caption,
+      "https://www.instagram.com/reel/DAjCVJ0IRLK/",
+      ["https://example.com/butter-chicken.jpg"],
+    );
+
+    expect(recipe).not.toBeNull();
+    expect(recipe?.name).toBe("Butter Chicken");
+    expect(recipe?.servings).toBe(4);
+    expect(recipe?.ingredientSections).toEqual([
+      expect.objectContaining({ name: "Marinade" }),
+      expect.objectContaining({ name: "Sauce" }),
+    ]);
+    expect(recipe?.ingredientSections[0]?.ingredients).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          quantity: 1,
+          unit: "teaspoon",
+          name: "Turmeric",
+        }),
+        expect.objectContaining({
+          quantity: 1,
+          unit: "teaspoon",
+          name: "Kashmiri Chilli Powder",
+        }),
+      ]),
+    );
+    expect(recipe?.ingredientSections[1]?.ingredients.length).toBeGreaterThan(
+      10,
+    );
+  });
+
+  it("extracts Instagram ingredient-only captions with uppercase serve sections", () => {
+    const caption = `TRY MY FIRECRACKER RAMEN NOW🔥
+
+if you’re not able to try it yourself, I’ve written my full recipe out for you below.
+
+INGREDIENTS
+
+BROTH (serves 3, depending on portion size!)
+
+1 tbsp neutral oil
+4 large garlic cloves
+1 red chilli
+1 bunch spring onions
+1 thumb-sized piece of ginger
+2 tbsp gochujang paste
+1 tbsp rice vinegar
+1 tbsp soy sauce
+1.5l veg broth
+200 ml coconut milk
+1 tbsp miso paste
+1 lime
+Salt + sugar
+
+TO SERVE
+
+Rice noodles
+Oyster mushrooms
+Broccoli
+Spring onion
+Chilli oil
+Toasted sesame seeds
+Lime wedge
+
+* full method pinned to top of comments *`;
+
+    const recipe = extractSocialCaptionRecipe(
+      caption,
+      "https://www.instagram.com/reel/DFTA0yKIVPa/",
+      ["https://example.com/ramen.jpg"],
+    );
+
+    expect(recipe).not.toBeNull();
+    expect(recipe?.name).toBe("Firecracker Ramen");
+    expect(recipe?.servings).toBe(3);
+    expect(recipe?.ingredientSections).toEqual([
+      expect.objectContaining({ name: "Broth" }),
+      expect.objectContaining({ name: "To Serve" }),
+    ]);
+    expect(recipe?.ingredientSections[0]?.ingredients).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          quantity: 1,
+          unit: "tablespoon",
+          name: "neutral oil",
+        }),
+        expect.objectContaining({ quantity: null, unit: null, name: "Salt" }),
+        expect.objectContaining({ quantity: null, unit: null, name: "sugar" }),
+      ]),
+    );
+    expect(recipe?.ingredientSections[1]?.ingredients).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Rice noodles" }),
+        expect.objectContaining({ name: "Lime wedge" }),
+      ]),
+    );
+  });
+
   it("extracts explicit TikTok ingredient and direction sections", () => {
     const caption =
       "Cool, creamy, and ready in 15 — this cucumber avocado blender soup will be your new go-to summer dish. 🥒🥑 Ingredients: Soup 2 English cucumbers, peeled and chopped 2 avocados, peeled and pitted ¼ bunch fresh parsley ¼ bunch fresh mint Juice of 1 lime 1 cup Greek yogurt Kosher salt and freshly ground black pepper Garnishes 1 baguette, halved horizontally 3 tablespoons soft unsalted butter 1⅓ cups shredded Asiago cheese ½ cup Greek yogurt Juice of 2 limes Directions: 1. Make the Soup: In a blender, puree the cucumbers, avocado, parsley, mint, lime juice and Greek yogurt until smooth. Season with salt and pepper. 2. Make the Garnishes: Preheat the oven to 425°F. Place the baguette, cut sides up, on a parchment-lined baking sheet. Butter the baguette and top with the Asiago cheese. Bake until the cheese is fully melted and golden brown, 10 to 12 minutes. 3. Meanwhile, in a small bowl, whisk together the Greek yogurt and lime juice. 4. Serve the soup topped with the lime yogurt and with the warm, cheesy baguette on the side. #summerrecipes #cucumber #avocado #blendersoup #blender #summer #soup";

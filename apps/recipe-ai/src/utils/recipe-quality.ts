@@ -146,6 +146,17 @@ function isSocialSourceUrl(url: string | null | undefined): boolean {
   }
 }
 
+function isInstagramSourceUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === "instagram.com" || hostname.endsWith(".instagram.com");
+  } catch {
+    return false;
+  }
+}
+
 function fallbackTitleForRecipe(recipe: ParsedRecipe): string {
   return isSocialSourceUrl(recipe.sourceUrl)
     ? "Imported Social Recipe"
@@ -490,7 +501,8 @@ export function evaluateRecipeQuality(
     );
   if (hasOnlyGenericSocialInstruction) {
     reasons.push("generic_social_instruction");
-    score -= 35;
+    score -=
+      ingredientCount >= 5 && isInstagramSourceUrl(recipe.sourceUrl) ? 18 : 35;
   }
 
   if (ingredientCount === 0) reasons.push("missing_ingredients");

@@ -282,9 +282,9 @@ describe("RecipeAI.parse()", () => {
         mockEnv.RECIPE_CACHE.put.mock.calls[0]?.[1] as string,
       );
       expect(cachedRecipe.images).toEqual(["https://example.com/cover.jpg"]);
-      expect(
-        cachedRecipe.instructionSections[0].instructions[0].imageUrl,
-      ).toBe("https://example.com/step.jpg");
+      expect(cachedRecipe.instructionSections[0].instructions[0].imageUrl).toBe(
+        "https://example.com/step.jpg",
+      );
     });
 
     it("drops failed step-image rehosting while keeping a hosted cover", async () => {
@@ -935,6 +935,103 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.instructionSections[0]?.instructions).toHaveLength(
           2,
         );
+        expect(result.metadata.parseMethod).toBe("caption_rules");
+      }
+    });
+
+    it("imports ingredient-only Instagram captions after AI cannot produce a method", async () => {
+      const instagramCaption = `TRY MY FIRECRACKER RAMEN NOW🔥
+
+if you’re not able to try it yourself, I’ve written my full recipe out for you below.
+
+INGREDIENTS
+
+BROTH (serves 3, depending on portion size!)
+
+1 tbsp neutral oil
+4 large garlic cloves
+1 red chilli
+1 bunch spring onions
+1 thumb-sized piece of ginger
+2 tbsp gochujang paste
+1 tbsp rice vinegar
+1 tbsp soy sauce
+1.5l veg broth
+200 ml coconut milk
+1 tbsp miso paste
+1 lime
+Salt + sugar
+
+TO SERVE
+
+Rice noodles
+Oyster mushrooms
+Broccoli
+Spring onion
+Chilli oil
+Toasted sesame seeds
+Lime wedge
+
+* full method pinned to top of comments *`;
+
+      mockEnv.AI.run = vi.fn((model: string) => {
+        if (model.includes("llama-4-scout")) {
+          return Promise.resolve({
+            response: JSON.stringify({
+              name: "Firecracker Ramen",
+              description: null,
+              prepTime: null,
+              cookTime: null,
+              totalTime: null,
+              servings: null,
+              ingredientSections: [
+                {
+                  name: null,
+                  ingredients: [
+                    { index: 0, quantity: 1, unit: "tbsp", name: "oil" },
+                  ],
+                },
+              ],
+              instructionSections: [],
+              suggestedTags: [],
+            }),
+          });
+        }
+
+        return Promise.resolve({
+          response: JSON.stringify({ name: "Firecracker Ramen" }),
+        });
+      });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () =>
+          Promise.resolve({
+            title: instagramCaption,
+            thumbnail_url: "https://example.com/instagram.jpg",
+          }),
+      });
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/DFTA0yKIVPa/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Firecracker Ramen");
+        expect(result.data.servings).toBe(3);
+        expect(result.data.ingredientSections).toEqual([
+          expect.objectContaining({ name: "Broth" }),
+          expect.objectContaining({ name: "To Serve" }),
+        ]);
+        expect(
+          result.data.ingredientSections.flatMap(
+            (section) => section.ingredients,
+          ).length,
+        ).toBeGreaterThan(15);
         expect(result.metadata.parseMethod).toBe("caption_rules");
       }
     });

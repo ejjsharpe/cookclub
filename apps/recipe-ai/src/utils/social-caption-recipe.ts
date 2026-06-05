@@ -18,8 +18,7 @@ const UNICODE_FRACTIONS: Record<string, string> = {
   "\u215d": "5/8",
   "\u215e": "7/8",
 };
-const EMOJI_NUMBER_MARKER =
-  String.raw`[0-9#*]\uFE0F?\u20E3|[\u2460-\u2473\u24EA\u24F5-\u24FF\u2776-\u277F\u2780-\u2793]`;
+const EMOJI_NUMBER_MARKER = String.raw`[0-9#*]\uFE0F?\u20E3|[\u2460-\u2473\u24EA\u24F5-\u24FF\u2776-\u277F\u2780-\u2793]`;
 const NUMBERED_INSTRUCTION_BOUNDARY_PATTERN = new RegExp(
   String.raw`(?:^|\s)(?:(?:step\s*)?\d{1,3}[.)\]:：-]|${EMOJI_NUMBER_MARKER})\s*(?:[.)\]:：-]\s*)?`,
   "giu",
@@ -49,6 +48,30 @@ function removeSocialNoise(value: string): string {
   );
 }
 
+function normalizeCaptionLine(value: string): string {
+  return value
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function removeSocialNoiseFromLine(value: string): string {
+  return normalizeCaptionLine(
+    value
+      .replace(/#[\p{L}\p{N}_-]+/gu, " ")
+      .replace(/@\w+/g, " ")
+      .replace(/\b(?:link in bio|follow for more|save this)\b/gi, " "),
+  );
+}
+
+function captionLines(caption: string): string[] {
+  return caption
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map(normalizeCaptionLine)
+    .filter(Boolean);
+}
+
 function titleCase(value: string): string {
   return value
     .split(" ")
@@ -62,7 +85,7 @@ function titleCase(value: string): string {
 }
 
 function cleanTitle(value: string): string {
-  const beforeIngredients = value.split(/\bingredients\s*:/i)[0] ?? value;
+  const beforeIngredients = value.split(/\bingredients?\b\s*:?/i)[0] ?? value;
   const beforeRecipeBy = value.split(/\brecipe\s+by\b/i)[0] ?? value;
   const titleSource =
     beforeIngredients.length < beforeRecipeBy.length
@@ -72,6 +95,9 @@ function cleanTitle(value: string): string {
     .replace(/[^\p{L}\p{N}\s'&-]/gu, " ")
     .replace(/\b([a-z]+ies)s\b/gi, "$1")
     .replace(/\brecipe\b/gi, " ")
+    .replace(/^try\s+my\s+/i, "")
+    .replace(/\s+now\s*$/i, "")
+    .replace(/\bserves?\s+\d{1,3}\b.*$/i, "")
     .trim();
 
   return cleaned ? titleCase(cleaned) : "Imported Social Recipe";
@@ -334,6 +360,213 @@ function parseExplicitIngredientSections(
   return ingredients.length > 0 ? [{ name: null, ingredients }] : [];
 }
 
+function isRootIngredientsHeading(line: string): boolean {
+  return /^(?:ingredients?|shopping\s+list)\s*:?\s*$/i.test(
+    removeSocialNoiseFromLine(line),
+  );
+}
+
+function ingredientBlockFooter(line: string): boolean {
+  const cleaned = removeSocialNoiseFromLine(line)
+    .replace(/^[-*•·▪▫◦\s]+/, "")
+    .trim();
+
+  return (
+    !cleaned ||
+    /^#+/.test(cleaned) ||
+    /^(?:method|directions|instructions)\b/i.test(cleaned) ||
+    /\bfull\s+(?:method|recipe)\b.*\b(?:blog|comment|comments|homepage|website|bio)\b/i.test(
+      cleaned,
+    ) ||
+    /\bmethod\s+is\s+on\b/i.test(cleaned) ||
+    (/^\*/.test(line.trim()) && !/^\*\s*\d/.test(line.trim()))
+  );
+}
+
+function ingredientSectionHeading(line: string): string | null {
+  const cleaned = removeSocialNoiseFromLine(line)
+    .replace(/^[^\p{L}\p{N}]+/gu, "")
+    .replace(/[:：]+$/u, "")
+    .trim();
+  if (!cleaned || /^ingredients?$/i.test(cleaned) || /^\d/.test(cleaned)) {
+    return null;
+  }
+
+  const withoutParenthetical = cleaned.replace(/\s*\([^)]*\)\s*$/u, "").trim();
+  if (!withoutParenthetical) return null;
+
+  const letters = withoutParenthetical.replace(/[^\p{L}]/gu, "");
+  const isUppercaseHeading =
+    letters.length >= 3 && letters === letters.toUpperCase();
+  const hasTrailingColon = /[:：]\s*$/u.test(line.trim());
+
+  if (
+    !hasTrailingColon &&
+    !isUppercaseHeading &&
+    !/^to\s+serve$/i.test(withoutParenthetical)
+  ) {
+    return null;
+  }
+
+  const sectionName = withoutParenthetical
+    .replace(/\bserves?\s+\d{1,3}\b.*$/i, "")
+    .replace(/[^\p{L}\p{N}\s'&-]/gu, " ")
+    .trim();
+
+  return /^to\s+serve$/i.test(sectionName)
+    ? "To Serve"
+    : titleCase(sectionName);
+}
+
+function expandIngredientLine(line: string): string[] {
+  const cleaned = removeSocialNoiseFromLine(line)
+    .replace(/^[-*•·▪▫◦\s]+/, "")
+    .replace(/\*+$/g, "")
+    .trim();
+  if (!cleaned) return [];
+
+  const eachMatch = cleaned.match(
+    /^(\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?\s*(?:tbsp\.?|tbsps?\.?|tablespoons?|tsp\.?|tsps?\.?|teaspoons?|g|grams?|kg|ml|l|liters?|litres?|cups?|c|oz|ounces?|lb|lbs?|pounds?))\s+each\s*:?\s*(.+)$/i,
+  );
+  if (eachMatch?.[1] && eachMatch[2]) {
+    return eachMatch[2]
+      .split(/,\s*/)
+      .map((item) => item.replace(/\([^)]*\)/g, "").trim())
+      .filter(Boolean)
+      .map((item) => `${eachMatch[1]} ${item}`);
+  }
+
+  if (/^salt\s*\+\s*sugar$/i.test(cleaned)) {
+    return ["Salt", "sugar"];
+  }
+
+  if (!/^\d/.test(cleaned) && /\bto\s+serve\b/i.test(cleaned)) {
+    return cleaned
+      .replace(/\bto\s+serve\b/gi, "")
+      .split(/,\s*/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [cleaned];
+}
+
+function parseLineIngredientSections(lines: string[]): IngredientSection[] {
+  const rawSections: { name: string | null; lines: string[] }[] = [];
+  let current: { name: string | null; lines: string[] } = {
+    name: null,
+    lines: [],
+  };
+
+  const pushCurrent = () => {
+    if (current.lines.length > 0) {
+      rawSections.push(current);
+    }
+  };
+
+  for (const line of lines) {
+    const heading = ingredientSectionHeading(line);
+    if (heading) {
+      pushCurrent();
+      current = { name: heading, lines: [] };
+      continue;
+    }
+
+    current.lines.push(...expandIngredientLine(line));
+  }
+
+  pushCurrent();
+
+  return rawSections
+    .map((section) => ({
+      name: section.name,
+      ingredients: parseIngredientItems(section.lines),
+    }))
+    .filter((section) => section.ingredients.length > 0);
+}
+
+function titleFromIngredientIntroLines(lines: string[]): string {
+  const cleanedLines = lines
+    .map((line) =>
+      removeSocialNoiseFromLine(line)
+        .replace(/\|\s*serves?\s+\d{1,3}\b.*$/i, "")
+        .replace(/\bserves?\s+\d{1,3}\b.*$/i, "")
+        .trim(),
+    )
+    .filter(Boolean);
+
+  for (const line of [...cleanedLines].reverse()) {
+    const letters = line.replace(/[^\p{L}]/gu, "");
+    const wordCount = line.split(/\s+/).filter(Boolean).length;
+    if (
+      letters.length >= 3 &&
+      letters === letters.toUpperCase() &&
+      wordCount <= 8
+    ) {
+      return cleanTitle(line);
+    }
+  }
+
+  for (const line of cleanedLines) {
+    const match = line.match(/\b([A-Z][A-Z\s'&-]{3,}[A-Z])\b/u);
+    if (match?.[1]) {
+      return cleanTitle(match[1]);
+    }
+  }
+
+  return titleFromIntro(cleanedLines.join(" "));
+}
+
+function extractIngredientOnlySocialCaptionRecipe(
+  caption: string,
+  sourceUrl: string,
+  images: string[],
+): ParsedRecipe | null {
+  const lines = captionLines(caption);
+  const headingIndex = lines.findIndex(isRootIngredientsHeading);
+  if (headingIndex === -1) return null;
+
+  const ingredientLines: string[] = [];
+  for (const line of lines.slice(headingIndex + 1)) {
+    if (ingredientBlockFooter(line)) break;
+    ingredientLines.push(line);
+  }
+
+  const ingredientSections = parseLineIngredientSections(ingredientLines);
+  const ingredientCount = ingredientSections.reduce(
+    (count, section) => count + section.ingredients.length,
+    0,
+  );
+  if (ingredientCount < 2) return null;
+
+  return {
+    name: titleFromIngredientIntroLines(lines.slice(0, headingIndex)),
+    description: extractCredit(caption),
+    prepTime: null,
+    cookTime: null,
+    totalTime: null,
+    servings: servingsFromText(caption),
+    sourceUrl,
+    sourceType: "url",
+    ingredientSections,
+    instructionSections: [
+      {
+        name: null,
+        instructions: [
+          {
+            index: 0,
+            instruction:
+              "Follow the method shown in the source video using the listed ingredients.",
+            imageUrl: null,
+          },
+        ],
+      },
+    ],
+    images,
+    suggestedTags: tagsFromCaption(caption),
+  };
+}
+
 function cleanInstructionStep(value: string): string {
   return normalizeText(value)
     .replace(LEADING_INSTRUCTION_MARKER_PATTERN, "")
@@ -501,6 +734,13 @@ export function extractSocialCaptionRecipe(
     images,
   );
   if (explicitRecipe) return explicitRecipe;
+
+  const ingredientOnlyRecipe = extractIngredientOnlySocialCaptionRecipe(
+    caption,
+    sourceUrl,
+    images,
+  );
+  if (ingredientOnlyRecipe) return ingredientOnlyRecipe;
 
   const ingredients = ingredientsFromCaption(caption);
   if (ingredients.length < 2) return null;

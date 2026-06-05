@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ParsedRecipe } from "../../../src/schema";
 import {
+  evaluateRecipeQuality,
   MAX_RECIPE_IMAGES,
   normalizeRecipeForImport,
 } from "../../../src/utils/recipe-quality";
@@ -87,5 +88,80 @@ describe("normalizeRecipeForImport", () => {
         instruction: "2 eggs are enough for this batter.",
       }),
     ]);
+  });
+});
+
+describe("evaluateRecipeQuality", () => {
+  it("accepts strong ingredient-only social recipes with placeholder video method", () => {
+    const quality = evaluateRecipeQuality(
+      {
+        ...recipeWithImages(["https://example.com/social.jpg"]),
+        name: "Firecracker Ramen",
+        sourceUrl: "https://www.instagram.com/reel/DFTA0yKIVPa/",
+        servings: 3,
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: Array.from({ length: 8 }, (_, index) => ({
+              index,
+              quantity: index + 1,
+              unit: "tbsp",
+              name: `ingredient ${index + 1}`,
+            })),
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                index: 0,
+                instruction:
+                  "Follow the method shown in the source video using the listed ingredients.",
+              },
+            ],
+          },
+        ],
+      },
+      "social_ai",
+    );
+
+    expect(quality.usable).toBe(true);
+    expect(quality.confidence).toBe("medium");
+    expect(quality.reasons).toContain("generic_social_instruction");
+  });
+
+  it("still rejects weak social captions with placeholder video method", () => {
+    const quality = evaluateRecipeQuality(
+      {
+        ...recipeWithImages(["https://example.com/social.jpg"]),
+        name: "Random Post",
+        sourceUrl: "https://www.instagram.com/reel/ABC123/",
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, quantity: 1, unit: "cup", name: "flour" },
+            ],
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                index: 0,
+                instruction:
+                  "Follow the method shown in the source video using the listed ingredients.",
+              },
+            ],
+          },
+        ],
+      },
+      "social_ai",
+    );
+
+    expect(quality.usable).toBe(false);
+    expect(quality.reasons).toContain("generic_social_instruction");
   });
 });
