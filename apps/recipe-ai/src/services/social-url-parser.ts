@@ -27,6 +27,7 @@ import {
 } from "../utils/instagram-fetcher";
 import { extractRecipeOutline } from "../utils/recipe-outline-parser";
 import { extractSocialCaptionRecipe } from "../utils/social-caption-recipe";
+import { extractSocialRecipeLinks } from "../utils/social-recipe-links";
 import { enrichSocialMediaRecipeText } from "../utils/social-media-enrichment";
 import {
   extractTikTokContent,
@@ -82,12 +83,85 @@ function socialPrefix(platform: SocialPlatform): string {
 
 interface SocialParseOptions {
   diagnostics?: ParseMetadata["diagnostics"];
+  parseLinkedRecipeUrl?: (url: string) => Promise<ParseResult>;
 }
 
 function socialCandidateDiagnostics(
   options?: SocialParseOptions,
 ): ParseMetadata["diagnostics"] | undefined {
   return options?.diagnostics;
+}
+
+function linkedRecipeDiagnostics(
+  result: Extract<ParseResult, { success: true }>,
+  linkedUrl: string,
+  index: number,
+  options?: SocialParseOptions,
+): NonNullable<ParseMetadata["diagnostics"]> {
+  const linkedDiagnostics = result.metadata.diagnostics;
+
+  return {
+    ...options?.diagnostics,
+    canonicalUrl: result.metadata.canonicalUrl ?? linkedUrl,
+    selectedAttempt:
+      linkedDiagnostics?.selectedAttempt ?? `linked-recipe-${index + 1}`,
+    attempts: [
+      ...(options?.diagnostics?.attempts ?? []),
+      {
+        id: `linked-recipe-${index + 1}`,
+        method: "linked_url",
+        source: "url",
+        status: "accepted" as const,
+        confidence: result.metadata.confidence,
+        evidence: { sourceUrl: linkedUrl },
+      },
+      ...(linkedDiagnostics?.attempts ?? []),
+    ].slice(-12),
+  };
+}
+
+async function tryLinkedRecipeUrls(
+  urls: string[],
+  options?: SocialParseOptions,
+): Promise<ParseResult | null> {
+  if (!options?.parseLinkedRecipeUrl || urls.length === 0) return null;
+
+  for (const [index, url] of urls.entries()) {
+    try {
+      console.log(`[social] Trying linked recipe URL: ${url}`);
+      const result = await options.parseLinkedRecipeUrl(url);
+      if (!result.success) {
+        console.log(`[social] Linked recipe URL did not parse:`, {
+          url,
+          code: result.error.code,
+          message: result.error.message,
+        });
+        continue;
+      }
+
+      return {
+        ...result,
+        data: {
+          ...result.data,
+          sourceType: result.data.sourceType ?? "url",
+          sourceUrl:
+            result.data.sourceUrl ?? result.metadata.canonicalUrl ?? url,
+        },
+        metadata: {
+          ...result.metadata,
+          canonicalUrl: result.metadata.canonicalUrl ?? url,
+          diagnostics: linkedRecipeDiagnostics(result, url, index, options),
+        },
+      };
+    } catch (error) {
+      console.log(
+        "[social] Linked recipe URL parse failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  return null;
 }
 
 function socialDeterministicCandidates(options: {
@@ -385,21 +459,21 @@ async function parseInstagramUrl(
     result.videoUrls.length > 0 ||
     frameImages.length > 0 ||
     Boolean(env.BROWSER && !attemptedBrowserMedia);
+  const attemptedLinkedRecipeUrls = new Set<string>();
+  const hasLinkedRecipeFallback = () =>
+    extractSocialRecipeLinks([result.caption, browserPageText], url).length > 0;
+  const tryLinkedRecipeFallback = async () => {
+    const linkedRecipeUrls = extractSocialRecipeLinks(
+      [result.caption, browserPageText],
+      url,
+    ).filter((linkedUrl) => !attemptedLinkedRecipeUrls.has(linkedUrl));
 
-  if (
-    !fallbackRecipe &&
-    (!result.caption || result.caption.length < 50) &&
-    !hasEnrichmentSource
-  ) {
-    return {
-      success: false,
-      error: {
-        code: "NO_CONTENT",
-        message:
-          "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
-      },
-    };
-  }
+    for (const linkedUrl of linkedRecipeUrls) {
+      attemptedLinkedRecipeUrls.add(linkedUrl);
+    }
+
+    return tryLinkedRecipeUrls(linkedRecipeUrls, options);
+  };
 
   const candidates = socialDeterministicCandidates({
     url,
@@ -438,7 +512,8 @@ async function parseInstagramUrl(
   );
   if (
     bestCaption &&
-    (!bestCaptionHasGenericInstruction || !hasEnrichmentSource)
+    (!bestCaptionHasGenericInstruction ||
+      (!hasEnrichmentSource && !hasLinkedRecipeFallback()))
   ) {
     const captionResult = await selectBestRecipeCandidate(
       env,
@@ -465,6 +540,24 @@ async function parseInstagramUrl(
     }
   }
 
+  const linkedRecipeResult = await tryLinkedRecipeFallback();
+  if (linkedRecipeResult?.success) return linkedRecipeResult;
+
+  if (
+    !fallbackRecipe &&
+    (!result.caption || result.caption.length < 50) &&
+    !hasEnrichmentSource
+  ) {
+    return {
+      success: false,
+      error: {
+        code: "NO_CONTENT",
+        message:
+          "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
+      },
+    };
+  }
+
   if (hasEnrichmentSource) {
     if (env.BROWSER && !attemptedBrowserMedia) {
       attemptedBrowserMedia = true;
@@ -480,7 +573,14 @@ async function parseInstagramUrl(
       }
     }
 
-    if (result.videoUrls.length > 0 || frameImages.length > 0 || browserPageText) {
+    const renderedLinkedRecipeResult = await tryLinkedRecipeFallback();
+    if (renderedLinkedRecipeResult?.success) return renderedLinkedRecipeResult;
+
+    if (
+      result.videoUrls.length > 0 ||
+      frameImages.length > 0 ||
+      browserPageText
+    ) {
       const enrichment = await enrichSocialMediaRecipeText(env.AI, {
         platform: "instagram",
         caption: result.caption,
@@ -602,23 +702,45 @@ function extractGenericSocialText(
   return parts.join("\n\n");
 }
 
-function parseGenericSocialHtml(
+function extractAnchorHrefValues(html: string): string[] {
+  const $ = cheerio.load(html);
+  return $("a[href]")
+    .toArray()
+    .map((element) => $(element).attr("href") || "")
+    .filter(Boolean);
+}
+
+async function parseGenericSocialHtml(
   env: Env,
   url: string,
   platform: SocialPlatform,
   html: string,
   options?: SocialParseOptions,
 ): Promise<ParseResult> {
-  return parseSocialTextRecipe(env, {
+  const content = extractGenericSocialText(html, platform);
+  const images = extractImageUrls(html, url);
+  const socialResult = await parseSocialTextRecipe(env, {
     url,
     platform,
-    content: extractGenericSocialText(html, platform),
-    images: extractImageUrls(html, url),
+    content,
+    images,
     noContentMessage:
       "Could not extract recipe content from this social media link.",
     aiErrorCode: "AI_PARSE_FAILED",
     diagnostics: options?.diagnostics,
   });
+
+  if (socialResult.success && !hasGenericSocialInstruction(socialResult.data)) {
+    return socialResult;
+  }
+
+  const linkedRecipeResult = await tryLinkedRecipeUrls(
+    extractSocialRecipeLinks([content, ...extractAnchorHrefValues(html)], url),
+    options,
+  );
+  if (linkedRecipeResult?.success) return linkedRecipeResult;
+
+  return socialResult;
 }
 
 async function parseGenericSocialUrl(
@@ -787,21 +909,21 @@ async function parseTikTokUrl(
       result.videoUrls.length > 0 ||
       frameImages.length > 0 ||
       Boolean(env.BROWSER && !attemptedBrowserMedia);
+    const attemptedLinkedRecipeUrls = new Set<string>();
+    const hasLinkedRecipeFallback = () =>
+      extractSocialRecipeLinks([result.caption], url).length > 0;
+    const tryLinkedRecipeFallback = async () => {
+      const linkedRecipeUrls = extractSocialRecipeLinks(
+        [result.caption],
+        url,
+      ).filter((linkedUrl) => !attemptedLinkedRecipeUrls.has(linkedUrl));
 
-    if (
-      !fallbackRecipe &&
-      (!result.caption || result.caption.length < 50) &&
-      !hasEnrichmentSource
-    ) {
-      return {
-        success: false,
-        error: {
-          code: "NO_CONTENT",
-          message:
-            "Could not extract recipe content from TikTok. The video may not contain a recipe or the description may be too short.",
-        },
-      };
-    }
+      for (const linkedUrl of linkedRecipeUrls) {
+        attemptedLinkedRecipeUrls.add(linkedUrl);
+      }
+
+      return tryLinkedRecipeUrls(linkedRecipeUrls, options);
+    };
 
     const candidates = socialDeterministicCandidates({
       url,
@@ -834,7 +956,14 @@ async function parseTikTokUrl(
     }
 
     const captionEvaluation = evaluateRecipeCandidates(candidates);
-    if ((captionEvaluation.accepted[0]?.quality.score ?? 0) >= 75) {
+    const bestCaption = captionEvaluation.accepted[0];
+    const bestCaptionHasGenericInstruction = hasGenericSocialInstruction(
+      bestCaption?.recipe ?? fallbackRecipe,
+    );
+    if (
+      (bestCaption?.quality.score ?? 0) >= 75 &&
+      (!bestCaptionHasGenericInstruction || !hasLinkedRecipeFallback())
+    ) {
       const captionResult = await selectBestRecipeCandidate(
         env,
         url,
@@ -855,6 +984,24 @@ async function parseTikTokUrl(
           result.images,
         );
       }
+    }
+
+    const linkedRecipeResult = await tryLinkedRecipeFallback();
+    if (linkedRecipeResult?.success) return linkedRecipeResult;
+
+    if (
+      !fallbackRecipe &&
+      (!result.caption || result.caption.length < 50) &&
+      !hasEnrichmentSource
+    ) {
+      return {
+        success: false,
+        error: {
+          code: "NO_CONTENT",
+          message:
+            "Could not extract recipe content from TikTok. The video may not contain a recipe or the description may be too short.",
+        },
+      };
     }
 
     if (
@@ -879,6 +1026,9 @@ async function parseTikTokUrl(
           frameImages = browserMedia.frameImages;
         }
       }
+
+      const browserLinkedRecipeResult = await tryLinkedRecipeFallback();
+      if (browserLinkedRecipeResult?.success) return browserLinkedRecipeResult;
 
       const enrichment = await enrichSocialMediaRecipeText(env.AI, {
         platform: "tiktok",

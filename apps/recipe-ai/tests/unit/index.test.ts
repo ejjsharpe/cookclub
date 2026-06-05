@@ -860,6 +860,92 @@ describe("RecipeAI.parse()", () => {
       }
     });
 
+    it("imports a linked recipe page when a TikTok caption only contains the recipe URL", async () => {
+      const linkedRecipeUrl = "https://recipe.example.com/tiktok-pasta";
+      const linkedRecipeHtml = `
+        <html>
+          <body>
+            <article>
+              <h1>Linked TikTok Pasta</h1>
+              <h2>Ingredients</h2>
+              <ul>
+                <li>200 g spaghetti</li>
+                <li>1 cup tomato sauce</li>
+              </ul>
+              <h2>Instructions</h2>
+              <ol>
+                <li>Boil the spaghetti.</li>
+                <li>Toss with tomato sauce.</li>
+              </ol>
+            </article>
+          </body>
+        </html>
+      `;
+
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Invalid Social Recipe",
+          ingredientSections: [],
+          instructionSections: [],
+        }),
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const url = String(requestUrl);
+        if (url.startsWith("https://www.tiktok.com/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: `Recipe: ${linkedRecipeUrl}`,
+                thumbnail_url: "https://example.com/tiktok.jpg",
+              }),
+          });
+        }
+
+        if (url === "https://www.tiktok.com/@cook/video/456") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: () => Promise.resolve("<html></html>"),
+          });
+        }
+
+        if (url === linkedRecipeUrl) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "text/html" }),
+            arrayBuffer: () =>
+              Promise.resolve(new TextEncoder().encode(linkedRecipeHtml).buffer),
+            text: () => Promise.resolve(linkedRecipeHtml),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+          headers: new Headers({ "content-type": "text/html" }),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.tiktok.com/@cook/video/456",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Linked TikTok Pasta");
+        expect(result.data.sourceUrl).toBe(linkedRecipeUrl);
+        expect(result.metadata.canonicalUrl).toBe(linkedRecipeUrl);
+        expect(result.metadata.parseMethod).toBe("visible_card");
+      }
+    });
+
     it("uses TikTok audio transcript enrichment when a video has no caption", async () => {
       const enrichedAiRecipe = {
         name: "Spoken Tomato Pasta",
@@ -1000,6 +1086,147 @@ describe("RecipeAI.parse()", () => {
       expect(
         browserFetcherMocks.extractInstagramContent,
       ).not.toHaveBeenCalled();
+    });
+
+    it("imports a linked recipe page when an Instagram caption only contains the recipe URL", async () => {
+      const linkedRecipeUrl = "https://recipe.example.com/tomato-pasta";
+      const linkedRecipeHtml = `
+        <html>
+          <head>
+            <script type="application/ld+json">
+              ${JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Recipe",
+                name: "Linked Tomato Pasta",
+                recipeYield: "2 servings",
+                recipeIngredient: ["200 g spaghetti", "1 cup tomato sauce"],
+                recipeInstructions: [
+                  { "@type": "HowToStep", text: "Boil the spaghetti." },
+                  { "@type": "HowToStep", text: "Toss with tomato sauce." },
+                ],
+              })}
+            </script>
+          </head>
+          <body></body>
+        </html>
+      `;
+
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Invalid Social Recipe",
+          ingredientSections: [],
+          instructionSections: [],
+        }),
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const url = String(requestUrl);
+        if (url.startsWith("https://www.instagram.com/api/v1/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: `Recipe: ${linkedRecipeUrl}`,
+                thumbnail_url: "https://example.com/instagram.jpg",
+              }),
+          });
+        }
+
+        if (url === linkedRecipeUrl) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "text/html" }),
+            arrayBuffer: () =>
+              Promise.resolve(new TextEncoder().encode(linkedRecipeHtml).buffer),
+            text: () => Promise.resolve(linkedRecipeHtml),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+          headers: new Headers({ "content-type": "text/html" }),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/LINKONLY123/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Linked Tomato Pasta");
+        expect(result.data.sourceUrl).toBe(linkedRecipeUrl);
+        expect(result.metadata.canonicalUrl).toBe(linkedRecipeUrl);
+        expect(result.metadata.parseMethod).toBe("schema_org");
+        expect(result.metadata.diagnostics?.originalUrl).toBe(
+          "https://www.instagram.com/reel/LINKONLY123/",
+        );
+      }
+    });
+
+    it("does not fetch linked recipe pages when an Instagram caption imports cleanly", async () => {
+      const linkedRecipeUrl = "https://recipe.example.com/skip-this";
+      const instagramCaption =
+        `Easy tomato pasta Ingredients: 200 g spaghetti 1 cup tomato sauce Directions: 1. Boil the spaghetti. 2. Toss with tomato sauce. Full recipe ${linkedRecipeUrl}`;
+
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Invalid Social Recipe",
+          ingredientSections: [],
+          instructionSections: [],
+        }),
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const url = String(requestUrl);
+        if (url.startsWith("https://www.instagram.com/api/v1/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: instagramCaption,
+                thumbnail_url: "https://example.com/instagram.jpg",
+              }),
+          });
+        }
+
+        if (url === linkedRecipeUrl) {
+          throw new Error("Linked recipe page should not be fetched");
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+          headers: new Headers({ "content-type": "text/html" }),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/CAPTION123/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Easy Tomato Pasta");
+        expect(result.data.sourceUrl).toBe(
+          "https://www.instagram.com/reel/CAPTION123/",
+        );
+        expect(result.metadata.parseMethod).toBe("caption_rules");
+      }
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        linkedRecipeUrl,
+        expect.anything(),
+      );
     });
 
     it("imports ingredient-only Instagram captions after AI cannot produce a method", async () => {

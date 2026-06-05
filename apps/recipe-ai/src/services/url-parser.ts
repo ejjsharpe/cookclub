@@ -46,6 +46,8 @@ import {
 export interface ParseUrlOptions {
   /** If true, only use structured data extraction (no AI). For Basic Import. */
   structuredOnly?: boolean;
+  /** Internal guard: linked-page fallbacks should not recursively parse social URLs. */
+  allowSocial?: boolean;
 }
 
 async function collectReaderCandidates(
@@ -365,7 +367,7 @@ export async function parseUrl(
   url: string,
   options?: ParseUrlOptions,
 ): Promise<ParseResult> {
-  const { structuredOnly = false } = options ?? {};
+  const { structuredOnly = false, allowSocial = true } = options ?? {};
   let sourceSnapshot: Awaited<ReturnType<typeof createSourceSnapshot>>;
   try {
     sourceSnapshot = await createSourceSnapshot(url);
@@ -449,8 +451,20 @@ export async function parseUrl(
   }
 
   if (socialPlatform) {
+    if (!allowSocial) {
+      return {
+        success: false,
+        error: {
+          code: "UNSUPPORTED_URL",
+          message: "Linked social media URLs are not valid recipe pages.",
+        },
+      };
+    }
+
     return parseSocialUrl(env, sourceUrl, socialPlatform, {
       diagnostics,
+      parseLinkedRecipeUrl: (linkedUrl) =>
+        parseUrl(env, linkedUrl, { allowSocial: false }),
     });
   }
 
