@@ -49,25 +49,25 @@ const AnimatedChild = ({
   offset?: number;
 }>) => {
   const stylez = useAnimatedStyle(() => {
-    const measurement = textMeasurement.get();
-    const animation = anim.get();
     if (direction === "vertical") {
       return {
         position: "absolute",
-        top: (index - 1) * (measurement.height + spacing),
+        top: (index - 1) * (textMeasurement.value.height + spacing),
         transform: [
           {
-            translateY: -(animation % (measurement.height + spacing)) + offset,
+            translateY:
+              -(anim.value % (textMeasurement.value.height + spacing)) + offset,
           },
         ],
       };
     }
     return {
       position: "absolute",
-      left: (index - 1) * (measurement.width + spacing),
+      left: (index - 1) * (textMeasurement.value.width + spacing),
       transform: [
         {
-          translateX: -(animation % (measurement.width + spacing)) + offset,
+          translateX:
+            -(anim.value % (textMeasurement.value.width + spacing)) + offset,
         },
       ],
     };
@@ -119,34 +119,34 @@ export const Marquee = React.memo(
           ? frameInfo.timeSincePreviousFrame / frameRateMs
           : 1;
 
-        anim.set((value) =>
-          reverse ? value - speed * frameDelta : value + speed * frameDelta,
-        );
+        if (reverse) {
+          anim.value -= speed * frameDelta;
+        } else {
+          anim.value += speed * frameDelta;
+        }
       }, true);
 
       useDerivedValue(() => {
         if (position) {
-          position.set(anim.get());
+          position.value = anim.value;
         }
       });
 
       useAnimatedReaction(
         () => {
-          const text = textMeasurement.get();
-          const parent = parentMeasurement.get();
           if (
-            text.width === 0 ||
-            parent.width === 0 ||
-            text.height === 0 ||
-            parent.height === 0
+            textMeasurement.value.width === 0 ||
+            parentMeasurement.value.width === 0 ||
+            textMeasurement.value.height === 0 ||
+            parentMeasurement.value.height === 0
           ) {
             return 0;
           }
           return (
             Math.round(
               direction === "horizontal"
-                ? parent.width / text.width
-                : parent.height / text.height,
+                ? parentMeasurement.value.width / textMeasurement.value.width
+                : parentMeasurement.value.height / textMeasurement.value.height,
             ) + 1
           );
         },
@@ -184,24 +184,21 @@ export const Marquee = React.memo(
           scheduleOnRN(stop);
         })
         .onChange((e) => {
-          const delta = direction === "horizontal" ? e.changeX : e.changeY;
-          anim.set((value) => value - delta);
+          anim.value += -(direction === "horizontal" ? e.changeX : e.changeY);
         })
         .onFinalize((e) => {
-          anim.set(
-            withDecay(
-              {
-                velocity: -(direction === "horizontal"
-                  ? e.velocityX
-                  : e.velocityY),
-                velocityFactor: 0.5,
-              },
-              (finished) => {
-                if (finished) {
-                  scheduleOnRN(start);
-                }
-              },
-            ),
+          anim.value = withDecay(
+            {
+              velocity: -(direction === "horizontal"
+                ? e.velocityX
+                : e.velocityY),
+              velocityFactor: 0.5,
+            },
+            (finished) => {
+              if (finished) {
+                scheduleOnRN(start);
+              }
+            },
           );
         });
 
@@ -210,7 +207,7 @@ export const Marquee = React.memo(
           key={direction}
           style={style}
           onLayout={(ev) => {
-            parentMeasurement.set(ev.nativeEvent.layout);
+            parentMeasurement.value = ev.nativeEvent.layout;
           }}
           pointerEvents="box-none"
         >
@@ -223,7 +220,7 @@ export const Marquee = React.memo(
               >
                 <View
                   onLayout={(ev) => {
-                    textMeasurement.set(ev.nativeEvent.layout);
+                    textMeasurement.value = ev.nativeEvent.layout;
                   }}
                 >
                   {children}

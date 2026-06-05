@@ -116,7 +116,7 @@ const InstructionListItem = ({
 
   const animatedStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
-      scrollY.get(),
+      scrollY.value,
       [
         layout.offset - layout.fadeBefore,
         layout.offset,
@@ -180,7 +180,7 @@ interface TimerWheelItemProps {
 const TimerWheelItem = ({ index, value, scrollY }: TimerWheelItemProps) => {
   const animatedStyle = useAnimatedStyle(() => {
     const itemCenter = index * TIMER_WHEEL_ITEM_HEIGHT;
-    const distance = Math.abs(scrollY.get() - itemCenter);
+    const distance = Math.abs(scrollY.value - itemCenter);
     const opacity = interpolate(
       distance,
       [0, TIMER_WHEEL_ITEM_HEIGHT, TIMER_WHEEL_ITEM_HEIGHT * 2],
@@ -235,7 +235,7 @@ const TimerWheel = ({
     const offset = value * TIMER_WHEEL_ITEM_HEIGHT;
 
     lastSettledIndexRef.current = value;
-    wheelScrollY.set(offset);
+    wheelScrollY.value = offset;
     listRef.current?.scrollToOffset({
       offset,
       animated: hasMountedRef.current,
@@ -245,7 +245,7 @@ const TimerWheel = ({
 
   const wheelScrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
-      wheelScrollY.set(event.contentOffset.y);
+      wheelScrollY.value = event.contentOffset.y;
     },
   });
 
@@ -268,7 +268,7 @@ const TimerWheel = ({
       Math.abs(event.nativeEvent.contentOffset.y - nextOffset) > 0.5;
 
     if (isBetweenItems) {
-      wheelScrollY.set(nextOffset);
+      wheelScrollY.value = nextOffset;
       listRef.current?.scrollToOffset({
         offset: nextOffset,
         animated: false,
@@ -437,7 +437,7 @@ export const CookModeScreen = () => {
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
-      scrollY.set(event.contentOffset.y);
+      scrollY.value = event.contentOffset.y;
     },
   });
 

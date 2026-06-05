@@ -41,15 +41,16 @@ const AnimatedAvatar = ({
   const opacity = useSharedValue(0);
 
   useEffect(() => {
-    scale.set(
-      withDelay(index * 50, withSpring(1, { damping: 12, stiffness: 180 })),
+    scale.value = withDelay(
+      index * 50,
+      withSpring(1, { damping: 12, stiffness: 180 }),
     );
-    opacity.set(withDelay(index * 50, withTiming(1, { duration: 200 })));
+    opacity.value = withDelay(index * 50, withTiming(1, { duration: 200 }));
   }, [index, scale, opacity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.get() }],
-    opacity: opacity.get(),
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
   }));
 
   const handleLongPress = () => {

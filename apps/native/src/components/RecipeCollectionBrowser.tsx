@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useMemo } from "react";
-import { View, useWindowDimensions } from "react-native";
+import { View, Dimensions } from "react-native";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
-  useAnimatedReaction,
   useAnimatedStyle,
   type SharedValue,
   type AnimatedRef,
 } from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
-import { scheduleOnRN } from "react-native-worklets";
 
 import {
   CollectionGrid,
@@ -36,6 +34,8 @@ import {
 
 // Re-export types for consumers
 export type { Recipe, CollectionWithMetadata, TabType };
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 interface RecipeCollectionBrowserProps {
   onRecipePress: (recipeId: number) => void;
@@ -83,25 +83,19 @@ export const RecipeCollectionBrowser = ({
   firstCollectionRef,
   isActive,
 }: RecipeCollectionBrowserProps) => {
-  const { width: screenWidth } = useWindowDimensions();
   const filterSheetRef = useRef<FilterSheetRef>(null);
   const recipeListRef = useRef<RecipeListRef>(null);
   const collectionGridRef = useRef<CollectionGridRef>(null);
+  const wasActive = useRef(isActive);
 
-  const resetScroll = useCallback(() => {
-    recipeListRef.current?.scrollToTop();
-    collectionGridRef.current?.scrollToTop();
-  }, []);
-
-  useAnimatedReaction(
-    () => isActive,
-    (active, previous) => {
-      if (!active && previous) {
-        scheduleOnRN(resetScroll);
-      }
-    },
-    [isActive, resetScroll],
-  );
+  // Reset scroll when exiting active state (so lists are at top when re-entering)
+  useEffect(() => {
+    if (!isActive && wasActive.current) {
+      recipeListRef.current?.scrollToTop();
+      collectionGridRef.current?.scrollToTop();
+    }
+    wasActive.current = isActive;
+  }, [isActive]);
 
   const {
     activeTab,
@@ -349,7 +343,7 @@ export const RecipeCollectionBrowser = ({
         <SwipeableTabView
           activeIndex={activeTabIndex}
           onIndexChange={handleSwipeTabChange}
-          containerWidth={screenWidth}
+          containerWidth={SCREEN_WIDTH}
           scrollProgress={scrollProgress}
         >
           {recipesContent}

@@ -22,21 +22,19 @@ const SectionCheck = ({ isComplete }: SectionCheckProps) => {
     () => isComplete,
     (current, previous) => {
       if (current !== previous) {
-        scale.set(
-          withSpring(current ? 1 : 0, {
-            damping: 50,
-            stiffness: 300,
-            mass: 2,
-          }),
-        );
+        scale.value = withSpring(current ? 1 : 0, {
+          damping: 50,
+          stiffness: 300,
+          mass: 2,
+        });
       }
     },
     [isComplete],
   );
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.get() }],
-    opacity: scale.get(),
+    transform: [{ scale: scale.value }],
+    opacity: scale.value,
   }));
 
   return (

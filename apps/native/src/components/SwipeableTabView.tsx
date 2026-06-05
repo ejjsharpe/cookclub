@@ -1,15 +1,16 @@
-import { ReactNode } from "react";
-import { View, useWindowDimensions } from "react-native";
+import { ReactNode, useEffect } from "react";
+import { View, Dimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedReaction,
   withSpring,
   SharedValue,
 } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { scheduleOnRN } from "react-native-worklets";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const SPRING_CONFIG = {
   damping: 20,
@@ -17,6 +18,7 @@ const SPRING_CONFIG = {
   mass: 0.5,
 };
 
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.2;
 const VELOCITY_THRESHOLD = 500;
 
 interface SwipeableTabViewProps {
@@ -31,60 +33,47 @@ export const SwipeableTabView = ({
   activeIndex,
   onIndexChange,
   children,
-  containerWidth,
+  containerWidth = SCREEN_WIDTH,
   scrollProgress,
 }: SwipeableTabViewProps) => {
-  const { width: windowWidth } = useWindowDimensions();
-  const effectiveContainerWidth = containerWidth ?? windowWidth;
-  const swipeThreshold = effectiveContainerWidth * 0.2;
-  const translateX = useSharedValue(-activeIndex * effectiveContainerWidth);
+  const translateX = useSharedValue(-activeIndex * containerWidth);
   const startX = useSharedValue(0);
   const tabCount = children.length;
 
   // Sync translateX and scrollProgress when activeIndex changes externally (e.g., tab press)
-  useAnimatedReaction(
-    () => ({ activeIndex, width: effectiveContainerWidth }),
-    (current, previous) => {
-      if (
-        current.activeIndex === previous?.activeIndex &&
-        current.width === previous?.width
-      ) {
-        return;
-      }
-
-      translateX.set(
-        withSpring(-current.activeIndex * current.width, SPRING_CONFIG),
-      );
-      scrollProgress?.set(withSpring(current.activeIndex, SPRING_CONFIG));
-    },
-    [activeIndex, effectiveContainerWidth, scrollProgress],
-  );
+  useEffect(() => {
+    translateX.value = withSpring(-activeIndex * containerWidth, SPRING_CONFIG);
+    if (scrollProgress) {
+      scrollProgress.value = withSpring(activeIndex, SPRING_CONFIG);
+    }
+  }, [activeIndex, containerWidth, translateX, scrollProgress]);
 
   const panGesture = Gesture.Pan()
     // Only activate for horizontal swipes, allow vertical scrolling to pass through
     .activeOffsetX([-10, 10])
     .failOffsetY([-10, 10])
     .onStart(() => {
-      startX.set(translateX.get());
+      startX.value = translateX.value;
     })
     .onUpdate((event) => {
-      const newTranslateX = startX.get() + event.translationX;
+      const newTranslateX = startX.value + event.translationX;
       // Clamp to prevent over-scrolling
-      const minTranslate = -(tabCount - 1) * effectiveContainerWidth;
+      const minTranslate = -(tabCount - 1) * containerWidth;
       const maxTranslate = 0;
-      translateX.set(
-        Math.max(minTranslate, Math.min(maxTranslate, newTranslateX)),
+      translateX.value = Math.max(
+        minTranslate,
+        Math.min(maxTranslate, newTranslateX),
       );
 
       // Update scroll progress for synced tab bar animation
       if (scrollProgress) {
-        scrollProgress.set(-translateX.get() / effectiveContainerWidth);
+        scrollProgress.value = -translateX.value / containerWidth;
       }
     })
     .onEnd((event) => {
       const velocity = event.velocityX;
-      const currentOffset = -translateX.get();
-      const currentIndex = Math.round(currentOffset / effectiveContainerWidth);
+      const currentOffset = -translateX.value;
+      const currentIndex = Math.round(currentOffset / containerWidth);
 
       let newIndex = currentIndex;
 
@@ -99,8 +88,8 @@ export const SwipeableTabView = ({
       } else {
         // Distance-based: snap to nearest
         const distanceFromCurrent =
-          currentOffset - currentIndex * effectiveContainerWidth;
-        if (Math.abs(distanceFromCurrent) > swipeThreshold) {
+          currentOffset - currentIndex * containerWidth;
+        if (Math.abs(distanceFromCurrent) > SWIPE_THRESHOLD) {
           if (distanceFromCurrent > 0 && currentIndex < tabCount - 1) {
             newIndex = currentIndex + 1;
           } else if (distanceFromCurrent < 0 && currentIndex > 0) {
@@ -113,13 +102,11 @@ export const SwipeableTabView = ({
       newIndex = Math.max(0, Math.min(tabCount - 1, newIndex));
 
       // Animate to the new position
-      translateX.set(
-        withSpring(-newIndex * effectiveContainerWidth, SPRING_CONFIG),
-      );
+      translateX.value = withSpring(-newIndex * containerWidth, SPRING_CONFIG);
 
       // Animate scroll progress with spring
       if (scrollProgress) {
-        scrollProgress.set(withSpring(newIndex, SPRING_CONFIG));
+        scrollProgress.value = withSpring(newIndex, SPRING_CONFIG);
       }
 
       // Notify parent if index changed
@@ -129,7 +116,7 @@ export const SwipeableTabView = ({
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.get() }],
+    transform: [{ translateX: translateX.value }],
   }));
 
   return (
@@ -138,14 +125,14 @@ export const SwipeableTabView = ({
         <Animated.View
           style={[
             styles.tabsContainer,
-            { width: effectiveContainerWidth * tabCount },
+            { width: containerWidth * tabCount },
             animatedStyle,
           ]}
         >
           {children.map((child, index) => (
             <View
               key={index}
-              style={[styles.tabContent, { width: effectiveContainerWidth }]}
+              style={[styles.tabContent, { width: containerWidth }]}
             >
               {child}
             </View>

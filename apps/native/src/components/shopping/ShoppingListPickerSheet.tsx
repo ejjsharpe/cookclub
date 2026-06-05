@@ -95,7 +95,7 @@ const ListItem = ({
 
 export interface ShoppingListPickerSheetProps {
   activeListId?: number;
-  onSelectList?: (listId: number, listName?: string) => void;
+  onSelectList?: (listId: number) => void;
 }
 
 export interface ShoppingListPickerSheetRef {
@@ -122,8 +122,8 @@ export const ShoppingListPickerSheet = forwardRef<
     dismiss: () => sheetRef.current?.dismiss(),
   }));
 
-  const handleSelectList = (list: ShoppingListWithMeta) => {
-    onSelectList?.(list.id, list.name);
+  const handleSelectList = (listId: number) => {
+    onSelectList?.(listId);
     sheetRef.current?.dismiss();
   };
 
@@ -135,7 +135,7 @@ export const ShoppingListPickerSheet = forwardRef<
         name: newListName.trim(),
       });
       if (newList) {
-        onSelectList?.(newList.id, newList.name);
+        onSelectList?.(newList.id);
       }
       setNewListName("");
       setIsCreating(false);
@@ -153,7 +153,7 @@ export const ShoppingListPickerSheet = forwardRef<
       if (listId === activeListId) {
         const defaultList = shoppingLists?.find((l) => l.isDefault);
         if (defaultList) {
-          onSelectList?.(defaultList.id, defaultList.name);
+          onSelectList?.(defaultList.id);
         }
       }
     } catch {
@@ -193,7 +193,7 @@ export const ShoppingListPickerSheet = forwardRef<
                         key={list.id}
                         list={list}
                         isActive={list.id === activeListId}
-                        onSelect={() => handleSelectList(list)}
+                        onSelect={() => handleSelectList(list.id)}
                         onDelete={() => handleDeleteList(list.id)}
                         showDelete={listToDelete !== list.id}
                       />
@@ -213,7 +213,7 @@ export const ShoppingListPickerSheet = forwardRef<
                         key={list.id}
                         list={list}
                         isActive={list.id === activeListId}
-                        onSelect={() => handleSelectList(list)}
+                        onSelect={() => handleSelectList(list.id)}
                         onDelete={() => {}}
                         showDelete={false}
                       />

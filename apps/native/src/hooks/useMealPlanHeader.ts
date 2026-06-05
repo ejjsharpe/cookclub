@@ -11,11 +11,11 @@ export const useMealPlanHeader = () => {
   const headerButtonsOpacity = useSharedValue(1);
 
   const titleAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: titleOpacity.get(),
+    opacity: titleOpacity.value,
   }));
 
   const headerButtonsAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: headerButtonsOpacity.get(),
+    opacity: headerButtonsOpacity.value,
   }));
 
   // Regular scroll handler for header fade animations
@@ -26,18 +26,14 @@ export const useMealPlanHeader = () => {
 
       // Fade out when scrolling past the header
       const titleShouldHide = y > 5;
-      titleOpacity.set(
-        withTiming(titleShouldHide ? 0 : 1, {
-          duration: 150,
-        }),
-      );
+      titleOpacity.value = withTiming(titleShouldHide ? 0 : 1, {
+        duration: 150,
+      });
 
       const buttonsShouldHide = y > 10;
-      headerButtonsOpacity.set(
-        withTiming(buttonsShouldHide ? 0 : 1, {
-          duration: 150,
-        }),
-      );
+      headerButtonsOpacity.value = withTiming(buttonsShouldHide ? 0 : 1, {
+        duration: 150,
+      });
     },
     [titleOpacity, headerButtonsOpacity],
   );

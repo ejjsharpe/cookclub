@@ -64,10 +64,6 @@ import { useSelectedMealPlan } from "@/lib/mealPlanPreferences";
 const HEADER_HEIGHT = 52; // Height of the title row
 const BACK_TO_TODAY_ANIMATION_MS = 180;
 const BACK_TO_TODAY_SCROLL_SUPPRESSION_MS = 1500;
-const VIEWABILITY_CONFIG = {
-  itemVisiblePercentThreshold: 10,
-  minimumViewTime: 80,
-};
 
 export const MealPlanScreen = () => {
   const { theme } = useUnistyles();
@@ -150,12 +146,10 @@ export const MealPlanScreen = () => {
   }, [todayDateString]);
 
   useEffect(() => {
-    backToTodayProgress.set(
-      withTiming(showBackToToday ? 1 : 0, {
-        duration: BACK_TO_TODAY_ANIMATION_MS,
-        easing: Easing.bezier(0.2, 0, 0, 1),
-      }),
-    );
+    backToTodayProgress.value = withTiming(showBackToToday ? 1 : 0, {
+      duration: BACK_TO_TODAY_ANIMATION_MS,
+      easing: Easing.bezier(0.2, 0, 0, 1),
+    });
   }, [backToTodayProgress, showBackToToday]);
 
   useEffect(() => {
@@ -283,15 +277,27 @@ export const MealPlanScreen = () => {
     shareSheetRef.current?.present();
   }, []);
 
+  // Pending plan ID for newly created plans that aren't in the query cache yet
+  const [pendingPlanId, setPendingPlanId] = useState<number | null>(null);
+
+  // Once the query refetches and the pending plan appears, select it
+  useEffect(() => {
+    if (pendingPlanId === null || !mealPlans) return;
+    const plan = mealPlans.find((p) => p.id === pendingPlanId);
+    if (plan) {
+      setSelectedPlan(plan.id, plan.name);
+      setPendingPlanId(null);
+    }
+  }, [pendingPlanId, mealPlans, setSelectedPlan]);
+
   const handleSelectMealPlan = useCallback(
-    (planId: number, planName?: string) => {
-      if (planName) {
-        setSelectedPlan(planId, planName);
-        return;
-      }
+    (planId: number) => {
       const plan = mealPlans?.find((p) => p.id === planId);
       if (plan) {
         setSelectedPlan(planId, plan.name);
+      } else {
+        // New plan not in cache yet — wait for query to refetch
+        setPendingPlanId(planId);
       }
     },
     [mealPlans, setSelectedPlan],
@@ -359,7 +365,12 @@ export const MealPlanScreen = () => {
     }, BACK_TO_TODAY_SCROLL_SUPPRESSION_MS);
   }, []);
 
-  const handleViewableItemsChanged = useCallback(
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 10,
+    minimumViewTime: 80,
+  }).current;
+
+  const handleViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       const todayDateString = todayDateStringRef.current;
       if (!todayDateString) return;
@@ -378,8 +389,7 @@ export const MealPlanScreen = () => {
         setShowBackToToday(true);
       }
     },
-    [clearBackToTodaySuppression],
-  );
+  ).current;
 
   // Override item layout for proper sizing
   const overrideItemLayout = useCallback(
@@ -451,13 +461,13 @@ export const MealPlanScreen = () => {
   }, [navigation, scrollToToday, isFocused]);
 
   const backToTodayAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backToTodayProgress.get(),
+    opacity: backToTodayProgress.value,
     transform: [
       {
-        translateY: interpolate(backToTodayProgress.get(), [0, 1], [-8, 0]),
+        translateY: interpolate(backToTodayProgress.value, [0, 1], [-8, 0]),
       },
       {
-        scale: interpolate(backToTodayProgress.get(), [0, 1], [0.96, 1]),
+        scale: interpolate(backToTodayProgress.value, [0, 1], [0.96, 1]),
       },
     ],
   }));
@@ -532,7 +542,7 @@ export const MealPlanScreen = () => {
           maintainVisibleContentPosition={{ disabled: false }}
           ListHeaderComponent={ListHeaderComponent}
           contentContainerStyle={styles.listContent}
-          viewabilityConfig={VIEWABILITY_CONFIG}
+          viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={handleViewableItemsChanged}
           initialScrollIndex={
             todayHeaderIndex >= 0 ? todayHeaderIndex : undefined

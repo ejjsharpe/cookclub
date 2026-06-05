@@ -24,29 +24,25 @@ export function BaseButton({
   const sv = useSharedValue(1);
   const animatedStyles = useAnimatedStyle(() => {
     return {
-      transform: [{ scale: sv.get() }],
-      opacity: interpolate(sv.get(), [0.97, 1], [0.7, 1]),
+      transform: [{ scale: sv.value }],
+      opacity: interpolate(sv.value, [0.97, 1], [0.7, 1]),
     };
   });
 
   const onPressIn = () => {
-    sv.set(
-      withSpring(0.97, {
-        damping: 8,
-        stiffness: 100,
-        mass: 0.4,
-      }),
-    );
+    sv.value = withSpring(0.97, {
+      damping: 8,
+      stiffness: 100,
+      mass: 0.4,
+    });
   };
 
   const onPressOut = () => {
-    sv.set(
-      withSpring(1, {
-        damping: 8,
-        stiffness: 100,
-        mass: 0.4,
-      }),
-    );
+    sv.value = withSpring(1, {
+      damping: 8,
+      stiffness: 100,
+      mass: 0.4,
+    });
   };
 
   return (

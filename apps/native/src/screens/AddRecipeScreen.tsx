@@ -172,25 +172,21 @@ const ImportProgressBar = ({ active }: { active: boolean }) => {
 
   useEffect(() => {
     if (active) {
-      completionProgress.set(0);
-      positionProgress.set(
-        withRepeat(
-          withTiming(1, {
-            duration: 1400,
-            easing: Easing.inOut(Easing.ease),
-          }),
-          -1,
-          true,
-        ),
+      completionProgress.value = 0;
+      positionProgress.value = withRepeat(
+        withTiming(1, {
+          duration: 1400,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        -1,
+        true,
       );
     } else {
       cancelAnimation(positionProgress);
-      completionProgress.set(
-        withTiming(1, {
-          duration: 260,
-          easing: Easing.out(Easing.cubic),
-        }),
-      );
+      completionProgress.value = withTiming(1, {
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+      });
     }
   }, [active, completionProgress, positionProgress]);
 
@@ -205,9 +201,9 @@ const ImportProgressBar = ({ active }: { active: boolean }) => {
   const travelWidth = Math.max(0, trackWidth - segmentWidth);
 
   const indicatorStyle = useAnimatedStyle(() => {
-    const activeLeft = positionProgress.get() * travelWidth;
+    const activeLeft = positionProgress.value * travelWidth;
     const activeRight = activeLeft + segmentWidth;
-    const completion = completionProgress.get();
+    const completion = completionProgress.value;
     const left = activeLeft * (1 - completion);
     const right = activeRight + (trackWidth - activeRight) * completion;
 
@@ -427,18 +423,16 @@ export const AddRecipeScreen = () => {
   const titleOpacity = useSharedValue(1);
 
   const titleAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: titleOpacity.get(),
+    opacity: titleOpacity.value,
   }));
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = event.nativeEvent.contentOffset.y;
       const titleShouldHide = y > 5;
-      titleOpacity.set(
-        withTiming(titleShouldHide ? 0 : 1, {
-          duration: 150,
-        }),
-      );
+      titleOpacity.value = withTiming(titleShouldHide ? 0 : 1, {
+        duration: 150,
+      });
     },
     [titleOpacity],
   );

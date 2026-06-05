@@ -20,7 +20,7 @@ import {
 import {
   View,
   TouchableOpacity,
-  useWindowDimensions,
+  Dimensions,
   ActivityIndicator,
   Modal,
   Alert,
@@ -103,6 +103,9 @@ import {
 } from "@/utils/measurementUtils";
 import { transformParsedRecipeForPreview } from "@/utils/recipeTransform";
 import { formatMinutesShort } from "@/utils/timeUtils";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const IMAGE_HEIGHT = SCREEN_WIDTH;
 
 type RecipeDetailMode = "view" | "edit";
 
@@ -472,8 +475,6 @@ export const RecipeDetailScreen = () => {
   const createCookingReviewMutation = useCreateCookingReview();
   const { isPro, requireProFeature, presentPaywall } = useSubscription();
   const { dismissImport } = useBackgroundImportQueue();
-  const { width: screenWidth } = useWindowDimensions();
-  const imageHeight = screenWidth;
 
   const [servings, setServings] = useState(1);
   const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>(
@@ -517,18 +518,17 @@ export const RecipeDetailScreen = () => {
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
-      scrollY.set(event.contentOffset.y);
+      scrollY.value = event.contentOffset.y;
     },
   });
 
   const imageAnimatedStyle = useAnimatedStyle(() => {
-    const scrollOffset = scrollY.get();
-    const scale = interpolate(scrollOffset, [-200, 0], [2, 1], {
+    const scale = interpolate(scrollY.value, [-200, 0], [2, 1], {
       extrapolateLeft: Extrapolation.EXTEND,
       extrapolateRight: Extrapolation.CLAMP,
     });
-    const scaleCompensation = -(imageHeight * (scale - 1)) / 2;
-    const parallax = scrollOffset > 0 ? scrollOffset / 2 : 0;
+    const scaleCompensation = -(IMAGE_HEIGHT * (scale - 1)) / 2;
+    const parallax = scrollY.value > 0 ? scrollY.value / 2 : 0;
 
     return {
       transform: [{ translateY: scaleCompensation + parallax }, { scale }],
@@ -608,11 +608,19 @@ export const RecipeDetailScreen = () => {
     );
   }, [isEditing, isPreviewMode, isPro, nutrition, nutritionMutation, recipe]);
 
-  const imageCount = isEditing
-    ? (draft?.images.length ?? 0)
-    : (recipe?.images.length ?? 0);
-  const displayImageIndex =
-    imageCount > 0 ? Math.min(currentImageIndex, imageCount - 1) : 0;
+  useEffect(() => {
+    const imageCount = isEditing
+      ? (draft?.images.length ?? 0)
+      : (recipe?.images.length ?? 0);
+    if (imageCount > 0 && currentImageIndex > imageCount - 1) {
+      setCurrentImageIndex(imageCount - 1);
+    }
+  }, [
+    currentImageIndex,
+    draft?.images.length,
+    isEditing,
+    recipe?.images.length,
+  ]);
 
   useEffect(() => {
     const index = pendingImageScrollIndexRef.current;
@@ -698,12 +706,12 @@ export const RecipeDetailScreen = () => {
   const handleImageScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetX = event.nativeEvent.contentOffset.x;
-      const newIndex = Math.round(offsetX / screenWidth);
+      const newIndex = Math.round(offsetX / SCREEN_WIDTH);
       if (newIndex !== currentImageIndex) {
         setCurrentImageIndex(newIndex);
       }
     },
-    [currentImageIndex, screenWidth],
+    [currentImageIndex],
   );
 
   const handleOpenAdjustSheet = () => {
@@ -944,12 +952,12 @@ export const RecipeDetailScreen = () => {
   const handleRemoveCurrentImage = useCallback(() => {
     updateDraft((current) => {
       const nextImages = current.images.filter(
-        (_, index) => index !== displayImageIndex,
+        (_, index) => index !== currentImageIndex,
       );
       return { ...current, images: nextImages };
     });
     setCurrentImageIndex((index) => Math.max(0, index - 1));
-  }, [displayImageIndex, updateDraft]);
+  }, [currentImageIndex, updateDraft]);
 
   const addIngredient = useCallback(
     (sectionId: string) => {
@@ -1462,14 +1470,9 @@ export const RecipeDetailScreen = () => {
   }
 
   const renderImage = ({ item }: { item: RecipeImage }) => {
-    const preset = selectDetailImagePreset(screenWidth);
+    const preset = selectDetailImagePreset(SCREEN_WIDTH);
     return (
-      <View
-        style={[
-          styles.imageContainer,
-          { width: screenWidth, height: imageHeight },
-        ]}
-      >
+      <View style={styles.imageContainer}>
         <OptimizedImage
           image={recipeImageToSource(item)}
           preset={preset}
@@ -1485,18 +1488,13 @@ export const RecipeDetailScreen = () => {
     const progress = uploadProgress[item.uri];
     const isUploading =
       progress !== undefined && progress >= 0 && progress < 100;
-    const preset = selectDetailImagePreset(screenWidth);
+    const preset = selectDetailImagePreset(SCREEN_WIDTH);
     const imageUrl = item.isRemote
       ? getImageUrl(item.asset ?? item.uri, preset)
       : item.uri;
 
     return (
-      <View
-        style={[
-          styles.imageContainer,
-          { width: screenWidth, height: imageHeight },
-        ]}
-      >
+      <View style={styles.imageContainer}>
         {item.asset ? (
           <OptimizedImage
             image={item.asset}
@@ -1578,7 +1576,7 @@ export const RecipeDetailScreen = () => {
         style={[styles.heroMetaChip, styles.heroImageCounterChip]}
       >
         <Text style={styles.heroImageCounterText}>
-          {displayImageIndex + 1} / {totalPages}
+          {currentImageIndex + 1} / {totalPages}
         </Text>
       </View>
     );
@@ -1590,9 +1588,7 @@ export const RecipeDetailScreen = () => {
         const isCreatingImage = generateRecipeImageMutation.isPending;
 
         return (
-          <View
-            style={[styles.imageCarouselContainer, { height: imageHeight }]}
-          >
+          <View style={styles.imageCarouselContainer}>
             <View style={styles.emptyHero}>
               <Ionicons
                 name="image-outline"
@@ -1663,7 +1659,7 @@ export const RecipeDetailScreen = () => {
       }
 
       return (
-        <View style={[styles.imageCarouselContainer, { height: imageHeight }]}>
+        <View style={styles.imageCarouselContainer}>
           <Animated.View style={imageAnimatedStyle}>
             <FlatList
               ref={draftImageListRef}
@@ -1678,20 +1674,20 @@ export const RecipeDetailScreen = () => {
               windowSize={3}
               onMomentumScrollEnd={handleImageScroll}
               getItemLayout={(_, index) => ({
-                length: screenWidth,
-                offset: screenWidth * index,
+                length: SCREEN_WIDTH,
+                offset: SCREEN_WIDTH * index,
                 index,
               })}
               onScrollToIndexFailed={({ index }) => {
                 draftImageListRef.current?.scrollToOffset({
-                  offset: screenWidth * index,
+                  offset: SCREEN_WIDTH * index,
                   animated: true,
                 });
               }}
             />
           </Animated.View>
           <PageIndicator
-            currentPage={displayImageIndex + 1}
+            currentPage={currentImageIndex + 1}
             totalPages={draft.images.length}
           />
           <LinearGradient
@@ -1719,7 +1715,7 @@ export const RecipeDetailScreen = () => {
     }
 
     return (
-      <View style={[styles.imageCarouselContainer, { height: imageHeight }]}>
+      <View style={styles.imageCarouselContainer}>
         {recipe?.images && recipe.images.length > 0 ? (
           <>
             <Animated.View style={imageAnimatedStyle}>
@@ -1735,8 +1731,8 @@ export const RecipeDetailScreen = () => {
                 windowSize={3}
                 onMomentumScrollEnd={handleImageScroll}
                 getItemLayout={(_, index) => ({
-                  length: screenWidth,
-                  offset: screenWidth * index,
+                  length: SCREEN_WIDTH,
+                  offset: SCREEN_WIDTH * index,
                   index,
                 })}
               />
@@ -1793,7 +1789,11 @@ export const RecipeDetailScreen = () => {
             </LinearGradient>
           </>
         ) : (
-          <Skeleton width={screenWidth} height={imageHeight} borderRadius={0} />
+          <Skeleton
+            width={SCREEN_WIDTH}
+            height={IMAGE_HEIGHT}
+            borderRadius={0}
+          />
         )}
       </View>
     );
@@ -2896,8 +2896,13 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     paddingHorizontal: 20,
   },
-  imageCarouselContainer: {},
-  imageContainer: {},
+  imageCarouselContainer: {
+    height: IMAGE_HEIGHT,
+  },
+  imageContainer: {
+    width: SCREEN_WIDTH,
+    height: IMAGE_HEIGHT,
+  },
   recipeImage: {
     width: "100%",
     height: "100%",

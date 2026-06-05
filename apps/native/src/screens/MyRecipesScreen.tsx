@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  useWindowDimensions,
+  Dimensions,
   type TextInput,
 } from "react-native";
 import Animated, {
@@ -46,6 +46,7 @@ import type {
 } from "@/hooks/useRecipeCollectionBrowser";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const HORIZONTAL_PADDING = 20;
 const HEADER_HEIGHT = 52;
 const COLLECTION_CARD_WIDTH = 140;
@@ -73,20 +74,6 @@ type BrowserFilterState = {
   onOpenFilters: () => void;
   clearFilters: () => void;
   activeTab: TabType;
-};
-
-type RecipeOverlayPosition = { id: number; y: number };
-type CollectionOverlayPosition = {
-  id: number;
-  x: number;
-  y: number;
-  width: number;
-};
-type CollectionOverlayTarget = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -181,10 +168,9 @@ const AnimatedRecipeOverlay = memo(function AnimatedRecipeOverlay({
 
   const animatedStyle = useAnimatedStyle(() => {
     "worklet";
-    const progress = searchProgress.get();
     return {
-      transform: [{ translateY: progress * deltaY }],
-      opacity: animatingTab.get() === "recipes" && isAnimating.get() ? 1 : 0,
+      transform: [{ translateY: searchProgress.value * deltaY }],
+      opacity: animatingTab.value === "recipes" && isAnimating.value ? 1 : 0,
     };
   });
 
@@ -241,7 +227,7 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   const animatedTranslateX = useDerivedValue(() => {
     "worklet";
     if (fadeOnly) return 0;
-    return searchProgress.get() * deltaX;
+    return searchProgress.value * deltaX;
   });
 
   // Memoize static position style to avoid recreation on each render
@@ -257,26 +243,25 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   // Combined image style - handles visibility, position, and scale in one animated style
   const imageStyle = useAnimatedStyle(() => {
     "worklet";
-    const progress = searchProgress.get();
-    const isVisible = animatingTab.get() === "collections" && isAnimating.get();
+    const isVisible = animatingTab.value === "collections" && isAnimating.value;
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: isVisible ? progress : 0,
+        opacity: isVisible ? searchProgress.value : 0,
         transform: [],
         transformOrigin: "top left",
       };
     }
 
-    const translateY = progress * deltaY;
+    const translateY = searchProgress.value * deltaY;
     // Scale interpolates from 1 to imageScale: 1 + progress * (imageScale - 1)
-    const scale = 1 + progress * (imageScale - 1);
+    const scale = 1 + searchProgress.value * (imageScale - 1);
 
     return {
       opacity: isVisible ? 1 : 0,
       transform: [
-        { translateX: animatedTranslateX.get() },
+        { translateX: animatedTranslateX.value },
         { translateY },
         { scale },
       ],
@@ -287,23 +272,22 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   // Text only translates (no scale), accounts for image height change
   const textStyle = useAnimatedStyle(() => {
     "worklet";
-    const progress = searchProgress.get();
-    const isVisible = animatingTab.get() === "collections" && isAnimating.get();
+    const isVisible = animatingTab.value === "collections" && isAnimating.value;
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: isVisible ? progress : 0,
+        opacity: isVisible ? searchProgress.value : 0,
         transform: [],
       };
     }
 
     // Text needs to move down by deltaY plus the extra image height from scaling
-    const translateY = progress * (deltaY + imageHeightDelta);
+    const translateY = searchProgress.value * (deltaY + imageHeightDelta);
 
     return {
       opacity: isVisible ? 1 : 0,
-      transform: [{ translateX: animatedTranslateX.get() }, { translateY }],
+      transform: [{ translateX: animatedTranslateX.value }, { translateY }],
     };
   });
 
@@ -339,7 +323,6 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
 export const MyRecipesScreen = () => {
   const navigation = useNavigation();
   const isFocused = useIsFocused();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const browseScrollRef = useRef<ScrollView>(null);
@@ -354,51 +337,12 @@ export const MyRecipesScreen = () => {
   const [filterState, setFilterState] = useState<BrowserFilterState | null>(
     null,
   );
+  const hasFilterState = filterState !== null;
   const activeSearchTab = filterState?.activeTab ?? "recipes";
   const clearSearchFilters = filterState?.clearFilters;
 
-  // Track the search bar's Y position relative to the screen
-  const searchBarRef = useAnimatedRef<Animated.View>();
-  const searchBarY = useSharedValue(0);
-
-  // Recipe card position tracking for shared element transition
-  const firstRecipeRef = useAnimatedRef<Animated.View>();
-  const [browsePositions, setBrowsePositions] = useState<
-    RecipeOverlayPosition[]
-  >([]);
-
-  // Collection card position tracking for shared element transition
-  const firstBrowseCollectionRef = useAnimatedRef<Animated.View>();
-  const firstSearchCollectionRef = useAnimatedRef<Animated.View>();
-  const [browseCollectionPositions, setBrowseCollectionPositions] = useState<
-    CollectionOverlayPosition[]
-  >([]);
-  const [searchCollectionTarget, setSearchCollectionTarget] =
-    useState<CollectionOverlayTarget | null>(null);
-  const collectionScrollX = useSharedValue(0);
-
-  // Animation progress (0 = browse, 1 = search)
-  const searchProgress = useSharedValue(0);
-  // Derived value for animation boundary check - computed once per frame
-  const isAnimating = useDerivedValue(() => {
-    const progress = searchProgress.get();
-    return progress > 0 && progress < 1;
-  });
-  // Tracks which tab's overlays should be visible during animation ("recipes" or "collections")
-  const animatingTab = useSharedValue<TabType>("recipes");
-
-  // Scroll-based title fade (like HomeScreen)
-  const titleOpacity = useSharedValue(1);
-  const titleHidden = useSharedValue(false);
-
-  // Filter button visibility (1 = visible on recipes tab, 0 = hidden on collections tab)
-  const filterButtonProgress = useSharedValue(1);
-
   const handleFilterStateChange = useCallback(
     (nextState: BrowserFilterState) => {
-      filterButtonProgress.set(
-        withTiming(nextState.activeTab === "recipes" ? 1 : 0, ANIMATION_CONFIG),
-      );
       setFilterState((currentState) => {
         if (
           currentState &&
@@ -413,8 +357,46 @@ export const MyRecipesScreen = () => {
         return nextState;
       });
     },
-    [filterButtonProgress],
+    [],
   );
+
+  // Track the search bar's Y position relative to the screen
+  const searchBarRef = useAnimatedRef<Animated.View>();
+  const searchBarY = useSharedValue(0);
+
+  // Recipe card position tracking for shared element transition
+  const firstRecipeRef = useAnimatedRef<Animated.View>();
+  const browsePositions = useRef<{ id: number; y: number }[]>([]);
+
+  // Collection card position tracking for shared element transition
+  const firstBrowseCollectionRef = useAnimatedRef<Animated.View>();
+  const firstSearchCollectionRef = useAnimatedRef<Animated.View>();
+  const browseCollectionPositions = useRef<
+    { id: number; x: number; y: number; width: number }[]
+  >([]);
+  const searchCollectionTarget = useRef<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const collectionScrollX = useSharedValue(0);
+
+  // Animation progress (0 = browse, 1 = search)
+  const searchProgress = useSharedValue(0);
+  // Derived value for animation boundary check - computed once per frame
+  const isAnimating = useDerivedValue(() => {
+    return searchProgress.value > 0 && searchProgress.value < 1;
+  });
+  // Tracks which tab's overlays should be visible during animation ("recipes" or "collections")
+  const animatingTab = useSharedValue<TabType>("recipes");
+
+  // Scroll-based title fade (like HomeScreen)
+  const titleOpacity = useSharedValue(1);
+  const titleHidden = useSharedValue(false);
+
+  // Filter button visibility (1 = visible on recipes tab, 0 = hidden on collections tab)
+  const filterButtonProgress = useSharedValue(1);
 
   // Target Y position for search mode (matching RecipeCollectionBrowser's search bar)
   const searchModeY = insets.top;
@@ -457,13 +439,23 @@ export const MyRecipesScreen = () => {
 
   useEffect(() => {
     if (isSearchActive) {
-      searchProgress.set(withTiming(1, ANIMATION_CONFIG));
+      searchProgress.value = withTiming(1, ANIMATION_CONFIG);
       searchInputRef.current?.focus();
     } else {
       searchInputRef.current?.blur();
-      searchProgress.set(withTiming(0, ANIMATION_CONFIG));
+      searchProgress.value = withTiming(0, ANIMATION_CONFIG);
     }
   }, [isSearchActive, searchProgress]);
+
+  // Animate filter button visibility based on active tab
+  useEffect(() => {
+    if (hasFilterState) {
+      filterButtonProgress.value = withTiming(
+        activeSearchTab === "recipes" ? 1 : 0,
+        ANIMATION_CONFIG,
+      );
+    }
+  }, [activeSearchTab, filterButtonProgress, hasFilterState]);
 
   // ─── Data Fetching ─────────────────────────────────────────────────────────────
   const createCollectionMutation = useCreateCollection();
@@ -574,7 +566,7 @@ export const MyRecipesScreen = () => {
     }) => {
       // Update search bar position
       if (measurements.searchBarY && measurements.searchBarY > 0) {
-        searchBarY.set(measurements.searchBarY);
+        searchBarY.value = measurements.searchBarY;
       }
 
       // Calculate recipe positions on JS thread
@@ -624,7 +616,7 @@ export const MyRecipesScreen = () => {
       if (
         measurements.searchCollectionX &&
         measurements.searchCollectionX > 0 &&
-        measurements.searchCollectionX < screenWidth
+        measurements.searchCollectionX < SCREEN_WIDTH
       ) {
         searchCollectionMeasurement = {
           x: measurements.searchCollectionX,
@@ -635,10 +627,10 @@ export const MyRecipesScreen = () => {
       }
 
       // Store positions and start animation
-      setBrowsePositions(recipePositions);
-      setBrowseCollectionPositions(collectionPositions);
-      setSearchCollectionTarget(searchCollectionMeasurement);
-      animatingTab.set(tabToAnimate);
+      browsePositions.current = recipePositions;
+      browseCollectionPositions.current = collectionPositions;
+      searchCollectionTarget.current = searchCollectionMeasurement;
+      animatingTab.value = tabToAnimate;
       setIsSearchActive(true);
     };
 
@@ -684,7 +676,6 @@ export const MyRecipesScreen = () => {
     firstBrowseCollectionRef,
     firstSearchCollectionRef,
     animatingTab,
-    screenWidth,
   ]);
 
   const handleExitSearch = useCallback(() => {
@@ -751,7 +742,7 @@ export const MyRecipesScreen = () => {
       if (
         measurements.searchCollectionX &&
         measurements.searchCollectionX > 0 &&
-        measurements.searchCollectionX < screenWidth
+        measurements.searchCollectionX < SCREEN_WIDTH
       ) {
         searchCollectionMeasurement = {
           x: measurements.searchCollectionX,
@@ -762,16 +753,16 @@ export const MyRecipesScreen = () => {
       }
 
       // Update positions BEFORE setting visibility
-      setBrowsePositions(recipePositions);
-      setBrowseCollectionPositions(collectionPositions);
+      browsePositions.current = recipePositions;
+      browseCollectionPositions.current = collectionPositions;
 
       // Update search collection target if we have a valid measurement
       if (searchCollectionMeasurement) {
-        setSearchCollectionTarget(searchCollectionMeasurement);
+        searchCollectionTarget.current = searchCollectionMeasurement;
       }
 
       // Set animation tab and visibility based on current tab
-      animatingTab.set(currentTab);
+      animatingTab.value = currentTab;
 
       // Trigger exit animation
       setIsSearchActive(false);
@@ -818,7 +809,6 @@ export const MyRecipesScreen = () => {
     firstSearchCollectionRef,
     recentRecipeIds,
     collectionIds,
-    screenWidth,
   ]);
 
   const scrollToTop = useCallback(() => {
@@ -846,7 +836,7 @@ export const MyRecipesScreen = () => {
   const collectionCardsStyle = useAnimatedStyle(() => {
     "worklet";
     const overlayVisible =
-      animatingTab.get() === "collections" && isAnimating.get();
+      animatingTab.value === "collections" && isAnimating.value;
     return {
       opacity: overlayVisible ? 0 : 1,
     };
@@ -912,13 +902,11 @@ export const MyRecipesScreen = () => {
       "worklet";
       // Fade out title when scrolling up (search bar would collide with header)
       const titleShouldHide = event.contentOffset.y > 5;
-      if (titleHidden.get() !== titleShouldHide) {
-        titleHidden.set(titleShouldHide);
-        titleOpacity.set(
-          withTiming(titleShouldHide ? 0 : 1, {
-            duration: 150,
-          }),
-        );
+      if (titleHidden.value !== titleShouldHide) {
+        titleHidden.value = titleShouldHide;
+        titleOpacity.value = withTiming(titleShouldHide ? 0 : 1, {
+          duration: 150,
+        });
       }
     },
   });
@@ -927,7 +915,7 @@ export const MyRecipesScreen = () => {
   const collectionsHorizontalScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       "worklet";
-      collectionScrollX.set(event.contentOffset.x);
+      collectionScrollX.value = event.contentOffset.x;
     },
   });
 
@@ -936,7 +924,7 @@ export const MyRecipesScreen = () => {
   const browseAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: interpolate(searchProgress.get(), [0, 0.5], [1, 0]),
+      opacity: interpolate(searchProgress.value, [0, 0.5], [1, 0]),
     };
   });
 
@@ -944,7 +932,7 @@ export const MyRecipesScreen = () => {
   const searchAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: searchProgress.get(),
+      opacity: searchProgress.value,
     };
   });
 
@@ -952,7 +940,7 @@ export const MyRecipesScreen = () => {
   const recipeCardsStyle = useAnimatedStyle(() => {
     "worklet";
     const overlayVisible =
-      animatingTab.get() === "recipes" && isAnimating.get();
+      animatingTab.value === "recipes" && isAnimating.value;
     return {
       opacity: overlayVisible ? 0 : 1,
     };
@@ -961,7 +949,7 @@ export const MyRecipesScreen = () => {
   const titleAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: titleOpacity.get(),
+      opacity: titleOpacity.value,
     };
   });
 
@@ -972,7 +960,7 @@ export const MyRecipesScreen = () => {
   // This avoids animating width (layout property) while keeping text crisp
 
   // Calculate static widths (only filterButtonProgress changes these, not searchProgress)
-  const startWidth = screenWidth - HORIZONTAL_PADDING * 2;
+  const startWidth = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
 
   // Pre-computed constant for back button offset
   const BACK_BUTTON_OFFSET = BACK_BUTTON_WIDTH + BACK_BUTTON_GAP;
@@ -980,14 +968,13 @@ export const MyRecipesScreen = () => {
   // Outer clip wrapper - animates position only, clips content to end width
   const floatingSearchClipStyle = useAnimatedStyle(() => {
     "worklet";
-    const searchProgressValue = searchProgress.get();
-    const baseY = searchBarY.get() || searchModeY;
+    const baseY = searchBarY.value || searchModeY;
     const deltaY = searchModeY - baseY;
     // Filter button space - this only changes on tab switch, not during enter/exit
     const filterSpace =
-      (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.get();
+      (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.value;
     const endWidth =
-      screenWidth -
+      SCREEN_WIDTH -
       HORIZONTAL_PADDING * 2 -
       BACK_BUTTON_WIDTH -
       BACK_BUTTON_GAP -
@@ -995,17 +982,17 @@ export const MyRecipesScreen = () => {
 
     // Linear interpolation: startWidth + progress * (endWidth - startWidth)
     const clipWidth =
-      startWidth + searchProgressValue * (endWidth - startWidth);
+      startWidth + searchProgress.value * (endWidth - startWidth);
 
     return {
       top: baseY,
       width: clipWidth,
       overflow: "hidden" as const,
-      opacity: searchProgressValue > 0 ? 1 : 0,
+      opacity: searchProgress.value > 0 ? 1 : 0,
       // GPU-accelerated position animation (simple multiplication replaces interpolate)
       transform: [
-        { translateX: searchProgressValue * BACK_BUTTON_OFFSET },
-        { translateY: searchProgressValue * deltaY },
+        { translateX: searchProgress.value * BACK_BUTTON_OFFSET },
+        { translateY: searchProgress.value * deltaY },
       ],
     };
   });
@@ -1014,11 +1001,11 @@ export const MyRecipesScreen = () => {
   const floatingSearchInnerStyle = useAnimatedStyle(() => {
     "worklet";
     // When animation is complete, snap to endWidth so input area is fully visible
-    if (searchProgress.get() === 1) {
+    if (searchProgress.value === 1) {
       const filterSpace =
-        (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.get();
+        (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.value;
       const endWidth =
-        screenWidth -
+        SCREEN_WIDTH -
         HORIZONTAL_PADDING * 2 -
         BACK_BUTTON_WIDTH -
         BACK_BUTTON_GAP -
@@ -1032,7 +1019,7 @@ export const MyRecipesScreen = () => {
   const inlineSearchBarStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: searchProgress.get() > 0 ? 0 : 1,
+      opacity: searchProgress.value > 0 ? 0 : 1,
     };
   });
 
@@ -1040,7 +1027,7 @@ export const MyRecipesScreen = () => {
   // Filter button uses scale transform for GPU-accelerated show/hide
   const filterButtonAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
-    const combined = filterButtonProgress.get() * searchProgress.get();
+    const combined = filterButtonProgress.value * searchProgress.value;
     return {
       opacity: combined,
       transform: [{ scale: combined }],
@@ -1050,9 +1037,9 @@ export const MyRecipesScreen = () => {
   // Back button scales in like the filter button
   const backButtonAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
-    const scale = searchProgress.get();
+    const scale = searchProgress.value;
     return {
-      opacity: searchProgress.get(),
+      opacity: searchProgress.value,
       transform: [{ scale }],
     };
   });
@@ -1272,7 +1259,7 @@ export const MyRecipesScreen = () => {
 
       {/* Recipe Transition Overlay (animating recipe cards) - always mounted */}
       {recentRecipes.map((recipe, index) => {
-        const browsePos = browsePositions[index];
+        const browsePos = browsePositions.current[index];
         return (
           <AnimatedRecipeOverlay
             key={`overlay-${recipe.id}`}
@@ -1288,21 +1275,21 @@ export const MyRecipesScreen = () => {
 
       {/* Collection Transition Overlay (animating collection cards) - always mounted */}
       {collections.map((collection, index) => {
-        const browsePos = browseCollectionPositions[index];
+        const browsePos = browseCollectionPositions.current[index];
         // Skip collections that don't have positions
         if (!browsePos) {
           return null;
         }
 
-        const searchMeasurement = searchCollectionTarget;
+        const searchMeasurement = searchCollectionTarget.current;
         const searchTarget = searchMeasurement
           ? getCollectionSearchTarget(index, searchMeasurement)
           : { x: COLLECTION_GRID_PADDING, y: 0, width: browsePos.width };
         const isBrowseNearScreen =
           browsePos.x > -COLLECTION_CARD_WIDTH &&
-          browsePos.x < screenWidth + COLLECTION_CARD_WIDTH;
+          browsePos.x < SCREEN_WIDTH + COLLECTION_CARD_WIDTH;
         const isSearchNearScreen = searchMeasurement
-          ? searchTarget.y < screenHeight + COLLECTION_OVERLAY_VERTICAL_BUFFER
+          ? searchTarget.y < SCREEN_HEIGHT + COLLECTION_OVERLAY_VERTICAL_BUFFER
           : index < 8;
 
         if (!isBrowseNearScreen && !isSearchNearScreen) {
