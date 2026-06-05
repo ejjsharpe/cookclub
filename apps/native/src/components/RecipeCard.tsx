@@ -7,6 +7,7 @@ import { Text } from "./Text";
 
 import { Ionicons } from "@/components/Ionicons";
 import { OptimizedImage } from "@/components/OptimizedImage";
+import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
 import { formatMinutes } from "@/utils/timeUtils";
 
 interface Tag {
@@ -109,18 +110,11 @@ export const RecipeCard = memo(function RecipeCard({
             )}
             {sourceHost && (
               <View style={styles.metaItem}>
-                <Ionicons
-                  name="link-outline"
-                  size={14}
-                  style={styles.metaIcon}
+                <RecipeDestinationLabel
+                  isExternal
+                  sourceLabel={sourceHost}
+                  sourceUrl={recipe.sourceUrl ?? undefined}
                 />
-                <Text
-                  type="subheadline"
-                  style={styles.metaText}
-                  numberOfLines={1}
-                >
-                  {sourceHost}
-                </Text>
               </View>
             )}
           </View>
