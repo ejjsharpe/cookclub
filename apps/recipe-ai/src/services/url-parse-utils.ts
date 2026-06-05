@@ -4,22 +4,18 @@ import type { Env, ParseMetadata, ParseResult } from "../types";
 import { parseRecipeFromHtml } from "./ai-client";
 import { cacheRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
-import { polishRecipeForSmartImport } from "./recipe-polisher";
 import {
   evaluateRecipeQuality,
   normalizeRecipeForImport,
-  selectBestRecipeImages,
   type RecipeQuality,
   type RecipeQualitySource,
 } from "../utils/recipe-quality";
-import { extractSocialCaptionRecipe } from "../utils/social-caption-recipe";
 
 export type UrlParseMethod = NonNullable<ParseMetadata["parseMethod"]>;
 
 interface CandidateOptions {
   parseMethod?: UrlParseMethod;
   cache?: boolean;
-  polish?: boolean;
   metadataSource?: ParseMetadata["source"];
   canonicalUrl?: string;
   diagnostics?: ParseMetadata["diagnostics"];
@@ -67,60 +63,7 @@ export interface RejectedRecipeCandidate {
 export interface AiRecipeAttempt {
   result: ParseResult | null;
   error: unknown;
-}
-
-export async function reuploadImagesToR2(
-  env: Env,
-  imageUrls: string[],
-  prefix: string,
-): Promise<string[]> {
-  const imagesToUpload = selectBestRecipeImages(imageUrls);
-  if (!imagesToUpload.length) return [];
-
-  if (!env.IMAGE_SERVICE) {
-    console.log(
-      "[reupload] IMAGE_SERVICE binding not available (dev mode?) - using original URLs",
-    );
-    return imagesToUpload;
-  }
-
-  const results = await Promise.all(
-    imagesToUpload.map(async (sourceUrl, index) => {
-      try {
-        const imageId = crypto.randomUUID();
-        const destinationKey = `${prefix}/${imageId}.jpg`;
-
-        console.log(
-          `[reupload] Uploading image ${index + 1} from ${sourceUrl.substring(0, 50)}...`,
-        );
-
-        const result = await env.IMAGE_SERVICE.uploadFromUrl(
-          sourceUrl,
-          destinationKey,
-        );
-
-        if (result.success && result.publicUrl) {
-          console.log(
-            `[reupload] Successfully uploaded image ${index + 1} to R2: ${result.publicUrl}`,
-          );
-          return result.publicUrl;
-        }
-
-        console.log(
-          `[reupload] Failed to upload image ${index + 1}: ${result.error}`,
-        );
-        return sourceUrl;
-      } catch (error) {
-        console.log(
-          `[reupload] Error uploading image ${index + 1}:`,
-          error instanceof Error ? error.message : error,
-        );
-        return sourceUrl;
-      }
-    }),
-  );
-
-  return results;
+  elapsedMs?: number;
 }
 
 function candidateParseMethod(
@@ -287,10 +230,8 @@ async function resultFromEvaluatedCandidate(
   candidate: EvaluatedRecipeCandidate,
   options: CandidateOptions = {},
 ): Promise<ParseResult> {
-  const polishResult = options.polish
-    ? await polishRecipeForSmartImport(env.AI, candidate.recipe)
-    : null;
-  const recipe = polishResult?.recipe ?? candidate.recipe;
+  const diagnostics = options.diagnostics;
+  const recipe = candidate.recipe;
 
   if (candidate.cache !== false) {
     try {
@@ -316,8 +257,9 @@ async function resultFromEvaluatedCandidate(
   }
   if (options.diagnostics) {
     metadata.diagnostics = {
-      ...options.diagnostics,
+      ...diagnostics,
       selectedAttempt: candidate.id,
+      qualityScore: candidate.quality.score,
     };
   }
 
@@ -376,14 +318,6 @@ export async function selectBestRecipeCandidate(
     : null;
 }
 
-export async function acceptedBestCandidate(
-  env: Env,
-  cacheUrl: string,
-  candidates: RecipeCandidate[],
-): Promise<ParseResult | null> {
-  return selectBestRecipeCandidate(env, cacheUrl, candidates);
-}
-
 export async function tryAiRecipeCandidate(
   env: Env,
   url: string,
@@ -398,6 +332,7 @@ export async function tryAiRecipeCandidate(
     return { result: null, error: null };
   }
 
+  const startTime = Date.now();
   try {
     const aiResult = await parseRecipeFromHtml(env.AI, content);
     const recipe = aiResultToRecipe(aiResult, {
@@ -412,28 +347,13 @@ export async function tryAiRecipeCandidate(
         cache: options.cache,
       }),
       error: null,
+      elapsedMs: Date.now() - startTime,
     };
   } catch (error) {
     console.log(
       `${logPrefix} AI parsing failed:`,
       error instanceof Error ? error.message : error,
     );
-    return { result: null, error };
+    return { result: null, error, elapsedMs: Date.now() - startTime };
   }
-}
-
-export async function trySocialCaptionRecipe(
-  env: Env,
-  url: string,
-  content: string | null,
-  images: string[],
-  options: Pick<CandidateOptions, "cache"> = {},
-): Promise<ParseResult | null> {
-  return acceptedCandidate(
-    env,
-    url,
-    extractSocialCaptionRecipe(content, url, images),
-    "social_ai",
-    { parseMethod: "caption_rules", cache: options.cache },
-  );
 }

@@ -5,14 +5,11 @@ interface TikTokOembedResponse {
   author_name?: string;
   author_url?: string;
   thumbnail_url?: string;
-  video_url?: string;
-  video_urls?: string[];
 }
 
 export interface TikTokContent {
   caption: string | null;
   images: string[];
-  videoUrls: string[];
   subtitleUrls: string[];
   transcript: string | null;
 }
@@ -20,7 +17,6 @@ export interface TikTokContent {
 interface TikTokHydrationContent {
   caption: string | null;
   images: string[];
-  videoUrls: string[];
   subtitleUrls: string[];
 }
 
@@ -106,7 +102,6 @@ function extractHydrationContent(html: string): TikTokHydrationContent | null {
       video.reflowCover,
       ...(Array.isArray(video.shareCover) ? video.shareCover : []),
     ]),
-    videoUrls: uniqueStrings([video.playAddr, video.downloadAddr]),
     subtitleUrls: uniqueStrings(
       subtitles.map((subtitle: Record<string, unknown>) =>
         typeof subtitle.Url === "string" ? subtitle.Url : null,
@@ -226,11 +221,6 @@ export async function extractTikTokContent(
 
   const data = (await response.json()) as TikTokOembedResponse;
 
-  const videoUrls = [
-    data.video_url,
-    ...(Array.isArray(data.video_urls) ? data.video_urls : []),
-  ].filter((value): value is string => Boolean(value));
-
   const hydration = await fetchHydrationContent(cleanUrl);
   const subtitleUrls = uniqueStrings(hydration?.subtitleUrls ?? []);
   const transcript = await fetchSubtitleTranscript(subtitleUrls);
@@ -241,7 +231,6 @@ export async function extractTikTokContent(
       data.thumbnail_url,
       hydration?.images ?? [],
     ),
-    videoUrls: uniqueStrings([...videoUrls, ...(hydration?.videoUrls ?? [])]),
     subtitleUrls,
     transcript,
   };

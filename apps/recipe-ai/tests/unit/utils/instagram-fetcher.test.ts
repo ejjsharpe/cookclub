@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   extractInstagramContent,
   normalizeInstagramUrl,
-  isInstagramUrl,
   extractShortcode,
 } from "../../../src/utils/instagram-fetcher";
 
@@ -36,42 +35,6 @@ describe("instagram-fetcher", () => {
       expect(normalizeInstagramUrl(url)).toBe(
         "https://www.instagram.com/p/ABC123/",
       );
-    });
-  });
-
-  describe("isInstagramUrl", () => {
-    it("should return true for instagram.com reel URLs", () => {
-      expect(isInstagramUrl("https://www.instagram.com/reel/ABC123/")).toBe(
-        true,
-      );
-      expect(isInstagramUrl("https://instagram.com/reel/ABC123/")).toBe(true);
-    });
-
-    it("should return true for instagram.com post URLs", () => {
-      expect(isInstagramUrl("https://www.instagram.com/p/ABC123/")).toBe(true);
-    });
-
-    it("should return true for instagram.com reels URLs", () => {
-      expect(isInstagramUrl("https://www.instagram.com/reels/ABC123/")).toBe(
-        true,
-      );
-    });
-
-    it("should return false for non-instagram URLs", () => {
-      expect(isInstagramUrl("https://www.tiktok.com/@user/video/123")).toBe(
-        false,
-      );
-      expect(isInstagramUrl("https://www.example.com/reel/ABC123/")).toBe(
-        false,
-      );
-    });
-
-    it("should return false for instagram profile URLs", () => {
-      expect(isInstagramUrl("https://www.instagram.com/username/")).toBe(false);
-    });
-
-    it("should return false for invalid URLs", () => {
-      expect(isInstagramUrl("not a url")).toBe(false);
     });
   });
 

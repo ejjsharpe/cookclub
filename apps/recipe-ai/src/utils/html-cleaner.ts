@@ -79,18 +79,6 @@ export function focusRecipeContent(text: string, maxChars = 15000): string {
 }
 
 /**
- * Extract raw text from HTML without aggressive cleaning
- * Useful when structured data extraction fails and we need more context
- */
-export function extractText(rawHtml: string): string {
-  const $ = cheerio.load(rawHtml);
-
-  $("script, style, noscript").remove();
-
-  return $("body").text().replace(/\s+/g, " ").trim();
-}
-
-/**
  * Extract image URLs from HTML
  *
  * Focuses on content images and filters out common non-content images

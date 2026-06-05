@@ -1,10 +1,10 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-import { parseImage } from "./services/image-parser";
 import { rehostParsedRecipeImagesForResponse } from "./services/hosted-images";
+import { parseImage } from "./services/image-parser";
+import { generateNutrition } from "./services/nutrition-generator";
 import { processChat } from "./services/recipe-generator";
 import { generateRecipeImage } from "./services/recipe-image-generator";
-import { generateNutrition } from "./services/nutrition-generator";
 import { personalizeRecipe } from "./services/recipe-personalizer";
 import { parseText } from "./services/text-parser";
 import { parseUrl } from "./services/url-parser";
@@ -20,6 +20,7 @@ import type {
   NutritionResponse,
   PersonalizeRecipeInput,
 } from "./types";
+import { finalizeParseDiagnostics } from "./utils/parse-diagnostics";
 
 export type {
   ParsedRecipe,
@@ -32,6 +33,7 @@ export type {
   ParseInput,
   ParseResponse,
   ParseMetadata,
+  ParseDiagnostics,
   ChatInput,
   ChatResponse,
   ChatMessage,
@@ -44,6 +46,71 @@ export type {
   PersonalizeRecipeInput,
 } from "./service";
 export type { ParseResult, ParseError } from "./types";
+
+function parseInputSource(input: ParseInput): "url" | "text" | "image" {
+  return input.type === "text" || input.type === "image" ? input.type : "url";
+}
+
+async function parseWithEnv(
+  env: Env,
+  input: ParseInput,
+): Promise<ParseResponse> {
+  const parseStart = Date.now();
+  try {
+    let result: ParseResponse;
+
+    switch (input.type) {
+      case "url":
+        result = await parseUrl(env, input.data, {
+          structuredOnly: input.structuredOnly,
+        });
+        break;
+
+      case "text":
+        result = await parseText(env, input.data);
+        break;
+
+      case "image":
+        result = await parseImage(env, input.data, input.mimeType);
+        break;
+
+      default:
+        return finalizeParseDiagnostics(
+          {
+            success: false,
+            error: {
+              code: "INVALID_INPUT_TYPE",
+              message: "Input type must be 'url', 'text', or 'image'",
+            },
+          },
+          "url",
+          parseStart,
+        );
+    }
+
+    return finalizeParseDiagnostics(
+      await rehostParsedRecipeImagesForResponse(env, result),
+      parseInputSource(input),
+      parseStart,
+    );
+  } catch (error) {
+    console.error(error);
+    return finalizeParseDiagnostics(
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred",
+        },
+      },
+      parseInputSource(input),
+      parseStart,
+    );
+  }
+}
 
 /**
  * Recipe AI Worker
@@ -76,48 +143,7 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
    * });
    */
   async parse(input: ParseInput): Promise<ParseResponse> {
-    try {
-      let result: ParseResponse;
-
-      switch (input.type) {
-        case "url":
-          result = await parseUrl(this.env, input.data, {
-            structuredOnly: input.structuredOnly,
-          });
-          break;
-
-        case "text":
-          result = await parseText(this.env, input.data);
-          break;
-
-        case "image":
-          result = await parseImage(this.env, input.data, input.mimeType);
-          break;
-
-        default:
-          return {
-            success: false,
-            error: {
-              code: "INVALID_INPUT_TYPE",
-              message: "Input type must be 'url', 'text', or 'image'",
-            },
-          };
-      }
-
-      return await rehostParsedRecipeImagesForResponse(this.env, result);
-    } catch (error) {
-      console.error(error);
-      return {
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message:
-            error instanceof Error
-              ? error.message
-              : "An unexpected error occurred",
-        },
-      };
-    }
+    return parseWithEnv(this.env, input);
   }
 
   /**
@@ -161,7 +187,34 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
  * Service Bindings from trusted Workers.
  */
 export default {
-  async fetch(_request: Request, _env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (
+      env.ENVIRONMENT !== "production" &&
+      url.pathname === "/benchmark/parse" &&
+      request.method === "POST"
+    ) {
+      try {
+        const input = (await request.json()) as ParseInput;
+        return Response.json(await parseWithEnv(env, input));
+      } catch (error) {
+        return Response.json(
+          {
+            success: false,
+            error: {
+              code: "INVALID_REQUEST",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Request body must be valid JSON.",
+            },
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     return new Response(
       JSON.stringify({
         error: "This worker only accepts RPC calls via Service Bindings",

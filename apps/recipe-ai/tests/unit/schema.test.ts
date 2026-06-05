@@ -202,13 +202,13 @@ describe("ParsedRecipeSchema", () => {
     expect(isArkError(result)).toBe(true);
   });
 
-  it("rejects recipe with empty instructions", () => {
+  it("validates recipe with empty instructions", () => {
     const recipeWithEmptyInstructions = {
       ...validRecipe,
       instructionSections: [],
     };
     const result = ParsedRecipeSchema(recipeWithEmptyInstructions);
-    expect(isArkError(result)).toBe(true);
+    expect(isArkError(result)).toBe(false);
   });
 
   it("allows recipe with zero servings (optional field)", () => {

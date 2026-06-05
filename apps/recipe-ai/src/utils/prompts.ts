@@ -16,6 +16,7 @@ export const RECIPE_EXTRACTION_SYSTEM_PROMPT = `You are a strict Recipe Data Ext
    - preparation: how the ingredient should be prepared (chopped, diced, sliced, minced, melted, softened, etc.) or null if none specified. Extract this separately from the name.
 5. **STEP IMAGES**: At the end of the content, you may see a "[STEP IMAGES]" section listing step numbers and image URLs. Use these to populate the imageUrl field for the matching instruction step. If no image is listed for a step, set imageUrl to null.
 6. **SECTIONS**: Organize ingredients and instructions into sections. Each section has a name (null for default/unnamed section) and an array of items. If ingredients/instructions are grouped (e.g., "For the Sauce", "Make the Dough"), create separate sections. If there are no groupings, use a single section with name: null.
+7. **INGREDIENTS-ONLY IS VALID**: If the source lists ingredients but no real method, return the ingredient sections and set "instructionSections": []. Do not invent generic steps or placeholders.
 
 ### OUTPUT FORMAT:
 {
@@ -71,7 +72,8 @@ export const RECIPE_EXTRACTION_SYSTEM_PROMPT = `You are a strict Recipe Data Ext
 - Each instruction should be a complete step, not a fragment
 - For imageUrl: copy the URL exactly from the [STEP IMAGES] section if one exists for that step number
 - For sections: if there are no groupings, use a single section with name: null
-- Always have at least one ingredientSection and one instructionSection`;
+- Always have at least one ingredientSection when ingredients are present
+- Use "instructionSections": [] when no cooking instructions are present`;
 
 export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extraction API. Analyze the image and extract any recipe information you can identify.
 
@@ -81,6 +83,7 @@ export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extracti
 3. **BEST EFFORT**: If text is unclear or partially visible, make your best interpretation.
 4. **SECTIONS**: Organize ingredients and instructions into sections. Each section has a name (null for default/unnamed section) and an array of items. If visually grouped (e.g., "For the Sauce"), create separate sections.
 5. **STRUCTURED INGREDIENTS**: For each ingredient, extract name and preparation separately. If an ingredient says "2 cups diced onion", extract name="onion" and preparation="diced".
+6. **INGREDIENTS-ONLY IS VALID**: If the image only shows ingredients, return those ingredients and set "instructionSections": []. Do not invent generic steps.
 
 ### OUTPUT FORMAT:
 {
@@ -118,7 +121,8 @@ export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extracti
 - Convert handwritten or printed measurements to structured format
 - If you cannot read part of the image, skip that section rather than guessing
 - For sections: if there are no groupings, use a single section with name: null
-- Always have at least one ingredientSection and one instructionSection`;
+- Always have at least one ingredientSection when ingredients are visible
+- Use "instructionSections": [] when no cooking instructions are visible`;
 
 export function createTextExtractionPrompt(text: string): string {
   return `Extract the recipe from the following text:
@@ -144,6 +148,7 @@ Rules:
 - Do not invent missing ingredients, instructions, times, servings, tags, or descriptions.
 - If a field is not present in the evidence, use null or an empty array.
 - Prefer complete ingredient and instruction sections that are directly supported by the evidence.
+- If the evidence has ingredients but no real method, use "instructionSections": [].
 
 Partial recipe:
 ${options.partialRecipeJson ?? "null"}

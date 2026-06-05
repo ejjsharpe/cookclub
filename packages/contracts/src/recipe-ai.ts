@@ -59,10 +59,22 @@ export interface ParseDiagnosticsAttempt {
   };
 }
 
+export interface ParseDiagnosticsStage {
+  name: string;
+  status: "success" | "skipped" | "error";
+  elapsedMs: number;
+  detail?: string;
+}
+
 export interface ParseDiagnostics {
   originalUrl?: string;
   canonicalUrl?: string;
+  platform?: string;
   selectedAttempt?: string;
+  qualityScore?: number;
+  fallbackPath?: string[];
+  totalElapsedMs?: number;
+  stageTimings?: ParseDiagnosticsStage[];
   attempts?: ParseDiagnosticsAttempt[];
 }
 
@@ -78,6 +90,7 @@ export type ParseResponse =
         code: string;
         message: string;
       };
+      metadata?: ParseMetadata;
     };
 
 export interface ChatMessage {

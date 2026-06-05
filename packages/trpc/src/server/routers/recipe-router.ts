@@ -117,7 +117,7 @@ const PersonalizationGoalValidator = type(
 export const RecipePostValidator = type({
   name: "string",
   ingredientSections: IngredientSectionRecord.array().atLeastLength(1),
-  instructionSections: InstructionSectionRecord.array().atLeastLength(1),
+  instructionSections: InstructionSectionRecord.array(),
   // Either images (direct URLs) or imageUploadIds (temp keys from upload)
   "images?": ImageRecord.array(),
   "imageUploadIds?": "string[]",
@@ -138,7 +138,7 @@ export const RecipeUpdateValidator = type({
   recipeId: "number",
   name: "string",
   ingredientSections: IngredientSectionRecord.array().atLeastLength(1),
-  instructionSections: InstructionSectionRecord.array().atLeastLength(1),
+  instructionSections: InstructionSectionRecord.array(),
   // Either images (direct URLs) or imageUploadIds (temp keys from upload)
   "images?": ImageRecord.array(),
   "imageUploadIds?": "string[]",
@@ -507,18 +507,6 @@ function validateRecipePayload(input: RecipePayloadInput) {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "At least one ingredient is required",
-    });
-  }
-
-  const hasInstructions = input.instructionSections.some((section) =>
-    section.instructions.some(
-      (instruction) => instruction.instruction.trim().length > 0,
-    ),
-  );
-  if (!hasInstructions) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "At least one instruction is required",
     });
   }
 }

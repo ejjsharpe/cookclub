@@ -1,22 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import {
-  getRandomUserAgent,
   fetchHtml,
   isLikelyBotBlockedError,
 } from "../../../src/utils/html-fetcher";
-
-describe("getRandomUserAgent", () => {
-  it("returns a string", () => {
-    const ua = getRandomUserAgent();
-    expect(typeof ua).toBe("string");
-  });
-
-  it("returns a browser user agent", () => {
-    const ua = getRandomUserAgent();
-    expect(ua).toMatch(/Mozilla/);
-  });
-});
 
 describe("fetchHtml", () => {
   beforeEach(() => {

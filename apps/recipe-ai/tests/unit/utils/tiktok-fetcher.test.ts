@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { extractTikTokContent } from "../../../src/utils/tiktok-fetcher";
 
 describe("extractTikTokContent", () => {
-  it("extracts hydration subtitles before audio/OCR fallbacks", async () => {
+  it("extracts hydration subtitles for transcript-enriched parsing", async () => {
     const hydration = {
       __DEFAULT_SCOPE__: {
         "webapp.reflow.video.detail": {
@@ -12,7 +12,6 @@ describe("extractTikTokContent", () => {
               desc: "Brownies: 1 cup sugar #brownies",
               video: {
                 cover: "https://example.com/cover.jpg",
-                playAddr: "https://example.com/video.mp4",
                 subtitleInfos: [
                   {
                     Url: "https://subtitle.example.com/brownies.vtt",
@@ -76,7 +75,6 @@ Whisk until combined and bake.
 
     expect(result.caption).toBe("Brownies: 1 cup sugar #brownies");
     expect(result.images).toEqual(["https://example.com/thumb.jpg"]);
-    expect(result.videoUrls).toEqual(["https://example.com/video.mp4"]);
     expect(result.subtitleUrls).toEqual([
       "https://subtitle.example.com/brownies.vtt",
     ]);

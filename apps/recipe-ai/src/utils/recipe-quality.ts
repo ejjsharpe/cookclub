@@ -56,8 +56,13 @@ const TRACKING_PARAMS = new Set([
   "ref",
 ]);
 
-const GENERIC_SOCIAL_INSTRUCTION_PATTERN =
-  /follow the method shown in the source video using the listed ingredients/i;
+const PLACEHOLDER_INSTRUCTION_PATTERNS = [
+  /follow the method shown in the source video using the listed ingredients/i,
+  /follow (?:the )?(?:method|instructions|steps) (?:shown|in) (?:the )?(?:source )?(?:video|post|reel)/i,
+  /(?:method|instructions|directions|steps) (?:not|aren't|are not) (?:provided|available|included|shown)/i,
+  /no (?:method|instructions|directions|steps) (?:provided|available|included|shown)/i,
+  /see (?:the )?(?:video|post|reel) for (?:the )?(?:method|instructions|directions|steps)/i,
+];
 const EMOJI_NUMBER_MARKER_PATTERN =
   /^(?:[0-9#*]\uFE0F?\u20E3|[\u2460-\u2473\u24EA\u24F5-\u24FF\u2776-\u277F\u2780-\u2793])\s*[.)\]:：-]?\s*/u;
 const LEADING_INSTRUCTION_MARKER_PATTERN =
@@ -146,17 +151,6 @@ function isSocialSourceUrl(url: string | null | undefined): boolean {
   }
 }
 
-function isInstagramSourceUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return hostname === "instagram.com" || hostname.endsWith(".instagram.com");
-  } catch {
-    return false;
-  }
-}
-
 function fallbackTitleForRecipe(recipe: ParsedRecipe): string {
   return isSocialSourceUrl(recipe.sourceUrl)
     ? "Imported Social Recipe"
@@ -182,6 +176,11 @@ function cleanInstructionText(value: string): string {
   }
 
   return text;
+}
+
+function isPlaceholderInstructionText(value: string): boolean {
+  const text = value.replace(/\s+/g, " ").trim();
+  return PLACEHOLDER_INSTRUCTION_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 function isBadImageUrl(url: string): boolean {
@@ -407,7 +406,11 @@ export function normalizeRecipeForImport(recipe: ParsedRecipe): ParsedRecipe {
           ...instruction,
           instruction: cleanInstructionText(instruction.instruction),
         }))
-        .filter((instruction) => instruction.instruction.length > 0)
+        .filter(
+          (instruction) =>
+            instruction.instruction.length > 0 &&
+            !isPlaceholderInstructionText(instruction.instruction),
+        )
         .map((instruction, index) => ({
           ...instruction,
           index,
@@ -490,30 +493,23 @@ export function evaluateRecipeQuality(
     score -= 12;
   }
 
-  const allInstructions = recipe.instructionSections.flatMap(
-    (section) => section.instructions,
-  );
-  const hasOnlyGenericSocialInstruction =
-    source === "social_ai" &&
-    allInstructions.length === 1 &&
-    GENERIC_SOCIAL_INSTRUCTION_PATTERN.test(
-      allInstructions[0]?.instruction ?? "",
-    );
-  if (hasOnlyGenericSocialInstruction) {
-    reasons.push("generic_social_instruction");
-    score -=
-      ingredientCount >= 5 && isInstagramSourceUrl(recipe.sourceUrl) ? 18 : 35;
-  }
-
   if (ingredientCount === 0) reasons.push("missing_ingredients");
   if (instructionCount === 0) reasons.push("missing_instructions");
 
-  const hasMinimumShape =
-    recipe.name.length >= 3 && ingredientCount >= 1 && instructionCount >= 1;
+  const hasMinimumShape = recipe.name.length >= 3 && ingredientCount >= 1;
   const threshold = sourceThreshold(source);
-  const usable = hasMinimumShape && score >= threshold;
+  const usable =
+    hasMinimumShape &&
+    (instructionCount === 0 || score >= threshold) &&
+    !reasons.includes("missing_ingredients");
   const confidence =
-    score >= 75 ? "high" : score >= threshold ? "medium" : "low";
+    instructionCount === 0
+      ? "low"
+      : score >= 75
+        ? "high"
+        : score >= threshold
+          ? "medium"
+          : "low";
 
   return {
     score,

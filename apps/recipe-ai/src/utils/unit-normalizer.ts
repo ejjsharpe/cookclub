@@ -93,27 +93,3 @@ export function normalizeUnit(input: string | null): string | null {
   // Return canonical form if found, otherwise return original (lowercased)
   return VARIATION_TO_CANONICAL[lowercased] || lowercased;
 }
-
-/**
- * Check if a unit is recognized in our mappings
- */
-export function isRecognizedUnit(unit: string | null): boolean {
-  if (!unit) return false;
-  const trimmed = unit.trim();
-  if (trimmed in CASE_SENSITIVE_MAPPINGS) return true;
-  return trimmed.toLowerCase() in VARIATION_TO_CANONICAL;
-}
-
-/**
- * Get all recognized canonical units
- */
-export function getCanonicalUnits(): string[] {
-  return Object.keys(UNIT_MAPPINGS);
-}
-
-/**
- * Get all variations for a canonical unit
- */
-export function getUnitVariations(canonical: string): string[] {
-  return UNIT_MAPPINGS[canonical] || [];
-}

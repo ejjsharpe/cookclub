@@ -67,7 +67,7 @@ export const ParsedRecipeSchema = type({
   "sourceUrl?": "string | null",
   "sourceType?": SourceTypeSchema,
   ingredientSections: IngredientSectionSchema.array().atLeastLength(1),
-  instructionSections: InstructionSectionSchema.array().atLeastLength(1),
+  instructionSections: InstructionSectionSchema.array(),
   "images?": "string[]",
   "suggestedTags?": TagSchema.array(),
   "nutrition?": "object | null",

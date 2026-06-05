@@ -40,10 +40,6 @@ export class HtmlFetchError extends Error {
   }
 }
 
-export function getRandomUserAgent(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]!;
-}
-
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split(".").map((part) => Number(part));
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {

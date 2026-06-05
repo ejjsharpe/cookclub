@@ -4,8 +4,6 @@ import { RecipeAI } from "../../src/index";
 
 const browserFetcherMocks = vi.hoisted(() => ({
   fetchHtmlWithBrowser: vi.fn(),
-  extractInstagramContent: vi.fn(),
-  extractTikTokBrowserContent: vi.fn(),
 }));
 
 vi.mock("../../src/utils/browser-fetcher", () => {
@@ -36,9 +34,6 @@ vi.mock("../../src/utils/browser-fetcher", () => {
       }
     },
     fetchHtmlWithBrowser: browserFetcherMocks.fetchHtmlWithBrowser,
-    extractInstagramContent: browserFetcherMocks.extractInstagramContent,
-    extractTikTokBrowserContent:
-      browserFetcherMocks.extractTikTokBrowserContent,
   };
 });
 
@@ -184,22 +179,6 @@ describe("RecipeAI.parse()", () => {
     browserFetcherMocks.fetchHtmlWithBrowser
       .mockReset()
       .mockResolvedValue(sampleHtml);
-    browserFetcherMocks.extractInstagramContent.mockReset().mockResolvedValue({
-      html: sampleHtml,
-      caption: null,
-      images: [],
-      videoUrls: [],
-      frameImages: [],
-    });
-    browserFetcherMocks.extractTikTokBrowserContent
-      .mockReset()
-      .mockResolvedValue({
-        html: sampleHtml,
-        caption: null,
-        images: [],
-        videoUrls: [],
-        frameImages: [],
-      });
 
     // Default: mock fetch to return sample HTML
     global.fetch = vi.fn().mockResolvedValue({
@@ -258,6 +237,22 @@ describe("RecipeAI.parse()", () => {
         expect(result.metadata.confidence).toBe("medium");
         expect(result.metadata.canonicalUrl).toBe("https://example.com/recipe");
         expect(result.metadata.diagnostics?.selectedAttempt).toBeTruthy();
+        expect(result.metadata.diagnostics?.qualityScore).toEqual(
+          expect.any(Number),
+        );
+        expect(result.metadata.diagnostics?.totalElapsedMs).toEqual(
+          expect.any(Number),
+        );
+        expect(
+          result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
+        ).toEqual(
+          expect.arrayContaining([
+            "cache",
+            "fetch",
+            "deterministic_parse",
+            "image_rehosting",
+          ]),
+        );
         expect(mockEnv.AI.run).not.toHaveBeenCalled();
       }
     });
@@ -429,6 +424,15 @@ describe("RecipeAI.parse()", () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe("IMAGE_REHOST_FAILED");
+        expect(
+          result.metadata?.diagnostics?.stageTimings?.some(
+            (stage) =>
+              stage.name === "image_rehosting" && stage.status === "error",
+          ),
+        ).toBe(true);
+        expect(result.metadata?.diagnostics?.totalElapsedMs).toEqual(
+          expect.any(Number),
+        );
       }
     });
 
@@ -730,7 +734,7 @@ describe("RecipeAI.parse()", () => {
       expect(mockEnv.AI.run).not.toHaveBeenCalled();
     });
 
-    it("rejects deterministic TikTok fallbacks that only contain a placeholder method", async () => {
+    it("accepts ingredient-only TikTok AI output", async () => {
       const tiktokCaption =
         "fudgy browniess🤤 recipe by Handle the Heat: 5 tbsp butter 1 1/4 cups sugar 2 eggs plus 1 egg yolk 1 tsp vanilla 1/3 cup vegetable oil 3/4 cup cocoa powder 1/2 cup flour 1/8 tsp baking soda 1 tbsp cornstarch 1/4 tsp salt 3/4 cup chocolate chips #brownies #fudgybrownies #brownierecipe";
 
@@ -771,11 +775,14 @@ describe("RecipeAI.parse()", () => {
         data: "https://www.tiktok.com/@thelittlecakela/video/7208369840007007531",
       });
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("VALIDATION_FAILED");
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Fudgy Brownies");
+        expect(result.data.instructionSections).toEqual([]);
+        expect(result.metadata.parseMethod).toBe("ai_only");
+        expect(result.metadata.confidence).toBe("low");
       }
-      expect(mockEnv.AI.run).toHaveBeenCalled();
+      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
     });
 
     it("canonicalizes TikTok short URLs before parsing and metadata", async () => {
@@ -919,7 +926,9 @@ describe("RecipeAI.parse()", () => {
             status: 200,
             headers: new Headers({ "content-type": "text/html" }),
             arrayBuffer: () =>
-              Promise.resolve(new TextEncoder().encode(linkedRecipeHtml).buffer),
+              Promise.resolve(
+                new TextEncoder().encode(linkedRecipeHtml).buffer,
+              ),
             text: () => Promise.resolve(linkedRecipeHtml),
           });
         }
@@ -943,12 +952,20 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.sourceUrl).toBe(linkedRecipeUrl);
         expect(result.metadata.canonicalUrl).toBe(linkedRecipeUrl);
         expect(result.metadata.parseMethod).toBe("visible_card");
+        const stageNames =
+          result.metadata.diagnostics?.stageTimings?.map(
+            (stage) => stage.name,
+          ) ?? [];
+        expect(stageNames).toContain("linked_url");
       }
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
     });
 
-    it("uses TikTok audio transcript enrichment when a video has no caption", async () => {
-      const enrichedAiRecipe = {
-        name: "Spoken Tomato Pasta",
+    it("uses TikTok caption-only AI when no subtitles are available", async () => {
+      const caption =
+        "Quick tomato pasta with spaghetti, tomato sauce, olive oil and basil. Boil the pasta, warm the sauce, then toss together.";
+      const captionAiRecipe = {
+        name: "Tomato Pasta",
         description: null,
         prepTime: null,
         cookTime: 15,
@@ -975,13 +992,8 @@ describe("RecipeAI.parse()", () => {
       };
 
       mockEnv.AI.run = vi.fn((model: string) => {
-        if (model === "@cf/openai/whisper") {
-          return Promise.resolve({
-            text: "Boil spaghetti, warm tomato sauce, then toss everything together.",
-          });
-        }
-
-        return Promise.resolve({ response: JSON.stringify(enrichedAiRecipe) });
+        expect(model).toBe("@cf/meta/llama-4-scout-17b-16e-instruct");
+        return Promise.resolve({ response: JSON.stringify(captionAiRecipe) });
       });
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
@@ -993,19 +1005,9 @@ describe("RecipeAI.parse()", () => {
             headers: new Headers({ "content-type": "application/json" }),
             json: () =>
               Promise.resolve({
+                title: caption,
                 thumbnail_url: "https://example.com/tiktok.jpg",
-                video_url: "https://cdn.example.com/video.mp4",
               }),
-          });
-        }
-
-        if (url === "https://cdn.example.com/video.mp4") {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            headers: new Headers({ "content-length": "4" }),
-            arrayBuffer: () =>
-              Promise.resolve(new Uint8Array([1, 2, 3, 4]).buffer),
           });
         }
 
@@ -1024,20 +1026,16 @@ describe("RecipeAI.parse()", () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.name).toBe("Spoken Tomato Pasta");
-        expect(result.metadata.parseMethod).toBe("media_enriched");
+        expect(result.data.name).toBe("Tomato Pasta");
+        expect(result.metadata.parseMethod).toBe("ai_only");
       }
-      expect(mockEnv.AI.run).toHaveBeenCalledWith(
-        "@cf/openai/whisper",
-        expect.objectContaining({ audio: [1, 2, 3, 4] }),
-      );
+      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
     });
 
-    it("falls back to deterministic Instagram caption parsing when AI output is incomplete", async () => {
+    it("accepts ingredients-only Instagram AI output", async () => {
       const instagramCaption =
         "Easy tomato pasta Ingredients: 200 g spaghetti 1 cup tomato sauce Directions: 1. Boil the spaghetti. 2. Toss with tomato sauce and serve.";
 
-      (mockEnv as any).BROWSER = { id: "browser-binding" };
       mockEnv.AI.run = vi.fn().mockResolvedValue({
         response: JSON.stringify({
           name: "Easy Tomato Pasta",
@@ -1078,14 +1076,12 @@ describe("RecipeAI.parse()", () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.name).toBe("Easy Tomato Pasta");
-        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
-          2,
-        );
-        expect(result.metadata.parseMethod).toBe("caption_rules");
+        expect(result.data.ingredientSections[0]?.ingredients).toHaveLength(1);
+        expect(result.data.instructionSections).toEqual([]);
+        expect(result.metadata.parseMethod).toBe("ai_only");
+        expect(result.metadata.confidence).toBe("low");
       }
-      expect(
-        browserFetcherMocks.extractInstagramContent,
-      ).not.toHaveBeenCalled();
+      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
     });
 
     it("imports a linked recipe page when an Instagram caption only contains the recipe URL", async () => {
@@ -1140,7 +1136,9 @@ describe("RecipeAI.parse()", () => {
             status: 200,
             headers: new Headers({ "content-type": "text/html" }),
             arrayBuffer: () =>
-              Promise.resolve(new TextEncoder().encode(linkedRecipeHtml).buffer),
+              Promise.resolve(
+                new TextEncoder().encode(linkedRecipeHtml).buffer,
+              ),
             text: () => Promise.resolve(linkedRecipeHtml),
           });
         }
@@ -1167,491 +1165,14 @@ describe("RecipeAI.parse()", () => {
         expect(result.metadata.diagnostics?.originalUrl).toBe(
           "https://www.instagram.com/reel/LINKONLY123/",
         );
+        const stageNames =
+          result.metadata.diagnostics?.stageTimings?.map(
+            (stage) => stage.name,
+          ) ?? [];
+        expect(stageNames).toContain("linked_url");
+        expect(stageNames).not.toContain("ai");
       }
-    });
-
-    it("does not fetch linked recipe pages when an Instagram caption imports cleanly", async () => {
-      const linkedRecipeUrl = "https://recipe.example.com/skip-this";
-      const instagramCaption =
-        `Easy tomato pasta Ingredients: 200 g spaghetti 1 cup tomato sauce Directions: 1. Boil the spaghetti. 2. Toss with tomato sauce. Full recipe ${linkedRecipeUrl}`;
-
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
-          name: "Invalid Social Recipe",
-          ingredientSections: [],
-          instructionSections: [],
-        }),
-      });
-
-      global.fetch = vi.fn((requestUrl: string | URL) => {
-        const url = String(requestUrl);
-        if (url.startsWith("https://www.instagram.com/api/v1/oembed")) {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            headers: new Headers({ "content-type": "application/json" }),
-            json: () =>
-              Promise.resolve({
-                title: instagramCaption,
-                thumbnail_url: "https://example.com/instagram.jpg",
-              }),
-          });
-        }
-
-        if (url === linkedRecipeUrl) {
-          throw new Error("Linked recipe page should not be fetched");
-        }
-
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          statusText: "Not Found",
-          headers: new Headers({ "content-type": "text/html" }),
-        });
-      }) as any;
-
-      const result = await parser.parse({
-        type: "url",
-        data: "https://www.instagram.com/reel/CAPTION123/",
-      });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.name).toBe("Easy Tomato Pasta");
-        expect(result.data.sourceUrl).toBe(
-          "https://www.instagram.com/reel/CAPTION123/",
-        );
-        expect(result.metadata.parseMethod).toBe("caption_rules");
-      }
-      expect(global.fetch).not.toHaveBeenCalledWith(
-        linkedRecipeUrl,
-        expect.anything(),
-      );
-    });
-
-    it("imports ingredient-only Instagram captions after AI cannot produce a method", async () => {
-      const instagramCaption = `TRY MY FIRECRACKER RAMEN NOW🔥
-
-if you’re not able to try it yourself, I’ve written my full recipe out for you below.
-
-INGREDIENTS
-
-BROTH (serves 3, depending on portion size!)
-
-1 tbsp neutral oil
-4 large garlic cloves
-1 red chilli
-1 bunch spring onions
-1 thumb-sized piece of ginger
-2 tbsp gochujang paste
-1 tbsp rice vinegar
-1 tbsp soy sauce
-1.5l veg broth
-200 ml coconut milk
-1 tbsp miso paste
-1 lime
-Salt + sugar
-
-TO SERVE
-
-Rice noodles
-Oyster mushrooms
-Broccoli
-Spring onion
-Chilli oil
-Toasted sesame seeds
-Lime wedge
-
-* full method pinned to top of comments *`;
-
-      mockEnv.AI.run = vi.fn((model: string) => {
-        if (model.includes("llama-4-scout")) {
-          return Promise.resolve({
-            response: JSON.stringify({
-              name: "Firecracker Ramen",
-              description: null,
-              prepTime: null,
-              cookTime: null,
-              totalTime: null,
-              servings: null,
-              ingredientSections: [
-                {
-                  name: null,
-                  ingredients: [
-                    { index: 0, quantity: 1, unit: "tbsp", name: "oil" },
-                  ],
-                },
-              ],
-              instructionSections: [],
-              suggestedTags: [],
-            }),
-          });
-        }
-
-        return Promise.resolve({
-          response: JSON.stringify({ name: "Firecracker Ramen" }),
-        });
-      });
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "content-type": "application/json" }),
-        json: () =>
-          Promise.resolve({
-            title: instagramCaption,
-            thumbnail_url: "https://example.com/instagram.jpg",
-          }),
-      });
-
-      const result = await parser.parse({
-        type: "url",
-        data: "https://www.instagram.com/reel/DFTA0yKIVPa/",
-      });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.name).toBe("Firecracker Ramen");
-        expect(result.data.servings).toBe(3);
-        expect(result.data.ingredientSections).toEqual([
-          expect.objectContaining({ name: "Broth" }),
-          expect.objectContaining({ name: "To Serve" }),
-        ]);
-        expect(
-          result.data.ingredientSections.flatMap(
-            (section) => section.ingredients,
-          ).length,
-        ).toBeGreaterThan(15);
-        expect(result.metadata.parseMethod).toBe("caption_rules");
-      }
-    });
-
-    it("uses Instagram media enrichment before accepting placeholder caption fallback", async () => {
-      const instagramCaption = `TRY MY TOMATO BEAN STEW
-
-INGREDIENTS
-
-1 cup tomatoes
-1 can butter beans
-1 tbsp olive oil
-1 tsp smoked paprika
-1 onion
-2 garlic cloves
-Salt
-Black pepper
-
-* full method shown in the video *`;
-
-      const invalidAiRecipe = {
-        name: "Tomato Bean Stew",
-        description: null,
-        prepTime: null,
-        cookTime: null,
-        totalTime: null,
-        servings: null,
-        ingredientSections: [
-          {
-            name: null,
-            ingredients: [
-              { index: 0, quantity: 1, unit: "cup", name: "tomatoes" },
-              { index: 1, quantity: 1, unit: "can", name: "butter beans" },
-            ],
-          },
-        ],
-        instructionSections: [],
-        suggestedTags: [],
-      };
-      const enrichedAiRecipe = {
-        ...invalidAiRecipe,
-        ingredientSections: [
-          {
-            name: null,
-            ingredients: [
-              { index: 0, quantity: 1, unit: "cup", name: "tomatoes" },
-              { index: 1, quantity: 1, unit: "can", name: "butter beans" },
-              { index: 2, quantity: 1, unit: "tbsp", name: "olive oil" },
-              { index: 3, quantity: 1, unit: "tsp", name: "smoked paprika" },
-              { index: 4, quantity: 1, unit: null, name: "onion" },
-            ],
-          },
-        ],
-        instructionSections: [
-          {
-            name: null,
-            instructions: [
-              { index: 0, instruction: "Saute the onion and garlic." },
-              { index: 1, instruction: "Add tomatoes, beans, and paprika." },
-              { index: 2, instruction: "Simmer until thickened." },
-            ],
-          },
-        ],
-      };
-
-      (mockEnv as any).BROWSER = { id: "browser-binding" };
-      browserFetcherMocks.extractInstagramContent.mockResolvedValue({
-        html: "<html></html>",
-        caption: instagramCaption,
-        images: ["https://example.com/browser-instagram.jpg"],
-        videoUrls: ["https://cdn.example.com/instagram.mp4"],
-        frameImages: [new Uint8Array([5, 6, 7])],
-      });
-
-      let textModelCalls = 0;
-      mockEnv.AI.run = vi.fn((model: string) => {
-        if (model === "@cf/openai/whisper") {
-          return Promise.resolve({
-            text: "Saute the onion and garlic, add tomatoes and beans, then simmer.",
-          });
-        }
-        if (model === "@cf/meta/llama-3.2-11b-vision-instruct") {
-          return Promise.resolve({
-            response: "Add tomatoes, beans, smoked paprika. Simmer 15 minutes.",
-          });
-        }
-
-        textModelCalls += 1;
-        return Promise.resolve({
-          response: JSON.stringify(
-            textModelCalls === 1 ? invalidAiRecipe : enrichedAiRecipe,
-          ),
-        });
-      });
-
-      global.fetch = vi.fn((requestUrl: string | URL) => {
-        const url = String(requestUrl);
-        if (url.startsWith("https://www.instagram.com/api/v1/oembed")) {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            headers: new Headers({ "content-type": "application/json" }),
-            json: () =>
-              Promise.resolve({
-                title: instagramCaption,
-                thumbnail_url: "https://example.com/instagram.jpg",
-              }),
-          });
-        }
-
-        if (url === "https://cdn.example.com/instagram.mp4") {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            headers: new Headers({ "content-length": "4" }),
-            arrayBuffer: () =>
-              Promise.resolve(new Uint8Array([1, 2, 3, 4]).buffer),
-          });
-        }
-
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          headers: new Headers({ "content-type": "text/html" }),
-          text: () => Promise.resolve(""),
-        });
-      }) as any;
-
-      const result = await parser.parse({
-        type: "url",
-        data: "https://www.instagram.com/reel/MEDIA123/",
-      });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.name).toBe("Tomato Bean Stew");
-        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
-          3,
-        );
-        expect(result.metadata.parseMethod).toBe("media_enriched");
-      }
-      expect(browserFetcherMocks.extractInstagramContent).toHaveBeenCalledWith(
-        (mockEnv as any).BROWSER,
-        "https://www.instagram.com/reel/MEDIA123/",
-      );
-      expect(mockEnv.AI.run).toHaveBeenCalledWith(
-        "@cf/openai/whisper",
-        expect.objectContaining({ audio: [1, 2, 3, 4] }),
-      );
-      expect(mockEnv.AI.run).toHaveBeenCalledWith(
-        "@cf/meta/llama-3.2-11b-vision-instruct",
-        expect.objectContaining({ image: [5, 6, 7] }),
-      );
-    });
-
-    it("uses Instagram rendered page text when browser comments contain the method", async () => {
-      const instagramCaption = `TRY MY FIRECRACKER RAMEN NOW
-
-INGREDIENTS
-
-BROTH (serves 3)
-
-1 tbsp neutral oil
-4 large garlic cloves
-1 red chilli
-1 bunch spring onions
-1 thumb-sized piece of ginger
-2 tbsp gochujang paste
-1 tbsp rice vinegar
-1 tbsp soy sauce
-1.5l veg broth
-200 ml coconut milk
-1 tbsp miso paste
-1 lime
-Salt + sugar
-
-TO SERVE
-
-Rice noodles
-Oyster mushrooms
-Broccoli
-Spring onion
-Chilli oil
-Toasted sesame seeds
-Lime wedge
-
-* full method pinned to top of comments *`;
-
-      const invalidAiRecipe = {
-        name: "Firecracker Ramen",
-        description: null,
-        prepTime: null,
-        cookTime: null,
-        totalTime: null,
-        servings: null,
-        ingredientSections: [
-          {
-            name: null,
-            ingredients: [
-              { index: 0, quantity: 1, unit: "tbsp", name: "neutral oil" },
-            ],
-          },
-        ],
-        instructionSections: [],
-        suggestedTags: [],
-      };
-      const enrichedAiRecipe = {
-        name: "Firecracker Ramen",
-        description: null,
-        prepTime: null,
-        cookTime: null,
-        totalTime: null,
-        servings: 3,
-        ingredientSections: [
-          {
-            name: "Broth",
-            ingredients: [
-              { index: 0, quantity: 1, unit: "tbsp", name: "neutral oil" },
-              { index: 1, quantity: 4, unit: null, name: "garlic cloves" },
-              { index: 2, quantity: 2, unit: "tbsp", name: "gochujang paste" },
-              { index: 3, quantity: 1.5, unit: "l", name: "veg broth" },
-              { index: 4, quantity: 200, unit: "ml", name: "coconut milk" },
-            ],
-          },
-        ],
-        instructionSections: [
-          {
-            name: null,
-            instructions: [
-              { index: 0, instruction: "Saute the aromatics in neutral oil." },
-              {
-                index: 1,
-                instruction:
-                  "Stir in gochujang, vinegar, soy sauce, broth, and coconut milk.",
-              },
-              {
-                index: 2,
-                instruction:
-                  "Simmer, add noodles and toppings, then finish with chilli oil and lime.",
-              },
-            ],
-          },
-        ],
-      };
-
-      (mockEnv as any).BROWSER = { id: "browser-binding" };
-      browserFetcherMocks.extractInstagramContent.mockResolvedValue({
-        html: `
-          <html>
-            <body>
-              <article>
-                <p>${instagramCaption}</p>
-                <p>
-                  Pinned comment method: saute the aromatics in neutral oil.
-                  Stir in gochujang, rice vinegar, soy sauce, vegetable broth,
-                  coconut milk, miso and lime. Simmer until glossy, then serve
-                  with noodles, mushrooms, broccoli, chilli oil, sesame seeds
-                  and lime wedge.
-                </p>
-              </article>
-            </body>
-          </html>
-        `,
-        caption: instagramCaption,
-        images: ["https://example.com/browser-instagram.jpg"],
-        videoUrls: [],
-        frameImages: [],
-      });
-
-      let textModelCalls = 0;
-      mockEnv.AI.run = vi.fn((model: string) => {
-        if (model === "@cf/openai/whisper") {
-          return Promise.resolve({ text: "This should not be used." });
-        }
-        if (model === "@cf/meta/llama-3.2-11b-vision-instruct") {
-          return Promise.resolve({ response: "This should not be used." });
-        }
-
-        textModelCalls += 1;
-        return Promise.resolve({
-          response: JSON.stringify(
-            textModelCalls === 1 ? invalidAiRecipe : enrichedAiRecipe,
-          ),
-        });
-      });
-
-      global.fetch = vi.fn((requestUrl: string | URL) => {
-        const url = String(requestUrl);
-        if (url.startsWith("https://www.instagram.com/api/v1/oembed")) {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            headers: new Headers({ "content-type": "application/json" }),
-            json: () =>
-              Promise.resolve({
-                title: instagramCaption,
-                thumbnail_url: "https://example.com/instagram.jpg",
-              }),
-          });
-        }
-
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          headers: new Headers({ "content-type": "text/html" }),
-          text: () => Promise.resolve(""),
-        });
-      }) as any;
-
-      const result = await parser.parse({
-        type: "url",
-        data: "https://www.instagram.com/reel/DFTA0yKIVPa/",
-      });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.name).toBe("Firecracker Ramen");
-        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
-          3,
-        );
-        expect(result.metadata.parseMethod).toBe("media_enriched");
-      }
-      expect(mockEnv.AI.run).not.toHaveBeenCalledWith(
-        "@cf/openai/whisper",
-        expect.anything(),
-      );
-      expect(mockEnv.AI.run).not.toHaveBeenCalledWith(
-        "@cf/meta/llama-3.2-11b-vision-instruct",
-        expect.anything(),
-      );
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
     });
 
     it("routes non-Instagram/TikTok social links through generic social parsing", async () => {
@@ -1714,78 +1235,14 @@ Lime wedge
         expect(result.data.name).toBe("Tomato Pasta");
         expect(result.data.images).toEqual([
           expect.stringMatching(
-            /^https:\/\/images\.example\.com\/social\/youtube\/[a-zA-Z0-9-]+\.jpg$/,
+            /^https:\/\/images\.example\.com\/temp\/generated\/[a-zA-Z0-9-]+\.jpg$/,
           ),
         ]);
         expect(result.metadata.parseMethod).toBe("ai_only");
       }
     });
 
-    it("uses plain metadata fetch before browser rendering for generic social links", async () => {
-      const youtubeHtml = `
-        <html>
-          <head>
-            <meta property="og:title" content="Tomato pasta short">
-            <meta property="og:description" content="Recipe: 200 g spaghetti, 1 cup tomato sauce. Boil pasta and toss with sauce.">
-            <meta property="og:image" content="https://example.com/youtube.jpg">
-          </head>
-          <body></body>
-        </html>
-      `;
-
-      (mockEnv as any).BROWSER = { id: "browser-binding" };
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
-          name: "Tomato Pasta",
-          description: null,
-          prepTime: null,
-          cookTime: 15,
-          totalTime: null,
-          servings: 2,
-          ingredientSections: [
-            {
-              name: null,
-              ingredients: [
-                { index: 0, quantity: 200, unit: "g", name: "spaghetti" },
-                { index: 1, quantity: 1, unit: "cup", name: "tomato sauce" },
-              ],
-            },
-          ],
-          instructionSections: [
-            {
-              name: null,
-              instructions: [
-                { index: 0, instruction: "Boil the pasta." },
-                { index: 1, instruction: "Toss with tomato sauce." },
-              ],
-            },
-          ],
-        }),
-      });
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "content-type": "text/html" }),
-        arrayBuffer: () =>
-          Promise.resolve(new TextEncoder().encode(youtubeHtml).buffer),
-        text: () => Promise.resolve(youtubeHtml),
-      });
-
-      const result = await parser.parse({
-        type: "url",
-        data: "https://www.youtube.com/watch?v=abc123",
-      });
-
-      expect(result.success).toBe(true);
-      expect(global.fetch).toHaveBeenCalled();
-      if (result.success) {
-        expect(result.data.name).toBe("Tomato Pasta");
-        expect(result.metadata.parseMethod).toBe("ai_only");
-      }
-    });
-
-    it("reuploads YouTube social images with the youtube destination prefix", async () => {
+    it("rehosts YouTube social images through the shared generated-image path", async () => {
       const youtubeHtml = `
         <html>
           <head>
@@ -1852,12 +1309,12 @@ Lime wedge
       expect(uploadFromUrl).toHaveBeenCalledTimes(1);
       expect(uploadFromUrl).toHaveBeenCalledWith(
         "https://example.com/youtube.jpg",
-        expect.stringMatching(/^social\/youtube\/[a-zA-Z0-9-]+\.jpg$/),
+        expect.stringMatching(/^temp\/generated\/[a-zA-Z0-9-]+\.jpg$/),
       );
       if (result.success) {
         expect(result.data.images).toEqual([
           expect.stringMatching(
-            /^https:\/\/images\.example\.com\/social\/youtube\/[a-zA-Z0-9-]+\.jpg$/,
+            /^https:\/\/images\.example\.com\/temp\/generated\/[a-zA-Z0-9-]+\.jpg$/,
           ),
         ]);
       }
@@ -1932,9 +1389,7 @@ Lime wedge
     it("evicts unusable cached recipes and retries live parsing", async () => {
       const cachedRecipe = {
         name: "Stale Recipe",
-        ingredientSections: [
-          { name: null, ingredients: [{ index: 0, name: "stale" }] },
-        ],
+        ingredientSections: [],
         instructionSections: [],
       };
 
@@ -1957,105 +1412,7 @@ Lime wedge
       expect(global.fetch).toHaveBeenCalled();
     });
 
-    it("uses TikTok audio transcript enrichment before caption fallback", async () => {
-      const tiktokCaption =
-        "fudgy browniess recipe by Handle the Heat: 5 tbsp butter 1 1/4 cups sugar 2 eggs plus 1 egg yolk #brownies";
-      const invalidAiRecipe = {
-        name: "Fudgy Brownies",
-        description: null,
-        prepTime: null,
-        cookTime: null,
-        totalTime: null,
-        servings: null,
-        ingredientSections: [
-          {
-            name: null,
-            ingredients: [
-              { index: 0, quantity: 5, unit: "tbsp", name: "butter" },
-              { index: 1, quantity: 1.25, unit: "cup", name: "sugar" },
-            ],
-          },
-        ],
-        instructionSections: [],
-        suggestedTags: [],
-      };
-      const enrichedAiRecipe = {
-        ...invalidAiRecipe,
-        instructionSections: [
-          {
-            name: null,
-            instructions: [
-              { index: 0, instruction: "Melt the butter." },
-              { index: 1, instruction: "Whisk in the sugar and eggs." },
-              { index: 2, instruction: "Bake until fudgy." },
-            ],
-          },
-        ],
-      };
-
-      let textModelCalls = 0;
-      mockEnv.AI.run = vi.fn((model: string) => {
-        if (model === "@cf/openai/whisper") {
-          return Promise.resolve({
-            text: "Melt the butter, whisk in the sugar and eggs, then bake until fudgy.",
-          });
-        }
-
-        textModelCalls += 1;
-        return Promise.resolve({
-          response: JSON.stringify(
-            textModelCalls === 1 ? invalidAiRecipe : enrichedAiRecipe,
-          ),
-        });
-      });
-
-      global.fetch = vi.fn((requestUrl: string | URL) => {
-        if (String(requestUrl).includes("cdn.example.com/video.mp4")) {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            headers: new Headers({ "content-length": "4" }),
-            arrayBuffer: () =>
-              Promise.resolve(new Uint8Array([1, 2, 3, 4]).buffer),
-          });
-        }
-
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          headers: new Headers({ "content-type": "application/json" }),
-          json: () =>
-            Promise.resolve({
-              title: tiktokCaption,
-              thumbnail_url: "https://example.com/tiktok.jpg",
-              video_url: "https://cdn.example.com/video.mp4",
-            }),
-        });
-      }) as any;
-
-      const result = await parser.parse({
-        type: "url",
-        data: "https://www.tiktok.com/@thelittlecakela/video/7208369840007007531",
-      });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.name).toBe("Fudgy Brownies");
-        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
-          3,
-        );
-        expect(
-          result.data.instructionSections[0]?.instructions[0]?.instruction,
-        ).toBe("Melt the butter.");
-        expect(result.metadata.parseMethod).toBe("media_enriched");
-      }
-      expect(mockEnv.AI.run).toHaveBeenCalledWith(
-        "@cf/openai/whisper",
-        expect.objectContaining({ audio: [1, 2, 3, 4] }),
-      );
-    });
-
-    it("uses TikTok subtitle transcripts before Whisper or OCR", async () => {
+    it("includes TikTok subtitle transcripts in the AI parse", async () => {
       const tiktokCaption =
         "fudgy browniess recipe by Handle the Heat: 5 tbsp butter 1 1/4 cups sugar 2 eggs plus 1 egg yolk #brownies";
       const hydration = {
@@ -2115,21 +1472,21 @@ Lime wedge
             ],
           },
         ],
+        suggestedTags: [],
       };
 
-      let textModelCalls = 0;
-      mockEnv.AI.run = vi.fn((model: string) => {
-        if (model === "@cf/openai/whisper") {
-          return Promise.resolve({ text: "This should not be used." });
-        }
+      const recipeExtractionRequests: Record<string, unknown>[] = [];
+      mockEnv.AI.run = vi.fn(
+        (model: string, request: Record<string, unknown>) => {
+          if (model === "@cf/meta/llama-4-scout-17b-16e-instruct") {
+            recipeExtractionRequests.push(request);
+          }
 
-        textModelCalls += 1;
-        return Promise.resolve({
-          response: JSON.stringify(
-            textModelCalls === 1 ? invalidAiRecipe : enrichedAiRecipe,
-          ),
-        });
-      });
+          return Promise.resolve({
+            response: JSON.stringify(enrichedAiRecipe),
+          });
+        },
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const url = String(requestUrl);
@@ -2190,9 +1547,12 @@ Bake the brownies for 40 minutes.
         );
         expect(result.metadata.parseMethod).toBe("media_enriched");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalledWith(
-        "@cf/openai/whisper",
-        expect.anything(),
+      expect(recipeExtractionRequests).toHaveLength(1);
+      expect(JSON.stringify(recipeExtractionRequests[0])).toContain(
+        "Audio transcript:",
+      );
+      expect(JSON.stringify(recipeExtractionRequests[0])).toContain(
+        "Whisk melted butter and sugar together.",
       );
     });
 
@@ -2328,6 +1688,9 @@ Serves 4
       if (result.success) {
         expect(result.data.name).toBe("Test Recipe");
         expect(result.metadata.source).toBe("text");
+        expect(
+          result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
+        ).toEqual(expect.arrayContaining(["ai", "image_rehosting"]));
         expect(mockEnv.AI.run).toHaveBeenCalled();
       }
     });
@@ -2341,6 +1704,16 @@ Serves 4
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe("INVALID_INPUT");
+        expect(result.metadata?.source).toBe("text");
+        expect(result.metadata?.diagnostics?.totalElapsedMs).toEqual(
+          expect.any(Number),
+        );
+        expect(
+          result.metadata?.diagnostics?.stageTimings?.some(
+            (stage) =>
+              stage.name === "image_rehosting" && stage.status === "skipped",
+          ),
+        ).toBe(true);
       }
     });
 
@@ -2372,6 +1745,9 @@ Serves 4
       if (result.success) {
         expect(result.data.name).toBe("Test Recipe");
         expect(result.metadata.source).toBe("image");
+        expect(
+          result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
+        ).toEqual(expect.arrayContaining(["ai", "image_rehosting"]));
       }
     });
 

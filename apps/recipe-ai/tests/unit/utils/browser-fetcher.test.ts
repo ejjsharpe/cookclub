@@ -1,7 +1,10 @@
 import puppeteer from "@cloudflare/puppeteer";
 import { describe, expect, it, vi } from "vitest";
 
-import { extractInstagramContent } from "../../../src/utils/browser-fetcher";
+import {
+  fetchHtmlWithBrowser,
+  requiresBrowserRendering,
+} from "../../../src/utils/browser-fetcher";
 
 vi.mock("@cloudflare/puppeteer", () => ({
   default: {
@@ -10,31 +13,14 @@ vi.mock("@cloudflare/puppeteer", () => ({
 }));
 
 describe("browser-fetcher", () => {
-  it("extracts Instagram captions, images, video URLs, and frame images", async () => {
-    vi.useFakeTimers();
-
+  it("fetches rendered HTML with the browser binding", async () => {
     const close = vi.fn();
     const page = {
       setUserAgent: vi.fn(),
       setViewport: vi.fn(),
       goto: vi.fn(),
-      waitForSelector: vi.fn(),
       $: vi.fn().mockResolvedValue(null),
-      evaluate: vi.fn((script: string) => {
-        if (script.includes("return { caption, images, videoUrls }")) {
-          return Promise.resolve({
-            caption: "Tomato pasta recipe with ingredients and method.",
-            images: ["https://cdninstagram.example.com/image.jpg"],
-            videoUrls: ["https://cdninstagram.example.com/reel.mp4"],
-          });
-        }
-
-        return Promise.resolve(undefined);
-      }),
-      screenshot: vi
-        .fn()
-        .mockResolvedValue(new Uint8Array([1, 2, 3, 4]).buffer),
-      content: vi.fn().mockResolvedValue("<html></html>"),
+      content: vi.fn().mockResolvedValue("<html><body>Recipe</body></html>"),
     };
 
     (puppeteer.launch as any).mockResolvedValue({
@@ -42,26 +28,23 @@ describe("browser-fetcher", () => {
       close,
     });
 
-    const resultPromise = extractInstagramContent(
+    const html = await fetchHtmlWithBrowser(
       { id: "browser-binding" } as any,
-      "https://www.instagram.com/reel/ABC123/",
+      "https://www.youtube.com/watch?v=abc123",
     );
-    await vi.advanceTimersByTimeAsync(3000);
-    const result = await resultPromise;
 
-    expect(result.caption).toBe(
-      "Tomato pasta recipe with ingredients and method.",
+    expect(html).toBe("<html><body>Recipe</body></html>");
+    expect(page.goto).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=abc123",
+      expect.objectContaining({ waitUntil: "domcontentloaded" }),
     );
-    expect(result.images).toEqual([
-      "https://cdninstagram.example.com/image.jpg",
-    ]);
-    expect(result.videoUrls).toEqual([
-      "https://cdninstagram.example.com/reel.mp4",
-    ]);
-    expect(result.frameImages).toHaveLength(3);
-    expect(Array.from(result.frameImages[0] ?? [])).toEqual([1, 2, 3, 4]);
     expect(close).toHaveBeenCalled();
+  });
 
-    vi.useRealTimers();
+  it("identifies URLs that use browser rendering in the URL parser", () => {
+    expect(
+      requiresBrowserRendering("https://www.youtube.com/watch?v=abc"),
+    ).toBe(true);
+    expect(requiresBrowserRendering("https://example.com/recipe")).toBe(false);
   });
 });

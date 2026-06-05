@@ -89,10 +89,30 @@ describe("normalizeRecipeForImport", () => {
       }),
     ]);
   });
+
+  it("removes generic placeholder instructions", () => {
+    const normalized = normalizeRecipeForImport({
+      ...recipeWithImages(["https://example.com/thumb.jpg"]),
+      instructionSections: [
+        {
+          name: null,
+          instructions: [
+            {
+              index: 0,
+              instruction:
+                "Follow the method shown in the source video using the listed ingredients.",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(normalized.instructionSections).toEqual([]);
+  });
 });
 
 describe("evaluateRecipeQuality", () => {
-  it("accepts strong ingredient-only social recipes with placeholder video method", () => {
+  it("accepts ingredient-only recipes with low confidence", () => {
     const quality = evaluateRecipeQuality(
       {
         ...recipeWithImages(["https://example.com/social.jpg"]),
@@ -110,58 +130,29 @@ describe("evaluateRecipeQuality", () => {
             })),
           },
         ],
-        instructionSections: [
-          {
-            name: null,
-            instructions: [
-              {
-                index: 0,
-                instruction:
-                  "Follow the method shown in the source video using the listed ingredients.",
-              },
-            ],
-          },
-        ],
+        instructionSections: [],
       },
       "social_ai",
     );
 
     expect(quality.usable).toBe(true);
-    expect(quality.confidence).toBe("medium");
-    expect(quality.reasons).toContain("generic_social_instruction");
+    expect(quality.confidence).toBe("low");
+    expect(quality.reasons).toContain("missing_instructions");
   });
 
-  it("still rejects weak social captions with placeholder video method", () => {
+  it("rejects recipes without ingredients", () => {
     const quality = evaluateRecipeQuality(
       {
         ...recipeWithImages(["https://example.com/social.jpg"]),
         name: "Random Post",
         sourceUrl: "https://www.instagram.com/reel/ABC123/",
-        ingredientSections: [
-          {
-            name: null,
-            ingredients: [
-              { index: 0, quantity: 1, unit: "cup", name: "flour" },
-            ],
-          },
-        ],
-        instructionSections: [
-          {
-            name: null,
-            instructions: [
-              {
-                index: 0,
-                instruction:
-                  "Follow the method shown in the source video using the listed ingredients.",
-              },
-            ],
-          },
-        ],
+        ingredientSections: [],
+        instructionSections: [],
       },
       "social_ai",
     );
 
     expect(quality.usable).toBe(false);
-    expect(quality.reasons).toContain("generic_social_instruction");
+    expect(quality.reasons).toContain("missing_ingredients");
   });
 });

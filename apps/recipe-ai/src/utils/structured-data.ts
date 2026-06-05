@@ -151,18 +151,6 @@ interface SchemaOrgRecipe {
   nutrition?: NutritionInformation | string;
 }
 
-/**
- * Extract deterministic recipe data from HTML.
- * Sources are tried from most explicit to most heuristic:
- * JSON-LD, framework hydration JSON, microdata/RDFa, and known recipe cards.
- */
-export function extractStructuredRecipe(
-  html: string,
-  sourceUrl: string,
-): ParsedRecipe | null {
-  return extractStructuredRecipeCandidates(html, sourceUrl)[0] ?? null;
-}
-
 export function extractStructuredRecipeCandidates(
   html: string,
   sourceUrl: string,

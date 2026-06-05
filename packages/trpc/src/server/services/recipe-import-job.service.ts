@@ -37,6 +37,7 @@ export const RECIPE_IMPORT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
 export const RECIPE_IMPORT_JOB_STALE_MS = 60 * 1000;
 export const RECIPE_IMPORT_JOB_STALE_ERROR =
   "Import timed out. Please try again.";
+const MAX_PARSE_DIAGNOSTIC_STAGES = 32;
 
 export type StaleRecipeImportJobCandidate = {
   id: string;
@@ -121,6 +122,32 @@ export async function enqueueRecipeImportJob(
       await env.RECIPE_IMPORT_IMAGE_QUEUE.send(message);
       break;
   }
+}
+
+function appendJobUpdateDiagnostics<
+  T extends { success: true; metadata: { diagnostics?: any } },
+>(result: T, startTime: number): T {
+  const diagnostics = result.metadata.diagnostics ?? {};
+  const stageTimings = [
+    ...(diagnostics.stageTimings ?? []),
+    {
+      name: "job_update",
+      status: "success",
+      elapsedMs: Math.max(0, Date.now() - startTime),
+      detail: "recipe_import_jobs",
+    },
+  ].slice(-MAX_PARSE_DIAGNOSTIC_STAGES);
+
+  return {
+    ...result,
+    metadata: {
+      ...result.metadata,
+      diagnostics: {
+        ...diagnostics,
+        stageTimings,
+      },
+    },
+  };
 }
 
 async function loadRecipeImportJobStatus(
@@ -292,15 +319,17 @@ export async function processRecipeImportJob(
     }
 
     const completedAt = new Date();
+    const jobUpdateStart = Date.now();
+    const resultForStorage = appendJobUpdateDiagnostics(result, jobUpdateStart);
 
     const [completedJob] = await ctx.db
       .update(recipeImportJobs)
       .set({
         status: "ready",
-        title: result.data.name,
+        title: resultForStorage.data.name,
         inputData: "",
         mimeType: null,
-        recipe: result,
+        recipe: resultForStorage,
         error: null,
         completedAt,
         processingStartedAt: null,

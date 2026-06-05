@@ -3,7 +3,6 @@ import { describe, it, expect } from "vitest";
 import {
   cleanHtml,
   extractImageUrls,
-  extractText,
   focusRecipeContent,
 } from "../../../src/utils/html-cleaner";
 
@@ -186,40 +185,6 @@ describe("cleanHtml", () => {
       const result = cleanHtml(html);
       expect(result.length).toBeLessThanOrEqual(15000);
     });
-  });
-});
-
-describe("extractText", () => {
-  it("extracts all text without aggressive cleaning", () => {
-    const html = `
-      <html>
-        <body>
-          <nav>Navigation</nav>
-          <p>Main content</p>
-          <footer>Footer</footer>
-        </body>
-      </html>
-    `;
-    const result = extractText(html);
-    expect(result).toContain("Navigation");
-    expect(result).toContain("Main content");
-    expect(result).toContain("Footer");
-  });
-
-  it("still removes script and style tags", () => {
-    const html = `
-      <html>
-        <body>
-          <script>alert('bad');</script>
-          <style>.x { color: red; }</style>
-          <p>Content</p>
-        </body>
-      </html>
-    `;
-    const result = extractText(html);
-    expect(result).toContain("Content");
-    expect(result).not.toContain("alert");
-    expect(result).not.toContain("color");
   });
 });
 

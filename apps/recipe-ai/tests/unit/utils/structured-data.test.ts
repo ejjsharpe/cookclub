@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { extractStructuredRecipe } from "../../../src/utils/structured-data";
+import { extractStructuredRecipeCandidates } from "../../../src/utils/structured-data";
 
-describe("extractStructuredRecipe", () => {
+function firstStructuredRecipe(html: string, sourceUrl: string) {
+  return extractStructuredRecipeCandidates(html, sourceUrl)[0] ?? null;
+}
+
+describe("extractStructuredRecipeCandidates", () => {
   it("decodes HTML entities from structured recipe text", () => {
     const html = `
       <html>
@@ -39,7 +43,7 @@ describe("extractStructuredRecipe", () => {
       </html>
     `;
 
-    const recipe = extractStructuredRecipe(html, "https://example.com/recipe");
+    const recipe = firstStructuredRecipe(html, "https://example.com/recipe");
 
     expect(recipe).not.toBeNull();
     expect(recipe?.name).toBe("Nana's Fish & Chips");
@@ -81,10 +85,7 @@ describe("extractStructuredRecipe", () => {
       </article>
     `;
 
-    const recipe = extractStructuredRecipe(
-      html,
-      "https://example.com/recipes/",
-    );
+    const recipe = firstStructuredRecipe(html, "https://example.com/recipes/");
 
     expect(recipe?.name).toBe("Microdata Pancakes");
     expect(recipe?.prepTime).toBe(15);
@@ -122,7 +123,7 @@ describe("extractStructuredRecipe", () => {
       </html>
     `;
 
-    const recipe = extractStructuredRecipe(html, "https://example.com/recipe");
+    const recipe = firstStructuredRecipe(html, "https://example.com/recipe");
 
     expect(recipe?.images).toEqual([
       "https://example.com/pancakes.jpg",
@@ -151,7 +152,7 @@ describe("extractStructuredRecipe", () => {
       </article>
     `;
 
-    const recipe = extractStructuredRecipe(html, "https://example.com/pasta");
+    const recipe = firstStructuredRecipe(html, "https://example.com/pasta");
 
     expect(recipe?.name).toBe("RDFa Pasta");
     expect(recipe?.description).toBe("A fast pasta dinner.");
@@ -178,7 +179,7 @@ describe("extractStructuredRecipe", () => {
       </div>
     `;
 
-    const recipe = extractStructuredRecipe(html, "https://example.com/sweets/");
+    const recipe = firstStructuredRecipe(html, "https://example.com/sweets/");
 
     expect(recipe?.name).toBe("Plugin Brownies");
     expect(recipe?.description).toBe("Fudgy brownies.");
@@ -208,7 +209,7 @@ describe("extractStructuredRecipe", () => {
       </div>
     `;
 
-    const recipe = extractStructuredRecipe(html, "https://example.com/soup");
+    const recipe = firstStructuredRecipe(html, "https://example.com/soup");
 
     expect(recipe?.name).toBe("Tasty Soup");
     expect(recipe?.servings).toBe(4);
@@ -239,7 +240,7 @@ describe("extractStructuredRecipe", () => {
       </script>
     `;
 
-    const recipe = extractStructuredRecipe(html, "https://example.com/cake");
+    const recipe = firstStructuredRecipe(html, "https://example.com/cake");
 
     expect(recipe?.name).toBe("Next Data Cake");
     expect(recipe?.images).toEqual(["https://example.com/cake.jpg"]);

@@ -510,12 +510,8 @@ export function extractRecipeOutline(
     (count, section) => count + section.ingredients.length,
     0,
   );
-  const instructionCount = instructionSections.reduce(
-    (count, section) => count + section.instructions.length,
-    0,
-  );
 
-  if (ingredientCount < 2 || instructionCount < 1) return null;
+  if (ingredientCount < 1) return null;
 
   const prepTime = timeFromText(allText, "prep(?:\\s+time)?");
   const cookTime = timeFromText(allText, "cook(?:\\s+time)?");

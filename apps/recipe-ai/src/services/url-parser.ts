@@ -30,6 +30,10 @@ import {
   isLikelyBotBlockedError,
   readLimitedText,
 } from "../utils/html-fetcher";
+import {
+  appendFallbackPath,
+  recordDiagnosticsStage,
+} from "../utils/parse-diagnostics";
 import { fetchReaderMarkdown } from "../utils/reader-fetcher";
 import { extractRecipeOutline } from "../utils/recipe-outline-parser";
 import {
@@ -369,6 +373,7 @@ export async function parseUrl(
 ): Promise<ParseResult> {
   const { structuredOnly = false, allowSocial = true } = options ?? {};
   let sourceSnapshot: Awaited<ReturnType<typeof createSourceSnapshot>>;
+  const sourceSnapshotStart = Date.now();
   try {
     sourceSnapshot = await createSourceSnapshot(url);
   } catch (error) {
@@ -378,13 +383,81 @@ export async function parseUrl(
         code: "INVALID_URL",
         message: error instanceof Error ? error.message : "Invalid recipe URL",
       },
+      metadata: {
+        source: "url",
+        confidence: "low",
+        diagnostics: recordDiagnosticsStage(
+          { originalUrl: url },
+          "source_snapshot",
+          sourceSnapshotStart,
+          "error",
+          error instanceof Error ? error.message : "invalid_url",
+        ),
+      },
     };
   }
 
   const sourceUrl = sourceSnapshot.canonicalUrl;
-  const diagnostics = sourceSnapshot.diagnostics;
+  const socialPlatform = sourceSnapshot.platform;
 
+  if (structuredOnly && socialPlatform) {
+    return {
+      success: false,
+      error: {
+        code: "UNSUPPORTED_URL",
+        message:
+          "Social media links don't contain structured recipe data. They require AI-powered Smart Import.",
+      },
+      metadata: {
+        source: "url",
+        confidence: "low",
+        canonicalUrl: sourceUrl,
+        diagnostics: sourceSnapshot.diagnostics,
+      },
+    };
+  }
+
+  if (socialPlatform) {
+    if (!allowSocial) {
+      return {
+        success: false,
+        error: {
+          code: "UNSUPPORTED_URL",
+          message: "Linked social media URLs are not valid recipe pages.",
+        },
+        metadata: {
+          source: "url",
+          confidence: "low",
+          canonicalUrl: sourceUrl,
+          diagnostics: sourceSnapshot.diagnostics,
+        },
+      };
+    }
+
+    return parseSocialUrl(env, sourceUrl, socialPlatform, {
+      diagnostics: sourceSnapshot.diagnostics,
+      parseLinkedRecipeUrl: (linkedUrl) =>
+        parseUrl(env, linkedUrl, { allowSocial: false }),
+    });
+  }
+
+  let diagnostics = recordDiagnosticsStage(
+    sourceSnapshot.diagnostics,
+    "source_snapshot",
+    sourceSnapshotStart,
+    "success",
+    sourceSnapshot.originalUrl === sourceUrl ? undefined : "canonicalized",
+  );
+
+  const cacheStart = Date.now();
   const cached = await getCachedRecipe(env.RECIPE_CACHE, sourceUrl);
+  diagnostics = recordDiagnosticsStage(
+    diagnostics,
+    "cache",
+    cacheStart,
+    "success",
+    cached ? "hit" : "miss",
+  );
   if (cached) {
     const normalizedCached = normalizeRecipeForImport(cached);
     const validation = ParsedRecipeSchema(normalizedCached);
@@ -402,6 +475,7 @@ export async function parseUrl(
           diagnostics: {
             ...diagnostics,
             selectedAttempt: "cached",
+            qualityScore: quality.score,
             attempts: [
               {
                 id: "cached",
@@ -436,57 +510,42 @@ export async function parseUrl(
 
   // Check if this URL requires browser rendering (Instagram, TikTok, etc.)
   const needsBrowser = requiresBrowserRendering(sourceUrl);
-  const socialPlatform = sourceSnapshot.platform;
-
-  // Social media URLs don't have structured data - reject early for structuredOnly
-  if (structuredOnly && socialPlatform) {
-    return {
-      success: false,
-      error: {
-        code: "UNSUPPORTED_URL",
-        message:
-          "Social media links don't contain structured recipe data. They require AI-powered Smart Import.",
-      },
-    };
-  }
-
-  if (socialPlatform) {
-    if (!allowSocial) {
-      return {
-        success: false,
-        error: {
-          code: "UNSUPPORTED_URL",
-          message: "Linked social media URLs are not valid recipe pages.",
-        },
-      };
-    }
-
-    return parseSocialUrl(env, sourceUrl, socialPlatform, {
-      diagnostics,
-      parseLinkedRecipeUrl: (linkedUrl) =>
-        parseUrl(env, linkedUrl, { allowSocial: false }),
-    });
-  }
 
   // Fetch HTML (use browser for JS-heavy sites, regular fetch otherwise)
   let html: string;
   const candidates: RecipeCandidate[] = [];
+  const fetchStart = Date.now();
   try {
     if (needsBrowser) {
       console.log("Using browser rendering for:", sourceUrl);
       html = await fetchHtmlWithBrowser(env.BROWSER, sourceUrl);
+      diagnostics = recordDiagnosticsStage(diagnostics, "browser", fetchStart);
     } else {
       html = await fetchHtml(sourceUrl, 1);
+      diagnostics = recordDiagnosticsStage(diagnostics, "fetch", fetchStart);
     }
   } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      needsBrowser ? "browser" : "fetch",
+      fetchStart,
+      "error",
+      error instanceof Error ? error.message : "fetch_failed",
+    );
+    const readerStart = Date.now();
+    const readerCandidates = await collectReaderCandidates(sourceUrl);
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "reader_after_fetch_error"),
+      "reader",
+      readerStart,
+    );
     const readerResult = await selectBestRecipeCandidate(
       env,
       sourceUrl,
-      await collectReaderCandidates(sourceUrl),
+      readerCandidates,
       {
         canonicalUrl: sourceUrl,
         diagnostics,
-        polish: !structuredOnly,
       },
     );
     if (readerResult) return readerResult;
@@ -497,8 +556,23 @@ export async function parseUrl(
           "Regular fetch appears blocked; retrying with browser rendering:",
           sourceUrl,
         );
+        const browserStart = Date.now();
         html = await fetchHtmlWithBrowser(env.BROWSER, sourceUrl);
+        diagnostics = recordDiagnosticsStage(
+          appendFallbackPath(diagnostics, "browser_after_fetch_block"),
+          "browser",
+          browserStart,
+        );
       } catch (browserError) {
+        diagnostics = recordDiagnosticsStage(
+          diagnostics,
+          "browser",
+          Date.now(),
+          "error",
+          browserError instanceof Error
+            ? browserError.message
+            : "browser_fetch_failed",
+        );
         console.error("Browser fetch error:", browserError);
         return {
           success: false,
@@ -508,6 +582,12 @@ export async function parseUrl(
               browserError instanceof Error
                 ? browserError.message
                 : "Failed to fetch URL",
+          },
+          metadata: {
+            source: "url",
+            confidence: "low",
+            canonicalUrl: sourceUrl,
+            diagnostics,
           },
         };
       }
@@ -519,6 +599,12 @@ export async function parseUrl(
           code: "FETCH_FAILED",
           message:
             error instanceof Error ? error.message : "Failed to fetch URL",
+        },
+        metadata: {
+          source: "url",
+          confidence: "low",
+          canonicalUrl: sourceUrl,
+          diagnostics,
         },
       };
     }
@@ -536,8 +622,20 @@ export async function parseUrl(
         }),
       ),
     );
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "deterministic_parse",
+      mainStart,
+    );
   } catch (error) {
     console.error("Deterministic extraction error:", error);
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "deterministic_parse",
+      mainStart,
+      "error",
+      error instanceof Error ? error.message : "deterministic_parse_failed",
+    );
     candidates.push({
       recipe: null,
       source: "structured",
@@ -555,20 +653,39 @@ export async function parseUrl(
     {
       canonicalUrl: sourceUrl,
       diagnostics,
-      polish: !structuredOnly,
     },
   );
   if (mainDeterministicResult) return mainDeterministicResult;
 
+  const alternateStart = Date.now();
   candidates.push(
     ...(await collectAlternateRecipePageCandidates(sourceUrl, html)),
   );
+  diagnostics = recordDiagnosticsStage(
+    appendFallbackPath(diagnostics, "alternate_recipe_pages"),
+    "linked_url",
+    alternateStart,
+  );
+  const wordPressStart = Date.now();
   candidates.push(...(await collectWordPressRestCandidates(sourceUrl, html)));
+  diagnostics = recordDiagnosticsStage(
+    diagnostics,
+    "deterministic_parse",
+    wordPressStart,
+    "success",
+    "wordpress_rest",
+  );
 
   const initialEvaluation = evaluateRecipeCandidates(candidates);
   const bestInitialScore = initialEvaluation.accepted[0]?.quality.score ?? 0;
   if (structuredOnly || bestInitialScore < 75) {
+    const readerStart = Date.now();
     candidates.push(...(await collectReaderCandidates(sourceUrl)));
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "reader"),
+      "reader",
+      readerStart,
+    );
   }
 
   const deterministicResult = await selectBestRecipeCandidate(
@@ -578,7 +695,6 @@ export async function parseUrl(
     {
       canonicalUrl: sourceUrl,
       diagnostics,
-      polish: !structuredOnly,
     },
   );
   if (deterministicResult) return deterministicResult;
@@ -591,10 +707,20 @@ export async function parseUrl(
         message:
           "This website doesn't have deterministic recipe data that we can read.",
       },
+      metadata: {
+        source: "url",
+        confidence: "low",
+        canonicalUrl: sourceUrl,
+        diagnostics: {
+          ...diagnostics,
+          attempts: evaluateRecipeCandidates(candidates).diagnostics,
+        },
+      },
     };
   }
 
   // For Smart Import: extract with AI when structured data is missing or incomplete.
+  const aiStart = Date.now();
   try {
     const cleanedContent = focusRecipeContent(cleanHtml(html));
 
@@ -604,6 +730,18 @@ export async function parseUrl(
         error: {
           code: "NO_CONTENT",
           message: "Not enough content found on the page",
+        },
+        metadata: {
+          source: "url",
+          confidence: "low",
+          canonicalUrl: sourceUrl,
+          diagnostics: recordDiagnosticsStage(
+            appendFallbackPath(diagnostics, "ai"),
+            "ai",
+            aiStart,
+            "skipped",
+            "not_enough_content",
+          ),
         },
       };
     }
@@ -624,6 +762,13 @@ export async function parseUrl(
       sourceUrl,
       images: imageUrls,
     });
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, bestPartialRecipe ? "ai_repair" : "ai"),
+      "ai",
+      aiStart,
+      "success",
+      bestPartialRecipe ? "repair" : "parse",
+    );
     const aiResultResponse = await selectBestRecipeCandidate(
       env,
       sourceUrl,
@@ -641,7 +786,6 @@ export async function parseUrl(
       ],
       {
         canonicalUrl: sourceUrl,
-        polish: true,
         diagnostics: {
           ...diagnostics,
           attempts: evaluateRecipeCandidates(candidates).diagnostics,
@@ -657,17 +801,51 @@ export async function parseUrl(
           code: "VALIDATION_FAILED",
           message: "AI output did not match expected schema",
         },
+        metadata: {
+          source: "url",
+          confidence: "low",
+          canonicalUrl: sourceUrl,
+          diagnostics: {
+            ...diagnostics,
+            attempts: evaluateRecipeCandidates([
+              ...candidates,
+              {
+                recipe,
+                source: "ai",
+                parseMethod: bestPartialRecipe ? "ai_repair" : "ai_only",
+                evidence: {
+                  imageCount: imageUrls.length,
+                  textLength: cleanedContent.length,
+                  sourceUrl,
+                },
+              },
+            ]).diagnostics,
+          },
+        },
       };
     }
 
     return aiResultResponse;
   } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "ai"),
+      "ai",
+      aiStart,
+      "error",
+      error instanceof Error ? error.message : "ai_parse_failed",
+    );
     console.log(error);
     return {
       success: false,
       error: {
         code: "AI_PARSE_FAILED",
         message: error instanceof Error ? error.message : "AI parsing failed",
+      },
+      metadata: {
+        source: "url",
+        confidence: "low",
+        canonicalUrl: sourceUrl,
+        diagnostics,
       },
     };
   }

@@ -91,25 +91,6 @@ export function normalizeInstagramUrl(url: string): string {
 }
 
 /**
- * Check if URL is a valid Instagram post/reel URL.
- */
-export function isInstagramUrl(url: string): boolean {
-  try {
-    const hostname = new URL(url).hostname;
-    const isInstagram =
-      hostname === "instagram.com" || hostname.endsWith(".instagram.com");
-
-    if (!isInstagram) return false;
-
-    // Check for valid post/reel path
-    const path = new URL(url).pathname;
-    return /^\/(p|reel|reels)\/[A-Za-z0-9_-]+/.test(path);
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Extract shortcode from Instagram URL for logging/debugging.
  */
 export function extractShortcode(url: string): string | null {

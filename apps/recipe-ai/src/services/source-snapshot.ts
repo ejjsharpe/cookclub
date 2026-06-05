@@ -49,14 +49,16 @@ export async function createSourceSnapshot(
     }
   }
   const canonicalUrl = normalizeRecipeUrl(finalUrl);
+  const platform = getSocialPlatform(canonicalUrl);
 
   return {
     originalUrl,
     canonicalUrl,
-    platform: getSocialPlatform(canonicalUrl),
+    platform,
     diagnostics: {
       originalUrl,
       canonicalUrl,
+      ...(platform ? { platform } : {}),
     },
   };
 }

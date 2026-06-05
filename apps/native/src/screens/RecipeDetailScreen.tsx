@@ -353,13 +353,6 @@ function getDraftErrors(draft: RecipeDraft) {
     errors.push("Add at least one ingredient.");
   }
 
-  const hasInstructions = draft.instructionSections.some((section) =>
-    section.instructions.some((instruction) => instruction.instruction.trim()),
-  );
-  if (!hasInstructions) {
-    errors.push("Add at least one method step.");
-  }
-
   if (draft.servings < 1) {
     errors.push("Servings must be at least 1.");
   }

@@ -13,6 +13,7 @@ export interface Env {
 export type {
   RecipeAIService,
   ParseInput,
+  ParseDiagnostics,
   ParseMetadata,
   ParseResponse,
   ChatMessage,

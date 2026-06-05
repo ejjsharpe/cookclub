@@ -10,6 +10,7 @@ export type {
   PersonalizationGoal,
   PersonalizeRecipeInput,
   ParseInput,
+  ParseDiagnostics,
   ParseMetadata,
   ParseResponse,
   RecipeConversationState,

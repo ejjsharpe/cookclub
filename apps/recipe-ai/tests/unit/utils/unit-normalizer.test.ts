@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import {
-  normalizeUnit,
-  isRecognizedUnit,
-  getCanonicalUnits,
-  getUnitVariations,
-} from "../../../src/utils/unit-normalizer";
+import { normalizeUnit } from "../../../src/utils/unit-normalizer";
 
 describe("normalizeUnit", () => {
   describe("volume units", () => {
@@ -113,47 +108,5 @@ describe("normalizeUnit", () => {
       expect(normalizeUnit("  cup  ")).toBe("cup");
       expect(normalizeUnit("  tbsp  ")).toBe("tablespoon");
     });
-  });
-});
-
-describe("isRecognizedUnit", () => {
-  it("returns true for recognized units", () => {
-    expect(isRecognizedUnit("cup")).toBe(true);
-    expect(isRecognizedUnit("cups")).toBe(true);
-    expect(isRecognizedUnit("tbsp")).toBe(true);
-    expect(isRecognizedUnit("gram")).toBe(true);
-  });
-
-  it("returns false for unrecognized units", () => {
-    expect(isRecognizedUnit("sprig")).toBe(false);
-    expect(isRecognizedUnit("handful")).toBe(false);
-  });
-
-  it("returns false for null", () => {
-    expect(isRecognizedUnit(null)).toBe(false);
-  });
-});
-
-describe("getCanonicalUnits", () => {
-  it("returns array of canonical units", () => {
-    const units = getCanonicalUnits();
-    expect(units).toContain("cup");
-    expect(units).toContain("tablespoon");
-    expect(units).toContain("teaspoon");
-    expect(units).toContain("gram");
-    expect(units).toContain("pound");
-  });
-});
-
-describe("getUnitVariations", () => {
-  it("returns variations for canonical units", () => {
-    const cupVariations = getUnitVariations("cup");
-    expect(cupVariations).toContain("cup");
-    expect(cupVariations).toContain("cups");
-    expect(cupVariations).toContain("c");
-  });
-
-  it("returns empty array for unknown units", () => {
-    expect(getUnitVariations("unknown")).toEqual([]);
   });
 });

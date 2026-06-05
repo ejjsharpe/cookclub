@@ -5,6 +5,10 @@ import {
 
 import type { ParsedRecipe } from "../schema";
 import type { Env, ParseResult } from "../types";
+import {
+  mergeResultDiagnostics,
+  recordDiagnosticsStage,
+} from "../utils/parse-diagnostics";
 import { selectBestRecipeImages } from "../utils/recipe-quality";
 
 interface RehostOptions {
@@ -76,31 +80,35 @@ async function rehostRecipeImages(
   env: Env,
   recipe: ParsedRecipe,
   options: RehostOptions,
-): Promise<{ recipe: ParsedRecipe; coverFailed: boolean }> {
+): Promise<{
+  recipe: ParsedRecipe;
+  coverFailed: boolean;
+  sourceImageCount: number;
+  hostedImageCount: number;
+}> {
   const sourceImages = selectBestRecipeImages(recipe.images ?? []);
-  const hostedImages: string[] = [];
 
-  for (const imageUrl of sourceImages) {
-    const hostedUrl = await rehostImageUrl(env, imageUrl, options);
-    if (hostedUrl) {
-      hostedImages.push(hostedUrl);
-    }
-  }
+  const hostedImages = (
+    await Promise.all(
+      sourceImages.map((imageUrl) => rehostImageUrl(env, imageUrl, options)),
+    )
+  ).filter((imageUrl): imageUrl is string => Boolean(imageUrl));
 
-  const instructionSections = [];
-  for (const section of recipe.instructionSections) {
-    const instructions = [];
-    for (const instruction of section.instructions) {
-      instructions.push({
-        ...instruction,
-        imageUrl: await rehostImageUrl(env, instruction.imageUrl, options),
-      });
-    }
-    instructionSections.push({
-      ...section,
-      instructions,
-    });
-  }
+  const instructionSections = await Promise.all(
+    recipe.instructionSections.map(async (section) => {
+      const instructions = await Promise.all(
+        section.instructions.map(async (instruction) => ({
+          ...instruction,
+          imageUrl: await rehostImageUrl(env, instruction.imageUrl, options),
+        })),
+      );
+
+      return {
+        ...section,
+        instructions,
+      };
+    }),
+  );
 
   return {
     recipe: {
@@ -109,18 +117,46 @@ async function rehostRecipeImages(
       instructionSections,
     },
     coverFailed: sourceImages.length > 0 && hostedImages.length === 0,
+    sourceImageCount: sourceImages.length,
+    hostedImageCount: hostedImages.length,
   };
+}
+
+function rehostStageDetail(sourceImageCount: number, hostedImageCount: number) {
+  return `cover_images:${hostedImageCount}/${sourceImageCount}`;
 }
 
 export async function rehostParsedRecipeImagesForResponse(
   env: Env,
   result: ParseResult,
 ): Promise<ParseResult> {
-  if (!result.success) return result;
+  const stageStart = Date.now();
+  if (!result.success) {
+    return mergeResultDiagnostics(
+      result,
+      result.metadata?.source ?? "url",
+      (diagnostics) =>
+        recordDiagnosticsStage(
+          diagnostics,
+          "image_rehosting",
+          stageStart,
+          "skipped",
+          "parse_failed",
+        ),
+    );
+  }
 
-  const { recipe, coverFailed } = await rehostRecipeImages(env, result.data, {
-    refreshGeneratedTemp: result.metadata.cached === true,
-  });
+  const { recipe, coverFailed, sourceImageCount, hostedImageCount } =
+    await rehostRecipeImages(env, result.data, {
+      refreshGeneratedTemp: result.metadata.cached === true,
+    });
+  const diagnostics = recordDiagnosticsStage(
+    result.metadata.diagnostics,
+    "image_rehosting",
+    stageStart,
+    sourceImageCount === 0 ? "skipped" : coverFailed ? "error" : "success",
+    rehostStageDetail(sourceImageCount, hostedImageCount),
+  );
 
   if (coverFailed) {
     return {
@@ -129,11 +165,20 @@ export async function rehostParsedRecipeImagesForResponse(
         code: "IMAGE_REHOST_FAILED",
         message: "Could not store this recipe's image. Please try again.",
       },
+      metadata: {
+        ...result.metadata,
+        confidence: "low",
+        diagnostics,
+      },
     };
   }
 
   return {
     ...result,
     data: recipe,
+    metadata: {
+      ...result.metadata,
+      diagnostics,
+    },
   };
 }

@@ -114,11 +114,13 @@ describe("extractRecipeOutline", () => {
 
     const instructions = recipe?.instructionSections[0]?.instructions;
 
-    expect(instructions?.map((instruction) => instruction.instruction)).toEqual([
-      "Make sure the pan is hot",
-      "To serve, top with basil",
-      "Eat immediately",
-    ]);
+    expect(instructions?.map((instruction) => instruction.instruction)).toEqual(
+      [
+        "Make sure the pan is hot",
+        "To serve, top with basil",
+        "Eat immediately",
+      ],
+    );
   });
 
   it("handles emoji and bullet steps", () => {
@@ -181,12 +183,14 @@ describe("extractRecipeOutline", () => {
     );
   });
 
-  it("rejects ingredient-only captions and non-recipe noise", () => {
-    expect(
-      extractRecipeOutline(
-        "Brownie ingredients: 1 cup sugar 2 eggs 1 cup flour #recipe",
-      ),
-    ).toBeNull();
+  it("extracts ingredient-only captions and rejects non-recipe noise", () => {
+    const recipe = extractRecipeOutline(
+      "Brownie ingredients: 1 cup sugar 2 eggs 1 cup flour #recipe",
+    );
+
+    expect(recipe?.name).toBe("Brownie");
+    expect(recipe?.ingredientSections[0]?.ingredients).toHaveLength(3);
+    expect(recipe?.instructionSections).toEqual([]);
     expect(
       extractRecipeOutline(
         "Behind the scenes at dinner service. Follow for more kitchen clips.",

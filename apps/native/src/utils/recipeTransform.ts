@@ -149,14 +149,6 @@ export function validateRecipeForSave(
     errors.push("Recipe must have at least one ingredient");
   }
 
-  // Required: at least 1 instruction
-  const hasInstructions = data.instructionSections?.some(
-    (section) => section.instructions.length > 0,
-  );
-  if (!hasInstructions) {
-    errors.push("Recipe must have at least one instruction");
-  }
-
   return {
     isValid: errors.length === 0,
     errors,

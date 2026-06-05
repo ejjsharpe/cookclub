@@ -470,6 +470,16 @@ export async function createRecipe(
     throw new ServiceError("BAD_REQUEST", "At least one image is required");
   }
 
+  const hasIngredients = input.ingredientSections.some(
+    (section) => section.ingredients.length > 0,
+  );
+  if (!hasIngredients) {
+    throw new ServiceError(
+      "BAD_REQUEST",
+      "At least one ingredient is required",
+    );
+  }
+
   // Use transaction to ensure all inserts succeed or all fail
   return await db.transaction(async (tx) => {
     // Insert recipe
@@ -575,16 +585,6 @@ export async function updateRecipe(
     throw new ServiceError(
       "BAD_REQUEST",
       "At least one ingredient is required",
-    );
-  }
-
-  const hasInstructions = input.instructionSections.some(
-    (section) => section.instructions.length > 0,
-  );
-  if (!hasInstructions) {
-    throw new ServiceError(
-      "BAD_REQUEST",
-      "At least one instruction is required",
     );
   }
 

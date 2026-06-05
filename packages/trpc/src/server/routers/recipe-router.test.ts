@@ -567,6 +567,26 @@ describe("recipeRouter - activity integration", () => {
       expect(mockValidateTagIds).toHaveBeenCalledWith(mockDb, []);
     });
 
+    it("creates recipes with ingredients and no method steps", async () => {
+      mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);
+
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.postRecipe({
+        ...validRecipeInput,
+        instructionSections: [],
+      });
+
+      expect(mockCreateRecipe).toHaveBeenCalledWith(
+        mockDb,
+        "test-user-id",
+        expect.objectContaining({
+          instructionSections: [],
+        }),
+      );
+    });
+
     it("does not propagate when activity event creation fails", async () => {
       // Empty array means no activity event was created
       mockDb._setInsertReturning([]);
@@ -655,8 +675,7 @@ describe("recipeRouter - activity integration", () => {
               {
                 instruction: "Mix ingredients",
                 index: 0,
-                imageUrl:
-                  "https://images.example.com/temp/generated/step.jpg",
+                imageUrl: "https://images.example.com/temp/generated/step.jpg",
               },
             ],
           },
@@ -752,6 +771,24 @@ describe("recipeRouter - activity integration", () => {
       );
       expect(mockValidateTagIds).toHaveBeenCalledWith(mockDb, []);
       expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("updates recipes with ingredients and no method steps", async () => {
+      const ctx = createMockContext(mockDb, { env: mockEnv });
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.updateRecipe({
+        ...validRecipeInput,
+        instructionSections: [],
+      });
+
+      expect(mockUpdateRecipe).toHaveBeenCalledWith(
+        mockDb,
+        "test-user-id",
+        expect.objectContaining({
+          instructionSections: [],
+        }),
+      );
     });
 
     it("rejects updates without a non-empty ingredient", async () => {

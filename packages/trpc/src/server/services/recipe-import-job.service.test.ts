@@ -212,6 +212,15 @@ describe("recipe import job service", () => {
       success: true,
       data: {
         name: "Tomato Pasta",
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, quantity: 200, unit: "g", name: "spaghetti" },
+            ],
+          },
+        ],
+        instructionSections: [],
         nutrition: { calories: 500 },
       },
       metadata: {
@@ -237,7 +246,15 @@ describe("recipe import job service", () => {
       expect.objectContaining({
         success: true,
         data: expect.objectContaining({
+          instructionSections: [],
           nutrition: { calories: 500 },
+        }),
+        metadata: expect.objectContaining({
+          diagnostics: expect.objectContaining({
+            stageTimings: expect.arrayContaining([
+              expect.objectContaining({ name: "job_update" }),
+            ]),
+          }),
         }),
       }),
     );
