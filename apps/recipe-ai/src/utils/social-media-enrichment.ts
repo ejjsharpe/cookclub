@@ -6,8 +6,12 @@ const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct" as const;
 const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
 const MAX_FRAMES_TO_OCR = 3;
 
+type SocialMediaEnrichmentPlatform = "instagram" | "tiktok";
+
 export interface SocialMediaEnrichmentInput {
+  platform?: SocialMediaEnrichmentPlatform;
   caption: string | null;
+  pageText?: string | null;
   transcript?: string | null;
   videoUrls?: string[];
   frameText?: string | null;
@@ -44,13 +48,22 @@ function uint8ArrayToNumbers(value: Uint8Array): number[] {
   return Array.from(value);
 }
 
-async function fetchMediaBytes(url: string): Promise<Uint8Array | null> {
+function mediaReferer(platform: SocialMediaEnrichmentPlatform = "tiktok") {
+  return platform === "instagram"
+    ? "https://www.instagram.com/"
+    : "https://www.tiktok.com/";
+}
+
+async function fetchMediaBytes(
+  url: string,
+  platform?: SocialMediaEnrichmentPlatform,
+): Promise<Uint8Array | null> {
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(12_000),
       headers: {
         Accept: "audio/*,video/*,*/*;q=0.8",
-        Referer: "https://www.tiktok.com/",
+        Referer: mediaReferer(platform),
         "User-Agent":
           "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
       },
@@ -82,11 +95,12 @@ function transcriptFromAiResponse(response: unknown): string | null {
 export async function transcribeSocialMediaUrls(
   ai: Env["AI"],
   videoUrls: string[] = [],
+  options: { platform?: SocialMediaEnrichmentPlatform } = {},
 ): Promise<string | null> {
   const transcripts: string[] = [];
 
   for (const videoUrl of videoUrls.slice(0, 2)) {
-    const bytes = await fetchMediaBytes(videoUrl);
+    const bytes = await fetchMediaBytes(videoUrl, options.platform);
     if (!bytes) continue;
 
     try {
@@ -149,7 +163,7 @@ export async function extractRecipeTextFromFrames(
 }
 
 export function buildEnrichedSocialRecipeText(
-  input: Pick<SocialMediaEnrichmentInput, "caption"> & {
+  input: Pick<SocialMediaEnrichmentInput, "caption" | "pageText"> & {
     transcript?: string | null;
     frameText?: string | null;
   },
@@ -158,6 +172,9 @@ export function buildEnrichedSocialRecipeText(
 
   if (input.caption) {
     parts.push(`Caption:\n${input.caption}`);
+  }
+  if (input.pageText) {
+    parts.push(`Rendered page text:\n${input.pageText}`);
   }
   if (input.transcript) {
     parts.push(`Audio transcript:\n${input.transcript}`);
@@ -176,7 +193,9 @@ export async function enrichSocialMediaRecipeText(
   const [transcript, frameText] = await Promise.all([
     input.transcript
       ? Promise.resolve(input.transcript)
-      : transcribeSocialMediaUrls(ai, input.videoUrls),
+      : transcribeSocialMediaUrls(ai, input.videoUrls, {
+          platform: input.platform,
+        }),
     input.frameText
       ? Promise.resolve(input.frameText)
       : extractRecipeTextFromFrames(ai, input.frameImages),
@@ -187,6 +206,7 @@ export async function enrichSocialMediaRecipeText(
     frameText,
     enrichedText: buildEnrichedSocialRecipeText({
       caption: input.caption,
+      pageText: input.pageText,
       transcript,
       frameText,
     }),

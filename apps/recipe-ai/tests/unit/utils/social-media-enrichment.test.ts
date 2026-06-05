@@ -9,11 +9,13 @@ describe("social-media-enrichment", () => {
   it("builds combined caption, transcript, and frame text", () => {
     const text = buildEnrichedSocialRecipeText({
       caption: "Caption ingredients",
+      pageText: "Pinned comment method",
       transcript: "Mix the batter and bake.",
       frameText: "Bake at 350F for 25 minutes.",
     });
 
     expect(text).toContain("Caption:\nCaption ingredients");
+    expect(text).toContain("Rendered page text:\nPinned comment method");
     expect(text).toContain("Audio transcript:\nMix the batter and bake.");
     expect(text).toContain(
       "On-screen text from video frames:\nBake at 350F for 25 minutes.",
@@ -56,6 +58,36 @@ describe("social-media-enrichment", () => {
     expect(ai.run).toHaveBeenCalledWith(
       "@cf/meta/llama-3.2-11b-vision-instruct",
       expect.objectContaining({ image: [5, 6, 7] }),
+    );
+  });
+
+  it("uses platform-specific referers when fetching media", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ "content-length": "4" }),
+      arrayBuffer: () => Promise.resolve(new Uint8Array([1, 2, 3, 4]).buffer),
+    });
+
+    const ai = {
+      run: vi.fn().mockResolvedValue({ text: "Simmer the sauce." }),
+    };
+
+    await enrichSocialMediaRecipeText(ai as any, {
+      platform: "instagram",
+      caption: "Sauce ingredients",
+      videoUrls: ["https://cdn.example.com/instagram.mp4"],
+    });
+    await enrichSocialMediaRecipeText(ai as any, {
+      platform: "tiktok",
+      caption: "Sauce ingredients",
+      videoUrls: ["https://cdn.example.com/tiktok.mp4"],
+    });
+
+    expect((global.fetch as any).mock.calls[0][1].headers.Referer).toBe(
+      "https://www.instagram.com/",
+    );
+    expect((global.fetch as any).mock.calls[1][1].headers.Referer).toBe(
+      "https://www.tiktok.com/",
     );
   });
 });

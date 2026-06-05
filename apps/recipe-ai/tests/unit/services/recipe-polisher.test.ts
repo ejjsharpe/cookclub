@@ -27,14 +27,12 @@ function scrapedRecipe(overrides: Partial<ParsedRecipe> = {}): ParsedRecipe {
         instructions: [
           {
             index: 0,
-            instruction:
-              "1️⃣ ROAST THE CAULIFLOWER | TOSS WITH OIL AND SPICES",
+            instruction: "1️⃣ ROAST THE CAULIFLOWER | TOSS WITH OIL AND SPICES",
             imageUrl: null,
           },
           {
             index: 1,
-            instruction:
-              "2️⃣ SERVE | SPREAD THE GREEN BEAN BLEND ON A PLATE",
+            instruction: "2️⃣ SERVE | SPREAD THE GREEN BEAN BLEND ON A PLATE",
             imageUrl: "https://example.com/step.jpg",
           },
         ],
@@ -82,8 +80,13 @@ describe("polishRecipeForSmartImport", () => {
             {
               name: "Green Bean Blend",
               ingredients: [
-                { name: "400g butter beans" },
-                { name: "spinach" },
+                {
+                  index: 0,
+                  quantity: 2,
+                  unit: "can",
+                  name: "400g butter beans",
+                },
+                { index: 1, quantity: 50, unit: "g", name: "spinach" },
               ],
             },
           ],
@@ -116,6 +119,9 @@ describe("polishRecipeForSmartImport", () => {
       "@cf/meta/llama-3.1-8b-instruct-fast",
       expect.objectContaining({ max_tokens: 2048 }),
     );
+    expect(ai.run.mock.calls[0]?.[1].messages[1].content).toContain(
+      "copy index, quantity, and unit exactly",
+    );
     expect(result.recipe.name).toBe(
       "Crispy Cauli With Super Green Creamed Beans",
     );
@@ -124,5 +130,170 @@ describe("polishRecipeForSmartImport", () => {
       unit: "can",
       name: "400g butter beans",
     });
+  });
+
+  it("rejects polished ingredient names that repeat stored measurements", async () => {
+    const ai = {
+      run: vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Butter Chicken",
+          ingredientSections: [
+            {
+              name: "Sauce",
+              ingredients: [
+                {
+                  index: 0,
+                  quantity: 1,
+                  unit: "tablespoon",
+                  name: "1 tablespoon vegetable oil",
+                },
+                {
+                  index: 1,
+                  quantity: 4,
+                  unit: null,
+                  name: "large garlic cloves",
+                },
+                {
+                  index: 2,
+                  quantity: 2,
+                  unit: "can",
+                  name: "400g butter beans",
+                },
+              ],
+            },
+          ],
+          instructionSections: [
+            {
+              name: null,
+              instructions: [{ instruction: "Cook until tender." }],
+            },
+          ],
+        }),
+      }),
+    };
+
+    const result = await polishRecipeForSmartImport(
+      ai as any,
+      scrapedRecipe({
+        name: "Follow",
+        ingredientSections: [
+          {
+            name: "Sauce",
+            ingredients: [
+              {
+                index: 0,
+                quantity: 1,
+                unit: "tablespoon",
+                name: "vegetable oil",
+              },
+              {
+                index: 1,
+                quantity: 4,
+                unit: null,
+                name: "garlic cloves",
+              },
+              {
+                index: 2,
+                quantity: 2,
+                unit: "can",
+                name: "400g butter beans",
+              },
+            ],
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              {
+                index: 0,
+                instruction:
+                  "Follow the method shown in the source video using the listed ingredients.",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(result.usedAi).toBe(true);
+    expect(
+      result.recipe.ingredientSections[0]?.ingredients.map(
+        (ingredient) => ingredient.name,
+      ),
+    ).toEqual(["vegetable oil", "large garlic cloves", "400g butter beans"]);
+  });
+
+  it("ignores polished ingredient fields with changed quantity, unit, or order", async () => {
+    const ai = {
+      run: vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Pantry Bean Stew",
+          ingredientSections: [
+            {
+              name: null,
+              ingredients: [
+                {
+                  index: 0,
+                  quantity: 2,
+                  unit: "cup",
+                  name: "chopped tomatoes",
+                },
+                { index: 1, quantity: 1, unit: "tablespoon", name: "sea salt" },
+                { index: 3, quantity: null, unit: null, name: "fresh basil" },
+                {
+                  index: 3,
+                  quantity: 2,
+                  unit: "can",
+                  name: "400g butter beans",
+                },
+              ],
+            },
+          ],
+          instructionSections: [
+            {
+              name: null,
+              instructions: [{ instruction: "Simmer until thickened." }],
+            },
+          ],
+        }),
+      }),
+    };
+
+    const result = await polishRecipeForSmartImport(
+      ai as any,
+      scrapedRecipe({
+        name: "Follow",
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, quantity: 1, unit: "cup", name: "tomatoes" },
+              { index: 1, quantity: 1, unit: "teaspoon", name: "salt" },
+              { index: 2, quantity: null, unit: null, name: "basil" },
+              {
+                index: 3,
+                quantity: 2,
+                unit: "can",
+                name: "400g butter beans",
+              },
+            ],
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [{ index: 0, instruction: "Cook everything." }],
+          },
+        ],
+      }),
+    );
+
+    expect(result.usedAi).toBe(true);
+    expect(
+      result.recipe.ingredientSections[0]?.ingredients.map(
+        (ingredient) => ingredient.name,
+      ),
+    ).toEqual(["tomatoes", "salt", "basil", "400g butter beans"]);
   });
 });

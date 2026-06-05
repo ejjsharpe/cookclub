@@ -1,4 +1,5 @@
 import type {
+  Ingredient,
   IngredientSection,
   InstructionSection,
   ParsedRecipe,
@@ -16,9 +17,16 @@ const SCRAPED_UI_PATTERN =
 const GENERIC_TITLE_PATTERN =
   /^(?:imported social recipe|imported recipe|recipe|food|follow|instagram|reel|post|untitled)$/i;
 
+interface PolishIngredient {
+  index?: number | null;
+  quantity?: number | null;
+  unit?: string | null;
+  name?: string | null;
+}
+
 interface PolishIngredientSection {
   name?: string | null;
-  ingredients?: { name?: string | null }[];
+  ingredients?: PolishIngredient[];
 }
 
 interface PolishInstructionSection {
@@ -123,6 +131,149 @@ function cleanIngredientName(value: string): string {
   return collapseWhitespace(stripMarkers(value).replace(EMOJI_PATTERN, " "));
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function fractionQuantityPattern(quantity: number): string | null {
+  const whole = Math.trunc(quantity);
+  const fraction = quantity - whole;
+  if (fraction === 0) return null;
+
+  for (const denominator of [2, 3, 4, 8]) {
+    const numerator = Math.round(fraction * denominator);
+    if (numerator <= 0 || numerator >= denominator) continue;
+    if (Math.abs(fraction - numerator / denominator) > 0.001) continue;
+
+    const fractionText = `${numerator}/${denominator}`;
+    return whole > 0
+      ? `${whole}\\s+${fractionText}|${whole}\\s*${fractionText}`
+      : fractionText;
+  }
+
+  return null;
+}
+
+function quantityPattern(quantity: number | null | undefined): string | null {
+  if (typeof quantity !== "number" || !Number.isFinite(quantity)) return null;
+
+  const decimal = Number.isInteger(quantity)
+    ? `${quantity}(?:\\.0+)?`
+    : escapeRegExp(String(quantity));
+  const fraction = fractionQuantityPattern(quantity);
+
+  return fraction ? `(?:${decimal}|${fraction})` : decimal;
+}
+
+function unitPattern(unit: string | null | undefined): string | null {
+  if (!unit) return null;
+
+  const aliases: Record<string, string[]> = {
+    tablespoon: ["tablespoons?", "tbsps?\\.?"],
+    teaspoon: ["teaspoons?", "tsps?\\.?"],
+    gram: ["grams?", "g"],
+    kilogram: ["kilograms?", "kg"],
+    milliliter: ["milliliters?", "millilitres?", "ml"],
+    liter: ["liters?", "litres?", "l"],
+    cup: ["cups?", "c"],
+    ounce: ["ounces?", "oz"],
+    pound: ["pounds?", "lbs?", "lb"],
+    clove: ["cloves?"],
+    can: ["cans?", "tins?"],
+    container: ["containers?"],
+    carton: ["cartons?"],
+    package: ["packages?", "packets?"],
+    box: ["boxes?", "box"],
+    stick: ["sticks?"],
+    slice: ["slices?"],
+    piece: ["pieces?"],
+    head: ["heads?"],
+    stalk: ["stalks?"],
+    sprig: ["sprigs?"],
+    bunch: ["bunch(?:es)?"],
+  };
+
+  return `(?:${(aliases[unit] ?? [escapeRegExp(unit)]).join("|")})`;
+}
+
+function storedMeasurementPrefixPattern(
+  ingredient: Pick<Ingredient, "quantity" | "unit">,
+): RegExp | null {
+  const quantity = quantityPattern(ingredient.quantity);
+  if (!quantity) return null;
+
+  const unit = unitPattern(ingredient.unit);
+  return unit
+    ? new RegExp(
+        `^(?:about|approx\\.?|approximately)?\\s*${quantity}\\s*${unit}\\.?\\s+(?:of\\s+)?`,
+        "i",
+      )
+    : new RegExp(
+        `^(?:about|approx\\.?|approximately)?\\s*${quantity}\\s+`,
+        "i",
+      );
+}
+
+function hasStoredMeasurementPrefix(
+  value: string,
+  ingredient: Pick<Ingredient, "quantity" | "unit">,
+): boolean {
+  const prefixPattern = storedMeasurementPrefixPattern(ingredient);
+  return prefixPattern ? prefixPattern.test(cleanIngredientName(value)) : false;
+}
+
+function stripStoredMeasurementPrefix(
+  value: string,
+  ingredient: Pick<Ingredient, "quantity" | "unit">,
+): string {
+  let text = cleanIngredientName(value);
+  const prefixPattern = storedMeasurementPrefixPattern(ingredient);
+  if (!prefixPattern) return text;
+
+  for (let index = 0; index < 3; index++) {
+    const next = text.replace(prefixPattern, "").trim();
+    if (next === text) break;
+    text = next;
+  }
+
+  return text || cleanIngredientName(value);
+}
+
+function quantitiesMatch(
+  original: Ingredient["quantity"],
+  polished: PolishIngredient["quantity"],
+): boolean {
+  if (original == null) return polished == null;
+  return (
+    typeof polished === "number" &&
+    Number.isFinite(polished) &&
+    Math.abs(original - polished) < 0.0001
+  );
+}
+
+function unitsMatch(
+  original: Ingredient["unit"],
+  polished: PolishIngredient["unit"],
+): boolean {
+  return (original ?? null) === (polished ?? null);
+}
+
+function validatedPolishedIngredientName(
+  original: Ingredient,
+  polished: PolishIngredient | undefined,
+): string | null {
+  if (!polished) return null;
+  if (polished.index !== original.index) return null;
+  if (!quantitiesMatch(original.quantity, polished.quantity)) return null;
+  if (!unitsMatch(original.unit, polished.unit)) return null;
+  if (typeof polished.name !== "string") return null;
+
+  const name = cleanIngredientName(polished.name);
+  if (!name || hasStoredMeasurementPrefix(name, original)) return null;
+
+  return name;
+}
+
 function cleanInstruction(value: string): string {
   const withoutMarkers = stripMarkers(value)
     .replace(EMOJI_PATTERN, " ")
@@ -140,7 +291,7 @@ function deterministicPolish(recipe: ParsedRecipe): ParsedRecipe {
       name: cleanSectionName(section.name),
       ingredients: section.ingredients.map((ingredient) => ({
         ...ingredient,
-        name: cleanIngredientName(ingredient.name),
+        name: stripStoredMeasurementPrefix(ingredient.name, ingredient),
       })),
     }));
 
@@ -237,7 +388,12 @@ Return JSON only with this shape:
   "name": "Clean Recipe Title",
   "description": "Clean one-sentence description or null",
   "ingredientSections": [
-    {"name": null, "ingredients": [{"name": "ingredient name only"}]}
+    {
+      "name": null,
+      "ingredients": [
+        {"index": 0, "quantity": 2, "unit": "cup", "name": "ingredient name only"}
+      ]
+    }
   ],
   "instructionSections": [
     {"name": null, "instructions": [{"instruction": "Clean instruction sentence."}]}
@@ -248,6 +404,9 @@ Rules:
 - Do not add, remove, reorder, or merge ingredients, sections, or instructions.
 - Preserve the same number of ingredient sections, ingredients, instruction sections, and instructions.
 - Rewrite only display text: recipe name, description, section names, ingredient names, and instruction text.
+- For every ingredient, copy index, quantity, and unit exactly from the input. Only rewrite name.
+- Ingredient name must not repeat the stored quantity or unit. For example, if quantity is 1 and unit is "tablespoon", use "vegetable oil", not "1 tablespoon vegetable oil".
+- Preserve package-size descriptors that are part of the ingredient name, such as "400g butter beans" when quantity is 2 and unit is "can".
 - Remove UI/social text such as Follow, Save, link in bio, comments, likes, hashtags, handles, and emojis.
 - Convert all-caps headings to title case.
 - Convert instruction text to sentence case with normal punctuation.
@@ -274,6 +433,10 @@ function mergePolishedText(
     ingredientSections: recipe.ingredientSections.map(
       (section, sectionIndex) => {
         const polishedSection = polish.ingredientSections?.[sectionIndex];
+        const ingredientsMatchShape =
+          polish.ingredientSections?.length ===
+            recipe.ingredientSections.length &&
+          polishedSection?.ingredients?.length === section.ingredients.length;
 
         return {
           ...section,
@@ -282,12 +445,19 @@ function mergePolishedText(
               ? (polishedSection.name?.trim() ?? null)
               : section.name,
           ingredients: section.ingredients.map(
-            (ingredient, ingredientIndex) => ({
-              ...ingredient,
-              name:
-                polishedSection?.ingredients?.[ingredientIndex]?.name?.trim() ||
-                ingredient.name,
-            }),
+            (ingredient, ingredientIndex) => {
+              const polishedName = ingredientsMatchShape
+                ? validatedPolishedIngredientName(
+                    ingredient,
+                    polishedSection?.ingredients?.[ingredientIndex],
+                  )
+                : null;
+
+              return {
+                ...ingredient,
+                name: polishedName ?? ingredient.name,
+              };
+            },
           ),
         };
       },

@@ -13,6 +13,7 @@ import {
   extractInstagramContent as extractInstagramContentBrowser,
   extractTikTokBrowserContent,
   fetchHtmlWithBrowser,
+  type InstagramBrowserContent,
 } from "../utils/browser-fetcher";
 import {
   cleanHtml,
@@ -260,6 +261,47 @@ async function parseSocialTextRecipe(
   };
 }
 
+interface InstagramMediaContent {
+  caption: string | null;
+  images: string[];
+  videoUrls: string[];
+}
+
+function mergeInstagramContent(
+  current: InstagramMediaContent,
+  next: InstagramMediaContent,
+): InstagramMediaContent {
+  return {
+    caption: current.caption || next.caption,
+    images: mergeUniqueStrings(current.images, next.images),
+    videoUrls: mergeUniqueStrings(current.videoUrls, next.videoUrls),
+  };
+}
+
+function browserRecipeText(html: string): string | null {
+  const text = focusRecipeContent(cleanHtml(html), 12_000);
+  return text.length >= 100 ? text : null;
+}
+
+async function tryInstagramBrowserMedia(
+  env: Env,
+  url: string,
+  shortcode: string,
+): Promise<InstagramBrowserContent | null> {
+  if (!env.BROWSER) return null;
+
+  try {
+    console.log(`[${shortcode}] Trying browser media extraction...`);
+    return await extractInstagramContentBrowser(env.BROWSER, url);
+  } catch (error) {
+    console.log(
+      `[${shortcode}] Browser media extraction failed:`,
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
+
 async function parseInstagramUrl(
   env: Env,
   url: string,
@@ -268,20 +310,29 @@ async function parseInstagramUrl(
   const shortcode = extractShortcode(url) || "unknown";
   console.log(`Parsing Instagram URL [${shortcode}]:`, url);
 
-  let contentForAi: string | null = null;
-  let images: string[] = [];
-  let method: "oembed" | "browser" = "oembed";
+  let result: InstagramMediaContent = {
+    caption: null,
+    images: [],
+    videoUrls: [],
+  };
+  let frameImages: Uint8Array[] = [];
+  let attemptedBrowserMedia = false;
+  let browserPageText: string | null = null;
 
   try {
     console.log(`[${shortcode}] Trying oembed API...`);
     const oembedResult = await extractInstagramContentOembed(url);
 
+    result = mergeInstagramContent(result, {
+      caption: oembedResult.caption,
+      images: oembedResult.images,
+      videoUrls: [],
+    });
+
     if (oembedResult.caption && oembedResult.caption.length >= 50) {
-      contentForAi = oembedResult.caption;
-      images = oembedResult.images;
       console.log(`[${shortcode}] Oembed success:`, {
-        captionLength: contentForAi.length,
-        imageCount: images.length,
+        captionLength: oembedResult.caption.length,
+        imageCount: oembedResult.images.length,
         author: oembedResult.authorName,
       });
     } else {
@@ -296,57 +347,213 @@ async function parseInstagramUrl(
     );
   }
 
-  if (!contentForAi || contentForAi.length < 50) {
-    try {
-      console.log(`[${shortcode}] Falling back to browser rendering...`);
-      method = "browser";
-      const browserResult = await extractInstagramContentBrowser(
-        env.BROWSER,
-        url,
-      );
+  if (!result.caption || result.caption.length < 50) {
+    attemptedBrowserMedia = true;
+    const browserMedia = await tryInstagramBrowserMedia(env, url, shortcode);
+    if (browserMedia) {
+      result = mergeInstagramContent(result, {
+        caption: browserMedia.caption,
+        images: browserMedia.images,
+        videoUrls: browserMedia.videoUrls,
+      });
+      frameImages = browserMedia.frameImages;
+      browserPageText = browserRecipeText(browserMedia.html);
 
-      if (browserResult.caption && browserResult.caption.length >= 50) {
-        contentForAi = browserResult.caption;
-        images = browserResult.images;
-      } else {
-        const cleanedContent = cleanHtml(browserResult.html);
-        if (cleanedContent.length >= 100) {
-          contentForAi = cleanedContent;
-          images = browserResult.images;
+      if (!result.caption || result.caption.length < 50) {
+        if (browserPageText) {
+          result = { ...result, caption: browserPageText };
         }
       }
 
-      if (contentForAi) {
+      if (result.caption) {
         console.log(`[${shortcode}] Browser rendering success:`, {
-          captionLength: contentForAi.length,
-          imageCount: images.length,
+          captionLength: result.caption.length,
+          imageCount: result.images.length,
+          videoCount: result.videoUrls.length,
+          frameCount: frameImages.length,
         });
       }
-    } catch (browserError) {
+    }
+  }
+
+  const fallbackRecipe = extractSocialCaptionRecipe(
+    result.caption,
+    url,
+    result.images,
+  );
+  const hasEnrichmentSource =
+    result.videoUrls.length > 0 ||
+    frameImages.length > 0 ||
+    Boolean(env.BROWSER && !attemptedBrowserMedia);
+
+  if (
+    !fallbackRecipe &&
+    (!result.caption || result.caption.length < 50) &&
+    !hasEnrichmentSource
+  ) {
+    return {
+      success: false,
+      error: {
+        code: "NO_CONTENT",
+        message:
+          "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
+      },
+    };
+  }
+
+  const candidates = socialDeterministicCandidates({
+    url,
+    content: result.caption,
+    images: result.images,
+  });
+
+  const captionAiAttempt = await tryAiRecipeCandidate(
+    env,
+    url,
+    result.caption,
+    result.images,
+    "social_ai",
+    "ai_only",
+    "[Instagram]",
+    { cache: false },
+  );
+  if (captionAiAttempt.result?.success) {
+    candidates.push({
+      recipe: captionAiAttempt.result.data,
+      source: "social_ai",
+      parseMethod: captionAiAttempt.result.metadata.parseMethod,
+      cache: false,
+      evidence: {
+        imageCount: result.images.length,
+        textLength: result.caption?.length ?? 0,
+        sourceUrl: url,
+      },
+    });
+  }
+
+  const captionEvaluation = evaluateRecipeCandidates(candidates);
+  const bestCaption = captionEvaluation.accepted[0];
+  const bestCaptionHasGenericInstruction = hasGenericSocialInstruction(
+    bestCaption?.recipe ?? fallbackRecipe,
+  );
+  if (
+    bestCaption &&
+    (!bestCaptionHasGenericInstruction || !hasEnrichmentSource)
+  ) {
+    const captionResult = await selectBestRecipeCandidate(
+      env,
+      url,
+      candidates,
+      {
+        cache: false,
+        canonicalUrl: url,
+        diagnostics: socialCandidateDiagnostics(options),
+        polish: true,
+      },
+    );
+    if (captionResult?.success) {
       console.log(
-        `[${shortcode}] Browser rendering failed:`,
-        browserError instanceof Error ? browserError.message : browserError,
+        `[${shortcode}] Successfully parsed recipe via oembed: "${captionResult.data.name}"`,
+      );
+      return finalizeSocialResult(
+        env,
+        url,
+        "instagram",
+        captionResult,
+        result.images,
       );
     }
   }
 
-  const result = await parseSocialTextRecipe(env, {
-    url,
-    platform: "instagram",
-    content: contentForAi,
-    images,
-    noContentMessage:
-      "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
-    aiErrorCode: "INSTAGRAM_PARSE_FAILED",
-    diagnostics: options?.diagnostics,
-  });
-  if (result.success) {
+  if (hasEnrichmentSource) {
+    if (env.BROWSER && !attemptedBrowserMedia) {
+      attemptedBrowserMedia = true;
+      const browserMedia = await tryInstagramBrowserMedia(env, url, shortcode);
+      if (browserMedia) {
+        result = mergeInstagramContent(result, {
+          caption: browserMedia.caption,
+          images: browserMedia.images,
+          videoUrls: browserMedia.videoUrls,
+        });
+        frameImages = browserMedia.frameImages;
+        browserPageText = browserRecipeText(browserMedia.html);
+      }
+    }
+
+    if (result.videoUrls.length > 0 || frameImages.length > 0 || browserPageText) {
+      const enrichment = await enrichSocialMediaRecipeText(env.AI, {
+        platform: "instagram",
+        caption: result.caption,
+        pageText: browserPageText,
+        videoUrls: result.videoUrls,
+        frameImages,
+      });
+
+      if (enrichment.transcript || enrichment.frameText || browserPageText) {
+        const enrichedAiAttempt = await tryAiRecipeCandidate(
+          env,
+          url,
+          enrichment.enrichedText,
+          result.images,
+          "social_ai",
+          "media_enriched",
+          "[Instagram]",
+          { cache: false },
+        );
+        if (enrichedAiAttempt.result?.success) {
+          candidates.push({
+            recipe: enrichedAiAttempt.result.data,
+            source: "social_ai",
+            parseMethod: enrichedAiAttempt.result.metadata.parseMethod,
+            cache: false,
+            evidence: {
+              imageCount: result.images.length,
+              textLength: enrichment.enrichedText.length,
+              sourceUrl: url,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  if (fallbackRecipe) {
     console.log(
-      `[${shortcode}] Successfully parsed recipe via ${method}: "${result.data.name}"`,
+      "[Instagram] Falling back to caption ingredient extraction after AI/media parsing did not produce a valid recipe.",
     );
   }
 
-  return result;
+  const fallbackResult = await selectBestRecipeCandidate(env, url, candidates, {
+    cache: false,
+    canonicalUrl: url,
+    diagnostics: socialCandidateDiagnostics(options),
+    polish: true,
+  });
+  if (fallbackResult?.success) {
+    console.log(
+      `[${shortcode}] Successfully parsed recipe via ${fallbackResult.metadata.parseMethod ?? "caption"}: "${fallbackResult.data.name}"`,
+    );
+    return finalizeSocialResult(
+      env,
+      url,
+      "instagram",
+      fallbackResult,
+      result.images,
+    );
+  }
+
+  return {
+    success: false,
+    error: {
+      code: captionAiAttempt.error
+        ? "INSTAGRAM_PARSE_FAILED"
+        : "VALIDATION_FAILED",
+      message:
+        captionAiAttempt.error instanceof Error
+          ? captionAiAttempt.error.message
+          : "Could not parse a valid recipe from the Instagram content",
+    },
+  };
 }
 
 function uniqueTextParts(values: (string | null | undefined)[]): string[] {
@@ -674,6 +881,7 @@ async function parseTikTokUrl(
       }
 
       const enrichment = await enrichSocialMediaRecipeText(env.AI, {
+        platform: "tiktok",
         caption: result.caption,
         transcript: result.transcript,
         videoUrls: result.videoUrls,

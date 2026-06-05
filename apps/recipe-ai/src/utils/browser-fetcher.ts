@@ -69,10 +69,18 @@ export async function fetchHtmlWithBrowser(
   }
 }
 
+export interface InstagramBrowserContent {
+  html: string;
+  caption: string | null;
+  images: string[];
+  videoUrls: string[];
+  frameImages: Uint8Array[];
+}
+
 export async function extractInstagramContent(
   browser: Fetcher,
   url: string,
-): Promise<{ html: string; caption: string | null; images: string[] }> {
+): Promise<InstagramBrowserContent> {
   validateFetchUrl(url);
   const instance = await puppeteer.launch(browser);
 
@@ -103,55 +111,160 @@ export async function extractInstagramContent(
       // Continue - we'll check what's available
     }
 
-    const caption = await page.evaluate(`
+    try {
+      await page.waitForSelector("video, article img, main img", {
+        timeout: 5000,
+      });
+    } catch {
+      // Rendered Instagram media is best effort; metadata may still be enough.
+    }
+
+    try {
+      const closeButton = await page.$('[aria-label="Close"]');
+      if (closeButton) {
+        await closeButton.click();
+      }
+    } catch {
+      // Ignore popup dismissal errors.
+    }
+
+    try {
+      await page.evaluate(`
+        (function() {
+          document.querySelectorAll("video").forEach(function(video) {
+            try {
+              video.muted = true;
+              video.currentTime = Math.min(2, video.duration || 2);
+              video.play().catch(function() {});
+            } catch {}
+          });
+        })()
+      `);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch {
+      // Video playback is best effort only.
+    }
+
+    const media = (await page.evaluate(`
       (function() {
-        const ogTitle = document.querySelector('meta[property="og:title"]');
-        if (ogTitle && ogTitle.content && ogTitle.content.length > 100) {
-          return ogTitle.content;
+        const images = [];
+        const videoUrls = [];
+        const seenImages = new Set();
+        const seenVideos = new Set();
+
+        function addImage(url) {
+          if (!url || seenImages.has(url) || url.startsWith("data:")) return;
+          seenImages.add(url);
+          images.push(url);
         }
 
-        const ogDesc = document.querySelector('meta[property="og:description"]');
-        if (ogDesc && ogDesc.content) {
-          return ogDesc.content;
+        function addVideo(url) {
+          if (!url || seenVideos.has(url) || url.startsWith("blob:")) return;
+          seenVideos.add(url);
+          videoUrls.push(url);
         }
 
-        return null;
-      })()
-    `);
+        document.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]').forEach(function(meta) {
+          addImage(meta.content);
+        });
 
-    const images = (await page.evaluate(`
-      (function() {
-        const imgUrls = [];
-        const seen = new Set();
+        document.querySelectorAll('meta[property="og:video"], meta[property="og:video:url"], meta[property="og:video:secure_url"], meta[name="twitter:player:stream"]').forEach(function(meta) {
+          addVideo(meta.content);
+        });
 
         document.querySelectorAll("img").forEach(function(img) {
-          const src = img.src;
-          if (
-            src &&
-            !seen.has(src) &&
-            !src.includes("s150x150") &&
-            (src.includes("cdninstagram") || src.includes("fbcdn"))
-          ) {
-            seen.add(src);
-            imgUrls.push(src);
+          const src = img.currentSrc || img.src;
+          if (src && src.includes("s150x150")) return;
+          if (src && (src.includes("cdninstagram") || src.includes("fbcdn"))) {
+            addImage(src);
           }
         });
 
         document.querySelectorAll("video").forEach(function(video) {
-          const poster = video.poster;
-          if (poster && !seen.has(poster)) {
-            seen.add(poster);
-            imgUrls.push(poster);
-          }
+          addImage(video.poster);
+          addVideo(video.currentSrc || video.src);
+          video.querySelectorAll("source").forEach(function(source) {
+            addVideo(source.src);
+          });
         });
 
-        return imgUrls;
+        Array.from(document.scripts).forEach(function(script) {
+          const text = script.textContent || "";
+          const matches = text.match(/https?:\\\\/\\\\/[^"'\\\\s]+(?:\\\\.mp4|mime_type=video_mp4|video_mp4)[^"'\\\\s]*/g) || [];
+          matches.forEach(function(match) {
+            addVideo(match.replace(/\\\\u002F/g, "/").replace(/\\\\&/g, "&"));
+          });
+        });
+
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        const ogDescription = document.querySelector('meta[property="og:description"]');
+        const description = document.querySelector('meta[name="description"]');
+        const caption =
+          (ogTitle && ogTitle.content && ogTitle.content.length > 100 && ogTitle.content) ||
+          (ogDescription && ogDescription.content) ||
+          (description && description.content) ||
+          null;
+
+        return { caption, images, videoUrls };
       })()
-    `)) as string[];
+    `)) as {
+      caption: string | null;
+      images: string[];
+      videoUrls: string[];
+    };
+
+    const frameImages: Uint8Array[] = [];
+    const captureFrame = async () => {
+      try {
+        const screenshot = toUint8Array(
+          await page.screenshot({
+            type: "jpeg",
+            quality: 70,
+            fullPage: false,
+          }),
+        );
+        if (screenshot) frameImages.push(screenshot);
+      } catch {
+        // Screenshot capture is best effort.
+      }
+    };
+
+    await captureFrame();
+
+    for (const ratio of [0.35, 0.7]) {
+      try {
+        await page.evaluate(`
+          (function() {
+            const positionRatio = ${ratio};
+            document.querySelectorAll("video").forEach(function(video) {
+              try {
+                const duration = Number.isFinite(video.duration)
+                  ? video.duration
+                  : 0;
+                video.currentTime = duration
+                  ? Math.max(0.5, duration * positionRatio)
+                  : 2 + positionRatio * 4;
+                video.pause();
+              } catch {}
+            });
+          })()
+        `);
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        await captureFrame();
+      } catch {
+        // Seeking is best effort; keep any frames already captured.
+      }
+    }
 
     const html = await page.content();
 
-    return { html, caption: caption as string | null, images };
+    return {
+      html,
+      caption: media.caption,
+      images: media.images,
+      videoUrls: media.videoUrls,
+      frameImages,
+    };
   } finally {
     await instance.close();
   }

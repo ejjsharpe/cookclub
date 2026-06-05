@@ -2,6 +2,46 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { RecipeAI } from "../../src/index";
 
+const browserFetcherMocks = vi.hoisted(() => ({
+  fetchHtmlWithBrowser: vi.fn(),
+  extractInstagramContent: vi.fn(),
+  extractTikTokBrowserContent: vi.fn(),
+}));
+
+vi.mock("../../src/utils/browser-fetcher", () => {
+  const browserRequiredDomains = [
+    "instagram.com",
+    "tiktok.com",
+    "facebook.com",
+    "fb.com",
+    "youtube.com",
+    "youtu.be",
+    "pinterest.com",
+    "pin.it",
+    "threads.net",
+    "x.com",
+    "twitter.com",
+    "reddit.com",
+  ];
+
+  return {
+    requiresBrowserRendering: (url: string) => {
+      try {
+        const hostname = new URL(url).hostname;
+        return browserRequiredDomains.some(
+          (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+        );
+      } catch {
+        return false;
+      }
+    },
+    fetchHtmlWithBrowser: browserFetcherMocks.fetchHtmlWithBrowser,
+    extractInstagramContent: browserFetcherMocks.extractInstagramContent,
+    extractTikTokBrowserContent:
+      browserFetcherMocks.extractTikTokBrowserContent,
+  };
+});
+
 // Valid AI response for mocking
 const validAiResponse = JSON.stringify({
   name: "Test Recipe",
@@ -141,6 +181,25 @@ describe("RecipeAI.parse()", () => {
     vi.restoreAllMocks();
     mockEnv = createMockEnv();
     parser = createParser(mockEnv);
+    browserFetcherMocks.fetchHtmlWithBrowser
+      .mockReset()
+      .mockResolvedValue(sampleHtml);
+    browserFetcherMocks.extractInstagramContent.mockReset().mockResolvedValue({
+      html: sampleHtml,
+      caption: null,
+      images: [],
+      videoUrls: [],
+      frameImages: [],
+    });
+    browserFetcherMocks.extractTikTokBrowserContent
+      .mockReset()
+      .mockResolvedValue({
+        html: sampleHtml,
+        caption: null,
+        images: [],
+        videoUrls: [],
+        frameImages: [],
+      });
 
     // Default: mock fetch to return sample HTML
     global.fetch = vi.fn().mockResolvedValue({
@@ -892,6 +951,7 @@ describe("RecipeAI.parse()", () => {
       const instagramCaption =
         "Easy tomato pasta Ingredients: 200 g spaghetti 1 cup tomato sauce Directions: 1. Boil the spaghetti. 2. Toss with tomato sauce and serve.";
 
+      (mockEnv as any).BROWSER = { id: "browser-binding" };
       mockEnv.AI.run = vi.fn().mockResolvedValue({
         response: JSON.stringify({
           name: "Easy Tomato Pasta",
@@ -937,6 +997,9 @@ describe("RecipeAI.parse()", () => {
         );
         expect(result.metadata.parseMethod).toBe("caption_rules");
       }
+      expect(
+        browserFetcherMocks.extractInstagramContent,
+      ).not.toHaveBeenCalled();
     });
 
     it("imports ingredient-only Instagram captions after AI cannot produce a method", async () => {
@@ -1034,6 +1097,334 @@ Lime wedge
         ).toBeGreaterThan(15);
         expect(result.metadata.parseMethod).toBe("caption_rules");
       }
+    });
+
+    it("uses Instagram media enrichment before accepting placeholder caption fallback", async () => {
+      const instagramCaption = `TRY MY TOMATO BEAN STEW
+
+INGREDIENTS
+
+1 cup tomatoes
+1 can butter beans
+1 tbsp olive oil
+1 tsp smoked paprika
+1 onion
+2 garlic cloves
+Salt
+Black pepper
+
+* full method shown in the video *`;
+
+      const invalidAiRecipe = {
+        name: "Tomato Bean Stew",
+        description: null,
+        prepTime: null,
+        cookTime: null,
+        totalTime: null,
+        servings: null,
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, quantity: 1, unit: "cup", name: "tomatoes" },
+              { index: 1, quantity: 1, unit: "can", name: "butter beans" },
+            ],
+          },
+        ],
+        instructionSections: [],
+        suggestedTags: [],
+      };
+      const enrichedAiRecipe = {
+        ...invalidAiRecipe,
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, quantity: 1, unit: "cup", name: "tomatoes" },
+              { index: 1, quantity: 1, unit: "can", name: "butter beans" },
+              { index: 2, quantity: 1, unit: "tbsp", name: "olive oil" },
+              { index: 3, quantity: 1, unit: "tsp", name: "smoked paprika" },
+              { index: 4, quantity: 1, unit: null, name: "onion" },
+            ],
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              { index: 0, instruction: "Saute the onion and garlic." },
+              { index: 1, instruction: "Add tomatoes, beans, and paprika." },
+              { index: 2, instruction: "Simmer until thickened." },
+            ],
+          },
+        ],
+      };
+
+      (mockEnv as any).BROWSER = { id: "browser-binding" };
+      browserFetcherMocks.extractInstagramContent.mockResolvedValue({
+        html: "<html></html>",
+        caption: instagramCaption,
+        images: ["https://example.com/browser-instagram.jpg"],
+        videoUrls: ["https://cdn.example.com/instagram.mp4"],
+        frameImages: [new Uint8Array([5, 6, 7])],
+      });
+
+      let textModelCalls = 0;
+      mockEnv.AI.run = vi.fn((model: string) => {
+        if (model === "@cf/openai/whisper") {
+          return Promise.resolve({
+            text: "Saute the onion and garlic, add tomatoes and beans, then simmer.",
+          });
+        }
+        if (model === "@cf/meta/llama-3.2-11b-vision-instruct") {
+          return Promise.resolve({
+            response: "Add tomatoes, beans, smoked paprika. Simmer 15 minutes.",
+          });
+        }
+
+        textModelCalls += 1;
+        return Promise.resolve({
+          response: JSON.stringify(
+            textModelCalls === 1 ? invalidAiRecipe : enrichedAiRecipe,
+          ),
+        });
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const url = String(requestUrl);
+        if (url.startsWith("https://www.instagram.com/api/v1/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: instagramCaption,
+                thumbnail_url: "https://example.com/instagram.jpg",
+              }),
+          });
+        }
+
+        if (url === "https://cdn.example.com/instagram.mp4") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-length": "4" }),
+            arrayBuffer: () =>
+              Promise.resolve(new Uint8Array([1, 2, 3, 4]).buffer),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          headers: new Headers({ "content-type": "text/html" }),
+          text: () => Promise.resolve(""),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/MEDIA123/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Tomato Bean Stew");
+        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
+          3,
+        );
+        expect(result.metadata.parseMethod).toBe("media_enriched");
+      }
+      expect(browserFetcherMocks.extractInstagramContent).toHaveBeenCalledWith(
+        (mockEnv as any).BROWSER,
+        "https://www.instagram.com/reel/MEDIA123/",
+      );
+      expect(mockEnv.AI.run).toHaveBeenCalledWith(
+        "@cf/openai/whisper",
+        expect.objectContaining({ audio: [1, 2, 3, 4] }),
+      );
+      expect(mockEnv.AI.run).toHaveBeenCalledWith(
+        "@cf/meta/llama-3.2-11b-vision-instruct",
+        expect.objectContaining({ image: [5, 6, 7] }),
+      );
+    });
+
+    it("uses Instagram rendered page text when browser comments contain the method", async () => {
+      const instagramCaption = `TRY MY FIRECRACKER RAMEN NOW
+
+INGREDIENTS
+
+BROTH (serves 3)
+
+1 tbsp neutral oil
+4 large garlic cloves
+1 red chilli
+1 bunch spring onions
+1 thumb-sized piece of ginger
+2 tbsp gochujang paste
+1 tbsp rice vinegar
+1 tbsp soy sauce
+1.5l veg broth
+200 ml coconut milk
+1 tbsp miso paste
+1 lime
+Salt + sugar
+
+TO SERVE
+
+Rice noodles
+Oyster mushrooms
+Broccoli
+Spring onion
+Chilli oil
+Toasted sesame seeds
+Lime wedge
+
+* full method pinned to top of comments *`;
+
+      const invalidAiRecipe = {
+        name: "Firecracker Ramen",
+        description: null,
+        prepTime: null,
+        cookTime: null,
+        totalTime: null,
+        servings: null,
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, quantity: 1, unit: "tbsp", name: "neutral oil" },
+            ],
+          },
+        ],
+        instructionSections: [],
+        suggestedTags: [],
+      };
+      const enrichedAiRecipe = {
+        name: "Firecracker Ramen",
+        description: null,
+        prepTime: null,
+        cookTime: null,
+        totalTime: null,
+        servings: 3,
+        ingredientSections: [
+          {
+            name: "Broth",
+            ingredients: [
+              { index: 0, quantity: 1, unit: "tbsp", name: "neutral oil" },
+              { index: 1, quantity: 4, unit: null, name: "garlic cloves" },
+              { index: 2, quantity: 2, unit: "tbsp", name: "gochujang paste" },
+              { index: 3, quantity: 1.5, unit: "l", name: "veg broth" },
+              { index: 4, quantity: 200, unit: "ml", name: "coconut milk" },
+            ],
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              { index: 0, instruction: "Saute the aromatics in neutral oil." },
+              {
+                index: 1,
+                instruction:
+                  "Stir in gochujang, vinegar, soy sauce, broth, and coconut milk.",
+              },
+              {
+                index: 2,
+                instruction:
+                  "Simmer, add noodles and toppings, then finish with chilli oil and lime.",
+              },
+            ],
+          },
+        ],
+      };
+
+      (mockEnv as any).BROWSER = { id: "browser-binding" };
+      browserFetcherMocks.extractInstagramContent.mockResolvedValue({
+        html: `
+          <html>
+            <body>
+              <article>
+                <p>${instagramCaption}</p>
+                <p>
+                  Pinned comment method: saute the aromatics in neutral oil.
+                  Stir in gochujang, rice vinegar, soy sauce, vegetable broth,
+                  coconut milk, miso and lime. Simmer until glossy, then serve
+                  with noodles, mushrooms, broccoli, chilli oil, sesame seeds
+                  and lime wedge.
+                </p>
+              </article>
+            </body>
+          </html>
+        `,
+        caption: instagramCaption,
+        images: ["https://example.com/browser-instagram.jpg"],
+        videoUrls: [],
+        frameImages: [],
+      });
+
+      let textModelCalls = 0;
+      mockEnv.AI.run = vi.fn((model: string) => {
+        if (model === "@cf/openai/whisper") {
+          return Promise.resolve({ text: "This should not be used." });
+        }
+        if (model === "@cf/meta/llama-3.2-11b-vision-instruct") {
+          return Promise.resolve({ response: "This should not be used." });
+        }
+
+        textModelCalls += 1;
+        return Promise.resolve({
+          response: JSON.stringify(
+            textModelCalls === 1 ? invalidAiRecipe : enrichedAiRecipe,
+          ),
+        });
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const url = String(requestUrl);
+        if (url.startsWith("https://www.instagram.com/api/v1/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: instagramCaption,
+                thumbnail_url: "https://example.com/instagram.jpg",
+              }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          headers: new Headers({ "content-type": "text/html" }),
+          text: () => Promise.resolve(""),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/DFTA0yKIVPa/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Firecracker Ramen");
+        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
+          3,
+        );
+        expect(result.metadata.parseMethod).toBe("media_enriched");
+      }
+      expect(mockEnv.AI.run).not.toHaveBeenCalledWith(
+        "@cf/openai/whisper",
+        expect.anything(),
+      );
+      expect(mockEnv.AI.run).not.toHaveBeenCalledWith(
+        "@cf/meta/llama-3.2-11b-vision-instruct",
+        expect.anything(),
+      );
     });
 
     it("routes non-Instagram/TikTok social links through generic social parsing", async () => {
