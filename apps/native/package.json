@@ -16,7 +16,8 @@
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
     "@better-auth/expo": "1.6.11",

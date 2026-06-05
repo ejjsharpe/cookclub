@@ -7,7 +7,7 @@ import * as Linking from "expo-linking";
 import { ShareIntentProvider } from "expo-share-intent";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -97,14 +97,30 @@ function App() {
     "Satoshi-Black": require("@/assets/fonts/Satoshi/Satoshi-Black.otf"),
     "Satoshi-Italic": require("@/assets/fonts/Satoshi/Satoshi-Italic.otf"),
   });
-  const isFontsReady = isFontsLoaded || isFontsError;
-  const [isImagesReady, setIsImagesReady] = useState(false);
-  const [isNavigationReady, setIsNavigationReady] = useState(false);
+  const isFontsReady = isFontsLoaded || Boolean(isFontsError);
+  const readinessRef = useRef({
+    fonts: false,
+    images: false,
+    navigation: false,
+  });
   const hasReportedAppLoadedRef = useRef(false);
-  const navigationStateRef = useRef<
+  const [navigationState, setNavigationState] = useState<
     React.ComponentProps<typeof Navigation>["initialState"] | undefined
   >(undefined);
   const { theme, rt } = useUnistyles();
+
+  const hideSplashIfReady = useCallback(() => {
+    const { fonts, images, navigation } = readinessRef.current;
+    if (!fonts || !images || !navigation) {
+      return;
+    }
+
+    SplashScreen.hideAsync();
+    if (!hasReportedAppLoadedRef.current) {
+      Sentry.appLoaded();
+      hasReportedAppLoadedRef.current = true;
+    }
+  }, []);
 
   useEffect(() => {
     const loadImages = async () => {
@@ -122,29 +138,26 @@ function App() {
         startImage11,
         startImage12,
       ]);
-      setIsImagesReady(true);
+      readinessRef.current.images = true;
+      hideSplashIfReady();
     };
     loadImages();
-  }, []);
+  }, [hideSplashIfReady]);
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(theme.colors.background);
   }, [theme.colors.background]);
 
   useEffect(() => {
-    if (isFontsReady && isNavigationReady && isImagesReady) {
-      SplashScreen.hideAsync();
-      if (!hasReportedAppLoadedRef.current) {
-        Sentry.appLoaded();
-        hasReportedAppLoadedRef.current = true;
-      }
-    }
-  }, [isFontsReady, isNavigationReady, isImagesReady]);
+    readinessRef.current.fonts = isFontsReady;
+    hideSplashIfReady();
+  }, [hideSplashIfReady, isFontsReady]);
 
   const onNavigationReady = () => {
-    navigationStateRef.current = navigationRef.getRootState();
+    setNavigationState(navigationRef.getRootState());
     navigationIntegration.registerNavigationContainer(navigationRef);
-    setIsNavigationReady(true);
+    readinessRef.current.navigation = true;
+    hideSplashIfReady();
   };
   const navigationKey = `${rt.themeName ?? "theme"}:${theme.colors.background}`;
   const navigationTheme = {
@@ -183,10 +196,8 @@ function App() {
                                 ref={navigationRef}
                                 key={navigationKey}
                                 onReady={onNavigationReady}
-                                initialState={navigationStateRef.current}
-                                onStateChange={(state) => {
-                                  navigationStateRef.current = state;
-                                }}
+                                initialState={navigationState}
+                                onStateChange={setNavigationState}
                                 linking={linking}
                                 theme={navigationTheme}
                               />

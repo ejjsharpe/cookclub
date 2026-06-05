@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   View,
   TouchableOpacity,
@@ -40,17 +40,11 @@ export function FollowUserRow({
   const followMutation = useFollowUser();
   const unfollowMutation = useUnfollowUser();
 
-  const isFollowing = optimisticFollowing ?? isFollowingServer;
   const isPending = followMutation.isPending || unfollowMutation.isPending;
-
-  useEffect(() => {
-    if (
-      optimisticFollowing !== null &&
-      optimisticFollowing === isFollowingServer
-    ) {
-      setOptimisticFollowing(null);
-    }
-  }, [isFollowingServer, optimisticFollowing]);
+  const isFollowing =
+    isPending && optimisticFollowing !== null
+      ? optimisticFollowing
+      : isFollowingServer;
 
   const handleFollowPress = () => {
     const nextFollowing = !isFollowing;

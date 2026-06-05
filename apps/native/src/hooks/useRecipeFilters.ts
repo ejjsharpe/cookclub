@@ -24,7 +24,7 @@ export const useRecipeFilters = () => {
   // GPU-accelerated animation using transforms instead of layout properties
   const filterButtonStyle = useAnimatedStyle(() => {
     "worklet";
-    const progress = filterButtonProgress.value;
+    const progress = filterButtonProgress.get();
     // Scale from 0.8 to 1 for a subtle size change
     const scale = 0.8 + 0.2 * progress;
     // Translate right as it fades out to simulate margin collapse
@@ -38,7 +38,7 @@ export const useRecipeFilters = () => {
   // Animate search bar to expand when filter button hides
   const searchBarWrapperStyle = useAnimatedStyle(() => {
     "worklet";
-    const progress = filterButtonProgress.value;
+    const progress = filterButtonProgress.get();
     // When filter visible (1): marginRight = 0
     // When filter hidden (0): marginRight = -58 (reclaim the space)
     return {
@@ -57,7 +57,7 @@ export const useRecipeFilters = () => {
   // Animate filter button visibility based on tab
   const setFilterButtonVisible = useCallback(
     (visible: boolean) => {
-      filterButtonProgress.value = withTiming(visible ? 1 : 0, animationConfig);
+      filterButtonProgress.set(withTiming(visible ? 1 : 0, animationConfig));
     },
     [filterButtonProgress],
   );

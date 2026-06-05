@@ -51,9 +51,9 @@ const ProgressSyncer = ({
   target: SharedValue<number>;
 }) => {
   useAnimatedReaction(
-    () => source.value,
+    () => source.get(),
     (value) => {
-      target.value = value;
+      target.set(value);
     },
   );
   return null;

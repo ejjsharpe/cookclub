@@ -99,30 +99,21 @@ const DeleteAction = ({
   onRemove: () => void;
 }) => {
   const deleteButtonStyle = useAnimatedStyle(() => {
-    const scale = interpolate(
-      swipeProgress.value,
-      [0.5, 0.7, 1, 1.2],
-      [0, 0.5, 1, 1.05],
-      {
-        extrapolateLeft: Extrapolation.CLAMP,
-        extrapolateRight: Extrapolation.CLAMP,
-      },
-    );
+    const progress = swipeProgress.get();
+    const scale = interpolate(progress, [0.5, 0.7, 1, 1.2], [0, 0.5, 1, 1.05], {
+      extrapolateLeft: Extrapolation.CLAMP,
+      extrapolateRight: Extrapolation.CLAMP,
+    });
 
     // Scale up slightly on over-swipe (kicks in later)
-    const overSwipeScale = interpolate(
-      swipeProgress.value,
-      [1.15, 1.4],
-      [1, 1.08],
-      {
-        extrapolateLeft: Extrapolation.CLAMP,
-        extrapolateRight: Extrapolation.CLAMP,
-      },
-    );
+    const overSwipeScale = interpolate(progress, [1.15, 1.4], [1, 1.08], {
+      extrapolateLeft: Extrapolation.CLAMP,
+      extrapolateRight: Extrapolation.CLAMP,
+    });
 
     return {
       transform: [{ scale: scale * overSwipeScale }],
-      opacity: interpolate(swipeProgress.value, [0.5, 0.6], [0, 1], {
+      opacity: interpolate(progress, [0.5, 0.6], [0, 1], {
         extrapolateLeft: Extrapolation.CLAMP,
         extrapolateRight: Extrapolation.CLAMP,
       }),
@@ -131,7 +122,7 @@ const DeleteAction = ({
 
   // Animate pill width to expand on over-swipe
   const pillStyle = useAnimatedStyle(() => {
-    const width = interpolate(swipeProgress.value, [1, 1.3], [60, 83], {
+    const width = interpolate(swipeProgress.get(), [1, 1.3], [60, 83], {
       extrapolateLeft: Extrapolation.CLAMP,
       extrapolateRight: Extrapolation.EXTEND,
     });
@@ -215,9 +206,9 @@ const ProgressSyncer = ({
   target: SharedValue<number>;
 }) => {
   useAnimatedReaction(
-    () => source.value,
+    () => source.get(),
     (value) => {
-      target.value = value;
+      target.set(value);
     },
   );
   return null;
@@ -368,7 +359,7 @@ export const ShoppingListScreen = () => {
   const inputTransformAnimatedStyle = useAnimatedStyle(() => {
     // Animate padding from basePadding (keyboard closed) to 0 (keyboard open)
     const padding = interpolate(
-      keyboardswipeProgress.value,
+      keyboardswipeProgress.get(),
       [0, 1],
       [basePadding, 0],
     );
@@ -385,7 +376,7 @@ export const ShoppingListScreen = () => {
     // Bottom offset: input section height + animated padding (which reduces when keyboard opens)
     const bottomOffset =
       INPUT_SECTION_HEIGHT +
-      interpolate(keyboardswipeProgress.value, [0, 1], [0, basePadding]);
+      interpolate(keyboardswipeProgress.get(), [0, 1], [0, basePadding]);
 
     // Calculate the vertical shift needed to center between header and input
     // Positive = shift down, Negative = shift up
@@ -398,11 +389,11 @@ export const ShoppingListScreen = () => {
 
   // Animated styles for header fade
   const titleAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: titleOpacity.value,
+    opacity: titleOpacity.get(),
   }));
 
   const clearButtonAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: clearButtonOpacity.value,
+    opacity: clearButtonOpacity.get(),
   }));
 
   // Scroll handler with header fade, kept on the UI thread.
@@ -410,12 +401,16 @@ export const ShoppingListScreen = () => {
     onScroll: (event) => {
       const y = event.contentOffset.y;
 
-      titleOpacity.value = withTiming(y > 5 ? 0 : 1, {
-        duration: 150,
-      });
-      clearButtonOpacity.value = withTiming(y > 10 ? 0 : 1, {
-        duration: 150,
-      });
+      titleOpacity.set(
+        withTiming(y > 5 ? 0 : 1, {
+          duration: 150,
+        }),
+      );
+      clearButtonOpacity.set(
+        withTiming(y > 10 ? 0 : 1, {
+          duration: 150,
+        }),
+      );
     },
   });
 
@@ -534,27 +529,15 @@ export const ShoppingListScreen = () => {
     addRecipeSheetRef.current?.present();
   }, []);
 
-  // Pending list ID for newly created lists that aren't in the query cache yet
-  const [pendingListId, setPendingListId] = useState<number | null>(null);
-
-  // Once the query refetches and the pending list appears, select it
-  useEffect(() => {
-    if (pendingListId === null || !allLists) return;
-    const list = allLists.find((l) => l.id === pendingListId);
-    if (list) {
-      setSelectedList(list.id, list.name);
-      setPendingListId(null);
-    }
-  }, [pendingListId, allLists, setSelectedList]);
-
   const handleSelectShoppingList = useCallback(
-    (listId: number) => {
+    (listId: number, listName?: string) => {
+      if (listName) {
+        setSelectedList(listId, listName);
+        return;
+      }
       const list = allLists?.find((l) => l.id === listId);
       if (list) {
         setSelectedList(listId, list.name);
-      } else {
-        // New list not in cache yet — wait for query to refetch
-        setPendingListId(listId);
       }
     },
     [allLists, setSelectedList],

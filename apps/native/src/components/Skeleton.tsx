@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { View, ViewStyle, Dimensions } from "react-native";
+import { View, ViewStyle, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -83,11 +83,11 @@ export const Skeleton = ({
   const shimmer = useSharedValue(0);
 
   useEffect(() => {
-    shimmer.value = withRepeat(withTiming(1, { duration: 1200 }), -1, false);
+    shimmer.set(withRepeat(withTiming(1, { duration: 1200 }), -1, false));
   }, [shimmer]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(shimmer.value, [0, 0.5, 1], [0.3, 0.6, 0.3]),
+    opacity: interpolate(shimmer.get(), [0, 0.5, 1], [0.3, 0.6, 0.3]),
   }));
 
   return (
@@ -240,7 +240,6 @@ export const MyRecipesListSkeleton = () => {
 
 // ─── Collection Card Skeleton ────────────────────────────────────────────────
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_PADDING = 20;
 const GRID_GAP = 12;
 
@@ -495,11 +494,13 @@ const MethodItemSkeleton = ({ short = false }: { short?: boolean }) => (
 );
 
 export const RecipeDetailSkeleton = () => {
+  const { width: screenWidth } = useWindowDimensions();
+
   return (
     <View style={styles.recipeDetailScreen}>
       {/* Cover Image */}
       <View style={styles.coverSection}>
-        <Skeleton width={SCREEN_WIDTH} height={IMAGE_HEIGHT} borderRadius={0} />
+        <Skeleton width={screenWidth} height={IMAGE_HEIGHT} borderRadius={0} />
       </View>
 
       {/* White Card */}

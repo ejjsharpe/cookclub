@@ -4,7 +4,6 @@ import {
   useState,
   useImperativeHandle,
   useRef,
-  useEffect,
   useMemo,
 } from "react";
 import {
@@ -50,7 +49,8 @@ export const CollectionSelectorSheet = forwardRef<
   const sheetRef = useRef<TrueSheet>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedIdsOverride, setSelectedIdsOverride] =
+    useState<Set<number> | null>(null);
 
   const { data: collections, isLoading } = useGetUserCollections({
     recipeId,
@@ -70,12 +70,7 @@ export const CollectionSelectorSheet = forwardRef<
     );
   }, [collections]);
 
-  // Initialize selectedIds when collections load
-  useEffect(() => {
-    if (collections) {
-      setSelectedIds(new Set(originalIds));
-    }
-  }, [collections, originalIds]);
+  const selectedIds = selectedIdsOverride ?? originalIds;
 
   // Check if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -98,11 +93,12 @@ export const CollectionSelectorSheet = forwardRef<
   const handleSheetDismiss = () => {
     setNewCollectionName("");
     setIsCreatingCollection(false);
+    setSelectedIdsOverride(null);
   };
 
   const handleToggleCollection = (collectionId: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
+    setSelectedIdsOverride((prev) => {
+      const next = new Set(prev ?? originalIds);
       if (next.has(collectionId)) {
         next.delete(collectionId);
       } else {
@@ -153,7 +149,9 @@ export const CollectionSelectorSheet = forwardRef<
 
       if (newCollection) {
         // Add the new collection to selected IDs
-        setSelectedIds((prev) => new Set([...prev, newCollection.id]));
+        setSelectedIdsOverride(
+          (prev) => new Set([...(prev ?? originalIds), newCollection.id]),
+        );
       }
 
       setNewCollectionName("");

@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef } from "react";
 import { View, TouchableOpacity, LayoutChangeEvent } from "react-native";
 import Animated, {
   useSharedValue,
@@ -7,6 +7,7 @@ import Animated, {
   SharedValue,
   interpolate,
   useDerivedValue,
+  useAnimatedReaction,
   interpolateColor,
 } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
@@ -39,7 +40,7 @@ const AnimatedTabText = ({
   const animatedStyle = useAnimatedStyle(() => {
     if (scrollProgress) {
       const progress = interpolate(
-        scrollProgress.value,
+        scrollProgress.get(),
         inputRange,
         outputRange,
         "clamp",
@@ -102,7 +103,6 @@ export function SegmentedControl<T extends string>({
   const indicatorX = useSharedValue(0);
   const indicatorWidth = useSharedValue(0);
   const isInitialized = useRef(false);
-  const currentIndex = useRef(0);
 
   // Shared values for tab positions (for use in worklets)
   const tabXPositions = useSharedValue<number[]>([]);
@@ -120,81 +120,84 @@ export function SegmentedControl<T extends string>({
         (pos) => pos && pos.width > 0,
       );
       if (allValid) {
-        tabXPositions.value = tabPositions.current.map((p) => p.x);
-        tabWidths.value = tabPositions.current.map((p) => p.width);
+        tabXPositions.set(tabPositions.current.map((p) => p.x));
+        tabWidths.set(tabPositions.current.map((p) => p.width));
       }
     }
 
     // Set initial position without animation when the active tab is laid out
     if (index === activeIndex && !isInitialized.current) {
-      indicatorX.value = x;
-      indicatorWidth.value = width;
-      currentIndex.current = index;
+      indicatorX.set(x);
+      indicatorWidth.set(width);
       isInitialized.current = true;
     }
   };
 
   // Sync indicator position when value changes externally (e.g., from swipe completion)
-  useEffect(() => {
-    if (
-      isInitialized.current &&
-      activeIndex !== currentIndex.current &&
-      !scrollProgress
-    ) {
-      const position = tabPositions.current[activeIndex];
-      if (position) {
-        indicatorX.value = withSpring(position.x, SPRING_CONFIG);
-        indicatorWidth.value = withSpring(position.width, SPRING_CONFIG);
-        currentIndex.current = activeIndex;
+  useAnimatedReaction(
+    () => {
+      const xPositions = tabXPositions.get();
+      const widths = tabWidths.get();
+      return {
+        activeIndex,
+        x: xPositions[activeIndex],
+        width: widths[activeIndex],
+        ready: xPositions.length === options.length,
+      };
+    },
+    (current, previous) => {
+      if (
+        scrollProgress ||
+        !current.ready ||
+        current.x === undefined ||
+        current.width === undefined ||
+        current.activeIndex === previous?.activeIndex
+      ) {
+        return;
       }
-    }
-  }, [activeIndex, indicatorX, indicatorWidth, scrollProgress]);
+
+      indicatorX.set(withSpring(current.x, SPRING_CONFIG));
+      indicatorWidth.set(withSpring(current.width, SPRING_CONFIG));
+    },
+    [activeIndex, options.length, scrollProgress],
+  );
 
   const handlePress = (optionValue: T, index: number) => {
     const position = tabPositions.current[index];
     if (position) {
-      indicatorX.value = withSpring(position.x, SPRING_CONFIG);
-      indicatorWidth.value = withSpring(position.width, SPRING_CONFIG);
+      indicatorX.set(withSpring(position.x, SPRING_CONFIG));
+      indicatorWidth.set(withSpring(position.width, SPRING_CONFIG));
     }
 
-    const direction = index > currentIndex.current ? 1 : -1;
-    currentIndex.current = index;
+    const direction = index > activeIndex ? 1 : -1;
 
     onValueChange(optionValue, direction);
   };
 
   // Derived values for interpolated position when scrollProgress is provided
   const interpolatedX = useDerivedValue(() => {
-    if (scrollProgress && tabXPositions.value.length >= 2) {
-      const inputRange = tabXPositions.value.map((_, i) => i);
-      return interpolate(
-        scrollProgress.value,
-        inputRange,
-        tabXPositions.value,
-        "clamp",
-      );
+    const xPositions = tabXPositions.get();
+    if (scrollProgress && xPositions.length >= 2) {
+      const inputRange = xPositions.map((_, i) => i);
+      return interpolate(scrollProgress.get(), inputRange, xPositions, "clamp");
     }
-    return indicatorX.value;
+    return indicatorX.get();
   });
 
   const interpolatedWidth = useDerivedValue(() => {
-    if (scrollProgress && tabWidths.value.length >= 2) {
-      const inputRange = tabWidths.value.map((_, i) => i);
-      return interpolate(
-        scrollProgress.value,
-        inputRange,
-        tabWidths.value,
-        "clamp",
-      );
+    const widths = tabWidths.get();
+    if (scrollProgress && widths.length >= 2) {
+      const inputRange = widths.map((_, i) => i);
+      return interpolate(scrollProgress.get(), inputRange, widths, "clamp");
     }
-    return indicatorWidth.value;
+    return indicatorWidth.get();
   });
 
   // Animated indicator style
   const indicatorStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateX: interpolatedX.value }],
-      width: interpolatedWidth.value,
+      transform: [{ translateX: interpolatedX.get() }],
+      width: interpolatedWidth.get(),
     };
   });
 

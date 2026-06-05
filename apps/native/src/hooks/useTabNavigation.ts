@@ -35,12 +35,11 @@ export const useTabNavigation = ({
     (tab: TabType) => {
       const newTabIndex = tab === "recipes" ? 0 : 1;
       setActiveTab(tab);
-      activeTabIndex.value = newTabIndex;
+      activeTabIndex.set(newTabIndex);
 
       // Animate tab-dependent elements
-      tabAnimationProgress.value = withTiming(
-        tab === "recipes" ? 1 : 0,
-        animationConfig,
+      tabAnimationProgress.set(
+        withTiming(tab === "recipes" ? 1 : 0, animationConfig),
       );
 
       onTabChange?.(tab, tabAnimationProgress);

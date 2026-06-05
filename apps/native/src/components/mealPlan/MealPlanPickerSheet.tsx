@@ -99,7 +99,7 @@ const PlanItem = ({
 
 export interface MealPlanPickerSheetProps {
   activePlanId?: number;
-  onSelectPlan?: (planId: number) => void;
+  onSelectPlan?: (planId: number, planName?: string) => void;
 }
 
 export interface MealPlanPickerSheetRef {
@@ -126,8 +126,8 @@ export const MealPlanPickerSheet = forwardRef<
     dismiss: () => sheetRef.current?.dismiss(),
   }));
 
-  const handleSelectPlan = (planId: number) => {
-    onSelectPlan?.(planId);
+  const handleSelectPlan = (plan: MealPlan) => {
+    onSelectPlan?.(plan.id, plan.name);
     sheetRef.current?.dismiss();
   };
 
@@ -139,7 +139,7 @@ export const MealPlanPickerSheet = forwardRef<
         name: newPlanName.trim(),
       });
       if (newPlan) {
-        onSelectPlan?.(newPlan.id);
+        onSelectPlan?.(newPlan.id, newPlan.name);
       }
       setNewPlanName("");
       setIsCreating(false);
@@ -157,7 +157,7 @@ export const MealPlanPickerSheet = forwardRef<
       if (planId === activePlanId) {
         const defaultPlan = mealPlans?.find((p) => p.isDefault);
         if (defaultPlan) {
-          onSelectPlan?.(defaultPlan.id);
+          onSelectPlan?.(defaultPlan.id, defaultPlan.name);
         }
       }
     } catch {
@@ -197,7 +197,7 @@ export const MealPlanPickerSheet = forwardRef<
                         key={plan.id}
                         plan={plan}
                         isActive={plan.id === activePlanId}
-                        onSelect={() => handleSelectPlan(plan.id)}
+                        onSelect={() => handleSelectPlan(plan)}
                         onDelete={() => handleDeletePlan(plan.id)}
                         showDelete={planToDelete !== plan.id}
                       />
@@ -217,7 +217,7 @@ export const MealPlanPickerSheet = forwardRef<
                         key={plan.id}
                         plan={plan}
                         isActive={plan.id === activePlanId}
-                        onSelect={() => handleSelectPlan(plan.id)}
+                        onSelect={() => handleSelectPlan(plan)}
                         onDelete={() => {}}
                         showDelete={false}
                       />

@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   FlatList,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import Animated from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
@@ -38,11 +38,8 @@ import {
   type TabType,
 } from "@/hooks/useRecipeCollectionBrowser";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_PADDING = 20;
 const NUM_COLUMNS = 2;
-const COLLECTION_CARD_WIDTH =
-  (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / NUM_COLUMNS;
 
 const TAB_OPTIONS: TabOption<TabType>[] = [
   { value: "recipes", label: "Recipes" },
@@ -95,6 +92,9 @@ export const RecipeBrowserSheet = forwardRef<
     ref,
   ) => {
     const theme = UnistylesRuntime.getTheme();
+    const { width: screenWidth } = useWindowDimensions();
+    const collectionCardWidth =
+      (screenWidth - GRID_PADDING * 2 - GRID_GAP) / NUM_COLUMNS;
     const sheetRef = useRef<TrueSheet>(null);
     const filterSheetRef = useRef<FilterSheetRef>(null);
     const [selectedCollectionId, setSelectedCollectionId] = useState<
@@ -272,12 +272,12 @@ export const RecipeBrowserSheet = forwardRef<
             <CollectionGridCard
               collection={item}
               onPress={() => handleCollectionPress(item.id)}
-              width={COLLECTION_CARD_WIDTH}
+              width={collectionCardWidth}
             />
           </View>
         );
       },
-      [handleCollectionPress],
+      [collectionCardWidth, handleCollectionPress],
     );
 
     // Render recipe list content
@@ -495,7 +495,7 @@ export const RecipeBrowserSheet = forwardRef<
                 <SwipeableTabView
                   activeIndex={activeTabIndex}
                   onIndexChange={handleSwipeTabChange}
-                  containerWidth={SCREEN_WIDTH}
+                  containerWidth={screenWidth}
                   scrollProgress={scrollProgress}
                 >
                   {renderRecipesContent()}

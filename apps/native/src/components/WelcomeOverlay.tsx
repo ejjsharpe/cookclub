@@ -61,33 +61,39 @@ export function WelcomeOverlayProvider({
 
   const triggerWelcome = useCallback(() => {
     // Reset values
-    overlayOpacity.value = 0;
-    welcomeOpacity.value = 0;
-    welcomeTranslateY.value = 60;
-    cookingOpacity.value = 0;
-    cookingTranslateY.value = 60;
+    overlayOpacity.set(0);
+    welcomeOpacity.set(0);
+    welcomeTranslateY.set(60);
+    cookingOpacity.set(0);
+    cookingTranslateY.set(60);
 
     setVisible(true);
 
     // Overlay fades in, holds, then fades out to reveal tabs
-    overlayOpacity.value = withSequence(
-      withTiming(1, { duration: 300 }),
-      withDelay(2900, withTiming(0, { duration: FADE_OUT_DURATION })),
+    overlayOpacity.set(
+      withSequence(
+        withTiming(1, { duration: 300 }),
+        withDelay(2900, withTiming(0, { duration: FADE_OUT_DURATION })),
+      ),
     );
 
     // Phase 1 → 2: Welcome text springs in, holds, then springs out
-    welcomeOpacity.value = withSequence(
-      withSpring(1, SPRING),
-      withDelay(600, withSpring(0, SPRING)),
+    welcomeOpacity.set(
+      withSequence(
+        withSpring(1, SPRING),
+        withDelay(600, withSpring(0, SPRING)),
+      ),
     );
-    welcomeTranslateY.value = withSequence(
-      withSpring(0, SPRING),
-      withDelay(600, withSpring(-40, SPRING)),
+    welcomeTranslateY.set(
+      withSequence(
+        withSpring(0, SPRING),
+        withDelay(600, withSpring(-40, SPRING)),
+      ),
     );
 
     // Phase 2: "Let's get cooking!" springs in after welcome exits (~1800ms)
-    cookingOpacity.value = withDelay(1800, withSpring(1, SPRING));
-    cookingTranslateY.value = withDelay(1800, withSpring(0, SPRING));
+    cookingOpacity.set(withDelay(1800, withSpring(1, SPRING)));
+    cookingTranslateY.set(withDelay(1800, withSpring(0, SPRING)));
 
     // Phase 3: Update cache so tabs mount underneath (~2600ms)
     setTimeout(() => {
@@ -112,17 +118,17 @@ export function WelcomeOverlayProvider({
   ]);
 
   const welcomeStyle = useAnimatedStyle(() => ({
-    opacity: welcomeOpacity.value,
-    transform: [{ translateY: welcomeTranslateY.value }],
+    opacity: welcomeOpacity.get(),
+    transform: [{ translateY: welcomeTranslateY.get() }],
   }));
 
   const cookingStyle = useAnimatedStyle(() => ({
-    opacity: cookingOpacity.value,
-    transform: [{ translateY: cookingTranslateY.value }],
+    opacity: cookingOpacity.get(),
+    transform: [{ translateY: cookingTranslateY.get() }],
   }));
 
   const overlayStyle = useAnimatedStyle(() => ({
-    opacity: overlayOpacity.value,
+    opacity: overlayOpacity.get(),
   }));
 
   return (
