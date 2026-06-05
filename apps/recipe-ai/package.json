@@ -6,6 +6,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --inspector-port 9230",
+    "generate-types": "wrangler types",
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify",
     "deploy:prod": "wrangler deploy --env production --minify",
@@ -27,7 +28,6 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.16.9",
-    "@cloudflare/workers-types": "4.20260525.1",
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
     "vitest": "4.1.7",

@@ -1,11 +1,12 @@
 import type { Env as AppEnv } from "./types";
 
-declare global {
-  namespace Cloudflare {
-    interface Env extends AppEnv {}
-  }
-}
-
 declare module "cloudflare:test" {
-  interface ProvidedEnv extends AppEnv {}
+  interface ProvidedEnv {
+    AI: AppEnv["AI"];
+    BROWSER: AppEnv["BROWSER"];
+    RECIPE_CACHE: AppEnv["RECIPE_CACHE"];
+    IMAGE_SERVICE: AppEnv["IMAGE_SERVICE"];
+    IMAGE_PUBLIC_URL: AppEnv["IMAGE_PUBLIC_URL"];
+    ENVIRONMENT: AppEnv["ENVIRONMENT"];
+  }
 }

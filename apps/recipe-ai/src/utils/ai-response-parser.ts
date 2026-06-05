@@ -1,6 +1,24 @@
+export function extractAiResponsePayload(response: unknown): unknown {
+  if (typeof response === "string") return response;
+  if (!response || typeof response !== "object") return response;
+
+  const record = response as Record<string, unknown>;
+  return record.response ?? record.generated_text ?? record.result ?? response;
+}
+
+export async function runAiModel(
+  ai: Ai,
+  model: string,
+  request: Record<string, unknown>,
+): Promise<unknown> {
+  return await (
+    ai as { run: (model: string, request: unknown) => Promise<unknown> }
+  ).run(model, request);
+}
+
 /**
- * Parse JSON from AI response, handling potential markdown code blocks
- * or JSON embedded in other text (e.g., from reasoning models)
+ * Parse JSON from AI response text, handling potential markdown code blocks
+ * or JSON embedded in other text (e.g., from reasoning models).
  */
 export function parseAiJsonResponse<T>(response: string): T {
   let jsonStr = response.trim();
@@ -55,4 +73,21 @@ export function parseAiJsonResponse<T>(response: string): T {
       `Failed to parse AI response as JSON: ${jsonStr.slice(0, 500)}`,
     );
   }
+}
+
+export function parseAiJsonPayload<T>(
+  response: unknown,
+  emptyMessage = "Invalid AI response format",
+): T {
+  const payload = extractAiResponsePayload(response);
+
+  if (!payload) {
+    throw new Error(emptyMessage);
+  }
+
+  if (typeof payload !== "string") {
+    return payload as T;
+  }
+
+  return parseAiJsonResponse<T>(payload);
 }

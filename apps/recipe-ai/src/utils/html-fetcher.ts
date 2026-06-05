@@ -136,14 +136,6 @@ export async function readLimitedBytes(
     return readTextBody(response, maxBytes);
   }
 
-  if (typeof response.arrayBuffer === "function") {
-    const body = await response.arrayBuffer();
-    if (body.byteLength > maxBytes) {
-      throw new Error(`HTML response too large: ${body.byteLength} bytes`);
-    }
-    return new Uint8Array(body);
-  }
-
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;

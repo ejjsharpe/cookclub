@@ -28,15 +28,19 @@ describe("fetchHtml", () => {
     expect(result).toBe(mockHtml);
   });
 
-  it("prefers arrayBuffer over the raw body stream when both are available", async () => {
-    const mockHtml = "<html><body>Decoded</body></html>";
+  it("streams the body when available and cancels once the byte limit is exceeded", async () => {
     const read = vi
       .fn()
       .mockResolvedValueOnce({
         done: false,
-        value: new Uint8Array([0x1f, 0x8b, 0x08, 0x00]),
+        value: new TextEncoder().encode("<html><body>"),
       })
-      .mockResolvedValueOnce({ done: true });
+      .mockResolvedValueOnce({
+        done: false,
+        value: new Uint8Array(2 * 1024 * 1024),
+      });
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const arrayBuffer = vi.fn();
 
     vi.stubGlobal(
       "fetch",
@@ -50,18 +54,18 @@ describe("fetchHtml", () => {
         body: {
           getReader: () => ({
             read,
-            cancel: vi.fn(),
+            cancel,
           }),
         },
-        arrayBuffer: () =>
-          Promise.resolve(new TextEncoder().encode(mockHtml).buffer),
+        arrayBuffer,
       }),
     );
 
-    const result = await fetchHtml("https://example.com");
-
-    expect(result).toBe(mockHtml);
-    expect(read).not.toHaveBeenCalled();
+    await expect(fetchHtml("https://example.com", 0)).rejects.toThrow(
+      "HTML response too large",
+    );
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalled();
   });
 
   it("throws on HTTP error", async () => {

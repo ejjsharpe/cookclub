@@ -4,6 +4,7 @@ import type {
 } from "@repo/contracts/recipe-ai";
 
 import type { Env } from "../types";
+import { runAiModel } from "../utils/ai-response-parser";
 
 const IMAGE_MODEL = "@cf/stabilityai/stable-diffusion-xl-base-1.0" as const;
 
@@ -17,7 +18,9 @@ function createRecipeImagePrompt(input: GenerateRecipeImageInput): string {
     input.description?.trim()
       ? `Description: ${input.description.trim()}.`
       : null,
-    ingredients.length > 0 ? `Visible ingredients: ${ingredients.join(", ")}.` : null,
+    ingredients.length > 0
+      ? `Visible ingredients: ${ingredients.join(", ")}.`
+      : null,
     instructions.length > 0
       ? `Cooking context: ${instructions.join(" ")}`
       : null,
@@ -25,6 +28,10 @@ function createRecipeImagePrompt(input: GenerateRecipeImageInput): string {
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function randomImageSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0]! % 1_000_000;
 }
 
 export async function generateRecipeImage(
@@ -42,7 +49,7 @@ export async function generateRecipeImage(
       };
     }
 
-    const response: unknown = await (env.AI as any).run(IMAGE_MODEL, {
+    const response: unknown = await runAiModel(env.AI, IMAGE_MODEL, {
       prompt: createRecipeImagePrompt(input),
       negative_prompt:
         "text, watermark, logo, people, hands, packaging, utensils blocking food, blurry, low quality, distorted food",
@@ -50,7 +57,7 @@ export async function generateRecipeImage(
       height: 1024,
       num_steps: 20,
       guidance: 7.5,
-      seed: Math.floor(Math.random() * 1_000_000),
+      seed: randomImageSeed(),
     });
 
     const imageData =

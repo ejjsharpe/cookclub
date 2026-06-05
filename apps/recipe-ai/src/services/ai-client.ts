@@ -1,5 +1,6 @@
 import type { ParsedRecipe } from "../schema";
 import type { Env } from "../types";
+import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
 import {
   RECIPE_EXTRACTION_SYSTEM_PROMPT,
   IMAGE_EXTRACTION_SYSTEM_PROMPT,
@@ -50,32 +51,6 @@ export interface AiRecipeResult {
     type: "cuisine" | "meal_type" | "occasion";
     name: string;
   }[];
-}
-
-/**
- * Parse JSON string, handling potential markdown code blocks
- */
-function parseJsonString(response: string): AiRecipeResult {
-  let jsonStr = response.trim();
-
-  // Remove markdown code blocks if present
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
-  }
-
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-
-  jsonStr = jsonStr.trim();
-
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    throw new Error(`Failed to parse AI response as JSON: ${jsonStr}`);
-  }
 }
 
 function durationToMinutes(value: unknown): number | null {
@@ -278,25 +253,7 @@ function normalizeAiRecipeResult(value: unknown): AiRecipeResult {
  * Extract and parse AI response - handles both string and pre-parsed object
  */
 function parseAiResponse(response: unknown): AiRecipeResult {
-  // Extract the response field if it's an object
-  const aiResponse =
-    typeof response === "string"
-      ? response
-      : ((response as Record<string, unknown>)?.response ??
-        (response as Record<string, unknown>)?.generated_text ??
-        (response as Record<string, unknown>)?.result ??
-        response);
-
-  if (!aiResponse) {
-    throw new Error("Invalid AI response format");
-  }
-
-  // If already an object, return directly
-  if (typeof aiResponse !== "string") {
-    return normalizeAiRecipeResult(aiResponse);
-  }
-
-  return normalizeAiRecipeResult(parseJsonString(aiResponse));
+  return normalizeAiRecipeResult(parseAiJsonPayload(response));
 }
 
 /**
@@ -306,7 +263,7 @@ export async function parseRecipeFromText(
   ai: Env["AI"],
   text: string,
 ): Promise<AiRecipeResult> {
-  const response = await (ai as any).run(TEXT_MODEL, {
+  const response = await runAiModel(ai, TEXT_MODEL, {
     messages: [
       { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: createTextExtractionPrompt(text) },
@@ -324,7 +281,7 @@ export async function parseRecipeFromHtml(
   ai: Env["AI"],
   cleanedHtml: string,
 ): Promise<AiRecipeResult> {
-  const response = await (ai as any).run(TEXT_MODEL, {
+  const response = await runAiModel(ai, TEXT_MODEL, {
     messages: [
       { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: createHtmlExtractionPrompt(cleanedHtml) },
@@ -340,7 +297,7 @@ export async function repairRecipeFromEvidence(
   evidence: string,
   partialRecipe: ParsedRecipe | null,
 ): Promise<AiRecipeResult> {
-  const response = await (ai as any).run(TEXT_MODEL, {
+  const response = await runAiModel(ai, TEXT_MODEL, {
     messages: [
       { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
       {
@@ -374,8 +331,7 @@ export async function parseRecipeFromImage(
     bytes[i] = binaryString.charCodeAt(i);
   }
 
-  // Use type assertion as the model name may not be in the types yet
-  const response = await ai.run(VISION_MODEL, {
+  const response = await runAiModel(ai, VISION_MODEL, {
     messages: [
       { role: "system", content: IMAGE_EXTRACTION_SYSTEM_PROMPT },
       {
@@ -392,11 +348,5 @@ export async function parseRecipeFromImage(
     max_tokens: 4096,
   });
 
-  const responseText = response.response;
-
-  if (!responseText) {
-    throw new Error("Invalid AI response format");
-  }
-
-  return parseAiResponse(responseText);
+  return parseAiResponse(response);
 }

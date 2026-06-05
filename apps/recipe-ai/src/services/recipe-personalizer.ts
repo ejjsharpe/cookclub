@@ -6,6 +6,7 @@ import type {
 
 import type { ParsedRecipe } from "../schema";
 import type { Env } from "../types";
+import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
 
 const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
 
@@ -65,43 +66,8 @@ const PERSONALIZE_RECIPE_SYSTEM_PROMPT = `You are a Recipe Personalisation API. 
   ]
 }`;
 
-function parseJsonResponse(response: string): ParsedRecipe {
-  let jsonStr = response.trim();
-
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
-  }
-
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-
-  jsonStr = jsonStr.trim();
-
-  try {
-    return JSON.parse(jsonStr) as ParsedRecipe;
-  } catch {
-    throw new Error(`Failed to parse AI response as JSON: ${jsonStr}`);
-  }
-}
-
 function parseAiResponse(response: unknown): ParsedRecipe {
-  const aiResponse =
-    typeof response === "string"
-      ? response
-      : (response as Record<string, unknown>)?.response;
-
-  if (!aiResponse) {
-    throw new Error("Invalid AI response format");
-  }
-
-  if (typeof aiResponse !== "string") {
-    return aiResponse as ParsedRecipe;
-  }
-
-  return parseJsonResponse(aiResponse);
+  return parseAiJsonPayload<ParsedRecipe>(response);
 }
 
 function createPersonalizationPrompt(input: PersonalizeRecipeInput): string {
@@ -137,7 +103,7 @@ export async function personalizeRecipe(
   input: PersonalizeRecipeInput,
 ): Promise<ParseResponse> {
   try {
-    const response = await (ai as any).run(TEXT_MODEL, {
+    const response = await runAiModel(ai, TEXT_MODEL, {
       messages: [
         { role: "system", content: PERSONALIZE_RECIPE_SYSTEM_PROMPT },
         { role: "user", content: createPersonalizationPrompt(input) },

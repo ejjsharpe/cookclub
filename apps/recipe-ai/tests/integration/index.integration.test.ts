@@ -2,6 +2,7 @@ import { env, createExecutionContext, SELF } from "cloudflare:test";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import { RecipeAI } from "../../src/index";
+import type { Env } from "../../src/types";
 
 // Valid AI response for mocking (uses section structure)
 const validAiResponse = JSON.stringify({
@@ -82,7 +83,7 @@ function htmlResponse() {
 
 describe("RecipeAI Integration Tests", () => {
   let parser: RecipeAI;
-  let mockEnv: typeof env;
+  let mockEnv: Env;
 
   beforeEach(() => {
     // Create a mock env with AI binding
@@ -91,7 +92,7 @@ describe("RecipeAI Integration Tests", () => {
       AI: {
         run: vi.fn().mockResolvedValue({ response: validAiResponse }),
       },
-    } as unknown as typeof env;
+    } as unknown as Env;
     parser = new RecipeAI(createExecutionContext(), mockEnv);
   });
 

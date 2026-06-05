@@ -152,7 +152,6 @@
       },
       "devDependencies": {
         "@cloudflare/vitest-pool-workers": "0.16.9",
-        "@cloudflare/workers-types": "4.20260525.1",
         "@repo/tsconfig": "workspace:*",
         "typescript": "6.0.3",
         "vitest": "4.1.7",

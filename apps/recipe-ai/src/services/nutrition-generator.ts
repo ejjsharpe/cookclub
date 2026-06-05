@@ -2,7 +2,7 @@ import type { NutritionInput, NutritionResponse } from "@repo/contracts";
 
 import type { Nutrition } from "../schema";
 import type { Env } from "../types";
-import { parseAiJsonResponse } from "../utils/ai-response-parser";
+import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
 import { fetchHtml } from "../utils/html-fetcher";
 import { extractStructuredRecipeCandidates } from "../utils/structured-data";
 
@@ -48,29 +48,6 @@ const NUTRITION_RESPONSE_FORMAT = {
     ],
   },
 } as const;
-
-function parseJsonResponse(response: unknown): Record<string, unknown> {
-  const value =
-    typeof response === "string"
-      ? response
-      : ((response as Record<string, unknown>)?.response ??
-        (response as Record<string, unknown>)?.generated_text ??
-        (response as Record<string, unknown>)?.result ??
-        response);
-
-  if (typeof value !== "string") {
-    return value && typeof value === "object"
-      ? (value as Record<string, unknown>)
-      : {};
-  }
-
-  let json = value.trim();
-  if (json.startsWith("```json")) json = json.slice(7);
-  if (json.startsWith("```")) json = json.slice(3);
-  if (json.endsWith("```")) json = json.slice(0, -3);
-
-  return parseAiJsonResponse<Record<string, unknown>>(json.trim());
-}
 
 function numberOrNull(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -236,9 +213,9 @@ async function runNutritionModel(
     request.response_format = NUTRITION_RESPONSE_FORMAT;
   }
 
-  const response = await (ai as any).run(TEXT_MODEL, request);
+  const response = await runAiModel(ai, TEXT_MODEL, request);
   const nutrition = normalizeNutrition(
-    parseJsonResponse(response),
+    parseAiJsonPayload<Record<string, unknown>>(response),
     "ai_estimated",
   );
   if (!hasNutritionValues(nutrition)) {

@@ -1,13 +1,8 @@
 import type { ImageService } from "@repo/contracts/images";
 
-export interface Env {
-  AI: Ai;
-  BROWSER: Fetcher;
-  RECIPE_CACHE: KVNamespace;
+export type Env = Omit<Cloudflare.Env, "IMAGE_SERVICE"> & {
   IMAGE_SERVICE: ImageService;
-  IMAGE_PUBLIC_URL: string;
-  ENVIRONMENT?: string;
-}
+};
 
 // Re-export service types for convenience
 export type {

@@ -10,6 +10,7 @@ import type {
   RecipeConversationState,
   ChatResponse,
 } from "../types";
+import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
 import {
   RECIPE_CONVERSATION_SYSTEM_PROMPT,
   RECIPE_GENERATION_SYSTEM_PROMPT,
@@ -56,32 +57,6 @@ interface GeneratedRecipeAiResponse {
 }
 
 /**
- * Parse JSON from AI response, handling potential markdown code blocks
- */
-function parseAiJsonResponse<T>(response: string): T {
-  let jsonStr = response.trim();
-
-  // Remove markdown code blocks if present
-  if (jsonStr.startsWith("```json")) {
-    jsonStr = jsonStr.slice(7);
-  } else if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.slice(3);
-  }
-
-  if (jsonStr.endsWith("```")) {
-    jsonStr = jsonStr.slice(0, -3);
-  }
-
-  jsonStr = jsonStr.trim();
-
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    throw new Error(`Failed to parse AI response as JSON: ${jsonStr}`);
-  }
-}
-
-/**
  * Check if all required conversation fields are filled
  */
 function isConversationComplete(state: RecipeConversationState): boolean {
@@ -95,33 +70,10 @@ function isConversationComplete(state: RecipeConversationState): boolean {
 }
 
 /**
- * Extract response from AI - returns string or parsed object
- */
-function extractAiResponse(response: unknown): unknown {
-  if (typeof response === "string") {
-    return response;
-  }
-
-  const r = response as Record<string, unknown>;
-  return r?.response ?? null;
-}
-
-/**
  * Parse AI response - handles both string and pre-parsed object
  */
 function parseResponse<T>(response: unknown): T {
-  const aiResponse = extractAiResponse(response);
-
-  if (!aiResponse) {
-    throw new Error("Empty response from AI");
-  }
-
-  if (typeof aiResponse === "string") {
-    return parseAiJsonResponse<T>(aiResponse);
-  }
-
-  // AI returned parsed JSON directly
-  return aiResponse as T;
+  return parseAiJsonPayload<T>(response, "Empty response from AI");
 }
 
 /**
@@ -132,7 +84,7 @@ async function generateRecipe(
   state: RecipeConversationState,
 ): Promise<ChatResponse> {
   try {
-    const response = await (ai as any).run(TEXT_MODEL, {
+    const response = await runAiModel(ai, TEXT_MODEL, {
       messages: [
         { role: "system", content: RECIPE_GENERATION_SYSTEM_PROMPT },
         { role: "user", content: createRecipeGenerationPrompt(state) },
@@ -235,7 +187,7 @@ export async function processChat(
     }
 
     // Continue the conversation
-    const response = await (ai as any).run(TEXT_MODEL, {
+    const response = await runAiModel(ai, TEXT_MODEL, {
       messages: [
         { role: "system", content: RECIPE_CONVERSATION_SYSTEM_PROMPT },
         { role: "user", content: createConversationPrompt(messages, state) },
