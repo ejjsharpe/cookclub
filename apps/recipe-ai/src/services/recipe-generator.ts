@@ -10,7 +10,11 @@ import type {
   RecipeConversationState,
   ChatResponse,
 } from "../types";
-import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
+import {
+  DEFAULT_MAX_TOKENS,
+  parseAiJsonPayload,
+  runAiModel,
+} from "../utils/ai-response-parser";
 import {
   RECIPE_CONVERSATION_SYSTEM_PROMPT,
   RECIPE_GENERATION_SYSTEM_PROMPT,
@@ -89,7 +93,7 @@ async function generateRecipe(
         { role: "system", content: RECIPE_GENERATION_SYSTEM_PROMPT },
         { role: "user", content: createRecipeGenerationPrompt(state) },
       ],
-      max_tokens: 4096,
+      max_tokens: DEFAULT_MAX_TOKENS,
     });
 
     const generated = parseResponse<GeneratedRecipeAiResponse>(response);
@@ -192,7 +196,7 @@ export async function processChat(
         { role: "system", content: RECIPE_CONVERSATION_SYSTEM_PROMPT },
         { role: "user", content: createConversationPrompt(messages, state) },
       ],
-      max_tokens: 4096,
+      max_tokens: DEFAULT_MAX_TOKENS,
     });
 
     const parsed = parseResponse<ConversationAiResponse>(response);

@@ -1,6 +1,10 @@
 import { ParsedRecipeSchema } from "../schema";
 import type { Env, ParseResult } from "../types";
-import { parseRecipeFromHtml, repairRecipeFromEvidence } from "./ai-client";
+import {
+  parseRecipeFromHtml,
+  repairRecipeFromEvidence,
+  type AiExtractionOptions,
+} from "./ai-client";
 import { deleteCachedRecipe, getCachedRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
 import { parseSocialUrl } from "./social-url-parser";
@@ -42,6 +46,7 @@ export interface ParseUrlOptions {
   structuredOnly?: boolean;
   /** Internal guard: linked-page fallbacks should not recursively parse social URLs. */
   allowSocial?: boolean;
+  aiOptions?: AiExtractionOptions;
 }
 
 function elapsed(startTime: number): number {
@@ -64,7 +69,11 @@ export async function parseUrl(
   url: string,
   options?: ParseUrlOptions,
 ): Promise<ParseResult> {
-  const { structuredOnly = false, allowSocial = true } = options ?? {};
+  const {
+    structuredOnly = false,
+    allowSocial = true,
+    aiOptions,
+  } = options ?? {};
   let sourceSnapshot: Awaited<ReturnType<typeof createSourceSnapshot>>;
   const sourceSnapshotStart = Date.now();
   try {
@@ -130,7 +139,8 @@ export async function parseUrl(
     return parseSocialUrl(env, sourceUrl, socialPlatform, {
       diagnostics: sourceSnapshot.diagnostics,
       parseLinkedRecipeUrl: (linkedUrl) =>
-        parseUrl(env, linkedUrl, { allowSocial: false }),
+        parseUrl(env, linkedUrl, { allowSocial: false, aiOptions }),
+      aiOptions,
     });
   }
 
@@ -448,8 +458,13 @@ export async function parseUrl(
           env.AI,
           cleanedContent + stepImageContext,
           bestPartialRecipe,
+          aiOptions,
         )
-      : await parseRecipeFromHtml(env.AI, cleanedContent + stepImageContext);
+      : await parseRecipeFromHtml(
+          env.AI,
+          cleanedContent + stepImageContext,
+          aiOptions,
+        );
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "url",
       sourceUrl,

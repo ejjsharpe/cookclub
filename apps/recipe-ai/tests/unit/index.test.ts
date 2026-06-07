@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { RecipeAI } from "../../src/index";
 
+const SOCIAL_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+
 const browserFetcherMocks = vi.hoisted(() => ({
   fetchHtmlWithBrowser: vi.fn(),
 }));
@@ -992,7 +994,7 @@ describe("RecipeAI.parse()", () => {
       };
 
       mockEnv.AI.run = vi.fn((model: string) => {
-        expect(model).toBe("@cf/meta/llama-4-scout-17b-16e-instruct");
+        expect(model).toBe(SOCIAL_TEXT_MODEL);
         return Promise.resolve({ response: JSON.stringify(captionAiRecipe) });
       });
 
@@ -1478,7 +1480,7 @@ describe("RecipeAI.parse()", () => {
       const recipeExtractionRequests: Record<string, unknown>[] = [];
       mockEnv.AI.run = vi.fn(
         (model: string, request: Record<string, unknown>) => {
-          if (model === "@cf/meta/llama-4-scout-17b-16e-instruct") {
+          if (model === SOCIAL_TEXT_MODEL) {
             recipeExtractionRequests.push(request);
           }
 

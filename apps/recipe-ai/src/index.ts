@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
+import type { AiExtractionOptions } from "./services/ai-client";
 import { rehostParsedRecipeImagesForResponse } from "./services/hosted-images";
 import { parseImage } from "./services/image-parser";
 import { generateNutrition } from "./services/nutrition-generator";
@@ -54,6 +55,7 @@ function parseInputSource(input: ParseInput): "url" | "text" | "image" {
 async function parseWithEnv(
   env: Env,
   input: ParseInput,
+  options?: { skipImageRehost?: boolean; aiOptions?: AiExtractionOptions },
 ): Promise<ParseResponse> {
   const parseStart = Date.now();
   try {
@@ -63,11 +65,12 @@ async function parseWithEnv(
       case "url":
         result = await parseUrl(env, input.data, {
           structuredOnly: input.structuredOnly,
+          aiOptions: options?.aiOptions,
         });
         break;
 
       case "text":
-        result = await parseText(env, input.data);
+        result = await parseText(env, input.data, options?.aiOptions);
         break;
 
       case "image":
@@ -89,7 +92,9 @@ async function parseWithEnv(
     }
 
     return finalizeParseDiagnostics(
-      await rehostParsedRecipeImagesForResponse(env, result),
+      options?.skipImageRehost
+        ? result
+        : await rehostParsedRecipeImagesForResponse(env, result),
       parseInputSource(input),
       parseStart,
     );
@@ -197,7 +202,32 @@ export default {
     ) {
       try {
         const input = (await request.json()) as ParseInput;
-        return Response.json(await parseWithEnv(env, input));
+        const textModel =
+          request.headers.get("x-recipe-ai-model") ??
+          url.searchParams.get("model");
+        const skipImageRehost =
+          request.headers.get("x-recipe-ai-skip-image-rehost") === "true" ||
+          url.searchParams.get("skipImageRehost") === "true";
+        const promptVariant =
+          request.headers.get("x-recipe-ai-prompt-variant") ??
+          url.searchParams.get("promptVariant");
+        const maxTokensHeader =
+          request.headers.get("x-recipe-ai-max-tokens") ??
+          url.searchParams.get("maxTokens");
+        const maxTokens = maxTokensHeader ? Number(maxTokensHeader) : null;
+        const aiOptions: AiExtractionOptions | undefined =
+          textModel || promptVariant || maxTokens
+            ? {
+                ...(textModel ? { textModel } : {}),
+                ...(promptVariant ? { promptVariant } : {}),
+                ...(maxTokens && Number.isFinite(maxTokens)
+                  ? { maxTokens }
+                  : {}),
+              }
+            : undefined;
+        return Response.json(
+          await parseWithEnv(env, input, { skipImageRehost, aiOptions }),
+        );
       } catch (error) {
         return Response.json(
           {

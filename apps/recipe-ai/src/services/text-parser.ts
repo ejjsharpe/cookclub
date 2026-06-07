@@ -1,5 +1,5 @@
 import type { Env, ParseResult } from "../types";
-import { parseRecipeFromText } from "./ai-client";
+import { parseRecipeFromText, type AiExtractionOptions } from "./ai-client";
 import { aiResultToRecipe } from "./recipe-mapper";
 import { acceptedCandidate } from "./url-parse-utils";
 import {
@@ -11,7 +11,11 @@ import { extractRecipeOutline } from "../utils/recipe-outline-parser";
 /**
  * Parse a recipe from free-form text
  */
-export async function parseText(env: Env, text: string): Promise<ParseResult> {
+export async function parseText(
+  env: Env,
+  text: string,
+  aiOptions?: AiExtractionOptions,
+): Promise<ParseResult> {
   let diagnostics = {};
 
   // Validate input
@@ -83,7 +87,11 @@ export async function parseText(env: Env, text: string): Promise<ParseResult> {
     if (outlineResult) return outlineResult;
 
     const aiStart = Date.now();
-    const aiResult = await parseRecipeFromText(env.AI, text.trim());
+    const aiResult = await parseRecipeFromText(
+      env.AI,
+      text.trim(),
+      aiOptions,
+    );
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "text",
       sourceUrl: null,

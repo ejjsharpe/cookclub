@@ -1,6 +1,10 @@
 import type { ParsedRecipe } from "../schema";
 import type { Env } from "../types";
-import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
+import {
+  DEFAULT_MAX_TOKENS,
+  parseAiJsonPayload,
+  runAiModel,
+} from "../utils/ai-response-parser";
 import {
   RECIPE_EXTRACTION_SYSTEM_PROMPT,
   IMAGE_EXTRACTION_SYSTEM_PROMPT,
@@ -11,8 +15,76 @@ import {
 } from "../utils/prompts";
 
 // Cloudflare Workers AI models
-const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
+export const DEFAULT_TEXT_MODEL =
+  "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct" as const;
+
+export interface AiExtractionOptions {
+  textModel?: string;
+  promptVariant?: string;
+  maxTokens?: number;
+}
+
+const COMPACT_SOCIAL_EXTRACTION_PROMPT = `You are a strict JSON recipe extraction API. Return only valid JSON, with no markdown or commentary.
+
+Extract only recipe facts supported by the source. Ignore ads, comments, hashtags that are not recipe content, biography text, and unrelated links.
+
+Output shape:
+{
+  "name": "Recipe Name",
+  "description": "Brief description or null",
+  "prepTime": 15,
+  "cookTime": 30,
+  "totalTime": 45,
+  "servings": 4,
+  "ingredientSections": [
+    {
+      "name": null,
+      "ingredients": [
+        {"index": 0, "quantity": 2, "unit": "cup", "name": "flour", "preparation": null}
+      ]
+    }
+  ],
+  "instructionSections": [
+    {
+      "name": null,
+      "instructions": [
+        {"index": 0, "instruction": "Mix the supported ingredients together.", "imageUrl": null}
+      ]
+    }
+  ],
+  "suggestedTags": [
+    {"type": "meal_type", "name": "dinner"}
+  ]
+}
+
+Rules:
+- Use numbers for minute durations and servings when stated; otherwise use null.
+- Convert ingredient fractions to numbers.
+- Split ingredient quantity, unit, name, and preparation.
+- Preserve ingredient and instruction sections when the source groups them.
+- Social captions/transcripts can contain terse method fragments. Extract supported cooking/prep actions into ordered steps.
+- Do not invent missing quantities, temperatures, timings, or techniques.
+- If ingredients are present but there is no actionable method evidence, return "instructionSections": [].
+- For missing optional string fields use null; for missing arrays use [].`;
+
+function extractionSystemPrompt(promptVariant?: string): string {
+  if (promptVariant === "compact_social") {
+    return COMPACT_SOCIAL_EXTRACTION_PROMPT;
+  }
+
+  return RECIPE_EXTRACTION_SYSTEM_PROMPT;
+}
+
+function recipeExtractionRequest(
+  messages: { role: string; content: unknown }[],
+  maxTokens?: number,
+) {
+  return {
+    messages,
+    max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
+  };
+}
 
 export interface AiIngredient {
   index: number;
@@ -262,14 +334,22 @@ function parseAiResponse(response: unknown): AiRecipeResult {
 export async function parseRecipeFromText(
   ai: Env["AI"],
   text: string,
+  options: AiExtractionOptions = {},
 ): Promise<AiRecipeResult> {
-  const response = await runAiModel(ai, TEXT_MODEL, {
-    messages: [
-      { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
-      { role: "user", content: createTextExtractionPrompt(text) },
-    ],
-    max_tokens: 4096,
-  });
+  const response = await runAiModel(
+    ai,
+    options.textModel ?? DEFAULT_TEXT_MODEL,
+    recipeExtractionRequest(
+      [
+        {
+          role: "system",
+          content: extractionSystemPrompt(options.promptVariant),
+        },
+        { role: "user", content: createTextExtractionPrompt(text) },
+      ],
+      options.maxTokens,
+    ),
+  );
 
   return parseAiResponse(response);
 }
@@ -280,38 +360,57 @@ export async function parseRecipeFromText(
 export async function parseRecipeFromHtml(
   ai: Env["AI"],
   cleanedHtml: string,
+  options: AiExtractionOptions = {},
 ): Promise<AiRecipeResult> {
-  const response = await runAiModel(ai, TEXT_MODEL, {
-    messages: [
-      { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
-      { role: "user", content: createHtmlExtractionPrompt(cleanedHtml) },
-    ],
-    max_tokens: 4096,
-  });
+  const response = await runAiModel(
+    ai,
+    options.textModel ?? DEFAULT_TEXT_MODEL,
+    recipeExtractionRequest(
+      [
+        {
+          role: "system",
+          content: extractionSystemPrompt(options.promptVariant),
+        },
+        { role: "user", content: createHtmlExtractionPrompt(cleanedHtml) },
+      ],
+      options.maxTokens,
+    ),
+  );
 
   return parseAiResponse(response);
 }
 
+/**
+ * Repair a partial recipe using AI
+ */
 export async function repairRecipeFromEvidence(
   ai: Env["AI"],
   evidence: string,
   partialRecipe: ParsedRecipe | null,
+  options: AiExtractionOptions = {},
 ): Promise<AiRecipeResult> {
-  const response = await runAiModel(ai, TEXT_MODEL, {
-    messages: [
-      { role: "system", content: RECIPE_EXTRACTION_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: createRepairExtractionPrompt({
-          evidence,
-          partialRecipeJson: partialRecipe
-            ? JSON.stringify(partialRecipe).slice(0, 8_000)
-            : null,
-        }),
-      },
-    ],
-    max_tokens: 4096,
-  });
+  const response = await runAiModel(
+    ai,
+    options.textModel ?? DEFAULT_TEXT_MODEL,
+    recipeExtractionRequest(
+      [
+        {
+          role: "system",
+          content: extractionSystemPrompt(options.promptVariant),
+        },
+        {
+          role: "user",
+          content: createRepairExtractionPrompt({
+            evidence,
+            partialRecipeJson: partialRecipe
+              ? JSON.stringify(partialRecipe).slice(0, 8_000)
+              : null,
+          }),
+        },
+      ],
+      options.maxTokens,
+    ),
+  );
 
   return parseAiResponse(response);
 }
@@ -345,7 +444,7 @@ export async function parseRecipeFromImage(
         ],
       },
     ],
-    max_tokens: 4096,
+    max_tokens: DEFAULT_MAX_TOKENS,
   });
 
   return parseAiResponse(response);

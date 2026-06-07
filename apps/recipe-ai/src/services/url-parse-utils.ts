@@ -1,7 +1,7 @@
 import type { ParsedRecipe } from "../schema";
 import { ParsedRecipeSchema } from "../schema";
 import type { Env, ParseMetadata, ParseResult } from "../types";
-import { parseRecipeFromHtml } from "./ai-client";
+import { parseRecipeFromHtml, type AiExtractionOptions } from "./ai-client";
 import { cacheRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
 import {
@@ -19,6 +19,10 @@ interface CandidateOptions {
   metadataSource?: ParseMetadata["source"];
   canonicalUrl?: string;
   diagnostics?: ParseMetadata["diagnostics"];
+}
+
+interface AiCandidateOptions extends AiExtractionOptions {
+  cache?: boolean;
 }
 
 export interface RecipeCandidate {
@@ -326,7 +330,7 @@ export async function tryAiRecipeCandidate(
   source: RecipeQualitySource,
   parseMethod: UrlParseMethod,
   logPrefix: string,
-  options: Pick<CandidateOptions, "cache"> = {},
+  options: AiCandidateOptions = {},
 ): Promise<AiRecipeAttempt> {
   if (!content || content.trim().length < 50) {
     return { result: null, error: null };
@@ -334,7 +338,11 @@ export async function tryAiRecipeCandidate(
 
   const startTime = Date.now();
   try {
-    const aiResult = await parseRecipeFromHtml(env.AI, content);
+    const aiResult = await parseRecipeFromHtml(
+      env.AI,
+      content,
+      options,
+    );
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "url",
       sourceUrl: url,

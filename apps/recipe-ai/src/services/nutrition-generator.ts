@@ -2,7 +2,11 @@ import type { NutritionInput, NutritionResponse } from "@repo/contracts";
 
 import type { Nutrition } from "../schema";
 import type { Env } from "../types";
-import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
+import {
+  DEFAULT_MAX_TOKENS,
+  parseAiJsonPayload,
+  runAiModel,
+} from "../utils/ai-response-parser";
 import { fetchHtml } from "../utils/html-fetcher";
 import { extractStructuredRecipeCandidates } from "../utils/structured-data";
 
@@ -205,7 +209,7 @@ async function runNutritionModel(
       },
       { role: "user", content: recipeToNutritionPrompt(recipe) },
     ],
-    max_tokens: 1024,
+    max_tokens: DEFAULT_MAX_TOKENS,
     temperature: 0.1,
   };
 

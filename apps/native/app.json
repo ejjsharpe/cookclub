@@ -58,7 +58,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow cookclub to access your photos so you upload add images to your recipes and profile."
+          "photosPermission": "Allow cookclub to access your photos so you can add images to your recipes and profile."
         }
       ],
       "expo-notifications"

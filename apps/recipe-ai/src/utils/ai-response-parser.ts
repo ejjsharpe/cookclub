@@ -1,3 +1,5 @@
+export const DEFAULT_MAX_TOKENS = 8192;
+
 export function extractAiResponsePayload(response: unknown): unknown {
   if (typeof response === "string") return response;
   if (!response || typeof response !== "object") return response;

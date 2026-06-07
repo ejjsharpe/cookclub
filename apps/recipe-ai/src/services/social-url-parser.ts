@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 
 import type { Env, ParseMetadata, ParseResult } from "../types";
+import type { AiExtractionOptions } from "./ai-client";
 import { tryAiRecipeCandidate } from "./url-parse-utils";
 import {
   cleanHtml,
@@ -45,9 +46,14 @@ const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
   reddit: ["reddit.com"],
 };
 
+const SOCIAL_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const SOCIAL_PROMPT_VARIANT = "compact_social";
+const SOCIAL_MAX_TOKENS = 8192;
+
 interface SocialParseOptions {
   diagnostics?: ParseMetadata["diagnostics"];
   parseLinkedRecipeUrl?: (url: string) => Promise<ParseResult>;
+  aiOptions?: AiExtractionOptions;
 }
 
 interface LinkedRecipeAttempt {
@@ -266,6 +272,7 @@ async function parseSocialAi(
     diagnostics: ParseMetadata["diagnostics"];
     noContentMessage: string;
     aiErrorCode: string;
+    aiOptions?: AiExtractionOptions;
   },
 ): Promise<ParseResult> {
   const aiStart = Date.now();
@@ -293,7 +300,13 @@ async function parseSocialAi(
     "social_ai",
     options.parseMethod,
     `[${options.platform}]`,
-    { cache: false },
+    {
+      cache: false,
+      textModel: SOCIAL_TEXT_MODEL,
+      promptVariant: SOCIAL_PROMPT_VARIANT,
+      maxTokens: SOCIAL_MAX_TOKENS,
+      ...options.aiOptions,
+    },
   );
 
   const diagnostics = recordDiagnosticsStage(
@@ -371,6 +384,7 @@ async function parseInstagramUrl(
     noContentMessage:
       "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
     aiErrorCode: "INSTAGRAM_PARSE_FAILED",
+    aiOptions: options?.aiOptions,
   });
 }
 
@@ -427,6 +441,7 @@ async function parseTikTokUrl(
     noContentMessage:
       "Could not extract recipe content from TikTok. The video may not contain a recipe or the description may be too short.",
     aiErrorCode: "TIKTOK_PARSE_FAILED",
+    aiOptions: options?.aiOptions,
   });
 }
 
@@ -480,6 +495,7 @@ async function parseGenericSocialUrl(
     diagnostics,
     noContentMessage: "Could not extract recipe content from this social link.",
     aiErrorCode: "AI_PARSE_FAILED",
+    aiOptions: options?.aiOptions,
   });
 }
 

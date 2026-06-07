@@ -6,7 +6,11 @@ import type {
 
 import type { ParsedRecipe } from "../schema";
 import type { Env } from "../types";
-import { parseAiJsonPayload, runAiModel } from "../utils/ai-response-parser";
+import {
+  DEFAULT_MAX_TOKENS,
+  parseAiJsonPayload,
+  runAiModel,
+} from "../utils/ai-response-parser";
 
 const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
 
@@ -108,7 +112,7 @@ export async function personalizeRecipe(
         { role: "system", content: PERSONALIZE_RECIPE_SYSTEM_PROMPT },
         { role: "user", content: createPersonalizationPrompt(input) },
       ],
-      max_tokens: 4096,
+      max_tokens: DEFAULT_MAX_TOKENS,
     });
 
     const recipe = withPreservedMetadata(
