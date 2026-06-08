@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 
 import type { Env, ParseMetadata, ParseResult } from "../types";
-import type { AiExtractionOptions } from "./ai-client";
+import { DEFAULT_TEXT_MODEL, type AiExtractionOptions } from "./ai-client";
 import { tryAiRecipeCandidate } from "./url-parse-utils";
 import {
   cleanHtml,
@@ -69,6 +69,21 @@ interface SocialParseOptions {
 interface LinkedRecipeAttempt {
   result: ParseResult | null;
   diagnostics: ParseMetadata["diagnostics"];
+}
+
+function isAiJsonParseError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /Failed to parse AI response as JSON/i.test(error.message)
+  );
+}
+
+function shouldRetrySocialAiWithScout(
+  error: unknown,
+  aiOptions?: AiExtractionOptions,
+): boolean {
+  const initialModel = aiOptions?.textModel ?? SOCIAL_TEXT_MODEL;
+  return isAiJsonParseError(error) && initialModel === SOCIAL_TEXT_MODEL;
 }
 
 function hostnameMatches(hostname: string, domain: string): boolean {
@@ -319,7 +334,7 @@ async function parseSocialAi(
     },
   );
 
-  const diagnostics = recordDiagnosticsStage(
+  let diagnostics = recordDiagnosticsStage(
     appendFallbackPath(options.diagnostics, "ai"),
     "ai",
     aiStart,
@@ -336,6 +351,54 @@ async function parseSocialAi(
       ...diagnostics,
       selectedAttempt: options.parseMethod,
     });
+  }
+
+  if (shouldRetrySocialAiWithScout(aiAttempt.error, options.aiOptions)) {
+    const retryStart = Date.now();
+    const retryAttempt = await tryAiRecipeCandidate(
+      env,
+      options.url,
+      options.content,
+      options.images,
+      "social_ai",
+      options.parseMethod,
+      `[${options.platform}:scout_retry]`,
+      {
+        cache: false,
+        textModel: DEFAULT_TEXT_MODEL,
+        promptVariant: SOCIAL_PROMPT_VARIANT,
+        maxTokens: SOCIAL_MAX_TOKENS,
+        ...options.aiOptions,
+      },
+    );
+
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "ai_retry"),
+      "ai_retry",
+      retryStart,
+      retryAttempt.error
+        ? "error"
+        : retryAttempt.result?.success
+          ? "success"
+          : "skipped",
+      DEFAULT_TEXT_MODEL,
+    );
+
+    if (retryAttempt.result?.success) {
+      return socialResultWithDiagnostics(retryAttempt.result, options.url, {
+        ...diagnostics,
+        selectedAttempt: `${options.parseMethod}_retry`,
+      });
+    }
+
+    return failSocialParse(
+      options.url,
+      diagnostics,
+      retryAttempt.error ? options.aiErrorCode : "VALIDATION_FAILED",
+      retryAttempt.error instanceof Error
+        ? retryAttempt.error.message
+        : `Could not parse a valid recipe from this ${options.platform} content`,
+    );
   }
 
   return failSocialParse(

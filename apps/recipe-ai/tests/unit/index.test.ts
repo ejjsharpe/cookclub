@@ -1102,6 +1102,98 @@ describe("RecipeAI.parse()", () => {
       expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
     });
 
+    it("retries any social AI import with Scout when the compact model returns malformed JSON", async () => {
+      const instagramCaption =
+        "Sheet pan chicken kefta Ingredients: 1.5 lb ground chicken 2 tbsp tomato paste. Directions: spread on a sheet pan and bake.";
+
+      mockEnv.AI.run = vi
+        .fn()
+        .mockResolvedValueOnce({
+          response:
+            '{ "name": "Sheet Pan Chicken Kefta", "ingredientSections": [{ "name": null, "ingredients": [{ "index": 0, "quantity": 1.5, "unit": "lb", "name": "ground chicken", "pr',
+        })
+        .mockResolvedValueOnce({
+          response: JSON.stringify({
+            name: "Sheet Pan Chicken Kefta",
+            description: null,
+            prepTime: null,
+            cookTime: 20,
+            totalTime: null,
+            servings: 4,
+            ingredientSections: [
+              {
+                name: null,
+                ingredients: [
+                  {
+                    index: 0,
+                    quantity: 1.5,
+                    unit: "lb",
+                    name: "ground chicken",
+                  },
+                  {
+                    index: 1,
+                    quantity: 2,
+                    unit: "tbsp",
+                    name: "tomato paste",
+                  },
+                ],
+              },
+            ],
+            instructionSections: [
+              {
+                name: null,
+                instructions: [
+                  {
+                    index: 0,
+                    instruction:
+                      "Spread the chicken mixture on a sheet pan and bake.",
+                  },
+                ],
+              },
+            ],
+            suggestedTags: ["dinner"],
+          }),
+        });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () =>
+          Promise.resolve({
+            title: instagramCaption,
+            thumbnail_url: "https://example.com/instagram.jpg",
+          }),
+      });
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/MALFORMED123/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Sheet Pan Chicken Kefta");
+        expect(
+          result.metadata.diagnostics?.stageTimings?.map((stage) => [
+            stage.name,
+            stage.status,
+          ]),
+        ).toEqual(
+          expect.arrayContaining([
+            ["ai", "error"],
+            ["ai_retry", "success"],
+          ]),
+        );
+      }
+
+      expect(mockEnv.AI.run).toHaveBeenCalledTimes(2);
+      expect(mockEnv.AI.run.mock.calls[0]?.[0]).toBe(SOCIAL_TEXT_MODEL);
+      expect(mockEnv.AI.run.mock.calls[1]?.[0]).toBe(
+        "@cf/meta/llama-4-scout-17b-16e-instruct",
+      );
+    });
+
     it("imports a linked recipe page when an Instagram caption only contains the recipe URL", async () => {
       const linkedRecipeUrl = "https://recipe.example.com/tomato-pasta";
       const linkedRecipeHtml = `
@@ -1306,6 +1398,154 @@ describe("RecipeAI.parse()", () => {
           ]),
         );
       }
+    });
+
+    it("retries YouTube social AI with Scout when the compact model returns malformed JSON", async () => {
+      mockEnv.AI.run = vi
+        .fn()
+        .mockResolvedValueOnce({
+          response:
+            '{ "name": "Sheet Pan Chicken Kefta", "ingredientSections": [{ "name": "Chicken Kefta", "ingredients": [{ "index": 0, "quantity": 1.5, "unit": "lb", "name": "ground chicken", "pr',
+        })
+        .mockResolvedValueOnce({
+          response: JSON.stringify({
+            name: "Sheet Pan Chicken Kefta",
+            description: null,
+            prepTime: null,
+            cookTime: 20,
+            totalTime: null,
+            servings: 4,
+            ingredientSections: [
+              {
+                name: "Chicken Kefta",
+                ingredients: [
+                  {
+                    index: 0,
+                    quantity: 1.5,
+                    unit: "lb",
+                    name: "ground chicken",
+                  },
+                  {
+                    index: 1,
+                    quantity: 2,
+                    unit: "tbsp",
+                    name: "tomato paste",
+                  },
+                ],
+              },
+            ],
+            instructionSections: [
+              {
+                name: null,
+                instructions: [
+                  {
+                    index: 0,
+                    instruction:
+                      "Spread the chicken mixture on a sheet pan and bake.",
+                  },
+                ],
+              },
+            ],
+            suggestedTags: ["dinner"],
+          }),
+        });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "uWoB0_3wSrY",
+                    snippet: {
+                      title:
+                        "Sheet Pan Chicken Kefta (Full recipe pinned in the comment section)",
+                      description: "",
+                      channelTitle: "Ben Chelin",
+                      channelId: "channel-1",
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    snippet: {
+                      topLevelComment: {
+                        snippet: {
+                          textOriginal:
+                            "For the Chicken Kefta: 1.5 lb ground chicken, 2 tbsp tomato paste. Instructions: spread on a sheet pan and bake until cooked through.",
+                          authorDisplayName: "Ben Chelin",
+                          authorChannelId: { value: "channel-1" },
+                          likeCount: 100,
+                        },
+                      },
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              "<script>var ytInitialPlayerResponse = {};</script>",
+            ),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://youtube.com/shorts/uWoB0_3wSrY?si=test",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Sheet Pan Chicken Kefta");
+        expect(result.metadata.parseMethod).toBe("ai_only");
+        expect(
+          result.metadata.diagnostics?.stageTimings?.map((stage) => [
+            stage.name,
+            stage.status,
+          ]),
+        ).toEqual(
+          expect.arrayContaining([
+            ["ai", "error"],
+            ["ai_retry", "success"],
+          ]),
+        );
+      }
+
+      expect(mockEnv.AI.run).toHaveBeenCalledTimes(2);
+      expect(mockEnv.AI.run.mock.calls[0]?.[0]).toBe(SOCIAL_TEXT_MODEL);
+      expect(mockEnv.AI.run.mock.calls[1]?.[0]).toBe(
+        "@cf/meta/llama-4-scout-17b-16e-instruct",
+      );
     });
 
     it("rehosts YouTube social images through the shared generated-image path", async () => {
