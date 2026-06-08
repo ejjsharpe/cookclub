@@ -108,7 +108,10 @@ export function transformParsedRecipeForPreview(
     isInShoppingList: false,
     originalOwner: null,
     userReviewRating: null,
-    tags: [],
+    tags: (data.suggestedTags ?? []).map((name, index) => ({
+      id: -(index + 1),
+      name,
+    })),
     nutrition: data.nutrition ? { ...data.nutrition, generatedAt: null } : null,
   };
 }
@@ -197,6 +200,7 @@ export function transformParsedRecipeForSave(parsedRecipe: ParsedRecipe) {
       | "image"
       | "ai"
       | "manual",
+    tagNames: data.suggestedTags ?? [],
     nutrition: data.nutrition ?? undefined,
   };
 }

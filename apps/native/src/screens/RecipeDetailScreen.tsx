@@ -187,7 +187,7 @@ interface RecipeDraft {
   servings: number;
   sourceUrl?: string;
   sourceType: SourceType;
-  tagIds: number[];
+  tagNames: string[];
   nutrition?: Recipe["nutrition"];
   images: DraftImage[];
   ingredientSections: DraftIngredientSection[];
@@ -236,7 +236,7 @@ function draftFromRecipe(recipe: RecipeLike): RecipeDraft {
     servings: recipe.servings ?? 4,
     sourceUrl: recipe.sourceUrl ?? undefined,
     sourceType: (recipe.sourceType ?? "manual") as SourceType,
-    tagIds: (recipe.tags ?? []).map((tag) => tag.id),
+    tagNames: (recipe.tags ?? []).map((tag) => tag.name),
     nutrition: recipe.nutrition ?? undefined,
     images: (recipe.images ?? []).map((image, index) => ({
       id: `remote-${image.id ?? index}`,
@@ -314,7 +314,7 @@ function createBlankDraft(): RecipeDraft {
     totalTime: null,
     servings: 4,
     sourceType: "manual",
-    tagIds: [],
+    tagNames: [],
     images: [],
     ingredientSections: [
       {
@@ -383,7 +383,7 @@ function draftToMutationInput(draft: RecipeDraft) {
     cookTime: draft.cookTime ?? undefined,
     totalTime: draft.totalTime ?? undefined,
     servings: Math.max(1, draft.servings),
-    tagIds: draft.tagIds,
+    tagNames: draft.tagNames,
     ingredientSections: draft.ingredientSections
       .map((section) => ({
         name: section.name.trim() || null,
@@ -1221,13 +1221,11 @@ export const RecipeDetailScreen = () => {
     [updateDraft],
   );
 
-  const toggleDraftTag = useCallback(
-    (tagId: number) => {
+  const updateDraftTags = useCallback(
+    (tagNames: string[]) => {
       updateDraft((current) => ({
         ...current,
-        tagIds: current.tagIds.includes(tagId)
-          ? current.tagIds.filter((id) => id !== tagId)
-          : [...current.tagIds, tagId],
+        tagNames,
       }));
     },
     [updateDraft],
@@ -2342,8 +2340,8 @@ export const RecipeDetailScreen = () => {
           <Text style={styles.tagEditorTitle}>Tags</Text>
         </View>
         <AutocompleteTagSelector
-          selectedIds={draft.tagIds}
-          onToggle={toggleDraftTag}
+          selectedNames={draft.tagNames}
+          onChange={updateDraftTags}
           placeholder="Search tags"
         />
       </Animated.View>

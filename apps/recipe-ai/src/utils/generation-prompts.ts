@@ -94,8 +94,8 @@ Think like a real chef - pick 2-4 KEY ingredients that work well together and bu
     {"text": "Step 2 description", "imageUrl": null}
   ],
   "suggestedTags": [
-    {"type": "cuisine", "name": "Italian"},
-    {"type": "meal_type", "name": "dinner"}
+    "Italian",
+    "dinner"
   ]
 }
 
@@ -106,7 +106,7 @@ Think like a real chef - pick 2-4 KEY ingredients that work well together and bu
 - Quality over quantity - fewer well-chosen ingredients beat more random ones
 - The recipe should sound appetizing and be something people actually cook
 - Instructions should be clear and actionable
-- Include 2-3 relevant tags for categorization`;
+- Include 2-3 relevant freeform tag labels for categorization`;
 
 export function createConversationPrompt(
   messages: ChatMessage[],

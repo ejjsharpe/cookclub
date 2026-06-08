@@ -65,8 +65,8 @@ const PERSONALIZE_RECIPE_SYSTEM_PROMPT = `You are a Recipe Personalisation API. 
     }
   ],
   "suggestedTags": [
-    {"type": "cuisine", "name": "Italian"},
-    {"type": "meal_type", "name": "dinner"}
+    "Italian",
+    "dinner"
   ]
 }`;
 

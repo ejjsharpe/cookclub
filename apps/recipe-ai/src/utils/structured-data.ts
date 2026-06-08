@@ -1153,11 +1153,19 @@ function extractInstructionSections(
  */
 function generateTags(raw: Partial<SchemaOrgRecipe>): Tag[] {
   const tags: Tag[] = [];
+  const seen = new Set<string>();
+  const addTag = (name: string) => {
+    const normalizedName = name.trim();
+    const key = normalizedName.toLocaleLowerCase();
+    if (!normalizedName || seen.has(key)) return;
+    seen.add(key);
+    tags.push(normalizedName);
+  };
 
   // Add cuisine tags
   const cuisines = normalizeStrings(raw.recipeCuisine);
   for (const cuisine of cuisines.slice(0, 2)) {
-    tags.push({ type: "cuisine", name: cuisine });
+    addTag(cuisine);
   }
 
   // Add meal type from categories
@@ -1175,7 +1183,7 @@ function generateTags(raw: Partial<SchemaOrgRecipe>): Tag[] {
   for (const cat of categories) {
     const lower = cat.toLowerCase();
     if (mealTypes.some((mt) => lower.includes(mt))) {
-      tags.push({ type: "meal_type", name: cat });
+      addTag(cat);
       break;
     }
   }

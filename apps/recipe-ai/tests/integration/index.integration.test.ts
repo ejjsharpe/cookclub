@@ -37,7 +37,7 @@ const validAiResponse = JSON.stringify({
       ],
     },
   ],
-  suggestedTags: [{ type: "cuisine", name: "American" }],
+  suggestedTags: ["American"],
 });
 
 // Sample HTML page (AI will parse this)
@@ -98,10 +98,7 @@ describe("RecipeAI Integration Tests", () => {
 
   describe("URL parsing", () => {
     beforeEach(() => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue(htmlResponse()),
-      );
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(htmlResponse()));
     });
 
     it("parses visible recipe HTML without AI", async () => {
@@ -148,10 +145,7 @@ describe("RecipeAI Integration Tests", () => {
 
   describe("KV caching", () => {
     beforeEach(() => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue(htmlResponse()),
-      );
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(htmlResponse()));
     });
 
     it("caches parsed recipes in KV", async () => {

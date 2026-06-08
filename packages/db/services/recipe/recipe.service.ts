@@ -1,3 +1,8 @@
+import type { PublicImageAsset } from "@repo/contracts/images";
+import { normalizeUnit, parseIngredient } from "@repo/shared";
+import { eq, and, inArray, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+
 import {
   recipes,
   recipeImages,
@@ -15,11 +20,6 @@ import {
   tags,
   user,
 } from "../../schemas";
-import type { PublicImageAsset } from "@repo/contracts/images";
-import { eq, and, inArray, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
-import { normalizeUnit, parseIngredient } from "@repo/shared";
-
 import { getOrCreateDefaultCollections } from "../collection/collection.service";
 import { ServiceError } from "../errors";
 import type { DbClient, TransactionClient } from "../types";
@@ -90,7 +90,7 @@ export interface CreateRecipeInput {
   images?: CreateRecipeImage[];
   sourceUrl?: string;
   sourceType?: SourceType;
-  tagIds?: number[];
+  tagNames?: string[];
   description?: string;
   prepTime?: number; // minutes
   cookTime?: number; // minutes
@@ -141,7 +141,7 @@ export type RecipeWithDetails = Omit<typeof recipes.$inferSelect, "ownerId"> & {
   originalOwner: Pick<typeof user.$inferSelect, "id" | "name" | "image"> | null;
   // User's review rating (1-5) if they've reviewed this recipe, null otherwise
   userReviewRating: number | null;
-  tags: { id: number; name: string; type: string }[];
+  tags: { id: number; name: string }[];
   nutrition: (CreateRecipeNutrition & { generatedAt: Date | null }) | null;
 };
 
@@ -407,47 +407,125 @@ async function insertInstructionSectionsForRecipe(
   return insertedInstructionSections;
 }
 
-// ─── Tag Validation ────────────────────────────────────────────────────────
+// ─── Tags ──────────────────────────────────────────────────────────────────
 
-export async function validateTagIds(
-  db: DbClient,
-  tagIds: number[] | undefined,
-): Promise<void> {
-  if (!tagIds || tagIds.length === 0) return;
+const MAX_RECIPE_TAGS = 20;
+const MAX_TAG_NAME_LENGTH = 40;
 
-  const uniqueTagIds = [...new Set(tagIds)];
-  const existingTags = await db
-    .select({ id: tags.id })
-    .from(tags)
-    .where(inArray(tags.id, uniqueTagIds));
-  const existingTagIds = new Set(existingTags.map((tag) => tag.id));
-  const invalidTagIds = uniqueTagIds.filter(
-    (tagId) => !existingTagIds.has(tagId),
-  );
+function normalizeTagDisplayName(tagName: string): string {
+  return tagName.trim().replace(/^#+/, "").replace(/\s+/g, " ").trim();
+}
 
-  if (invalidTagIds.length > 0) {
+function normalizeTagKey(tagName: string): string {
+  return normalizeTagDisplayName(tagName).toLocaleLowerCase();
+}
+
+export function normalizeRecipeTagNames(
+  tagNames: string[] | undefined,
+): string[] {
+  if (!tagNames || tagNames.length === 0) return [];
+
+  const normalizedTagNames: string[] = [];
+  const seen = new Set<string>();
+
+  for (const tagName of tagNames) {
+    const displayName = normalizeTagDisplayName(tagName);
+
+    if (!displayName) {
+      throw new ServiceError("BAD_REQUEST", "Tag names cannot be empty.");
+    }
+
+    if (displayName.length > MAX_TAG_NAME_LENGTH) {
+      throw new ServiceError(
+        "BAD_REQUEST",
+        `Tag names must be ${MAX_TAG_NAME_LENGTH} characters or fewer.`,
+      );
+    }
+
+    const key = normalizeTagKey(displayName);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalizedTagNames.push(displayName);
+  }
+
+  if (normalizedTagNames.length > MAX_RECIPE_TAGS) {
     throw new ServiceError(
       "BAD_REQUEST",
-      `Invalid tag IDs: ${invalidTagIds.join(", ")}.`,
+      `Recipes can have at most ${MAX_RECIPE_TAGS} tags.`,
     );
   }
+
+  return normalizedTagNames;
+}
+
+async function getOrCreateUserTags(
+  tx: TransactionClient,
+  userId: string,
+  tagNames: string[] | undefined,
+): Promise<{ id: number; name: string }[]> {
+  const normalizedTagNames = normalizeRecipeTagNames(tagNames);
+  if (normalizedTagNames.length === 0) return [];
+
+  const now = new Date();
+  const values = normalizedTagNames.map((name) => ({
+    userId,
+    name,
+    normalizedName: normalizeTagKey(name),
+    createdAt: now,
+    updatedAt: now,
+  }));
+  const normalizedNames = values.map((tag) => tag.normalizedName);
+
+  await tx
+    .insert(tags)
+    .values(values)
+    .onConflictDoNothing({
+      target: [tags.userId, tags.normalizedName],
+    });
+
+  const tagRows = await tx
+    .select({
+      id: tags.id,
+      name: tags.name,
+      normalizedName: tags.normalizedName,
+    })
+    .from(tags)
+    .where(
+      and(
+        eq(tags.userId, userId),
+        inArray(tags.normalizedName, normalizedNames),
+      ),
+    );
+
+  const tagsByKey = new Map(tagRows.map((tag) => [tag.normalizedName, tag]));
+  return normalizedNames
+    .map((normalizedName) => tagsByKey.get(normalizedName))
+    .filter(
+      (tag): tag is { id: number; name: string; normalizedName: string } =>
+        Boolean(tag),
+    )
+    .map(({ id, name }) => ({ id, name }));
 }
 
 async function insertRecipeTagsForRecipe(
   tx: TransactionClient,
+  userId: string,
   recipeId: number,
-  tagIds: number[] | undefined,
+  tagNames: string[] | undefined,
 ) {
-  const uniqueTagIds = [...new Set(tagIds ?? [])];
+  const tagRows = await getOrCreateUserTags(tx, userId, tagNames);
 
-  if (uniqueTagIds.length === 0) return;
+  if (tagRows.length === 0) return;
 
   await tx
     .insert(recipeTags)
     .values(
-      uniqueTagIds.map((tagId) => ({
+      tagRows.map((tag) => ({
         recipeId,
-        tagId,
+        tagId: tag.id,
       })),
     )
     .onConflictDoNothing();
@@ -535,7 +613,7 @@ export async function createRecipe(
         thumbhash: recipeImages.thumbhash,
       });
 
-    await insertRecipeTagsForRecipe(tx, recipe.id, input.tagIds);
+    await insertRecipeTagsForRecipe(tx, userId, recipe.id, input.tagNames);
 
     if (hasNutritionValue(input.nutrition)) {
       await tx
@@ -565,7 +643,7 @@ export async function createRecipe(
 /**
  * Update a recipe owned by the current user. Editable child content is replaced
  * as a single transaction while collections, source metadata, and reviews are
- * preserved. Tags are replaced from tagIds.
+ * preserved. Tags are replaced from tagNames.
  */
 export async function updateRecipe(
   db: DbClient,
@@ -645,7 +723,7 @@ export async function updateRecipe(
       input.recipeId,
       input.instructionSections,
     );
-    await insertRecipeTagsForRecipe(tx, input.recipeId, input.tagIds);
+    await insertRecipeTagsForRecipe(tx, userId, input.recipeId, input.tagNames);
 
     if (input.nutrition !== undefined) {
       if (hasNutritionValue(input.nutrition)) {
@@ -863,7 +941,7 @@ export async function getRecipeDetail(
       .orderBy(recipeInstructions.index),
 
     db
-      .select({ id: tags.id, name: tags.name, type: tags.type })
+      .select({ id: tags.id, name: tags.name })
       .from(recipeTags)
       .innerJoin(tags, eq(recipeTags.tagId, tags.id))
       .where(eq(recipeTags.recipeId, recipeId)),
@@ -1240,18 +1318,19 @@ export async function importRecipe(
       }
     }
 
-    // Fetch and copy tags
+    // Fetch and copy tag names into the importing user's tag vocabulary
     const sourceTags = await tx
-      .select({ tagId: recipeTags.tagId })
+      .select({ name: tags.name })
       .from(recipeTags)
+      .innerJoin(tags, eq(recipeTags.tagId, tags.id))
       .where(eq(recipeTags.recipeId, sourceRecipeId));
 
     if (sourceTags.length > 0) {
-      await tx.insert(recipeTags).values(
-        sourceTags.map((tag) => ({
-          recipeId: newRecipe.id,
-          tagId: tag.tagId,
-        })),
+      await insertRecipeTagsForRecipe(
+        tx,
+        userId,
+        newRecipe.id,
+        sourceTags.map((tag) => tag.name),
       );
     }
 

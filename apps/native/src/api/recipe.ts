@@ -135,16 +135,12 @@ export const useUserPreferences = () => {
   });
 };
 
-// Get all tags, optionally filtered by type (cuisine or category)
-interface UseAllTagsParams {
-  type?: string;
-}
-
-export const useAllTags = ({ type }: UseAllTagsParams = {}) => {
+// Get all tags created by the current user
+export const useUserTags = () => {
   const trpc = useTRPC();
 
   return useQuery({
-    ...trpc.recipe.getAllTags.queryOptions({ type }),
+    ...trpc.recipe.getUserTags.queryOptions(),
   });
 };
 
@@ -194,6 +190,8 @@ export const useImportRecipe = () => {
       queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
       // Invalidate recipe detail queries (user may view their new copy)
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
       // Invalidate collection queries (recipe is auto-added to "Want to cook")
       queryClient.invalidateQueries(
         trpc.collection.getUserCollections.pathFilter(),
@@ -214,6 +212,8 @@ export const useDeleteRecipe = () => {
       queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
       // Invalidate recipe detail queries
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
       // Invalidate collection queries (recipe counts may have changed)
       queryClient.invalidateQueries(
         trpc.collection.getUserCollections.pathFilter(),
@@ -234,6 +234,8 @@ export const useSaveRecipe = () => {
       queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
       // Invalidate recipe detail queries
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
       // Invalidate collection queries (recipe is auto-added to default collection)
       queryClient.invalidateQueries(
         trpc.collection.getUserCollections.pathFilter(),
@@ -256,6 +258,8 @@ export const useUpdateRecipe = () => {
     onSuccess: () => {
       queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
       queryClient.invalidateQueries(
         trpc.collection.getUserCollections.pathFilter(),
       );

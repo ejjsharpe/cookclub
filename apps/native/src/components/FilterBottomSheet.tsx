@@ -131,7 +131,7 @@ export const FilterSheet = forwardRef<FilterSheetRef, FilterSheetProps>(
               {allTags.length > 0 && (
                 <>
                   <Text type="heading" style={styles.sectionTitle}>
-                    All categories
+                    Tags
                   </Text>
                   <VSpace size={12} />
                   <View style={styles.chipGrid}>
@@ -190,7 +190,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.background,
@@ -203,7 +203,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.primary,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: theme.borderRadius.medium,
+    borderRadius: theme.borderRadius.full,
   },
   applyButtonText: {
     color: theme.colors.buttonText,

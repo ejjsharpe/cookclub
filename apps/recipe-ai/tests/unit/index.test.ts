@@ -65,7 +65,7 @@ const validAiResponse = JSON.stringify({
       ],
     },
   ],
-  suggestedTags: [{ type: "cuisine", name: "American" }],
+  suggestedTags: ["American"],
 });
 
 // Sample HTML page

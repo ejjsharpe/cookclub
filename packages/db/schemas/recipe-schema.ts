@@ -275,15 +275,19 @@ export const tags = pgTable(
   "tags",
   {
     id: serial("id").primaryKey(),
-    type: text("type").notNull(), // e.g., "cuisine", "meal_type", "occasion"
-    name: text("name").notNull(), // e.g., "Italian", "Breakfast", "Birthday Party"
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    index("tags_type_idx").on(table.type),
-    uniqueIndex("tags_type_name_idx").on(table.type, table.name),
-    check(
-      "tags_type_check",
-      sql`${table.type} IN ('cuisine', 'category', 'dietary', 'meal_type', 'occasion')`,
+    index("tags_user_id_idx").on(table.userId),
+    uniqueIndex("tags_user_normalized_name_idx").on(
+      table.userId,
+      table.normalizedName,
     ),
   ],
 );

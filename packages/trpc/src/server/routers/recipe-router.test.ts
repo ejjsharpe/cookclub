@@ -35,7 +35,6 @@ const mockGetStoredRecipeNutrition = vi.fn();
 const mockUpsertRecipeNutrition = vi.fn();
 const mockImportRecipe = vi.fn();
 const mockGetSubscriptionStatus = vi.fn();
-const mockValidateTagIds = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@repo/db/services", () => ({
   createRecipe: (...args: unknown[]) => mockCreateRecipe(...args),
@@ -68,7 +67,6 @@ vi.mock("@repo/db/services", () => ({
   ServiceError: class ServiceError extends Error {
     code = "INTERNAL_ERROR";
   },
-  validateTagIds: (...args: unknown[]) => mockValidateTagIds(...args),
 }));
 
 // Mock @repo/db/schemas
@@ -101,8 +99,17 @@ vi.mock("@repo/db/schemas", () => ({
   },
   recipeNutrition: { _name: "recipe_nutrition" },
   collections: { _name: "collections" },
-  recipeTags: { _name: "recipe_tags" },
-  tags: { _name: "tags" },
+  recipeTags: {
+    _name: "recipe_tags",
+    recipeId: "recipe_tags.recipe_id",
+    tagId: "recipe_tags.tag_id",
+  },
+  tags: {
+    _name: "tags",
+    id: "tags.id",
+    name: "tags.name",
+    userId: "tags.user_id",
+  },
   user: { _name: "user" },
 }));
 
@@ -520,7 +527,7 @@ describe("recipeRouter - activity integration", () => {
         },
       ],
       images: [{ url: "https://example.com/image.jpg" }],
-      tagIds: [],
+      tagNames: [],
     };
 
     it("creates activity event on recipe import", async () => {
@@ -564,7 +571,6 @@ describe("recipeRouter - activity integration", () => {
 
       expect(result.id).toBe(1);
       expect(result.name).toBe("Test Recipe");
-      expect(mockValidateTagIds).toHaveBeenCalledWith(mockDb, []);
     });
 
     it("creates recipes with ingredients and no method steps", async () => {
@@ -739,7 +745,7 @@ describe("recipeRouter - activity integration", () => {
         },
       ],
       images: [{ url: "https://example.com/image.jpg" }],
-      tagIds: [],
+      tagNames: [],
     };
 
     it("updates a recipe through the recipe service", async () => {
@@ -766,10 +772,9 @@ describe("recipeRouter - activity integration", () => {
               thumbhash: "3OcRJYB4d3h/iIeHeEh3eIhw+j2w",
             }),
           ],
-          tagIds: [],
+          tagNames: [],
         }),
       );
-      expect(mockValidateTagIds).toHaveBeenCalledWith(mockDb, []);
       expect(mockDb.insert).not.toHaveBeenCalled();
     });
 

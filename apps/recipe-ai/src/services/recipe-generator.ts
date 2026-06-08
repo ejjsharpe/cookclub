@@ -54,10 +54,7 @@ interface GeneratedRecipeAiResponse {
       imageUrl?: string | null;
     }[];
   }[];
-  suggestedTags?: {
-    type: "cuisine" | "meal_type" | "occasion";
-    name: string;
-  }[];
+  suggestedTags?: string[];
 }
 
 /**

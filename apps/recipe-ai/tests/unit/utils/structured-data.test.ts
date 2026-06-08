@@ -62,10 +62,7 @@ describe("extractStructuredRecipeCandidates", () => {
     expect(recipe?.instructionSections[0]?.instructions[0]?.instruction).toBe(
       "Mix & fry until it's crisp.",
     );
-    expect(recipe?.suggestedTags).toEqual([
-      { type: "cuisine", name: "British & Irish" },
-      { type: "meal_type", name: "Main course" },
-    ]);
+    expect(recipe?.suggestedTags).toEqual(["British & Irish", "Main course"]);
   });
 
   it("extracts microdata recipes", () => {

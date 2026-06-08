@@ -17,7 +17,6 @@ import {
 } from "@repo/db/schemas";
 import {
   queryPopularRecipesThisWeek,
-  validateTagIds,
   createRecipe,
   updateRecipe,
   getRecipeDetail,
@@ -124,7 +123,7 @@ export const RecipePostValidator = type({
 
   "sourceUrl?": "string",
   "sourceType?": SourceTypeValidator,
-  "tagIds?": "number[]",
+  "tagNames?": "string[]",
 
   "description?": "string",
   "prepTime?": "number", // minutes
@@ -145,7 +144,7 @@ export const RecipeUpdateValidator = type({
 
   "sourceUrl?": "string",
   "sourceType?": SourceTypeValidator,
-  "tagIds?": "number[]",
+  "tagNames?": "string[]",
 
   "description?": "string",
   "prepTime?": "number", // minutes
@@ -299,17 +298,7 @@ function recipeDetailToParsedRecipe(
         imageUrl: instruction.imageUrl,
       })),
     })),
-    suggestedTags: recipe.tags
-      .filter(
-        (tag) =>
-          tag.type === "cuisine" ||
-          tag.type === "meal_type" ||
-          tag.type === "occasion",
-      )
-      .map((tag) => ({
-        type: tag.type as "cuisine" | "meal_type" | "occasion",
-        name: tag.name,
-      })),
+    suggestedTags: recipe.tags.map((tag) => tag.name),
     nutrition: recipe.nutrition,
   };
 }
@@ -321,12 +310,14 @@ function recipeForEntitlement<T extends { nutrition?: unknown }>(
   return (isPro ? recipe : { ...recipe, nutrition: null }) as T;
 }
 
-function hasCompleteNutritionCore(nutrition: {
-  calories?: number | null;
-  protein?: number | null;
-  carbohydrates?: number | null;
-  fat?: number | null;
-} | null) {
+function hasCompleteNutritionCore(
+  nutrition: {
+    calories?: number | null;
+    protein?: number | null;
+    carbohydrates?: number | null;
+    fat?: number | null;
+  } | null,
+) {
   if (!nutrition) return false;
 
   return [
@@ -993,7 +984,6 @@ export const recipeRouter = router({
 
       validateRecipePayload(input);
 
-      await validateTagIds(ctx.db, input.tagIds);
       const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
 
       let movedKeys: string[] = [];
@@ -1059,7 +1049,6 @@ export const recipeRouter = router({
       }
 
       validateRecipePayload(input);
-      await validateTagIds(ctx.db, input.tagIds);
       const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
 
       let movedKeys: string[] = [];
@@ -1111,7 +1100,13 @@ export const recipeRouter = router({
           const recipesWithTags = await ctx.db
             .selectDistinct({ recipeId: recipeTags.recipeId })
             .from(recipeTags)
-            .where(inArray(recipeTags.tagId, tagIds));
+            .innerJoin(tags, eq(recipeTags.tagId, tags.id))
+            .where(
+              and(
+                inArray(recipeTags.tagId, tagIds),
+                eq(tags.userId, ctx.user.id),
+              ),
+            );
           recipeIdsWithTags = recipesWithTags.map((r) => r.recipeId);
 
           // If no recipes match the tags, return empty result
@@ -1155,7 +1150,10 @@ export const recipeRouter = router({
                 ctx.db
                   .select({
                     recipeId: recipeTags.recipeId,
-                    tag: tags,
+                    tag: {
+                      id: tags.id,
+                      name: tags.name,
+                    },
                   })
                   .from(recipeTags)
                   .innerJoin(tags, eq(recipeTags.tagId, tags.id))
@@ -1188,7 +1186,7 @@ export const recipeRouter = router({
             }
             return acc;
           },
-          {} as Record<number, (typeof tags.$inferSelect)[]>,
+          {} as Record<number, { id: number; name: string }[]>,
         );
 
         const firstImageByRecipe = new Map<number, PublicImageAsset>();
@@ -1274,7 +1272,10 @@ export const recipeRouter = router({
                 ctx.db
                   .select({
                     recipeId: recipeTags.recipeId,
-                    tag: tags,
+                    tag: {
+                      id: tags.id,
+                      name: tags.name,
+                    },
                   })
                   .from(recipeTags)
                   .innerJoin(tags, eq(recipeTags.tagId, tags.id))
@@ -1307,7 +1308,7 @@ export const recipeRouter = router({
             }
             return acc;
           },
-          {} as Record<number, (typeof tags.$inferSelect)[]>,
+          {} as Record<number, { id: number; name: string }[]>,
         );
 
         const firstImageByRecipe = new Map<number, PublicImageAsset>();
@@ -1528,7 +1529,10 @@ export const recipeRouter = router({
       // Analyze user's saved recipes to find most frequent tags
       const userTagPreferences = await ctx.db
         .select({
-          tag: tags,
+          tag: {
+            id: tags.id,
+            name: tags.name,
+          },
           count: count(recipeTags.id),
         })
         .from(recipeCollections)
@@ -1541,7 +1545,12 @@ export const recipeRouter = router({
           eq(recipeCollections.recipeId, recipeTags.recipeId),
         )
         .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-        .where(eq(collections.userId, ctx.user.id))
+        .where(
+          and(
+            eq(collections.userId, ctx.user.id),
+            eq(tags.userId, ctx.user.id),
+          ),
+        )
         .groupBy(tags.id)
         .orderBy(desc(count(recipeTags.id)))
         .limit(15);
@@ -1559,45 +1568,37 @@ export const recipeRouter = router({
     }
   }),
 
-  getAllTags: authedProcedure
-    .input(
-      type({
-        "type?": "string",
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      try {
-        const allTags = await ctx.db
-          .select({
-            id: tags.id,
-            name: tags.name,
-            type: tags.type,
-          })
-          .from(tags)
-          .where(input.type ? eq(tags.type, input.type) : undefined)
-          .orderBy(tags.name);
-
-        return allTags;
-      } catch (err) {
-        console.error("Error fetching all tags:", err);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch tags",
-        });
-      }
-    }),
+  getUserTags: authedProcedure.query(async ({ ctx }) => {
+    try {
+      return await ctx.db
+        .select({
+          id: tags.id,
+          name: tags.name,
+        })
+        .from(tags)
+        .where(eq(tags.userId, ctx.user.id))
+        .orderBy(tags.name);
+    } catch (err) {
+      console.error("Error fetching user tags:", err);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to fetch tags",
+      });
+    }
+  }),
 
   getUserRecipeTags: authedProcedure.query(async ({ ctx }) => {
     const userTags = await ctx.db
       .selectDistinct({
         id: tags.id,
         name: tags.name,
-        type: tags.type,
       })
       .from(tags)
       .innerJoin(recipeTags, eq(tags.id, recipeTags.tagId))
       .innerJoin(recipes, eq(recipeTags.recipeId, recipes.id))
-      .where(eq(recipes.ownerId, ctx.user.id))
+      .where(
+        and(eq(recipes.ownerId, ctx.user.id), eq(tags.userId, ctx.user.id)),
+      )
       .orderBy(tags.name);
 
     return userTags;

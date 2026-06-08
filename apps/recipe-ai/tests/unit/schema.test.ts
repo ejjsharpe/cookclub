@@ -5,7 +5,6 @@ import {
   ParsedRecipeSchema,
   IngredientSchema,
   InstructionSchema,
-  TagSchema,
 } from "../../src/schema";
 
 const isArkError = (result: unknown): boolean => result instanceof ArkErrors;
@@ -88,32 +87,6 @@ describe("InstructionSchema", () => {
   });
 });
 
-describe("TagSchema", () => {
-  it("validates cuisine tag", () => {
-    const tag = { type: "cuisine", name: "Italian" };
-    const result = TagSchema(tag);
-    expect(isArkError(result)).toBe(false);
-  });
-
-  it("validates meal_type tag", () => {
-    const tag = { type: "meal_type", name: "Dinner" };
-    const result = TagSchema(tag);
-    expect(isArkError(result)).toBe(false);
-  });
-
-  it("validates occasion tag", () => {
-    const tag = { type: "occasion", name: "Birthday" };
-    const result = TagSchema(tag);
-    expect(isArkError(result)).toBe(false);
-  });
-
-  it("rejects invalid tag type", () => {
-    const tag = { type: "invalid", name: "Test" };
-    const result = TagSchema(tag);
-    expect(isArkError(result)).toBe(true);
-  });
-});
-
 describe("ParsedRecipeSchema", () => {
   const validRecipe = {
     name: "Chocolate Cake",
@@ -142,7 +115,7 @@ describe("ParsedRecipeSchema", () => {
       },
     ],
     images: ["https://example.com/image.jpg"],
-    suggestedTags: [{ type: "cuisine" as const, name: "American" }],
+    suggestedTags: ["American"],
   };
 
   it("validates a complete valid recipe", () => {

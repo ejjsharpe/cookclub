@@ -55,7 +55,7 @@ Output shape:
     }
   ],
   "suggestedTags": [
-    {"type": "meal_type", "name": "dinner"}
+    "dinner"
   ]
 }
 
@@ -120,10 +120,7 @@ export interface AiRecipeResult {
   servings: number | null;
   ingredientSections: AiIngredientSection[];
   instructionSections: AiInstructionSection[];
-  suggestedTags?: {
-    type: "cuisine" | "meal_type" | "occasion";
-    name: string;
-  }[];
+  suggestedTags?: string[];
   nutrition?: Nutrition | null;
 }
 
@@ -313,6 +310,17 @@ function normalizeAiNutrition(value: unknown): Nutrition | null {
   return normalizeNutrition(value as Record<string, unknown>, "ai_estimated");
 }
 
+function normalizeSuggestedTags(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const tags = value
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  return tags.length > 0 ? tags : undefined;
+}
+
 function normalizeAiRecipeResult(value: unknown): AiRecipeResult {
   const recipe = value as Record<string, unknown>;
 
@@ -325,7 +333,7 @@ function normalizeAiRecipeResult(value: unknown): AiRecipeResult {
     servings: servingsToNumber(recipe.servings),
     ingredientSections: normalizeIngredientSections(recipe),
     instructionSections: normalizeInstructionSections(recipe),
-    suggestedTags: recipe.suggestedTags as AiRecipeResult["suggestedTags"],
+    suggestedTags: normalizeSuggestedTags(recipe.suggestedTags),
     nutrition: normalizeAiNutrition(recipe.nutrition),
   };
 }

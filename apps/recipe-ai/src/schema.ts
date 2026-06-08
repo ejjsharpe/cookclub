@@ -23,11 +23,6 @@ export const InstructionSectionSchema = type({
   instructions: InstructionSchema.array(),
 });
 
-export const TagSchema = type({
-  type: "'cuisine' | 'meal_type' | 'occasion'",
-  name: "string",
-});
-
 export const SourceTypeSchema = type(
   "'url' | 'image' | 'text' | 'ai' | 'manual'",
 );
@@ -69,7 +64,7 @@ export const ParsedRecipeSchema = type({
   ingredientSections: IngredientSectionSchema.array().atLeastLength(1),
   instructionSections: InstructionSectionSchema.array(),
   "images?": "string[]",
-  "suggestedTags?": TagSchema.array(),
+  "suggestedTags?": "string[]",
   "nutrition?": "object | null",
 });
 
@@ -78,6 +73,6 @@ export type Ingredient = typeof IngredientSchema.infer;
 export type Instruction = typeof InstructionSchema.infer;
 export type IngredientSection = typeof IngredientSectionSchema.infer;
 export type InstructionSection = typeof InstructionSectionSchema.infer;
-export type Tag = typeof TagSchema.infer;
+export type Tag = string;
 export type SourceType = typeof SourceTypeSchema.infer;
 export type Nutrition = typeof NutritionSchema.infer;

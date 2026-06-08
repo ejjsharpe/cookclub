@@ -21,11 +21,6 @@ export interface ParsedInstructionSection {
   instructions: ParsedInstruction[];
 }
 
-export interface ParsedRecipeTag {
-  type: "cuisine" | "meal_type" | "occasion";
-  name: string;
-}
-
 export type ParsedRecipeSourceType = "url" | "image" | "text" | "ai" | "manual";
 
 export type ParsedRecipeNutritionSource =
@@ -67,6 +62,6 @@ export interface ParsedRecipe {
   ingredientSections: ParsedIngredientSection[];
   instructionSections: ParsedInstructionSection[];
   images?: string[];
-  suggestedTags?: ParsedRecipeTag[];
+  suggestedTags?: string[];
   nutrition?: ParsedRecipeNutrition | null;
 }

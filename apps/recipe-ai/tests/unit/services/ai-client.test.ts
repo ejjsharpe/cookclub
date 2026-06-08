@@ -38,7 +38,7 @@ const validRecipeJson = JSON.stringify({
       ],
     },
   ],
-  suggestedTags: [{ type: "cuisine", name: "American" }],
+  suggestedTags: ["American"],
   nutrition: {
     calories: "520 kcal",
     protein_g: "18 g",

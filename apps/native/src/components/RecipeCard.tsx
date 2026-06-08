@@ -13,7 +13,6 @@ import { formatMinutes } from "@/utils/timeUtils";
 interface Tag {
   id: number;
   name: string;
-  type: string;
 }
 
 interface User {

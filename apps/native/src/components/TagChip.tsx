@@ -44,9 +44,9 @@ export const TagChip = ({
 
 const styles = StyleSheet.create((theme) => ({
   chip: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: theme.borderRadius.medium,
+    borderRadius: theme.borderRadius.full,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.background,

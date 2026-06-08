@@ -5,78 +5,99 @@ import { StyleSheet } from "react-native-unistyles";
 import { VSpace } from "./Space";
 import { Text } from "./Text";
 
-import { useAllTags } from "@/api/recipe";
+import { useUserTags } from "@/api/recipe";
 import { Ionicons } from "@/components/Ionicons";
 
 interface Tag {
   id: number;
   name: string;
-  type: string;
 }
 
 interface Props {
-  tagType?: string;
-  selectedIds: number[];
-  onToggle: (tagId: number) => void;
+  selectedNames: string[];
+  onChange: (tagNames: string[]) => void;
   placeholder?: string;
   variant?: "default" | "like" | "dislike";
-  excludeIds?: number[]; // IDs to exclude from dropdown (e.g., items already in opposite list)
+}
+
+function normalizeTagName(tagName: string) {
+  return tagName.trim().replace(/^#+/, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeTagKey(tagName: string) {
+  return normalizeTagName(tagName).toLocaleLowerCase();
 }
 
 export const AutocompleteTagSelector = ({
-  tagType,
-  selectedIds,
-  onToggle,
+  selectedNames,
+  onChange,
   placeholder = "Search...",
   variant = "default",
-  excludeIds = [],
 }: Props) => {
   const [searchText, setSearchText] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
-  const { data: allTags = [] } = useAllTags({ type: tagType });
+  const { data: allTags = [] } = useUserTags();
+  const normalizedSearchText = normalizeTagName(searchText);
+  const normalizedSearchKey = normalizeTagKey(searchText);
+  const selectedKeys = useMemo(
+    () => new Set(selectedNames.map((tagName) => normalizeTagKey(tagName))),
+    [selectedNames],
+  );
+  const searchMatchesExistingTag = allTags.some(
+    (tag) => normalizeTagKey(tag.name) === normalizedSearchKey,
+  );
 
-  // Filter tags based on search text
   const filteredTags = useMemo(() => {
-    if (!searchText.trim()) return [];
-    const searchLower = searchText.toLowerCase();
+    if (!normalizedSearchText) return [];
+    const searchLower = normalizedSearchText.toLocaleLowerCase();
     return allTags
       .filter(
         (tag) =>
-          tag.name.toLowerCase().includes(searchLower) &&
-          !selectedIds.includes(tag.id) &&
-          !excludeIds.includes(tag.id),
+          tag.name.toLocaleLowerCase().includes(searchLower) &&
+          !selectedKeys.has(normalizeTagKey(tag.name)),
       )
-      .sort((a, b) => {
-        const nameCompare = a.name.localeCompare(b.name);
-        return nameCompare === 0 ? a.type.localeCompare(b.type) : nameCompare;
-      })
-      .slice(0, 8); // Limit dropdown to a compact set of useful matches
-  }, [searchText, allTags, selectedIds, excludeIds]);
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 8);
+  }, [normalizedSearchText, allTags, selectedKeys]);
 
-  // Get selected tags for display
-  const selectedTags = useMemo(() => {
-    return allTags
-      .filter((tag) => selectedIds.includes(tag.id))
-      .sort((a, b) => {
-        const typeCompare = a.type.localeCompare(b.type);
-        return typeCompare === 0 ? a.name.localeCompare(b.name) : typeCompare;
-      });
-  }, [allTags, selectedIds]);
+  const canAddSearchText =
+    normalizedSearchText.length > 0 &&
+    !selectedKeys.has(normalizedSearchKey) &&
+    !searchMatchesExistingTag;
 
-  const handleSelectTag = (tag: Tag) => {
-    onToggle(tag.id);
+  const addTagName = (tagName: string) => {
+    const normalizedTagName = normalizeTagName(tagName);
+    if (!normalizedTagName) return;
+
+    const nextSelectedNames = [
+      ...selectedNames.filter(
+        (selectedName) =>
+          normalizeTagKey(selectedName) !== normalizeTagKey(normalizedTagName),
+      ),
+      normalizedTagName,
+    ];
+    onChange(nextSelectedNames);
     setSearchText("");
-    // Keep focus on input so user can continue typing
     inputRef.current?.focus();
   };
 
-  const handleRemoveTag = (tagId: number) => {
-    onToggle(tagId);
+  const handleSelectTag = (tag: Tag) => {
+    addTagName(tag.name);
   };
 
-  const showDropdown = isFocused && filteredTags.length > 0;
+  const handleRemoveTag = (tagName: string) => {
+    onChange(
+      selectedNames.filter(
+        (selectedName) =>
+          normalizeTagKey(selectedName) !== normalizeTagKey(tagName),
+      ),
+    );
+  };
+
+  const showDropdown =
+    isFocused && (filteredTags.length > 0 || canAddSearchText);
 
   // Variant-specific colors
   const chipStyle =
@@ -138,22 +159,38 @@ export const AutocompleteTagSelector = ({
               />
             </TouchableOpacity>
           ))}
+          {canAddSearchText && (
+            <TouchableOpacity
+              style={styles.dropdownItem}
+              onPress={() => addTagName(searchText)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.dropdownText}>
+                Add "{normalizedSearchText}"
+              </Text>
+              <Ionicons
+                name="add-circle-outline"
+                size={20}
+                style={styles.dropdownIcon}
+              />
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
       {/* Selected Chips */}
-      {selectedTags.length > 0 && (
+      {selectedNames.length > 0 && (
         <>
           <VSpace size={12} />
           <View style={styles.chipsContainer}>
-            {selectedTags.map((tag) => (
+            {selectedNames.map((tagName) => (
               <TouchableOpacity
-                key={tag.id}
+                key={normalizeTagKey(tagName)}
                 style={[styles.chip, chipStyle]}
-                onPress={() => handleRemoveTag(tag.id)}
+                onPress={() => handleRemoveTag(tagName)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.chipText, chipTextStyle]}>{tag.name}</Text>
+                <Text style={[styles.chipText, chipTextStyle]}>{tagName}</Text>
                 <Ionicons
                   name="close"
                   size={12}

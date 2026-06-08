@@ -59,9 +59,9 @@ export const RECIPE_EXTRACTION_SYSTEM_PROMPT = `You are a strict Recipe Data Ext
     }
   ],
   "suggestedTags": [
-    {"type": "cuisine", "name": "Italian"},
-    {"type": "meal_type", "name": "dinner"},
-    {"type": "occasion", "name": "weeknight"}
+    "Italian",
+    "dinner",
+    "weeknight"
   ],
   "nutrition": {
     "calories": 500,
@@ -131,7 +131,7 @@ export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extracti
     }
   ],
   "suggestedTags": [
-    {"type": "cuisine", "name": "Italian"}
+    "Italian"
   ],
   "nutrition": {
     "calories": 500,

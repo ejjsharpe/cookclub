@@ -44,7 +44,7 @@ const mockRecipe: ParsedRecipe = {
     },
   ],
   images: ["https://example.com/img.jpg"],
-  suggestedTags: [{ type: "cuisine", name: "American" }],
+  suggestedTags: ["American"],
 };
 
 describe("getCachedRecipe", () => {

@@ -1,3 +1,6 @@
+import type { PublicImageAsset } from "@repo/contracts/images";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
+
 import {
   recipes,
   recipeImages,
@@ -8,12 +11,11 @@ import {
   follows,
   user,
 } from "../../schemas";
-import type { PublicImageAsset } from "@repo/contracts/images";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
-
 import type { DbClient } from "../types";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
+
+type PublicRecipeTag = Pick<typeof tags.$inferSelect, "id" | "name">;
 
 export type RecipeListItem = Omit<typeof recipes.$inferSelect, "ownerId"> & {
   owner: {
@@ -25,7 +27,7 @@ export type RecipeListItem = Omit<typeof recipes.$inferSelect, "ownerId"> & {
   coverImage: PublicImageAsset | null;
   collectionIds: number[];
   isFollowing: boolean;
-  tags: (typeof tags.$inferSelect)[];
+  tags: PublicRecipeTag[];
   relevanceScore: number;
 };
 
@@ -35,8 +37,8 @@ export type RecipeListItem = Omit<typeof recipes.$inferSelect, "ownerId"> & {
  * Group tags by recipe ID for batch assignment
  */
 export function groupTagsByRecipeId(
-  tagsData: { recipeId: number; tag: typeof tags.$inferSelect | null }[],
-): Record<number, (typeof tags.$inferSelect)[]> {
+  tagsData: { recipeId: number; tag: PublicRecipeTag | null }[],
+): Record<number, PublicRecipeTag[]> {
   return tagsData.reduce(
     (acc, item) => {
       if (!acc[item.recipeId]) {
@@ -47,7 +49,7 @@ export function groupTagsByRecipeId(
       }
       return acc;
     },
-    {} as Record<number, (typeof tags.$inferSelect)[]>,
+    {} as Record<number, PublicRecipeTag[]>,
   );
 }
 
@@ -151,7 +153,10 @@ export async function queryPopularRecipesThisWeek(
       ? db
           .select({
             recipeId: recipeTags.recipeId,
-            tag: tags,
+            tag: {
+              id: tags.id,
+              name: tags.name,
+            },
           })
           .from(recipeTags)
           .innerJoin(tags, eq(recipeTags.tagId, tags.id))

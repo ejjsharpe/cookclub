@@ -1,14 +1,15 @@
 import { neon } from "@neondatabase/serverless";
+import { classifyIngredientAisle, normalizeIngredientName } from "@repo/shared";
+import { hashPassword } from "better-auth/crypto";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
-import { eq } from "drizzle-orm";
-import * as schema from "./schemas";
-import { users as userData } from "./data/users";
+import * as readline from "readline";
+
 import { recipes as recipeData, type SourceType } from "./data/recipes";
 import { socialRecipes } from "./data/social-recipes";
-import * as readline from "readline";
-import { hashPassword } from "better-auth/crypto";
+import { users as userData } from "./data/users";
+import * as schema from "./schemas";
 import { extractPreparation } from "./utils/ingredientParser";
-import { classifyIngredientAisle, normalizeIngredientName } from "@repo/shared";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -27,6 +28,50 @@ function randomDate(daysAgo: number): Date {
   const randomTime =
     past.getTime() + Math.random() * (now.getTime() - past.getTime());
   return new Date(randomTime);
+}
+
+function normalizeTagName(tagName: string): string {
+  return tagName.trim().replace(/^#+/, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeTagKey(tagName: string): string {
+  return normalizeTagName(tagName).toLocaleLowerCase();
+}
+
+async function getOrCreateSeedTag(
+  db: DbClient,
+  userId: string,
+  tagName: string,
+) {
+  const name = normalizeTagName(tagName);
+  if (!name) return null;
+
+  const normalizedName = normalizeTagKey(name);
+  const now = new Date();
+
+  await db
+    .insert(schema.tags)
+    .values({
+      userId,
+      name,
+      normalizedName,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing({
+      target: [schema.tags.userId, schema.tags.normalizedName],
+    });
+
+  return await db
+    .select({ id: schema.tags.id, name: schema.tags.name })
+    .from(schema.tags)
+    .where(
+      and(
+        eq(schema.tags.userId, userId),
+        eq(schema.tags.normalizedName, normalizedName),
+      ),
+    )
+    .then((rows) => rows[0] ?? null);
 }
 
 function randomDateBetween(start: Date, end: Date = new Date()): Date {
@@ -196,14 +241,17 @@ function parseIngredient(ingredientText: string): ParsedIngredient {
             const [numerator, denominator] = fraction.split("/");
             if (numerator && denominator) {
               quantity = String(
-                parseInt(whole) + parseInt(numerator) / parseInt(denominator),
+                parseInt(whole, 10) +
+                  parseInt(numerator, 10) / parseInt(denominator, 10),
               );
             }
           }
         } else {
           const [numerator, denominator] = quantityStr.split("/");
           if (numerator && denominator) {
-            quantity = String(parseInt(numerator) / parseInt(denominator));
+            quantity = String(
+              parseInt(numerator, 10) / parseInt(denominator, 10),
+            );
           }
         }
       } else {
@@ -261,74 +309,6 @@ async function clearDatabase(db: DbClient) {
   console.log("✅ Database cleared");
 }
 
-async function seedTags(db: DbClient) {
-  console.log("🏷️  Seeding tags...");
-
-  const cuisineNames = [
-    "Italian",
-    "Mexican",
-    "Chinese",
-    "Japanese",
-    "Thai",
-    "Indian",
-    "French",
-    "American",
-    "Mediterranean",
-    "Korean",
-    "Vietnamese",
-    "Greek",
-    "Spanish",
-    "Middle Eastern",
-  ];
-
-  const categoryNames = [
-    "Breakfast",
-    "Lunch",
-    "Dinner",
-    "Dessert",
-    "Snack",
-    "Appetizer",
-    "Main Course",
-    "Side Dish",
-    "Salad",
-    "Soup",
-    "Beverage",
-    "Baking",
-  ];
-
-  const dietaryNames = [
-    "Vegetarian",
-    "Vegan",
-    "Gluten-Free",
-    "Dairy-Free",
-    "Nut-Free",
-    "Keto",
-    "Paleo",
-    "Low-Carb",
-  ];
-
-  const cuisineTags = await db
-    .insert(schema.tags)
-    .values(cuisineNames.map((name) => ({ type: "cuisine", name })))
-    .returning();
-
-  const categoryTags = await db
-    .insert(schema.tags)
-    .values(categoryNames.map((name) => ({ type: "category", name })))
-    .returning();
-
-  const dietaryTags = await db
-    .insert(schema.tags)
-    .values(dietaryNames.map((name) => ({ type: "dietary", name })))
-    .returning();
-
-  console.log(
-    `✅ Seeded ${cuisineTags.length} cuisines, ${categoryTags.length} categories, ${dietaryTags.length} dietary`,
-  );
-
-  return { cuisineTags, categoryTags, dietaryTags };
-}
-
 async function seedUsers(db: DbClient) {
   console.log("👥 Seeding users...");
 
@@ -375,7 +355,6 @@ async function seedUsers(db: DbClient) {
 async function seedRecipes(
   db: DbClient,
   users: (typeof schema.user.$inferSelect)[],
-  allTags: (typeof schema.tags.$inferSelect)[],
 ) {
   console.log("🍳 Seeding recipes...");
 
@@ -513,14 +492,10 @@ async function seedRecipes(
     }
 
     // Add tags
-    const cuisineTagsToAdd = allTags.filter(
-      (t) => t.type === "cuisine" && r.cuisines.includes(t.name),
-    );
-    const categoryTagsToAdd = allTags.filter(
-      (t) => t.type === "category" && r.categories.includes(t.name),
-    );
+    for (const tagName of [...r.cuisines, ...r.categories]) {
+      const tag = await getOrCreateSeedTag(db, user.id, tagName);
+      if (!tag) continue;
 
-    for (const tag of [...cuisineTagsToAdd, ...categoryTagsToAdd]) {
       await db.insert(schema.recipeTags).values({
         recipeId: recipe.id,
         tagId: tag.id,
@@ -546,7 +521,6 @@ async function seedRecipes(
 async function seedSocialRecipes(
   db: DbClient,
   users: (typeof schema.user.$inferSelect)[],
-  allTags: (typeof schema.tags.$inferSelect)[],
 ) {
   console.log("📱 Seeding social media recipes...");
 
@@ -632,14 +606,10 @@ async function seedSocialRecipes(
     }
 
     // Add tags
-    const cuisineTagsToAdd = allTags.filter(
-      (t) => t.type === "cuisine" && r.cuisines.includes(t.name),
-    );
-    const categoryTagsToAdd = allTags.filter(
-      (t) => t.type === "category" && r.categories.includes(t.name),
-    );
+    for (const tagName of [...r.cuisines, ...r.categories]) {
+      const tag = await getOrCreateSeedTag(db, r.ownerId, tagName);
+      if (!tag) continue;
 
-    for (const tag of [...cuisineTagsToAdd, ...categoryTagsToAdd]) {
       await db.insert(schema.recipeTags).values({
         recipeId: recipe.id,
         tagId: tag.id,
@@ -1107,16 +1077,20 @@ async function seedImportedRecipes(
         }
       }
 
-      // Copy tags
+      // Copy tag names into the importing user's tag vocabulary
       const sourceTags = await db
-        .select()
+        .select({ name: schema.tags.name })
         .from(schema.recipeTags)
+        .innerJoin(schema.tags, eq(schema.recipeTags.tagId, schema.tags.id))
         .where(eq(schema.recipeTags.recipeId, sourceRecipe.id));
 
       for (const tag of sourceTags) {
+        const importedTag = await getOrCreateSeedTag(db, user.id, tag.name);
+        if (!importedTag) continue;
+
         await db.insert(schema.recipeTags).values({
           recipeId: importedRecipe.id,
-          tagId: tag.tagId,
+          tagId: importedTag.id,
         });
       }
 
@@ -1606,17 +1580,13 @@ async function main() {
     }
 
     // Seed data
-    const { cuisineTags, categoryTags, dietaryTags } = await seedTags(db);
-    const allTags = [...cuisineTags, ...categoryTags, ...dietaryTags];
-    console.log("");
-
     const users = await seedUsers(db);
     console.log("");
 
-    const originalRecipes = await seedRecipes(db, users, allTags);
+    const originalRecipes = await seedRecipes(db, users);
     console.log("");
 
-    const socialMediaRecipes = await seedSocialRecipes(db, users, allTags);
+    const socialMediaRecipes = await seedSocialRecipes(db, users);
     console.log("");
 
     const collections = await seedCollections(db, users);
@@ -1662,7 +1632,6 @@ async function main() {
     console.log(
       `   🍳 ${originalRecipes.length} original + ${socialMediaRecipes.length} social + ${importedRecipes.length} imported recipes`,
     );
-    console.log(`   🏷️  ${allTags.length} tags`);
     console.log(`   📚 ${collections.length} collections`);
     console.log(`   🗓️  ${mealPlans.length} meal plans`);
     console.log(`   🛒 ${shoppingLists.length} shopping lists`);
