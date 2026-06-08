@@ -1,10 +1,11 @@
-import type { ParsedRecipe } from "../schema";
+import type { Nutrition, ParsedRecipe } from "../schema";
 import type { Env } from "../types";
 import {
   DEFAULT_MAX_TOKENS,
   parseAiJsonPayload,
   runAiModel,
 } from "../utils/ai-response-parser";
+import { normalizeNutrition } from "../utils/nutrition-normalizer";
 import {
   RECIPE_EXTRACTION_SYSTEM_PROMPT,
   IMAGE_EXTRACTION_SYSTEM_PROMPT,
@@ -123,6 +124,7 @@ export interface AiRecipeResult {
     type: "cuisine" | "meal_type" | "occasion";
     name: string;
   }[];
+  nutrition?: Nutrition | null;
 }
 
 function durationToMinutes(value: unknown): number | null {
@@ -305,6 +307,12 @@ function servingsToNumber(value: unknown): number | null {
   return servings > 0 ? servings : null;
 }
 
+function normalizeAiNutrition(value: unknown): Nutrition | null {
+  if (!value || typeof value !== "object") return null;
+
+  return normalizeNutrition(value as Record<string, unknown>, "ai_estimated");
+}
+
 function normalizeAiRecipeResult(value: unknown): AiRecipeResult {
   const recipe = value as Record<string, unknown>;
 
@@ -318,6 +326,7 @@ function normalizeAiRecipeResult(value: unknown): AiRecipeResult {
     ingredientSections: normalizeIngredientSections(recipe),
     instructionSections: normalizeInstructionSections(recipe),
     suggestedTags: recipe.suggestedTags as AiRecipeResult["suggestedTags"],
+    nutrition: normalizeAiNutrition(recipe.nutrition),
   };
 }
 
