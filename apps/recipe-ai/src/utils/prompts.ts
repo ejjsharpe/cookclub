@@ -17,6 +17,7 @@ export const RECIPE_EXTRACTION_SYSTEM_PROMPT = `You are a strict Recipe Data Ext
 5. **STEP IMAGES**: At the end of the content, you may see a "[STEP IMAGES]" section listing step numbers and image URLs. Use these to populate the imageUrl field for the matching instruction step. If no image is listed for a step, set imageUrl to null.
 6. **SECTIONS**: Organize ingredients and instructions into sections. Each section has a name (null for default/unnamed section) and an array of items. If ingredients/instructions are grouped (e.g., "For the Sauce", "Make the Dough"), create separate sections. If there are no groupings, use a single section with name: null.
 7. **INGREDIENTS-ONLY IS VALID**: If the source lists ingredients but no real method, return the ingredient sections and set "instructionSections": []. Do not invent generic steps or placeholders.
+8. **NUTRITION ESTIMATE**: Include estimated nutrition per serving from the extracted ingredients. Values must be per serving, not whole-recipe totals. Estimate the whole-recipe total, divide by servings, and return null for micronutrients you cannot reasonably estimate. If servings are missing, assume 4 servings and set nutrition confidence to "low".
 
 ### OUTPUT FORMAT:
 {
@@ -61,7 +62,24 @@ export const RECIPE_EXTRACTION_SYSTEM_PROMPT = `You are a strict Recipe Data Ext
     {"type": "cuisine", "name": "Italian"},
     {"type": "meal_type", "name": "dinner"},
     {"type": "occasion", "name": "weeknight"}
-  ]
+  ],
+  "nutrition": {
+    "calories": 500,
+    "protein": 20,
+    "carbohydrates": 45,
+    "fat": 25,
+    "saturatedFat": 8,
+    "fiber": 6,
+    "sugar": 7,
+    "sodium": 700,
+    "cholesterol": null,
+    "potassium": null,
+    "vitaminA": null,
+    "vitaminC": null,
+    "calcium": null,
+    "iron": null,
+    "confidence": "medium"
+  }
 }
 
 ### IMPORTANT:
@@ -73,7 +91,8 @@ export const RECIPE_EXTRACTION_SYSTEM_PROMPT = `You are a strict Recipe Data Ext
 - For imageUrl: copy the URL exactly from the [STEP IMAGES] section if one exists for that step number
 - For sections: if there are no groupings, use a single section with name: null
 - Always have at least one ingredientSection when ingredients are present
-- Use "instructionSections": [] when no cooking instructions are present`;
+- Use "instructionSections": [] when no cooking instructions are present
+- Nutrition units: kcal for calories, grams for protein/carbohydrates/fat/saturatedFat/fiber/sugar, milligrams for sodium/cholesterol/potassium, percent daily value for vitaminA/vitaminC/calcium/iron`;
 
 export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extraction API. Analyze the image and extract any recipe information you can identify.
 
@@ -84,6 +103,7 @@ export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extracti
 4. **SECTIONS**: Organize ingredients and instructions into sections. Each section has a name (null for default/unnamed section) and an array of items. If visually grouped (e.g., "For the Sauce"), create separate sections.
 5. **STRUCTURED INGREDIENTS**: For each ingredient, extract name and preparation separately. If an ingredient says "2 cups diced onion", extract name="onion" and preparation="diced".
 6. **INGREDIENTS-ONLY IS VALID**: If the image only shows ingredients, return those ingredients and set "instructionSections": []. Do not invent generic steps.
+7. **NUTRITION ESTIMATE**: Include estimated nutrition per serving from the extracted ingredients. Values must be per serving, not whole-recipe totals. If servings are missing, assume 4 servings and set nutrition confidence to "low".
 
 ### OUTPUT FORMAT:
 {
@@ -112,7 +132,24 @@ export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extracti
   ],
   "suggestedTags": [
     {"type": "cuisine", "name": "Italian"}
-  ]
+  ],
+  "nutrition": {
+    "calories": 500,
+    "protein": 20,
+    "carbohydrates": 45,
+    "fat": 25,
+    "saturatedFat": 8,
+    "fiber": 6,
+    "sugar": 7,
+    "sodium": 700,
+    "cholesterol": null,
+    "potassium": null,
+    "vitaminA": null,
+    "vitaminC": null,
+    "calcium": null,
+    "iron": null,
+    "confidence": "medium"
+  }
 }
 
 ### IMPORTANT:
@@ -122,7 +159,8 @@ export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extracti
 - If you cannot read part of the image, skip that section rather than guessing
 - For sections: if there are no groupings, use a single section with name: null
 - Always have at least one ingredientSection when ingredients are visible
-- Use "instructionSections": [] when no cooking instructions are visible`;
+- Use "instructionSections": [] when no cooking instructions are visible
+- Nutrition units: kcal for calories, grams for protein/carbohydrates/fat/saturatedFat/fiber/sugar, milligrams for sodium/cholesterol/potassium, percent daily value for vitaminA/vitaminC/calcium/iron`;
 
 export function createTextExtractionPrompt(text: string): string {
   return `Extract the recipe from the following text:
@@ -149,6 +187,7 @@ Rules:
 - If a field is not present in the evidence, use null or an empty array.
 - Prefer complete ingredient and instruction sections that are directly supported by the evidence.
 - If the evidence has ingredients but no real method, use "instructionSections": [].
+- Include estimated nutrition per serving from the final extracted ingredients. Values must be per serving, not whole-recipe totals.
 
 Partial recipe:
 ${options.partialRecipeJson ?? "null"}
@@ -158,5 +197,5 @@ ${options.evidence}`;
 }
 
 export function createImageExtractionPrompt(): string {
-  return `Extract all recipe information visible in this image. Include the recipe name, ingredients with quantities, and cooking instructions.`;
+  return `Extract all recipe information visible in this image. Include the recipe name, ingredients with quantities, cooking instructions, and estimated nutrition per serving.`;
 }

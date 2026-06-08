@@ -321,6 +321,22 @@ function recipeForEntitlement<T extends { nutrition?: unknown }>(
   return (isPro ? recipe : { ...recipe, nutrition: null }) as T;
 }
 
+function hasCompleteNutritionCore(nutrition: {
+  calories?: number | null;
+  protein?: number | null;
+  carbohydrates?: number | null;
+  fat?: number | null;
+} | null) {
+  if (!nutrition) return false;
+
+  return [
+    nutrition.calories,
+    nutrition.protein,
+    nutrition.carbohydrates,
+    nutrition.fat,
+  ].every((value) => typeof value === "number" && Number.isFinite(value));
+}
+
 function parseResponseForEntitlement<T extends { success: boolean }>(
   result: T,
   isPro: boolean,
@@ -1343,7 +1359,7 @@ export const recipeRouter = router({
           ctx.user.id,
         );
         const stored = await getStoredRecipeNutrition(ctx.db, input.recipeId);
-        if (stored) return stored;
+        if (hasCompleteNutritionCore(stored)) return stored;
 
         let result: NutritionResponse;
         try {

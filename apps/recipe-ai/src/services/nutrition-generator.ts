@@ -12,47 +12,6 @@ import { extractStructuredRecipeCandidates } from "../utils/structured-data";
 
 const TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast" as const;
 
-const NUTRITION_RESPONSE_FORMAT = {
-  type: "json_schema",
-  json_schema: {
-    type: "object",
-    properties: {
-      calories: { type: ["number", "null"] },
-      protein: { type: ["number", "null"] },
-      carbohydrates: { type: ["number", "null"] },
-      fat: { type: ["number", "null"] },
-      saturatedFat: { type: ["number", "null"] },
-      fiber: { type: ["number", "null"] },
-      sugar: { type: ["number", "null"] },
-      sodium: { type: ["number", "null"] },
-      cholesterol: { type: ["number", "null"] },
-      potassium: { type: ["number", "null"] },
-      vitaminA: { type: ["number", "null"] },
-      vitaminC: { type: ["number", "null"] },
-      calcium: { type: ["number", "null"] },
-      iron: { type: ["number", "null"] },
-      confidence: { type: "string", enum: ["low", "medium", "high"] },
-    },
-    required: [
-      "calories",
-      "protein",
-      "carbohydrates",
-      "fat",
-      "saturatedFat",
-      "fiber",
-      "sugar",
-      "sodium",
-      "cholesterol",
-      "potassium",
-      "vitaminA",
-      "vitaminC",
-      "calcium",
-      "iron",
-      "confidence",
-    ],
-  },
-} as const;
-
 function numberOrNull(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
@@ -125,6 +84,64 @@ function hasNutritionValues(nutrition: Nutrition | null | undefined) {
   ].some((value) => typeof value === "number" && Number.isFinite(value));
 }
 
+function hasCoreNutritionValues(nutrition: Nutrition | null | undefined) {
+  if (!nutrition) return false;
+  return [
+    nutrition.calories,
+    nutrition.protein,
+    nutrition.carbohydrates,
+    nutrition.fat,
+  ].every((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function confidenceRank(confidence: Nutrition["confidence"] | null | undefined) {
+  switch (confidence) {
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function lowestConfidence(
+  left: Nutrition["confidence"] | null | undefined,
+  right: Nutrition["confidence"] | null | undefined,
+): Nutrition["confidence"] {
+  if (!left) return right ?? null;
+  if (!right) return left;
+  return confidenceRank(left) <= confidenceRank(right) ? left : right;
+}
+
+function mergeNutrition(
+  base: Nutrition | null | undefined,
+  estimate: Nutrition,
+): Nutrition {
+  if (!base) return estimate;
+
+  return {
+    calories: base.calories ?? estimate.calories,
+    protein: base.protein ?? estimate.protein,
+    carbohydrates: base.carbohydrates ?? estimate.carbohydrates,
+    fat: base.fat ?? estimate.fat,
+    saturatedFat: base.saturatedFat ?? estimate.saturatedFat,
+    fiber: base.fiber ?? estimate.fiber,
+    sugar: base.sugar ?? estimate.sugar,
+    sodium: base.sodium ?? estimate.sodium,
+    cholesterol: base.cholesterol ?? estimate.cholesterol,
+    potassium: base.potassium ?? estimate.potassium,
+    vitaminA: base.vitaminA ?? estimate.vitaminA,
+    vitaminC: base.vitaminC ?? estimate.vitaminC,
+    calcium: base.calcium ?? estimate.calcium,
+    iron: base.iron ?? estimate.iron,
+    source: "ai_estimated",
+    confidence: lowestConfidence(base.confidence, estimate.confidence),
+  };
+}
+
 async function extractNutritionFromSource(
   sourceUrl: string | null | undefined,
 ): Promise<Nutrition | null> {
@@ -147,7 +164,10 @@ async function extractNutritionFromSource(
   }
 }
 
-function recipeToNutritionPrompt(recipe: NutritionInput["recipe"]) {
+function recipeToNutritionPrompt(
+  recipe: NutritionInput["recipe"],
+  existingNutrition?: Nutrition | null,
+) {
   const ingredients = recipe.ingredientSections
     .flatMap((section) => section.ingredients)
     .map((ingredient) =>
@@ -163,7 +183,7 @@ function recipeToNutritionPrompt(recipe: NutritionInput["recipe"]) {
     .join("\n");
 
   return `
-Estimate nutrition per serving for this recipe. Return JSON only, with numeric values or null:
+Estimate nutrition for one serving of this recipe. Return JSON only, with numeric values or null:
 {
   "calories": number | null,
   "protein": number | null,
@@ -182,7 +202,14 @@ Estimate nutrition per serving for this recipe. Return JSON only, with numeric v
   "confidence": "low" | "medium" | "high"
 }
 
-Use kcal for calories, grams for protein/carbohydrates/fat/saturatedFat/fiber/sugar, milligrams for sodium/cholesterol/potassium, and percent daily value for vitaminA/vitaminC/calcium/iron. Estimate conservatively from the ingredient amounts and servings. If servings are missing, assume 4 servings and set confidence to low. Always estimate calories, protein, carbohydrates, and fat when the recipe has ingredients; use null mainly for extended micronutrients when unknown.
+All values must be per serving, not for the whole recipe. Estimate the whole-recipe total from ingredient amounts, then divide by the number of servings before returning values. For example, a recipe with about 2,000 kcal total and 4 servings should return about 500 calories. If servings are missing, assume 4 servings and set confidence to low.
+
+Use kcal for calories, grams for protein/carbohydrates/fat/saturatedFat/fiber/sugar, milligrams for sodium/cholesterol/potassium, and percent daily value for vitaminA/vitaminC/calcium/iron. Estimate conservatively from the ingredient amounts and serving count. Always estimate calories, protein, carbohydrates, and fat when the recipe has ingredients; use null mainly for extended micronutrients when unknown.
+
+Known per-serving nutrition from the source, if any:
+${existingNutrition ? JSON.stringify(existingNutrition) : "none"}
+
+Use known source nutrition as anchors when estimating missing fields. Return a complete per-serving estimate object; existing source values will be preserved by the caller.
 
 Recipe: ${recipe.name}
 Description: ${recipe.description ?? ""}
@@ -198,24 +225,23 @@ ${instructions}
 async function runNutritionModel(
   ai: Env["AI"],
   recipe: NutritionInput["recipe"],
-  useJsonMode: boolean,
+  existingNutrition?: Nutrition | null,
 ): Promise<Nutrition> {
   const request: Record<string, unknown> = {
     messages: [
       {
         role: "system",
         content:
-          "You are a nutrition analysis assistant. Return only valid JSON. Values must be per serving estimates.",
+          "You are a nutrition analysis assistant. Return only valid JSON. Values must be per-serving estimates, never whole-recipe totals.",
       },
-      { role: "user", content: recipeToNutritionPrompt(recipe) },
+      {
+        role: "user",
+        content: recipeToNutritionPrompt(recipe, existingNutrition),
+      },
     ],
     max_tokens: DEFAULT_MAX_TOKENS,
     temperature: 0.1,
   };
-
-  if (useJsonMode) {
-    request.response_format = NUTRITION_RESPONSE_FORMAT;
-  }
 
   const response = await runAiModel(ai, TEXT_MODEL, request);
   const nutrition = normalizeNutrition(
@@ -232,17 +258,9 @@ async function runNutritionModel(
 async function estimateNutritionWithAi(
   ai: Env["AI"],
   recipe: NutritionInput["recipe"],
+  existingNutrition?: Nutrition | null,
 ): Promise<Nutrition> {
-  try {
-    return await runNutritionModel(ai, recipe, true);
-  } catch (jsonModeError) {
-    console.log(
-      "Nutrition JSON mode failed, retrying without JSON mode:",
-      jsonModeError instanceof Error ? jsonModeError.message : jsonModeError,
-    );
-  }
-
-  return await runNutritionModel(ai, recipe, false);
+  return await runNutritionModel(ai, recipe, existingNutrition);
 }
 
 export async function generateNutrition(
@@ -257,22 +275,55 @@ export async function generateNutrition(
       existing?.source === "imported"
         ? existing.source
         : "extracted";
-    return {
-      success: true,
-      data: normalizeNutrition(existing as Record<string, unknown>, source),
-    };
+    const normalizedExisting = normalizeNutrition(
+      existing as Record<string, unknown>,
+      source,
+    );
+    if (hasCoreNutritionValues(normalizedExisting)) {
+      return {
+        success: true,
+        data: normalizedExisting,
+      };
+    }
+
+    try {
+      const estimated = await estimateNutritionWithAi(
+        env.AI,
+        input.recipe,
+        normalizedExisting,
+      );
+      return {
+        success: true,
+        data: mergeNutrition(normalizedExisting, estimated),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: "NUTRITION_GENERATION_FAILED",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not generate nutrition for this recipe",
+        },
+      };
+    }
   }
 
   const extracted = await extractNutritionFromSource(
     input.sourceUrl ?? input.recipe.sourceUrl,
   );
-  if (hasNutritionValues(extracted)) {
+  if (hasCoreNutritionValues(extracted)) {
     return { success: true, data: extracted! };
   }
 
   try {
-    const estimated = await estimateNutritionWithAi(env.AI, input.recipe);
-    return { success: true, data: estimated };
+    const estimated = await estimateNutritionWithAi(
+      env.AI,
+      input.recipe,
+      extracted,
+    );
+    return { success: true, data: mergeNutrition(extracted, estimated) };
   } catch (error) {
     return {
       success: false,

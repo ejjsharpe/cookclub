@@ -53,5 +53,6 @@ export function aiResultToRecipe(
     instructionSections,
     images: options.images ?? [],
     suggestedTags: ai.suggestedTags,
+    nutrition: ai.nutrition ?? null,
   };
 }

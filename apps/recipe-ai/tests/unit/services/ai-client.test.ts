@@ -39,6 +39,17 @@ const validRecipeJson = JSON.stringify({
     },
   ],
   suggestedTags: [{ type: "cuisine", name: "American" }],
+  nutrition: {
+    calories: "520 kcal",
+    protein_g: "18 g",
+    carbs_g: "74 g",
+    total_fat: "16 g",
+    saturated_fat: "4 g",
+    fiber_g: "6 g",
+    sugar_g: "9 g",
+    sodium_mg: "680 mg",
+    confidence: "medium",
+  },
 });
 
 describe("parseRecipeFromText", () => {
@@ -55,6 +66,18 @@ describe("parseRecipeFromText", () => {
     expect(result.ingredientSections[0]?.ingredients).toHaveLength(2);
     expect(result.instructionSections).toHaveLength(1);
     expect(result.instructionSections[0]?.instructions).toHaveLength(2);
+    expect(result.nutrition).toMatchObject({
+      calories: 520,
+      protein: 18,
+      carbohydrates: 74,
+      fat: 16,
+      saturatedFat: 4,
+      fiber: 6,
+      sugar: 9,
+      sodium: 680,
+      source: "ai_estimated",
+      confidence: "medium",
+    });
     expect(mockAi.run).toHaveBeenCalled();
   });
 
