@@ -159,6 +159,16 @@ export const MEASUREMENT_UNITS: MeasurementUnit[] = [
   },
 ];
 
+const COOKING_SPOON_CONVERT_UNITS = new Set(["tsp", "Tbs"]);
+
+function isCookingSpoonUnit(unit: MeasurementUnit | null | undefined): boolean {
+  return (
+    unit?.type === "volume" &&
+    !!unit.convertUnit &&
+    COOKING_SPOON_CONVERT_UNITS.has(unit.convertUnit)
+  );
+}
+
 export interface DetectedMeasurement {
   amount: number;
   unit: MeasurementUnit | null;
@@ -306,7 +316,8 @@ export function convertIngredientText(
   if (
     !detected.unit ||
     detected.unit.system === targetSystem ||
-    detected.unit.system === "universal"
+    detected.unit.system === "universal" ||
+    isCookingSpoonUnit(detected.unit)
   ) {
     return ingredientText;
   }
@@ -437,7 +448,8 @@ export function convertMethodText(
       if (
         !unit ||
         unit.system === targetSystem ||
-        unit.system === "universal"
+        unit.system === "universal" ||
+        isCookingSpoonUnit(unit)
       ) {
         return match;
       }
@@ -546,7 +558,12 @@ export function detectSystemFromIngredients(
 ): "metric" | "imperial" | "mixed" {
   const detectedSystems = ingredients
     .map((ing) => detectMeasurement(ing))
-    .filter((det) => det.unit && det.unit.system !== "universal")
+    .filter(
+      (det) =>
+        det.unit &&
+        det.unit.system !== "universal" &&
+        !isCookingSpoonUnit(det.unit),
+    )
     .map((det) => det.unit!.system);
 
   if (detectedSystems.length === 0) return "imperial"; // default
@@ -609,6 +626,7 @@ export function convertParsedIngredient(
     !fromUnit ||
     fromUnit.system === targetSystem ||
     fromUnit.system === "universal" ||
+    isCookingSpoonUnit(fromUnit) ||
     fromUnit.type === "count"
   ) {
     return null;
