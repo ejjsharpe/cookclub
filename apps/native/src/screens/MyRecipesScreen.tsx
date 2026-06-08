@@ -169,8 +169,8 @@ const AnimatedRecipeOverlay = memo(function AnimatedRecipeOverlay({
   const animatedStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      transform: [{ translateY: searchProgress.value * deltaY }],
-      opacity: animatingTab.value === "recipes" && isAnimating.value ? 1 : 0,
+      transform: [{ translateY: searchProgress.get() * deltaY }],
+      opacity: animatingTab.get() === "recipes" && isAnimating.get() ? 1 : 0,
     };
   });
 
@@ -227,7 +227,7 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   const animatedTranslateX = useDerivedValue(() => {
     "worklet";
     if (fadeOnly) return 0;
-    return searchProgress.value * deltaX;
+    return searchProgress.get() * deltaX;
   });
 
   // Memoize static position style to avoid recreation on each render
@@ -243,25 +243,25 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   // Combined image style - handles visibility, position, and scale in one animated style
   const imageStyle = useAnimatedStyle(() => {
     "worklet";
-    const isVisible = animatingTab.value === "collections" && isAnimating.value;
+    const isVisible = animatingTab.get() === "collections" && isAnimating.get();
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: isVisible ? searchProgress.value : 0,
+        opacity: isVisible ? searchProgress.get() : 0,
         transform: [],
         transformOrigin: "top left",
       };
     }
 
-    const translateY = searchProgress.value * deltaY;
+    const translateY = searchProgress.get() * deltaY;
     // Scale interpolates from 1 to imageScale: 1 + progress * (imageScale - 1)
-    const scale = 1 + searchProgress.value * (imageScale - 1);
+    const scale = 1 + searchProgress.get() * (imageScale - 1);
 
     return {
       opacity: isVisible ? 1 : 0,
       transform: [
-        { translateX: animatedTranslateX.value },
+        { translateX: animatedTranslateX.get() },
         { translateY },
         { scale },
       ],
@@ -272,22 +272,22 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   // Text only translates (no scale), accounts for image height change
   const textStyle = useAnimatedStyle(() => {
     "worklet";
-    const isVisible = animatingTab.value === "collections" && isAnimating.value;
+    const isVisible = animatingTab.get() === "collections" && isAnimating.get();
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: isVisible ? searchProgress.value : 0,
+        opacity: isVisible ? searchProgress.get() : 0,
         transform: [],
       };
     }
 
     // Text needs to move down by deltaY plus the extra image height from scaling
-    const translateY = searchProgress.value * (deltaY + imageHeightDelta);
+    const translateY = searchProgress.get() * (deltaY + imageHeightDelta);
 
     return {
       opacity: isVisible ? 1 : 0,
-      transform: [{ translateX: animatedTranslateX.value }, { translateY }],
+      transform: [{ translateX: animatedTranslateX.get() }, { translateY }],
     };
   });
 
@@ -386,7 +386,7 @@ export const MyRecipesScreen = () => {
   const searchProgress = useSharedValue(0);
   // Derived value for animation boundary check - computed once per frame
   const isAnimating = useDerivedValue(() => {
-    return searchProgress.value > 0 && searchProgress.value < 1;
+    return searchProgress.get() > 0 && searchProgress.get() < 1;
   });
   // Tracks which tab's overlays should be visible during animation ("recipes" or "collections")
   const animatingTab = useSharedValue<TabType>("recipes");
@@ -439,20 +439,19 @@ export const MyRecipesScreen = () => {
 
   useEffect(() => {
     if (isSearchActive) {
-      searchProgress.value = withTiming(1, ANIMATION_CONFIG);
+      searchProgress.set(withTiming(1, ANIMATION_CONFIG));
       searchInputRef.current?.focus();
     } else {
       searchInputRef.current?.blur();
-      searchProgress.value = withTiming(0, ANIMATION_CONFIG);
+      searchProgress.set(withTiming(0, ANIMATION_CONFIG));
     }
   }, [isSearchActive, searchProgress]);
 
   // Animate filter button visibility based on active tab
   useEffect(() => {
     if (hasFilterState) {
-      filterButtonProgress.value = withTiming(
-        activeSearchTab === "recipes" ? 1 : 0,
-        ANIMATION_CONFIG,
+      filterButtonProgress.set(
+        withTiming(activeSearchTab === "recipes" ? 1 : 0, ANIMATION_CONFIG),
       );
     }
   }, [activeSearchTab, filterButtonProgress, hasFilterState]);
@@ -566,7 +565,7 @@ export const MyRecipesScreen = () => {
     }) => {
       // Update search bar position
       if (measurements.searchBarY && measurements.searchBarY > 0) {
-        searchBarY.value = measurements.searchBarY;
+        searchBarY.set(measurements.searchBarY);
       }
 
       // Calculate recipe positions on JS thread
@@ -630,7 +629,7 @@ export const MyRecipesScreen = () => {
       browsePositions.current = recipePositions;
       browseCollectionPositions.current = collectionPositions;
       searchCollectionTarget.current = searchCollectionMeasurement;
-      animatingTab.value = tabToAnimate;
+      animatingTab.set(tabToAnimate);
       setIsSearchActive(true);
     };
 
@@ -762,7 +761,7 @@ export const MyRecipesScreen = () => {
       }
 
       // Set animation tab and visibility based on current tab
-      animatingTab.value = currentTab;
+      animatingTab.set(currentTab);
 
       // Trigger exit animation
       setIsSearchActive(false);
@@ -836,7 +835,7 @@ export const MyRecipesScreen = () => {
   const collectionCardsStyle = useAnimatedStyle(() => {
     "worklet";
     const overlayVisible =
-      animatingTab.value === "collections" && isAnimating.value;
+      animatingTab.get() === "collections" && isAnimating.get();
     return {
       opacity: overlayVisible ? 0 : 1,
     };
@@ -902,11 +901,13 @@ export const MyRecipesScreen = () => {
       "worklet";
       // Fade out title when scrolling up (search bar would collide with header)
       const titleShouldHide = event.contentOffset.y > 5;
-      if (titleHidden.value !== titleShouldHide) {
-        titleHidden.value = titleShouldHide;
-        titleOpacity.value = withTiming(titleShouldHide ? 0 : 1, {
-          duration: 150,
-        });
+      if (titleHidden.get() !== titleShouldHide) {
+        titleHidden.set(titleShouldHide);
+        titleOpacity.set(
+          withTiming(titleShouldHide ? 0 : 1, {
+            duration: 150,
+          }),
+        );
       }
     },
   });
@@ -915,7 +916,7 @@ export const MyRecipesScreen = () => {
   const collectionsHorizontalScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       "worklet";
-      collectionScrollX.value = event.contentOffset.x;
+      collectionScrollX.set(event.contentOffset.x);
     },
   });
 
@@ -924,7 +925,7 @@ export const MyRecipesScreen = () => {
   const browseAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: interpolate(searchProgress.value, [0, 0.5], [1, 0]),
+      opacity: interpolate(searchProgress.get(), [0, 0.5], [1, 0]),
     };
   });
 
@@ -932,7 +933,7 @@ export const MyRecipesScreen = () => {
   const searchAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: searchProgress.value,
+      opacity: searchProgress.get(),
     };
   });
 
@@ -940,7 +941,7 @@ export const MyRecipesScreen = () => {
   const recipeCardsStyle = useAnimatedStyle(() => {
     "worklet";
     const overlayVisible =
-      animatingTab.value === "recipes" && isAnimating.value;
+      animatingTab.get() === "recipes" && isAnimating.get();
     return {
       opacity: overlayVisible ? 0 : 1,
     };
@@ -949,7 +950,7 @@ export const MyRecipesScreen = () => {
   const titleAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: titleOpacity.value,
+      opacity: titleOpacity.get(),
     };
   });
 
@@ -968,11 +969,11 @@ export const MyRecipesScreen = () => {
   // Outer clip wrapper - animates position only, clips content to end width
   const floatingSearchClipStyle = useAnimatedStyle(() => {
     "worklet";
-    const baseY = searchBarY.value || searchModeY;
+    const baseY = searchBarY.get() || searchModeY;
     const deltaY = searchModeY - baseY;
     // Filter button space - this only changes on tab switch, not during enter/exit
     const filterSpace =
-      (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.value;
+      (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.get();
     const endWidth =
       SCREEN_WIDTH -
       HORIZONTAL_PADDING * 2 -
@@ -982,17 +983,17 @@ export const MyRecipesScreen = () => {
 
     // Linear interpolation: startWidth + progress * (endWidth - startWidth)
     const clipWidth =
-      startWidth + searchProgress.value * (endWidth - startWidth);
+      startWidth + searchProgress.get() * (endWidth - startWidth);
 
     return {
       top: baseY,
       width: clipWidth,
       overflow: "hidden" as const,
-      opacity: searchProgress.value > 0 ? 1 : 0,
+      opacity: searchProgress.get() > 0 ? 1 : 0,
       // GPU-accelerated position animation (simple multiplication replaces interpolate)
       transform: [
-        { translateX: searchProgress.value * BACK_BUTTON_OFFSET },
-        { translateY: searchProgress.value * deltaY },
+        { translateX: searchProgress.get() * BACK_BUTTON_OFFSET },
+        { translateY: searchProgress.get() * deltaY },
       ],
     };
   });
@@ -1001,9 +1002,9 @@ export const MyRecipesScreen = () => {
   const floatingSearchInnerStyle = useAnimatedStyle(() => {
     "worklet";
     // When animation is complete, snap to endWidth so input area is fully visible
-    if (searchProgress.value === 1) {
+    if (searchProgress.get() === 1) {
       const filterSpace =
-        (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.value;
+        (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.get();
       const endWidth =
         SCREEN_WIDTH -
         HORIZONTAL_PADDING * 2 -
@@ -1019,7 +1020,7 @@ export const MyRecipesScreen = () => {
   const inlineSearchBarStyle = useAnimatedStyle(() => {
     "worklet";
     return {
-      opacity: searchProgress.value > 0 ? 0 : 1,
+      opacity: searchProgress.get() > 0 ? 0 : 1,
     };
   });
 
@@ -1027,7 +1028,7 @@ export const MyRecipesScreen = () => {
   // Filter button uses scale transform for GPU-accelerated show/hide
   const filterButtonAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
-    const combined = filterButtonProgress.value * searchProgress.value;
+    const combined = filterButtonProgress.get() * searchProgress.get();
     return {
       opacity: combined,
       transform: [{ scale: combined }],
@@ -1037,9 +1038,9 @@ export const MyRecipesScreen = () => {
   // Back button scales in like the filter button
   const backButtonAnimatedStyle = useAnimatedStyle(() => {
     "worklet";
-    const scale = searchProgress.value;
+    const scale = searchProgress.get();
     return {
-      opacity: searchProgress.value,
+      opacity: searchProgress.get(),
       transform: [{ scale }],
     };
   });

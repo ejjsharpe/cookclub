@@ -131,7 +131,7 @@ export const RecipeCollectionBrowser = ({
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
 
   const centeredKeyboardStyle = useAnimatedStyle(() => {
-    const keyboardOffset = Math.max(0, -keyboardHeight.value);
+    const keyboardOffset = Math.max(0, -keyboardHeight.get());
 
     return {
       paddingBottom: keyboardOffset,
@@ -170,7 +170,7 @@ export const RecipeCollectionBrowser = ({
       return {};
     }
     return {
-      opacity: headerAnimationProgress.value >= 1 ? 1 : 0,
+      opacity: headerAnimationProgress.get() >= 1 ? 1 : 0,
     };
   });
 

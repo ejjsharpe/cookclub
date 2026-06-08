@@ -31,7 +31,7 @@ export const SearchEmptyState = memo(
   }: SearchEmptyStateProps) => {
     const animatedStyle = useAnimatedStyle(() => {
       const keyboardPadding =
-        keyboardHeight.value > 0 ? keyboardHeight.value / 2 : 0;
+        keyboardHeight.get() > 0 ? keyboardHeight.get() / 2 : 0;
       return {
         paddingBottom: keyboardPadding + fixedHeaderHeight,
       };

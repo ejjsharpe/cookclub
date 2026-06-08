@@ -51,9 +51,9 @@ const ProgressSyncer = ({
   target: SharedValue<number>;
 }) => {
   useAnimatedReaction(
-    () => source.value,
+    () => source.get(),
     (value) => {
-      target.value = value;
+      target.set(value);
     },
   );
   return null;
@@ -67,13 +67,13 @@ const DeleteAction = ({
   onDelete: () => void;
 }) => {
   const deleteButtonStyle = useAnimatedStyle(() => {
-    const scale = interpolate(swipeProgress.value, [0.5, 0.7, 1], [0, 0.8, 1], {
+    const scale = interpolate(swipeProgress.get(), [0.5, 0.7, 1], [0, 0.8, 1], {
       extrapolateLeft: Extrapolation.CLAMP,
       extrapolateRight: Extrapolation.CLAMP,
     });
     return {
       transform: [{ scale }],
-      opacity: interpolate(swipeProgress.value, [0.5, 0.6], [0, 1], {
+      opacity: interpolate(swipeProgress.get(), [0.5, 0.6], [0, 1], {
         extrapolateLeft: Extrapolation.CLAMP,
         extrapolateRight: Extrapolation.CLAMP,
       }),
@@ -112,9 +112,9 @@ const SlotContent = ({
 
   const backgroundStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      swipeProgress.value,
+      swipeProgress.get(),
       [0, 1],
-      ["transparent", animatedTheme.value.colors.background],
+      ["transparent", animatedTheme.get().colors.background],
     ),
   }));
 

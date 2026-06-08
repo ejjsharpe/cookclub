@@ -66,16 +66,16 @@ export const RecipeCollectionHeader = ({
 
   // Spring animation for segmented control entrance
   const segmentedControlSpring = useDerivedValue(() => {
-    return withSpring(headerAnimationProgress?.value ?? 0, {
+    return withSpring(headerAnimationProgress?.get() ?? 0, {
       mass: 0.5,
     });
   });
 
   const headerEntranceStyle = useAnimatedStyle(() => {
     "worklet";
-    const scale = interpolate(segmentedControlSpring.value, [0, 1], [0.8, 1]);
+    const scale = interpolate(segmentedControlSpring.get(), [0, 1], [0.8, 1]);
     return {
-      opacity: segmentedControlSpring.value,
+      opacity: segmentedControlSpring.get(),
       transform: [{ scale }],
     };
   });

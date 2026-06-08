@@ -83,11 +83,11 @@ export const Skeleton = ({
   const shimmer = useSharedValue(0);
 
   useEffect(() => {
-    shimmer.value = withRepeat(withTiming(1, { duration: 1200 }), -1, false);
+    shimmer.set(withRepeat(withTiming(1, { duration: 1200 }), -1, false));
   }, [shimmer]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(shimmer.value, [0, 0.5, 1], [0.3, 0.6, 0.3]),
+    opacity: interpolate(shimmer.get(), [0, 0.5, 1], [0.3, 0.6, 0.3]),
   }));
 
   return (

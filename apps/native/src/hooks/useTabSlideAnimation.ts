@@ -16,19 +16,19 @@ export function useTabSlideAnimation() {
   const slideDirection = useSharedValue(0);
 
   const triggerSlide = (direction: number) => {
-    slideDirection.value = direction;
-    slideProgress.value = 0;
-    slideProgress.value = withTiming(1, animationConfig);
+    slideDirection.set(direction);
+    slideProgress.set(0);
+    slideProgress.set(withTiming(1, animationConfig));
   };
 
   const animatedStyle = useAnimatedStyle(() => {
     const slideDistance = 30;
     const translateX = interpolate(
-      slideProgress.value,
+      slideProgress.get(),
       [0, 1],
-      [slideDistance * slideDirection.value, 0],
+      [slideDistance * slideDirection.get(), 0],
     );
-    const opacity = interpolate(slideProgress.value, [0, 0.3, 1], [0, 0.5, 1]);
+    const opacity = interpolate(slideProgress.get(), [0, 0.3, 1], [0, 0.5, 1]);
 
     return {
       transform: [{ translateX }],

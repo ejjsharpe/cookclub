@@ -68,24 +68,24 @@ export default function OnboardingScreen() {
   const translateX = useSharedValue(0);
 
   const animatedPagerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateX: translateX.get() }],
   }));
 
   // Back button animation
   const backButtonProgress = useSharedValue(0);
 
   const animatedBackButtonStyle = useAnimatedStyle(() => ({
-    width: backButtonProgress.value * BACK_BUTTON_WIDTH,
-    marginRight: backButtonProgress.value * 12,
-    opacity: backButtonProgress.value,
+    width: backButtonProgress.get() * BACK_BUTTON_WIDTH,
+    marginRight: backButtonProgress.get() * 12,
+    opacity: backButtonProgress.get(),
     overflow: "hidden" as const,
   }));
 
   const navigateToStep = useCallback(
     (step: number) => {
       setCurrentStep(step);
-      translateX.value = withSpring(-(step - 1) * SCREEN_WIDTH, SPRING_CONFIG);
-      backButtonProgress.value = withTiming(step > 1 ? 1 : 0, TIMING_CONFIG);
+      translateX.set(withSpring(-(step - 1) * SCREEN_WIDTH, SPRING_CONFIG));
+      backButtonProgress.set(withTiming(step > 1 ? 1 : 0, TIMING_CONFIG));
     },
     [translateX, backButtonProgress],
   );

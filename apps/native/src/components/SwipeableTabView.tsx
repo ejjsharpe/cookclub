@@ -42,9 +42,9 @@ export const SwipeableTabView = ({
 
   // Sync translateX and scrollProgress when activeIndex changes externally (e.g., tab press)
   useEffect(() => {
-    translateX.value = withSpring(-activeIndex * containerWidth, SPRING_CONFIG);
+    translateX.set(withSpring(-activeIndex * containerWidth, SPRING_CONFIG));
     if (scrollProgress) {
-      scrollProgress.value = withSpring(activeIndex, SPRING_CONFIG);
+      scrollProgress.set(withSpring(activeIndex, SPRING_CONFIG));
     }
   }, [activeIndex, containerWidth, translateX, scrollProgress]);
 
@@ -53,26 +53,25 @@ export const SwipeableTabView = ({
     .activeOffsetX([-10, 10])
     .failOffsetY([-10, 10])
     .onStart(() => {
-      startX.value = translateX.value;
+      startX.set(translateX.get());
     })
     .onUpdate((event) => {
-      const newTranslateX = startX.value + event.translationX;
+      const newTranslateX = startX.get() + event.translationX;
       // Clamp to prevent over-scrolling
       const minTranslate = -(tabCount - 1) * containerWidth;
       const maxTranslate = 0;
-      translateX.value = Math.max(
-        minTranslate,
-        Math.min(maxTranslate, newTranslateX),
+      translateX.set(
+        Math.max(minTranslate, Math.min(maxTranslate, newTranslateX)),
       );
 
       // Update scroll progress for synced tab bar animation
       if (scrollProgress) {
-        scrollProgress.value = -translateX.value / containerWidth;
+        scrollProgress.set(-translateX.get() / containerWidth);
       }
     })
     .onEnd((event) => {
       const velocity = event.velocityX;
-      const currentOffset = -translateX.value;
+      const currentOffset = -translateX.get();
       const currentIndex = Math.round(currentOffset / containerWidth);
 
       let newIndex = currentIndex;
@@ -102,11 +101,11 @@ export const SwipeableTabView = ({
       newIndex = Math.max(0, Math.min(tabCount - 1, newIndex));
 
       // Animate to the new position
-      translateX.value = withSpring(-newIndex * containerWidth, SPRING_CONFIG);
+      translateX.set(withSpring(-newIndex * containerWidth, SPRING_CONFIG));
 
       // Animate scroll progress with spring
       if (scrollProgress) {
-        scrollProgress.value = withSpring(newIndex, SPRING_CONFIG);
+        scrollProgress.set(withSpring(newIndex, SPRING_CONFIG));
       }
 
       // Notify parent if index changed
@@ -116,7 +115,7 @@ export const SwipeableTabView = ({
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateX: translateX.get() }],
   }));
 
   return (

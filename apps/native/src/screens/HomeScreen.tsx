@@ -99,35 +99,35 @@ const Header = memo(
     const avatarScale = useSharedValue(1);
 
     const titleAnimatedStyle = useAnimatedStyle(() => ({
-      opacity: titleOpacity.value,
+      opacity: titleOpacity.get(),
     }));
 
     const avatarOpacityStyle = useAnimatedStyle(() => ({
-      opacity: avatarOpacity.value,
+      opacity: avatarOpacity.get(),
     }));
 
     const notificationAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: notificationScale.value }],
+      transform: [{ scale: notificationScale.get() }],
     }));
 
     const avatarAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: avatarScale.value }],
+      transform: [{ scale: avatarScale.get() }],
     }));
 
     const handleNotificationPressIn = () => {
-      notificationScale.value = withSpring(0.9, { mass: 1 });
+      notificationScale.set(withSpring(0.9, { mass: 1 }));
     };
 
     const handleNotificationPressOut = () => {
-      notificationScale.value = withSpring(1);
+      notificationScale.set(withSpring(1));
     };
 
     const handleAvatarPressIn = () => {
-      avatarScale.value = withSpring(0.9, { mass: 1 });
+      avatarScale.set(withSpring(0.9, { mass: 1 }));
     };
 
     const handleAvatarPressOut = () => {
-      avatarScale.value = withSpring(1);
+      avatarScale.set(withSpring(1));
     };
 
     return (
@@ -315,10 +315,10 @@ export const HomeScreen = () => {
     if (isSearchActive) {
       // Show floating search immediately when entering search mode
       setShowFloatingSearch(true);
-      searchProgress.value = withTiming(1, animationConfig);
+      searchProgress.set(withTiming(1, animationConfig));
     } else {
       // Animate out, then hide floating search after animation completes
-      searchProgress.value = withTiming(0, animationConfig);
+      searchProgress.set(withTiming(0, animationConfig));
       const timeout = setTimeout(() => {
         setShowFloatingSearch(false);
       }, animationConfig.duration);
@@ -327,10 +327,12 @@ export const HomeScreen = () => {
   }, [isSearchActive, animationConfig, searchProgress]);
 
   useEffect(() => {
-    loadLatestProgress.value = withTiming(showLoadLatest ? 1 : 0, {
-      duration: LOAD_LATEST_ANIMATION_MS,
-      easing: Easing.bezier(0.2, 0, 0, 1),
-    });
+    loadLatestProgress.set(
+      withTiming(showLoadLatest ? 1 : 0, {
+        duration: LOAD_LATEST_ANIMATION_MS,
+        easing: Easing.bezier(0.2, 0, 0, 1),
+      }),
+    );
   }, [loadLatestProgress, showLoadLatest]);
 
   useEffect(() => {
@@ -509,7 +511,7 @@ export const HomeScreen = () => {
     // Measure the search bar position before transitioning
     searchBarRef.current?.measureInWindow((_x, y) => {
       searchBarMeasuredY.current = y;
-      searchBarY.value = y;
+      searchBarY.set(y);
       setIsSearchActive(true);
     });
   }, [searchBarY]);
@@ -520,8 +522,8 @@ export const HomeScreen = () => {
   }, []);
 
   const hideLoadLatest = useCallback(() => {
-    isScrollingTowardLatest.value = false;
-    latestScrollMinY.value = 0;
+    isScrollingTowardLatest.set(false);
+    latestScrollMinY.set(0);
 
     if (loadLatestTimeoutRef.current) {
       clearTimeout(loadLatestTimeoutRef.current);
@@ -592,7 +594,7 @@ export const HomeScreen = () => {
     // Measure the search bar position before transitioning (same as handleSearchFocus)
     searchBarRef.current?.measureInWindow((_x, y) => {
       searchBarMeasuredY.current = y;
-      searchBarY.value = y;
+      searchBarY.set(y);
       setIsSearchActive(true);
     });
   }, [searchBarY]);
@@ -647,52 +649,58 @@ export const HomeScreen = () => {
       const y = event.contentOffset.y;
 
       const nextTitleHidden = y > 5;
-      if (titleHidden.value !== nextTitleHidden) {
-        titleHidden.value = nextTitleHidden;
-        titleOpacity.value = withTiming(nextTitleHidden ? 0 : 1, {
-          duration: 150,
-        });
+      if (titleHidden.get() !== nextTitleHidden) {
+        titleHidden.set(nextTitleHidden);
+        titleOpacity.set(
+          withTiming(nextTitleHidden ? 0 : 1, {
+            duration: 150,
+          }),
+        );
       }
 
       const nextAvatarHidden = y > 10;
-      if (avatarHidden.value !== nextAvatarHidden) {
-        avatarHidden.value = nextAvatarHidden;
-        avatarOpacity.value = withTiming(nextAvatarHidden ? 0 : 1, {
-          duration: 150,
-        });
+      if (avatarHidden.get() !== nextAvatarHidden) {
+        avatarHidden.set(nextAvatarHidden);
+        avatarOpacity.set(
+          withTiming(nextAvatarHidden ? 0 : 1, {
+            duration: 150,
+          }),
+        );
       }
 
-      const deltaY = y - previousScrollY.value;
+      const deltaY = y - previousScrollY.get();
       const isAboveLatestShowThreshold = y > LOAD_LATEST_SHOW_SCROLL_Y;
       const isBelowLatestHideThreshold = y <= LOAD_LATEST_HIDE_SCROLL_Y;
       const isScrollingUp = deltaY < -SCROLL_DIRECTION_THRESHOLD;
       const isScrollingDown = deltaY > SCROLL_DIRECTION_THRESHOLD;
 
       if (isBelowLatestHideThreshold) {
-        if (isScrollingTowardLatest.value) {
-          isScrollingTowardLatest.value = false;
-          latestScrollMinY.value = 0;
+        if (isScrollingTowardLatest.get()) {
+          isScrollingTowardLatest.set(false);
+          latestScrollMinY.set(0);
           runOnJS(hideLoadLatest)();
         }
       } else if (isAboveLatestShowThreshold && isScrollingUp) {
-        latestScrollMinY.value = isScrollingTowardLatest.value
-          ? Math.min(latestScrollMinY.value, y)
-          : y;
-        if (!isScrollingTowardLatest.value) {
-          isScrollingTowardLatest.value = true;
+        latestScrollMinY.set(
+          isScrollingTowardLatest.get()
+            ? Math.min(latestScrollMinY.get(), y)
+            : y,
+        );
+        if (!isScrollingTowardLatest.get()) {
+          isScrollingTowardLatest.set(true);
           runOnJS(scheduleLoadLatest)();
         }
       } else if (
         isScrollingDown &&
-        isScrollingTowardLatest.value &&
-        y - latestScrollMinY.value > LOAD_LATEST_SCROLL_DOWN_HIDE_DISTANCE
+        isScrollingTowardLatest.get() &&
+        y - latestScrollMinY.get() > LOAD_LATEST_SCROLL_DOWN_HIDE_DISTANCE
       ) {
-        isScrollingTowardLatest.value = false;
-        latestScrollMinY.value = 0;
+        isScrollingTowardLatest.set(false);
+        latestScrollMinY.set(0);
         runOnJS(hideLoadLatest)();
       }
 
-      previousScrollY.value = y;
+      previousScrollY.set(y);
     },
   });
 
@@ -867,11 +875,11 @@ export const HomeScreen = () => {
   // ─── Animation Styles ─────────────────────────────────────────────────────────
   // Use showFloatingSearch to control visibility so the animation plays out fully
   const browseAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(searchProgress.value, [0, 1], [1, 0]),
+    opacity: interpolate(searchProgress.get(), [0, 1], [1, 0]),
   }));
 
   const searchAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: searchProgress.value,
+    opacity: searchProgress.get(),
   }));
 
   // Floating search bar animates from its scroll position to fixed position
@@ -886,10 +894,10 @@ export const HomeScreen = () => {
   // Outer clip wrapper - animates position and clips content
   const floatingSearchClipStyle = useAnimatedStyle(() => {
     "worklet";
-    const baseY = searchBarY.value || searchModeY;
+    const baseY = searchBarY.get() || searchModeY;
     const deltaY = searchModeY - baseY;
     const clipWidth =
-      startWidth + searchProgress.value * (endWidth - startWidth);
+      startWidth + searchProgress.get() * (endWidth - startWidth);
 
     return {
       top: baseY,
@@ -897,8 +905,8 @@ export const HomeScreen = () => {
       overflow: "hidden" as const,
       // GPU-accelerated position animation
       transform: [
-        { translateX: searchProgress.value * BACK_BUTTON_OFFSET },
-        { translateY: searchProgress.value * deltaY },
+        { translateX: searchProgress.get() * BACK_BUTTON_OFFSET },
+        { translateY: searchProgress.get() * deltaY },
       ],
     };
   });
@@ -907,7 +915,7 @@ export const HomeScreen = () => {
   const floatingSearchInnerStyle = useAnimatedStyle(() => {
     "worklet";
     // When animation is complete, snap to endWidth so input area is fully visible
-    const width = searchProgress.value === 1 ? endWidth : startWidth;
+    const width = searchProgress.get() === 1 ? endWidth : startWidth;
     return { width };
   });
 
@@ -916,18 +924,18 @@ export const HomeScreen = () => {
     position: "absolute",
     top: searchModeY,
     left: HORIZONTAL_PADDING,
-    opacity: searchProgress.value,
-    transform: [{ scale: searchProgress.value }],
+    opacity: searchProgress.get(),
+    transform: [{ scale: searchProgress.get() }],
   }));
 
   const loadLatestAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: loadLatestProgress.value,
+    opacity: loadLatestProgress.get(),
     transform: [
       {
-        translateY: interpolate(loadLatestProgress.value, [0, 1], [-8, 0]),
+        translateY: interpolate(loadLatestProgress.get(), [0, 1], [-8, 0]),
       },
       {
-        scale: interpolate(loadLatestProgress.value, [0, 1], [0.96, 1]),
+        scale: interpolate(loadLatestProgress.get(), [0, 1], [0.96, 1]),
       },
     ],
   }));

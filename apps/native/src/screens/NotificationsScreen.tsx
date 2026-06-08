@@ -358,17 +358,19 @@ export const NotificationsScreen = () => {
   const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       const nextHeaderHidden = event.contentOffset.y > 5;
-      if (headerHidden.value !== nextHeaderHidden) {
-        headerHidden.value = nextHeaderHidden;
-        headerOpacity.value = withTiming(nextHeaderHidden ? 0 : 1, {
-          duration: 150,
-        });
+      if (headerHidden.get() !== nextHeaderHidden) {
+        headerHidden.set(nextHeaderHidden);
+        headerOpacity.set(
+          withTiming(nextHeaderHidden ? 0 : 1, {
+            duration: 150,
+          }),
+        );
       }
     },
   });
 
   const headerAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: headerOpacity.value,
+    opacity: headerOpacity.get(),
   }));
   const refreshOffset = insets.top + NAVIGATION_HEADER_HEIGHT;
 

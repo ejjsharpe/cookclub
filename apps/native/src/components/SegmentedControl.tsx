@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import { View, TouchableOpacity, LayoutChangeEvent } from "react-native";
 import Animated, {
   useSharedValue,
@@ -39,7 +39,7 @@ const AnimatedTabText = ({
   const animatedStyle = useAnimatedStyle(() => {
     if (scrollProgress) {
       const progress = interpolate(
-        scrollProgress.value,
+        scrollProgress.get(),
         inputRange,
         outputRange,
         "clamp",
@@ -50,8 +50,8 @@ const AnimatedTabText = ({
           progress,
           [0, 1],
           [
-            animatedTheme.value.colors.textSecondary,
-            animatedTheme.value.colors.text,
+            animatedTheme.get().colors.textSecondary,
+            animatedTheme.get().colors.text,
           ],
         ),
       };
@@ -60,8 +60,8 @@ const AnimatedTabText = ({
     return {
       color:
         index === activeIndex
-          ? animatedTheme.value.colors.text
-          : animatedTheme.value.colors.textSecondary,
+          ? animatedTheme.get().colors.text
+          : animatedTheme.get().colors.textSecondary,
     };
   });
 
@@ -109,6 +109,7 @@ export function SegmentedControl<T extends string>({
   const tabWidths = useSharedValue<number[]>([]);
 
   const activeIndex = options.findIndex((opt) => opt.value === value);
+  const inputRange = useMemo(() => options.map((_, index) => index), [options]);
 
   const handleTabLayout = (index: number, event: LayoutChangeEvent) => {
     const { x, width } = event.nativeEvent.layout;
@@ -120,15 +121,15 @@ export function SegmentedControl<T extends string>({
         (pos) => pos && pos.width > 0,
       );
       if (allValid) {
-        tabXPositions.value = tabPositions.current.map((p) => p.x);
-        tabWidths.value = tabPositions.current.map((p) => p.width);
+        tabXPositions.set(tabPositions.current.map((p) => p.x));
+        tabWidths.set(tabPositions.current.map((p) => p.width));
       }
     }
 
     // Set initial position without animation when the active tab is laid out
     if (index === activeIndex && !isInitialized.current) {
-      indicatorX.value = x;
-      indicatorWidth.value = width;
+      indicatorX.set(x);
+      indicatorWidth.set(width);
       currentIndex.current = index;
       isInitialized.current = true;
     }
@@ -143,8 +144,8 @@ export function SegmentedControl<T extends string>({
     ) {
       const position = tabPositions.current[activeIndex];
       if (position) {
-        indicatorX.value = withSpring(position.x, SPRING_CONFIG);
-        indicatorWidth.value = withSpring(position.width, SPRING_CONFIG);
+        indicatorX.set(withSpring(position.x, SPRING_CONFIG));
+        indicatorWidth.set(withSpring(position.width, SPRING_CONFIG));
         currentIndex.current = activeIndex;
       }
     }
@@ -153,8 +154,8 @@ export function SegmentedControl<T extends string>({
   const handlePress = (optionValue: T, index: number) => {
     const position = tabPositions.current[index];
     if (position) {
-      indicatorX.value = withSpring(position.x, SPRING_CONFIG);
-      indicatorWidth.value = withSpring(position.width, SPRING_CONFIG);
+      indicatorX.set(withSpring(position.x, SPRING_CONFIG));
+      indicatorWidth.set(withSpring(position.width, SPRING_CONFIG));
     }
 
     const direction = index > currentIndex.current ? 1 : -1;
@@ -165,36 +166,34 @@ export function SegmentedControl<T extends string>({
 
   // Derived values for interpolated position when scrollProgress is provided
   const interpolatedX = useDerivedValue(() => {
-    if (scrollProgress && tabXPositions.value.length >= 2) {
-      const inputRange = tabXPositions.value.map((_, i) => i);
+    if (scrollProgress && tabXPositions.get().length >= 2) {
       return interpolate(
-        scrollProgress.value,
+        scrollProgress.get(),
         inputRange,
-        tabXPositions.value,
+        tabXPositions.get(),
         "clamp",
       );
     }
-    return indicatorX.value;
+    return indicatorX.get();
   });
 
   const interpolatedWidth = useDerivedValue(() => {
-    if (scrollProgress && tabWidths.value.length >= 2) {
-      const inputRange = tabWidths.value.map((_, i) => i);
+    if (scrollProgress && tabWidths.get().length >= 2) {
       return interpolate(
-        scrollProgress.value,
+        scrollProgress.get(),
         inputRange,
-        tabWidths.value,
+        tabWidths.get(),
         "clamp",
       );
     }
-    return indicatorWidth.value;
+    return indicatorWidth.get();
   });
 
   // Animated indicator style
   const indicatorStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateX: interpolatedX.value }],
-      width: interpolatedWidth.value,
+      transform: [{ translateX: interpolatedX.get() }],
+      width: interpolatedWidth.get(),
     };
   });
 

@@ -146,10 +146,12 @@ export const MealPlanScreen = () => {
   }, [todayDateString]);
 
   useEffect(() => {
-    backToTodayProgress.value = withTiming(showBackToToday ? 1 : 0, {
-      duration: BACK_TO_TODAY_ANIMATION_MS,
-      easing: Easing.bezier(0.2, 0, 0, 1),
-    });
+    backToTodayProgress.set(
+      withTiming(showBackToToday ? 1 : 0, {
+        duration: BACK_TO_TODAY_ANIMATION_MS,
+        easing: Easing.bezier(0.2, 0, 0, 1),
+      }),
+    );
   }, [backToTodayProgress, showBackToToday]);
 
   useEffect(() => {
@@ -461,13 +463,13 @@ export const MealPlanScreen = () => {
   }, [navigation, scrollToToday, isFocused]);
 
   const backToTodayAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backToTodayProgress.value,
+    opacity: backToTodayProgress.get(),
     transform: [
       {
-        translateY: interpolate(backToTodayProgress.value, [0, 1], [-8, 0]),
+        translateY: interpolate(backToTodayProgress.get(), [0, 1], [-8, 0]),
       },
       {
-        scale: interpolate(backToTodayProgress.value, [0, 1], [0.96, 1]),
+        scale: interpolate(backToTodayProgress.get(), [0, 1], [0.96, 1]),
       },
     ],
   }));

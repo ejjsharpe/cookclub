@@ -117,7 +117,7 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
 
     const inputAreaAnimatedStyle = useAnimatedStyle(() => ({
       paddingBottom: interpolate(
-        keyboardProgress.value,
+        keyboardProgress.get(),
         [0, 1],
         [insets.bottom, KEYBOARD_OPEN_BOTTOM_PADDING],
       ),

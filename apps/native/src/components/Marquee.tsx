@@ -52,22 +52,22 @@ const AnimatedChild = ({
     if (direction === "vertical") {
       return {
         position: "absolute",
-        top: (index - 1) * (textMeasurement.value.height + spacing),
+        top: (index - 1) * (textMeasurement.get().height + spacing),
         transform: [
           {
             translateY:
-              -(anim.value % (textMeasurement.value.height + spacing)) + offset,
+              -(anim.get() % (textMeasurement.get().height + spacing)) + offset,
           },
         ],
       };
     }
     return {
       position: "absolute",
-      left: (index - 1) * (textMeasurement.value.width + spacing),
+      left: (index - 1) * (textMeasurement.get().width + spacing),
       transform: [
         {
           translateX:
-            -(anim.value % (textMeasurement.value.width + spacing)) + offset,
+            -(anim.get() % (textMeasurement.get().width + spacing)) + offset,
         },
       ],
     };
@@ -120,33 +120,33 @@ export const Marquee = React.memo(
           : 1;
 
         if (reverse) {
-          anim.value -= speed * frameDelta;
+          anim.set(anim.get() - speed * frameDelta);
         } else {
-          anim.value += speed * frameDelta;
+          anim.set(anim.get() + speed * frameDelta);
         }
       }, true);
 
       useDerivedValue(() => {
         if (position) {
-          position.value = anim.value;
+          position.set(anim.get());
         }
       });
 
       useAnimatedReaction(
         () => {
           if (
-            textMeasurement.value.width === 0 ||
-            parentMeasurement.value.width === 0 ||
-            textMeasurement.value.height === 0 ||
-            parentMeasurement.value.height === 0
+            textMeasurement.get().width === 0 ||
+            parentMeasurement.get().width === 0 ||
+            textMeasurement.get().height === 0 ||
+            parentMeasurement.get().height === 0
           ) {
             return 0;
           }
           return (
             Math.round(
               direction === "horizontal"
-                ? parentMeasurement.value.width / textMeasurement.value.width
-                : parentMeasurement.value.height / textMeasurement.value.height,
+                ? parentMeasurement.get().width / textMeasurement.get().width
+                : parentMeasurement.get().height / textMeasurement.get().height,
             ) + 1
           );
         },
@@ -184,21 +184,25 @@ export const Marquee = React.memo(
           scheduleOnRN(stop);
         })
         .onChange((e) => {
-          anim.value += -(direction === "horizontal" ? e.changeX : e.changeY);
+          anim.set(
+            anim.get() - (direction === "horizontal" ? e.changeX : e.changeY),
+          );
         })
         .onFinalize((e) => {
-          anim.value = withDecay(
-            {
-              velocity: -(direction === "horizontal"
-                ? e.velocityX
-                : e.velocityY),
-              velocityFactor: 0.5,
-            },
-            (finished) => {
-              if (finished) {
-                scheduleOnRN(start);
-              }
-            },
+          anim.set(
+            withDecay(
+              {
+                velocity: -(direction === "horizontal"
+                  ? e.velocityX
+                  : e.velocityY),
+                velocityFactor: 0.5,
+              },
+              (finished) => {
+                if (finished) {
+                  scheduleOnRN(start);
+                }
+              },
+            ),
           );
         });
 
@@ -207,7 +211,7 @@ export const Marquee = React.memo(
           key={direction}
           style={style}
           onLayout={(ev) => {
-            parentMeasurement.value = ev.nativeEvent.layout;
+            parentMeasurement.set(ev.nativeEvent.layout);
           }}
           pointerEvents="box-none"
         >
@@ -220,7 +224,7 @@ export const Marquee = React.memo(
               >
                 <View
                   onLayout={(ev) => {
-                    textMeasurement.value = ev.nativeEvent.layout;
+                    textMeasurement.set(ev.nativeEvent.layout);
                   }}
                 >
                   {children}

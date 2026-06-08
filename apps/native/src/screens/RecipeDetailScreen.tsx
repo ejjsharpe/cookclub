@@ -511,17 +511,17 @@ export const RecipeDetailScreen = () => {
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
+      scrollY.set(event.contentOffset.y);
     },
   });
 
   const imageAnimatedStyle = useAnimatedStyle(() => {
-    const scale = interpolate(scrollY.value, [-200, 0], [2, 1], {
+    const scale = interpolate(scrollY.get(), [-200, 0], [2, 1], {
       extrapolateLeft: Extrapolation.EXTEND,
       extrapolateRight: Extrapolation.CLAMP,
     });
     const scaleCompensation = -(IMAGE_HEIGHT * (scale - 1)) / 2;
-    const parallax = scrollY.value > 0 ? scrollY.value / 2 : 0;
+    const parallax = scrollY.get() > 0 ? scrollY.get() / 2 : 0;
 
     return {
       transform: [{ translateY: scaleCompensation + parallax }, { scale }],
