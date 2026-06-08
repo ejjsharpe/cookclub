@@ -2,7 +2,11 @@ import type { ComponentProps } from "react";
 
 import type { Ionicons } from "@/components/Ionicons";
 
-export type RecipeImportSocialPlatform = "tiktok" | "instagram" | "facebook";
+export type RecipeImportSocialPlatform =
+  | "tiktok"
+  | "instagram"
+  | "facebook"
+  | "youtube";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -37,6 +41,13 @@ const SOCIAL_PLATFORMS: Record<
     icon: "logo-facebook",
     color: "#1877F2",
     domains: ["facebook.com", "fb.com", "fb.watch"],
+  },
+  youtube: {
+    id: "youtube",
+    displayName: "YouTube",
+    icon: "logo-youtube",
+    color: "#FF0000",
+    domains: ["youtube.com", "youtu.be"],
   },
 };
 

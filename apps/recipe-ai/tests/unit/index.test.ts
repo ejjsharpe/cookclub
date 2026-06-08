@@ -147,6 +147,7 @@ function createMockEnv() {
       }),
     },
     IMAGE_PUBLIC_URL: "https://images.example.com",
+    YOUTUBE_API_KEY: "test-youtube-key",
     IMAGE_SERVICE: {
       uploadFromUrl: vi.fn(async (_sourceUrl: string, key: string) => ({
         success: true,
@@ -1192,18 +1193,7 @@ describe("RecipeAI.parse()", () => {
       expect(mockEnv.AI.run).not.toHaveBeenCalled();
     });
 
-    it("routes non-Instagram/TikTok social links through generic social parsing", async () => {
-      const youtubeHtml = `
-        <html>
-          <head>
-            <meta property="og:title" content="Tomato pasta short">
-            <meta property="og:description" content="Recipe: 200 g spaghetti, 1 cup tomato sauce. Boil pasta and toss with sauce.">
-            <meta property="og:image" content="https://example.com/youtube.jpg">
-          </head>
-          <body></body>
-        </html>
-      `;
-
+    it("parses YouTube recipe details from the video description", async () => {
       mockEnv.AI.run = vi.fn().mockResolvedValue({
         response: JSON.stringify({
           name: "Tomato Pasta",
@@ -1233,18 +1223,67 @@ describe("RecipeAI.parse()", () => {
         }),
       });
 
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "content-type": "text/html" }),
-        arrayBuffer: () =>
-          Promise.resolve(new TextEncoder().encode(youtubeHtml).buffer),
-        text: () => Promise.resolve(youtubeHtml),
-      });
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: {
+                      title: "Tomato pasta short",
+                      description:
+                        "Recipe: 200 g spaghetti, 1 cup tomato sauce. Boil pasta and toss with sauce.",
+                      channelTitle: "Cook Channel",
+                      channelId: "channel-1",
+                      thumbnails: {
+                        high: {
+                          url: "https://example.com/youtube.jpg",
+                          width: 480,
+                        },
+                      },
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [] }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              "<script>var ytInitialPlayerResponse = {};</script>",
+            ),
+        });
+      }) as any;
 
       const result = await parser.parse({
         type: "url",
-        data: "https://www.youtube.com/watch?v=abc123",
+        data: "https://www.youtube.com/watch?v=abc123def45",
       });
 
       expect(result.success).toBe(true);
@@ -1256,20 +1295,20 @@ describe("RecipeAI.parse()", () => {
           ),
         ]);
         expect(result.metadata.parseMethod).toBe("ai_only");
+        expect(
+          result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
+        ).toEqual(
+          expect.arrayContaining([
+            "youtube_metadata",
+            "youtube_comments",
+            "youtube_captions",
+            "ai",
+          ]),
+        );
       }
     });
 
     it("rehosts YouTube social images through the shared generated-image path", async () => {
-      const youtubeHtml = `
-        <html>
-          <head>
-            <meta property="og:title" content="Tomato pasta short">
-            <meta property="og:description" content="Recipe: 200 g spaghetti, 1 cup tomato sauce. Boil pasta and toss with sauce.">
-            <meta property="og:image" content="https://example.com/youtube.jpg">
-          </head>
-          <body></body>
-        </html>
-      `;
       const uploadFromUrl = vi.fn(
         async (_sourceUrl: string, destinationKey: string) => ({
           success: true,
@@ -1308,18 +1347,67 @@ describe("RecipeAI.parse()", () => {
         }),
       });
 
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "content-type": "text/html" }),
-        arrayBuffer: () =>
-          Promise.resolve(new TextEncoder().encode(youtubeHtml).buffer),
-        text: () => Promise.resolve(youtubeHtml),
-      });
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: {
+                      title: "Tomato pasta short",
+                      description:
+                        "Recipe: 200 g spaghetti, 1 cup tomato sauce. Boil pasta and toss with sauce.",
+                      channelTitle: "Cook Channel",
+                      channelId: "channel-1",
+                      thumbnails: {
+                        high: {
+                          url: "https://example.com/youtube.jpg",
+                          width: 480,
+                        },
+                      },
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [] }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              "<script>var ytInitialPlayerResponse = {};</script>",
+            ),
+        });
+      }) as any;
 
       const result = await parser.parse({
         type: "url",
-        data: "https://www.youtube.com/watch?v=abc123",
+        data: "https://www.youtube.com/watch?v=abc123def45",
       });
 
       expect(result.success).toBe(true);
@@ -1337,17 +1425,7 @@ describe("RecipeAI.parse()", () => {
       }
     });
 
-    it("does not reupload social images when no recipe candidate is accepted", async () => {
-      const youtubeHtml = `
-        <html>
-          <head>
-            <meta property="og:title" content="A tomato tasting short">
-            <meta property="og:description" content="A behind the scenes kitchen video with plating notes, restaurant chatter, and no usable ingredient list or cooking method.">
-            <meta property="og:image" content="https://example.com/youtube.jpg">
-          </head>
-          <body></body>
-        </html>
-      `;
+    it("does not reupload YouTube images when no recipe evidence is found", async () => {
       const uploadFromUrl = vi.fn(
         async (_sourceUrl: string, destinationKey: string) => ({
           success: true,
@@ -1357,36 +1435,550 @@ describe("RecipeAI.parse()", () => {
       );
 
       (mockEnv as any).IMAGE_SERVICE = { uploadFromUrl };
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
-          name: "Tomato Tasting",
-          description: null,
-          prepTime: null,
-          cookTime: null,
-          totalTime: null,
-          servings: null,
-          ingredientSections: [{ name: null, ingredients: [] }],
-          instructionSections: [{ name: null, instructions: [] }],
-          suggestedTags: [],
-        }),
-      });
+      mockEnv.AI.run = vi.fn();
 
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "content-type": "text/html" }),
-        arrayBuffer: () =>
-          Promise.resolve(new TextEncoder().encode(youtubeHtml).buffer),
-        text: () => Promise.resolve(youtubeHtml),
-      });
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: {
+                      title: "A tomato tasting short",
+                      description:
+                        "Behind the scenes kitchen video with plating notes and restaurant chatter.",
+                      channelTitle: "Cook Channel",
+                      channelId: "channel-1",
+                      thumbnails: {
+                        high: {
+                          url: "https://example.com/youtube.jpg",
+                          width: 480,
+                        },
+                      },
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    snippet: {
+                      topLevelComment: {
+                        snippet: {
+                          textOriginal: "Looks great!",
+                          authorDisplayName: "Viewer",
+                        },
+                      },
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              "<script>var ytInitialPlayerResponse = {};</script>",
+            ),
+        });
+      }) as any;
 
       const result = await parser.parse({
         type: "url",
-        data: "https://www.youtube.com/watch?v=abc123",
+        data: "https://www.youtube.com/watch?v=abc123def45",
       });
 
       expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("YOUTUBE_NO_RECIPE_EVIDENCE");
+      }
       expect(uploadFromUrl).not.toHaveBeenCalled();
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+    });
+
+    it("imports a linked recipe page from a YouTube creator comment before AI", async () => {
+      const linkedRecipeUrl = "https://recipe.example.com/youtube-pasta";
+      const linkedRecipeHtml = `
+        <html>
+          <head>
+            <script type="application/ld+json">
+              ${JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Recipe",
+                name: "Creator Comment Pasta",
+                recipeIngredient: ["200 g spaghetti", "1 cup tomato sauce"],
+                recipeInstructions: [
+                  { "@type": "HowToStep", text: "Boil the spaghetti." },
+                  { "@type": "HowToStep", text: "Toss with tomato sauce." },
+                ],
+              })}
+            </script>
+          </head>
+          <body></body>
+        </html>
+      `;
+
+      mockEnv.AI.run = vi.fn();
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: {
+                      title: "Tomato pasta",
+                      description: "Full recipe is pinned in the comments.",
+                      channelTitle: "Cook Channel",
+                      channelId: "channel-1",
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    snippet: {
+                      topLevelComment: {
+                        snippet: {
+                          textOriginal: `Full recipe here: ${linkedRecipeUrl}`,
+                          authorDisplayName: "Cook Channel",
+                          authorChannelId: { value: "channel-1" },
+                          likeCount: 100,
+                        },
+                      },
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (requested === linkedRecipeUrl) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "text/html" }),
+            text: () => Promise.resolve(linkedRecipeHtml),
+            arrayBuffer: () =>
+              Promise.resolve(
+                new TextEncoder().encode(linkedRecipeHtml).buffer,
+              ),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.youtube.com/watch?v=abc123def45",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Creator Comment Pasta");
+        expect(result.metadata.parseMethod).toBe("schema_org");
+        expect(result.metadata.canonicalUrl).toBe(linkedRecipeUrl);
+        expect(
+          result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
+        ).toContain("linked_url");
+      }
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+    });
+
+    it("uses YouTube captions for spoken recipe imports", async () => {
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Spoken Pancakes",
+          description: null,
+          prepTime: null,
+          cookTime: 10,
+          totalTime: null,
+          servings: 2,
+          ingredientSections: [
+            {
+              name: null,
+              ingredients: [
+                { index: 0, quantity: 1, unit: "cup", name: "flour" },
+                { index: 1, quantity: 1, unit: "cup", name: "milk" },
+              ],
+            },
+          ],
+          instructionSections: [
+            {
+              name: null,
+              instructions: [
+                { index: 0, instruction: "Whisk the batter." },
+                { index: 1, instruction: "Cook the pancakes." },
+              ],
+            },
+          ],
+        }),
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: {
+                      title: "Pancakes from scratch",
+                      description: "Recipe is spoken in the video.",
+                      channelTitle: "Cook Channel",
+                      channelId: "channel-1",
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [] }),
+          });
+        }
+
+        if (requested === "https://www.youtube.com/watch?v=abc123def45") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(`
+                <script>
+                  var ytInitialPlayerResponse = ${JSON.stringify({
+                    captions: {
+                      playerCaptionsTracklistRenderer: {
+                        captionTracks: [
+                          { baseUrl: "https://captions.example.com/track" },
+                        ],
+                      },
+                    },
+                  })};
+                </script>
+              `),
+          });
+        }
+
+        if (requested.startsWith("https://captions.example.com/track")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                JSON.stringify({
+                  events: [
+                    { segs: [{ utf8: "Use 1 cup flour and 1 cup milk. " }] },
+                    { segs: [{ utf8: "Whisk the batter and cook pancakes." }] },
+                  ],
+                }),
+              ),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.youtube.com/watch?v=abc123def45",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Spoken Pancakes");
+        expect(result.metadata.parseMethod).toBe("media_enriched");
+      }
+      expect(JSON.stringify(mockEnv.AI.run.mock.calls)).toContain(
+        "Audio transcript:",
+      );
+      expect(JSON.stringify(mockEnv.AI.run.mock.calls)).toContain(
+        "Use 1 cup flour",
+      );
+    });
+
+    it("fails spoken-only YouTube videos when no transcript is usable", async () => {
+      mockEnv.AI.run = vi.fn();
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: {
+                      title: "Pancakes from scratch",
+                      description: "Recipe is spoken in the video.",
+                      channelTitle: "Cook Channel",
+                      channelId: "channel-1",
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ items: [] }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              "<script>var ytInitialPlayerResponse = {};</script>",
+            ),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.youtube.com/watch?v=abc123def45",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("YOUTUBE_NO_RECIPE_EVIDENCE");
+      }
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+    });
+
+    it("continues YouTube parsing when comments are disabled", async () => {
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "No Comment Pasta",
+          description: null,
+          prepTime: null,
+          cookTime: 15,
+          totalTime: null,
+          servings: 2,
+          ingredientSections: [
+            {
+              name: null,
+              ingredients: [
+                { index: 0, quantity: 200, unit: "g", name: "spaghetti" },
+                { index: 1, quantity: 1, unit: "cup", name: "tomato sauce" },
+              ],
+            },
+          ],
+          instructionSections: [
+            {
+              name: null,
+              instructions: [{ index: 0, instruction: "Boil and toss." }],
+            },
+          ],
+        }),
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: {
+                      title: "No comment pasta",
+                      description:
+                        "Ingredients: 200 g spaghetti, 1 cup tomato sauce. Instructions: boil and toss.",
+                      channelTitle: "Cook Channel",
+                      channelId: "channel-1",
+                    },
+                    status: {
+                      privacyStatus: "public",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        if (
+          requested.startsWith(
+            "https://www.googleapis.com/youtube/v3/commentThreads",
+          )
+        ) {
+          return Promise.resolve({
+            ok: false,
+            status: 403,
+            json: () =>
+              Promise.resolve({
+                error: { message: "The video has comments disabled." },
+              }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              "<script>var ytInitialPlayerResponse = {};</script>",
+            ),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.youtube.com/watch?v=abc123def45",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("No Comment Pasta");
+        expect(
+          result.metadata.diagnostics?.stageTimings?.find(
+            (stage) => stage.name === "youtube_comments",
+          )?.status,
+        ).toBe("skipped");
+      }
+    });
+
+    it("fails unavailable YouTube videos clearly", async () => {
+      mockEnv.AI.run = vi.fn();
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (
+          requested.startsWith("https://www.googleapis.com/youtube/v3/videos")
+        ) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                items: [
+                  {
+                    id: "abc123def45",
+                    snippet: { title: "Private video" },
+                    status: {
+                      privacyStatus: "private",
+                      uploadStatus: "processed",
+                    },
+                  },
+                ],
+              }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.youtube.com/watch?v=abc123def45",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("YOUTUBE_METADATA_FAILED");
+        expect(result.error.message).toContain("not available");
+      }
+      expect(mockEnv.AI.run).not.toHaveBeenCalled();
     });
 
     it("rejects social links during structured-only basic import without fetching", async () => {

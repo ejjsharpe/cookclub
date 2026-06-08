@@ -24,6 +24,16 @@ import {
   extractTikTokContent,
   type TikTokContent,
 } from "../utils/tiktok-fetcher";
+import {
+  extractYouTubeVideoId,
+  fetchYouTubeComments,
+  fetchYouTubeMetadata,
+  fetchYouTubeTranscript,
+  hasYouTubeRecipeEvidence,
+  normalizeYouTubeUrl,
+  type YouTubeComment,
+  type YouTubeVideoMetadata,
+} from "../utils/youtube-fetcher";
 
 export type SocialPlatform =
   | "instagram"
@@ -445,6 +455,166 @@ async function parseTikTokUrl(
   });
 }
 
+function youtubeMetadataText(
+  metadata: YouTubeVideoMetadata,
+  comments: YouTubeComment[],
+): string {
+  const parts = uniqueTextParts([
+    metadata.title ? `Title: ${metadata.title}` : null,
+    metadata.channelTitle ? `Channel: ${metadata.channelTitle}` : null,
+    metadata.description ? `Description:\n${metadata.description}` : null,
+    comments.length
+      ? `Selected comments:\n${comments
+          .map((comment) =>
+            comment.authorDisplayName
+              ? `- ${comment.authorDisplayName}: ${comment.text}`
+              : `- ${comment.text}`,
+          )
+          .join("\n")}`
+      : null,
+  ]);
+
+  return parts.join("\n\n");
+}
+
+async function parseYouTubeUrl(
+  env: Env,
+  url: string,
+  options?: SocialParseOptions,
+): Promise<ParseResult> {
+  let diagnostics = options?.diagnostics;
+  const videoId = extractYouTubeVideoId(url);
+  if (!videoId) {
+    return failSocialParse(
+      url,
+      diagnostics,
+      "YOUTUBE_UNSUPPORTED_URL",
+      "This YouTube URL format is not supported.",
+    );
+  }
+
+  let metadata: YouTubeVideoMetadata;
+  const metadataStart = Date.now();
+  try {
+    metadata = await fetchYouTubeMetadata(env.YOUTUBE_API_KEY, videoId);
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "youtube_metadata",
+      metadataStart,
+      "success",
+      metadata.title ?? undefined,
+    );
+  } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "youtube_metadata",
+      metadataStart,
+      "error",
+      error instanceof Error ? error.message : "youtube_metadata_failed",
+    );
+    return failSocialParse(
+      normalizeYouTubeUrl(url),
+      diagnostics,
+      "YOUTUBE_METADATA_FAILED",
+      error instanceof Error
+        ? error.message
+        : "Could not read this YouTube video's metadata.",
+    );
+  }
+
+  const commentsStart = Date.now();
+  let comments: YouTubeComment[] = [];
+  try {
+    const commentResult = await fetchYouTubeComments(
+      env.YOUTUBE_API_KEY,
+      metadata.videoId,
+      metadata.channelId,
+    );
+    comments = commentResult.comments.slice(0, 5);
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "youtube_comments",
+      commentsStart,
+      commentResult.unavailableReason ? "skipped" : "success",
+      commentResult.unavailableReason ?? `${comments.length}_selected`,
+    );
+  } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "youtube_comments",
+      commentsStart,
+      "error",
+      error instanceof Error ? error.message : "youtube_comments_failed",
+    );
+  }
+
+  const linked = await tryLinkedRecipeUrls(
+    extractSocialRecipeLinks(
+      [metadata.description, ...comments.map((comment) => comment.text)],
+      metadata.canonicalUrl,
+    ),
+    diagnostics,
+    options,
+  );
+  diagnostics = linked.diagnostics;
+  if (linked.result?.success) return linked.result;
+
+  const captionsStart = Date.now();
+  let transcript: string | null = null;
+  try {
+    transcript = await fetchYouTubeTranscript(metadata.canonicalUrl);
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "youtube_captions",
+      captionsStart,
+      transcript ? "success" : "skipped",
+      transcript ? "transcript" : "no_transcript",
+    );
+  } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "youtube_captions",
+      captionsStart,
+      "error",
+      error instanceof Error ? error.message : "youtube_captions_failed",
+    );
+  }
+
+  const selectedCommentText = comments.map((comment) => comment.text);
+  if (
+    !hasYouTubeRecipeEvidence([
+      metadata.description,
+      ...selectedCommentText,
+      transcript,
+    ])
+  ) {
+    return failSocialParse(
+      metadata.canonicalUrl,
+      diagnostics,
+      "YOUTUBE_NO_RECIPE_EVIDENCE",
+      "Could not find recipe details in this YouTube video's description, comments, or captions.",
+    );
+  }
+
+  const content = buildEnrichedSocialRecipeText({
+    caption: youtubeMetadataText(metadata, comments),
+    transcript,
+  });
+
+  return parseSocialAi(env, {
+    url: metadata.canonicalUrl,
+    platform: "youtube",
+    content,
+    images: metadata.images,
+    parseMethod: transcript ? "media_enriched" : "ai_only",
+    diagnostics,
+    noContentMessage:
+      "Could not extract recipe content from this YouTube video.",
+    aiErrorCode: "YOUTUBE_PARSE_FAILED",
+    aiOptions: options?.aiOptions,
+  });
+}
+
 async function parseGenericSocialUrl(
   env: Env,
   url: string,
@@ -507,5 +677,6 @@ export function parseSocialUrl(
 ): Promise<ParseResult> {
   if (platform === "instagram") return parseInstagramUrl(env, url, options);
   if (platform === "tiktok") return parseTikTokUrl(env, url, options);
+  if (platform === "youtube") return parseYouTubeUrl(env, url, options);
   return parseGenericSocialUrl(env, url, platform, options);
 }

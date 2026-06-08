@@ -8,5 +8,6 @@ declare module "cloudflare:test" {
     IMAGE_SERVICE: AppEnv["IMAGE_SERVICE"];
     IMAGE_PUBLIC_URL: AppEnv["IMAGE_PUBLIC_URL"];
     ENVIRONMENT: AppEnv["ENVIRONMENT"];
+    YOUTUBE_API_KEY: AppEnv["YOUTUBE_API_KEY"];
   }
 }

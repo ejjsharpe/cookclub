@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -10,7 +11,7 @@ import {
   uniqueIndex,
   check,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+
 import { user } from "./auth-schema";
 import { recipes } from "./recipe-schema";
 
@@ -34,7 +35,7 @@ export const mealPlans = pgTable(
     uniqueIndex("meal_plans_one_default_per_user_idx")
       .on(table.userId)
       .where(sql`${table.isDefault} = true`),
-  ]
+  ],
 );
 
 // ─── Meal Plan Entries: recipe assignments to breakfast/lunch/dinner slots ─────
@@ -66,7 +67,7 @@ export const mealPlanEntries = pgTable(
     // Index for querying entries by date range (common query pattern)
     index("meal_plan_entries_meal_plan_date_idx").on(
       table.mealPlanId,
-      table.date
+      table.date,
     ),
     // Index for finding entries by recipe (for cascade-like operations)
     index("meal_plan_entries_recipe_id_idx").on(table.recipeId),
@@ -74,13 +75,13 @@ export const mealPlanEntries = pgTable(
     uniqueIndex("meal_plan_entries_unique_slot_idx").on(
       table.mealPlanId,
       table.date,
-      table.mealType
+      table.mealType,
     ),
     check(
       "meal_plan_entries_meal_type_check",
       sql`${table.mealType} IN ('breakfast', 'lunch', 'dinner')`,
     ),
-  ]
+  ],
 );
 
 // ─── Meal Plan Invitations: invitation-based sharing with friends ─────────────
@@ -117,16 +118,16 @@ export const mealPlanInvitations = pgTable(
     // Composite index for access control checks
     index("meal_plan_invitations_user_status_idx").on(
       table.invitedUserId,
-      table.status
+      table.status,
     ),
     // Unique: prevent duplicate invitations
     uniqueIndex("meal_plan_invitations_unique_idx").on(
       table.mealPlanId,
-      table.invitedUserId
+      table.invitedUserId,
     ),
     check(
       "meal_plan_invitations_status_check",
       sql`${table.status} IN ('pending', 'accepted', 'declined')`,
     ),
-  ]
+  ],
 );

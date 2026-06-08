@@ -7,6 +7,10 @@ const BASIC_IMPORT_UNSUPPORTED_DOMAINS = [
   "www.facebook.com",
   "fb.com",
   "www.fb.com",
+  "youtube.com",
+  "www.youtube.com",
+  "youtu.be",
+  "www.youtu.be",
 ];
 
 export function isBasicImportUnsupportedUrl(url: string): boolean {

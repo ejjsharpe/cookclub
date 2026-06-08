@@ -1,0 +1,29 @@
+[
+  {
+    "id": "youtube-comment-recipe-fallow-cottage-pie",
+    "type": "youtube_comment_recipe",
+    "mode": "url",
+    "platform": "youtube",
+    "input": "https://www.youtube.com/watch?v=5y684a_GcSQ",
+    "cache": "cold",
+    "expectedCoverImage": true
+  },
+  {
+    "id": "youtube-comment-recipe-link-kenji-halal-cart",
+    "type": "youtube_comment_recipe_link",
+    "mode": "url",
+    "platform": "youtube",
+    "input": "https://www.youtube.com/watch?v=Y645_5ikaYo",
+    "cache": "cold",
+    "expectedCoverImage": true
+  },
+  {
+    "id": "youtube-spoken-only-pancakes",
+    "type": "youtube_spoken_only",
+    "mode": "url",
+    "platform": "youtube",
+    "input": "https://www.youtube.com/watch?v=FLd00Bx4tOk",
+    "cache": "cold",
+    "expectedCoverImage": true
+  }
+]
