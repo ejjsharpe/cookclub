@@ -13,10 +13,7 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
-import {
-  KeyboardStickyView,
-  useReanimatedKeyboardAnimation,
-} from "react-native-keyboard-controller";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
   useAnimatedStyle,
   withTiming,
@@ -355,7 +352,8 @@ export const ShoppingListScreen = () => {
     clearSelectedList,
   } = useSelectedShoppingList();
   const { data: allLists } = useGetUserShoppingLists();
-  const { progress: keyboardswipeProgress } = useReanimatedKeyboardAnimation();
+  const { height: keyboardHeight, progress: keyboardSwipeProgress } =
+    useReanimatedKeyboardAnimation();
   const listRef = useRef<FlatList<ShoppingListFlashItem>>(null);
 
   // Scroll tracking for header fade
@@ -368,12 +366,28 @@ export const ShoppingListScreen = () => {
   const inputTransformAnimatedStyle = useAnimatedStyle(() => {
     // Animate padding from basePadding (keyboard closed) to 0 (keyboard open)
     const padding = interpolate(
-      keyboardswipeProgress.get(),
+      keyboardSwipeProgress.get(),
       [0, 1],
       [basePadding, 0],
     );
     return {
       paddingBottom: padding,
+    };
+  });
+
+  // KeyboardStickyView in keyboard-controller 1.21.6 still uses the legacy
+  // Animated path, which can apply the keyboard translation in the wrong
+  // direction on RN 0.85. Drive the same translation from its Reanimated
+  // values so the input remains attached to the top of the keyboard.
+  const inputKeyboardAnimatedStyle = useAnimatedStyle(() => {
+    const openedOffset = interpolate(
+      keyboardSwipeProgress.get(),
+      [0, 1],
+      [0, -KEYBOARD_OPEN_INPUT_GAP],
+    );
+
+    return {
+      transform: [{ translateY: keyboardHeight.get() + openedOffset }],
     };
   });
 
@@ -385,7 +399,7 @@ export const ShoppingListScreen = () => {
     // Bottom offset: input section height + animated padding (which reduces when keyboard opens)
     const bottomOffset =
       INPUT_SECTION_HEIGHT +
-      interpolate(keyboardswipeProgress.get(), [0, 1], [0, basePadding]);
+      interpolate(keyboardSwipeProgress.get(), [0, 1], [0, basePadding]);
 
     // Calculate the vertical shift needed to center between header and input
     // Positive = shift down, Negative = shift up
@@ -807,10 +821,7 @@ export const ShoppingListScreen = () => {
         </View>
       </View>
       {/* Bottom Input - sticks to keyboard */}
-      <KeyboardStickyView
-        offset={{ opened: -KEYBOARD_OPEN_INPUT_GAP }}
-        style={styles.inputWrapper}
-      >
+      <Animated.View style={[styles.inputWrapper, inputKeyboardAnimatedStyle]}>
         <Animated.View style={inputTransformAnimatedStyle}>
           <LinearGradient
             colors={[
@@ -845,7 +856,7 @@ export const ShoppingListScreen = () => {
             </View>
           </LinearGradient>
         </Animated.View>
-      </KeyboardStickyView>
+      </Animated.View>
 
       {/* Sheets */}
       <AddRecipeToShoppingListSheet
