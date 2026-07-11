@@ -134,7 +134,10 @@ export const RecipeCollectionBrowser = ({
     const keyboardOffset = Math.max(0, -keyboardHeight.get());
 
     return {
-      paddingBottom: keyboardOffset,
+      // Bottom padding moved centered content up by half the keyboard height,
+      // but forced Yoga to relayout the off-screen tab on every keyboard frame.
+      // The equivalent transform keeps the same position without layout work.
+      transform: [{ translateY: -keyboardOffset / 2 }],
     };
   });
 

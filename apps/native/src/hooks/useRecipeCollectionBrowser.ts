@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { useCollectionData } from "./useCollectionData";
+import { useDebounce } from "./useDebounce";
 import { useRecipeData } from "./useRecipeData";
 import { useRecipeFilters } from "./useRecipeFilters";
 import { useTabNavigation, type TabType } from "./useTabNavigation";
@@ -24,6 +25,7 @@ export const useRecipeCollectionBrowser = ({
   // Search state
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const searchQuery = externalSearchQuery ?? internalSearchQuery;
+  const debouncedSearchQuery = useDebounce(searchQuery, 250);
   const setSearchQuery = setInternalSearchQuery;
 
   // Compose tab navigation
@@ -79,7 +81,7 @@ export const useRecipeCollectionBrowser = ({
     handleLoadMore: handleLoadMoreRecipes,
     refetch: refetchRecipes,
   } = useRecipeData({
-    search: searchQuery,
+    search: debouncedSearchQuery,
     tagIds: parsedTagIds,
     maxTotalTime: parsedMaxTotalTime,
   });
@@ -91,7 +93,7 @@ export const useRecipeCollectionBrowser = ({
     error: collectionsError,
     refetch: refetchCollections,
   } = useCollectionData({
-    search: searchQuery,
+    search: debouncedSearchQuery,
   });
 
   // Coordinated refresh

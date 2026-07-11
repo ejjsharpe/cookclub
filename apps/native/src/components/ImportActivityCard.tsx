@@ -111,6 +111,7 @@ const ImportRecipeHero = memo(
           style={styles.recipeImage}
           priority={imagePriority}
           decodeFormat="rgb"
+          transition={0}
         />
       )}
       <LinearGradient

@@ -8,9 +8,43 @@ import { PixelRatio } from "react-native";
 
 import { getImagePublicUrl } from "@/lib/runtimeConfig";
 
+export type NativeImageFormat = "avif" | "webp" | "jpeg";
+
+function resolveNativeImageFormat(
+  configuredFormat: string | undefined,
+): NativeImageFormat {
+  switch (configuredFormat) {
+    case "webp":
+    case "jpeg":
+    case "avif":
+      return configuredFormat;
+    default:
+      return "webp";
+  }
+}
+
+export function getImageAcceptHeader(format: NativeImageFormat): string {
+  switch (format) {
+    case "webp":
+      return "image/webp,image/*,*/*";
+    case "jpeg":
+      return "image/jpeg,image/*,*/*";
+    case "avif":
+      return "image/avif,image/webp,image/*,*/*";
+  }
+}
+
+export const NATIVE_IMAGE_FORMAT = resolveNativeImageFormat(
+  process.env.EXPO_PUBLIC_NATIVE_IMAGE_FORMAT,
+);
+
 export const IMAGE_REQUEST_HEADERS = {
-  Accept: "image/avif,image/webp,image/*,*/*",
+  Accept: getImageAcceptHeader(NATIVE_IMAGE_FORMAT),
 };
+
+export function getImageCacheKey(uri: string): string {
+  return `${uri}:format=${NATIVE_IMAGE_FORMAT}`;
+}
 
 type LegacyImagePreset =
   | "avatar-sm"

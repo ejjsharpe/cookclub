@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   appendImageVersion,
+  getImageAcceptHeader,
   getImageUrl,
   selectAvatarImagePreset,
   selectDetailImagePreset,
   selectFeedImagePreset,
   type ImageSourceAsset,
 } from "./imageUrl";
+
 import { getImagePublicUrl } from "@/lib/runtimeConfig";
 
 vi.mock("react-native", () => ({
@@ -23,9 +25,7 @@ vi.mock("@/lib/runtimeConfig", () => ({
 describe("image URL transforms", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getImagePublicUrl).mockReturnValue(
-      "https://images.cookclub.app",
-    );
+    vi.mocked(getImagePublicUrl).mockReturnValue("https://images.cookclub.app");
   });
 
   it("adds named presets only for the configured image service host", () => {
@@ -101,6 +101,16 @@ describe("image URL transforms", () => {
     expect(getImageUrl(asset, "feed_720")).toBe(
       "https://images.cookclub.app/recipes/a.jpg?preset=feed_720",
     );
+  });
+});
+
+describe("native image format negotiation", () => {
+  it("builds distinct Accept headers for each benchmark format", () => {
+    expect(getImageAcceptHeader("avif")).toBe(
+      "image/avif,image/webp,image/*,*/*",
+    );
+    expect(getImageAcceptHeader("webp")).toBe("image/webp,image/*,*/*");
+    expect(getImageAcceptHeader("jpeg")).toBe("image/jpeg,image/*,*/*");
   });
 });
 

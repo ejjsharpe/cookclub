@@ -46,18 +46,10 @@ Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
   environment: __DEV__ ? "development" : "production",
   sendDefaultPii: true,
-  tracesSampleRate: __DEV__ ? 1.0 : 0.1,
-  profilesSampleRate: 1.0,
-  replaysOnErrorSampleRate: 1.0,
-  replaysSessionSampleRate: __DEV__ ? 1.0 : 0.05,
+  tracesSampleRate: __DEV__ ? 0 : 0.1,
+  profilesSampleRate: __DEV__ ? 0 : 0.1,
   enableLogs: true,
-  integrations: [
-    navigationIntegration,
-    Sentry.mobileReplayIntegration({
-      maskAllImages: true,
-      maskAllText: true,
-    }),
-  ],
+  integrations: [navigationIntegration],
   enableNativeFramesTracking: true,
   tracePropagationTargets: [
     "localhost",

@@ -54,6 +54,14 @@ const BACK_BUTTON_WIDTH = 44;
 const BACK_BUTTON_GAP = 6;
 const FILTER_BUTTON_SIZE = 44;
 const FILTER_BUTTON_GAP = 6;
+const SEARCH_START_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
+const SEARCH_INPUT_WIDTH =
+  SCREEN_WIDTH -
+  HORIZONTAL_PADDING * 2 -
+  BACK_BUTTON_WIDTH -
+  BACK_BUTTON_GAP -
+  FILTER_BUTTON_SIZE -
+  FILTER_BUTTON_GAP;
 
 // Search mode layout constants (from RecipeCollectionBrowser)
 const SEARCH_HEADER_CONTENT_HEIGHT = 124; // search (44) + VSpace (12) + segmented (44) + VSpace (24)
@@ -61,9 +69,14 @@ const RECIPE_CARD_HEIGHT = 100;
 const RECIPE_SEPARATOR_HEIGHT = 17; // 8px padding + 1px line + 8px padding
 
 // Collection grid layout constants
-const COLLECTION_GRID_PADDING = 30;
+const COLLECTION_GRID_PADDING = HORIZONTAL_PADDING;
 const COLLECTION_GRID_GAP = 20; // GRID_GAP from CollectionGridCard
 const COLLECTION_ROW_GAP = 20;
+const COLLECTION_CARD_TEXT_HEIGHT = 49;
+const SEARCH_COLLECTION_CARD_WIDTH =
+  (SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - COLLECTION_GRID_GAP) / 2;
+const SEARCH_COLLECTION_CARD_HEIGHT =
+  SEARCH_COLLECTION_CARD_WIDTH + COLLECTION_CARD_TEXT_HEIGHT;
 const COLLECTION_SEPARATOR_WIDTH = 12; // From CollectionSeparator
 const COLLECTION_OVERLAY_VERTICAL_BUFFER = 180;
 const EMPTY_COLLECTIONS: CollectionWithMetadata[] = [];
@@ -168,9 +181,14 @@ const AnimatedRecipeOverlay = memo(function AnimatedRecipeOverlay({
 
   const animatedStyle = useAnimatedStyle(() => {
     "worklet";
+    const isVisible = animatingTab.get() === "recipes" && isAnimating.get();
+    if (!isVisible) {
+      return { opacity: 0 };
+    }
+
     return {
       transform: [{ translateY: searchProgress.get() * deltaY }],
-      opacity: animatingTab.get() === "recipes" && isAnimating.get() ? 1 : 0,
+      opacity: 1,
     };
   });
 
@@ -244,13 +262,15 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   const imageStyle = useAnimatedStyle(() => {
     "worklet";
     const isVisible = animatingTab.get() === "collections" && isAnimating.get();
+    if (!isVisible) {
+      return { opacity: 0 };
+    }
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: isVisible ? searchProgress.get() : 0,
+        opacity: searchProgress.get(),
         transform: [],
-        transformOrigin: "top left",
       };
     }
 
@@ -259,13 +279,12 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
     const scale = 1 + searchProgress.get() * (imageScale - 1);
 
     return {
-      opacity: isVisible ? 1 : 0,
+      opacity: 1,
       transform: [
         { translateX: animatedTranslateX.get() },
         { translateY },
         { scale },
       ],
-      transformOrigin: "top left",
     };
   });
 
@@ -273,11 +292,14 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   const textStyle = useAnimatedStyle(() => {
     "worklet";
     const isVisible = animatingTab.get() === "collections" && isAnimating.get();
+    if (!isVisible) {
+      return { opacity: 0 };
+    }
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: isVisible ? searchProgress.get() : 0,
+        opacity: searchProgress.get(),
         transform: [],
       };
     }
@@ -286,7 +308,7 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
     const translateY = searchProgress.get() * (deltaY + imageHeightDelta);
 
     return {
-      opacity: isVisible ? 1 : 0,
+      opacity: 1,
       transform: [{ translateX: animatedTranslateX.get() }, { translateY }],
     };
   });
@@ -304,7 +326,13 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
       pointerEvents="none"
     >
       {/* Image with scale transform */}
-      <Animated.View style={[{ width: displayWidth }, imageStyle]}>
+      <Animated.View
+        style={[
+          styles.collectionOverlayImage,
+          { width: displayWidth },
+          imageStyle,
+        ]}
+      >
         <ImageGrid images={previewImages} width={displayWidth} />
       </Animated.View>
       {/* Text with translate only (no scale) */}
@@ -379,7 +407,12 @@ export const MyRecipesScreen = () => {
     y: number;
     width: number;
     height: number;
-  } | null>(null);
+  }>({
+    x: COLLECTION_GRID_PADDING,
+    y: insets.top + SEARCH_HEADER_CONTENT_HEIGHT,
+    width: SEARCH_COLLECTION_CARD_WIDTH,
+    height: SEARCH_COLLECTION_CARD_HEIGHT,
+  });
   const collectionScrollX = useSharedValue(0);
 
   // Animation progress (0 = browse, 1 = search)
@@ -628,7 +661,9 @@ export const MyRecipesScreen = () => {
       // Store positions and start animation
       browsePositions.current = recipePositions;
       browseCollectionPositions.current = collectionPositions;
-      searchCollectionTarget.current = searchCollectionMeasurement;
+      if (searchCollectionMeasurement) {
+        searchCollectionTarget.current = searchCollectionMeasurement;
+      }
       animatingTab.set(tabToAnimate);
       setIsSearchActive(true);
     };
@@ -960,18 +995,17 @@ export const MyRecipesScreen = () => {
   // 2. Inner search bar is full width but gets clipped by the wrapper
   // This avoids animating width (layout property) while keeping text crisp
 
-  // Calculate static widths (only filterButtonProgress changes these, not searchProgress)
-  const startWidth = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
-
   // Pre-computed constant for back button offset
   const BACK_BUTTON_OFFSET = BACK_BUTTON_WIDTH + BACK_BUTTON_GAP;
 
-  // Outer clip wrapper - animates position only, clips content to end width
-  const floatingSearchClipStyle = useAnimatedStyle(() => {
+  // Animate a fixed-size clipping layer, then exactly counter-scale its child.
+  // The visible bounds match the old width animation while the text stays at
+  // a 1:1 scale and Fabric never receives a per-frame layout change.
+  const floatingSearchTransitionStyle = useAnimatedStyle(() => {
     "worklet";
     const baseY = searchBarY.get() || searchModeY;
-    const deltaY = searchModeY - baseY;
-    // Filter button space - this only changes on tab switch, not during enter/exit
+    const progress = searchProgress.get();
+    const startTranslateY = baseY - searchModeY;
     const filterSpace =
       (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.get();
     const endWidth =
@@ -980,40 +1014,49 @@ export const MyRecipesScreen = () => {
       BACK_BUTTON_WIDTH -
       BACK_BUTTON_GAP -
       filterSpace;
-
-    // Linear interpolation: startWidth + progress * (endWidth - startWidth)
-    const clipWidth =
-      startWidth + searchProgress.get() * (endWidth - startWidth);
+    const scaleX = 1 + progress * (endWidth / SEARCH_START_WIDTH - 1);
+    const filterProgress = filterButtonProgress.get();
+    const searchIsTransitioning = progress > 0 && progress < 1;
+    const tabIsTransitioning =
+      progress === 1 && filterProgress > 0 && filterProgress < 1;
 
     return {
-      top: baseY,
-      width: clipWidth,
-      overflow: "hidden" as const,
-      opacity: searchProgress.get() > 0 ? 1 : 0,
-      // GPU-accelerated position animation (simple multiplication replaces interpolate)
+      opacity: searchIsTransitioning || tabIsTransitioning ? 1 : 0,
+      borderRadius: SEARCH_BAR_HEIGHT / 2 / scaleX,
       transform: [
-        { translateX: searchProgress.get() * BACK_BUTTON_OFFSET },
-        { translateY: searchProgress.get() * deltaY },
+        { translateX: progress * BACK_BUTTON_OFFSET },
+        { translateY: (1 - progress) * startTranslateY },
+        { scaleX },
       ],
     };
   });
 
-  // Inner search bar - full width during animation, snaps to endWidth when complete
-  const floatingSearchInnerStyle = useAnimatedStyle(() => {
+  const floatingSearchTransitionInnerStyle = useAnimatedStyle(() => {
     "worklet";
-    // When animation is complete, snap to endWidth so input area is fully visible
-    if (searchProgress.get() === 1) {
-      const filterSpace =
-        (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.get();
-      const endWidth =
-        SCREEN_WIDTH -
-        HORIZONTAL_PADDING * 2 -
-        BACK_BUTTON_WIDTH -
-        BACK_BUTTON_GAP -
-        filterSpace;
-      return { width: endWidth };
-    }
-    return { width: startWidth };
+    const progress = searchProgress.get();
+    const filterSpace =
+      (FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP) * filterButtonProgress.get();
+    const endWidth =
+      SCREEN_WIDTH -
+      HORIZONTAL_PADDING * 2 -
+      BACK_BUTTON_WIDTH -
+      BACK_BUTTON_GAP -
+      filterSpace;
+    const scaleX = 1 + progress * (endWidth / SEARCH_START_WIDTH - 1);
+
+    return {
+      transform: [{ scaleX: 1 / scaleX }],
+    };
+  });
+
+  const floatingSearchInputStyle = useAnimatedStyle(() => {
+    "worklet";
+    const filterProgress = filterButtonProgress.get();
+    const filterIsSettled = filterProgress === 0 || filterProgress === 1;
+
+    return {
+      opacity: searchProgress.get() === 1 && filterIsSettled ? 1 : 0,
+    };
   });
 
   // Inline search bar hides when floating one is visible
@@ -1192,20 +1235,45 @@ export const MyRecipesScreen = () => {
         </View>
       </Animated.View>
 
-      {/* Floating Search Bar - always mounted for worklet pre-warming */}
-      {/* Two-layer clip technique: outer clips, inner has full width */}
+      {/* Fixed-layout transition clone: clip scales, content counter-scales. */}
       <Animated.View
-        style={[styles.floatingSearchClip, floatingSearchClipStyle]}
-        pointerEvents={isSearchActive ? "auto" : "none"}
+        style={[styles.floatingSearchTransition, floatingSearchTransitionStyle]}
+        pointerEvents="none"
       >
-        <Animated.View style={floatingSearchInnerStyle}>
+        <Animated.View
+          style={[
+            styles.floatingSearchTransitionInner,
+            floatingSearchTransitionInnerStyle,
+          ]}
+        >
           <SearchBar
-            ref={searchInputRef}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={NOOP}
             placeholder="Search recipes, collections..."
           />
         </Animated.View>
+      </Animated.View>
+
+      {/* Real input has its final width and never participates in layout animation. */}
+      <Animated.View
+        style={[
+          styles.floatingSearchInput,
+          {
+            width:
+              activeSearchTab === "recipes"
+                ? SEARCH_INPUT_WIDTH
+                : SEARCH_INPUT_WIDTH + FILTER_BUTTON_SIZE + FILTER_BUTTON_GAP,
+          },
+          floatingSearchInputStyle,
+        ]}
+        pointerEvents={isSearchActive ? "auto" : "none"}
+      >
+        <SearchBar
+          ref={searchInputRef}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search recipes, collections..."
+        />
       </Animated.View>
 
       {/* Back Button - always mounted for worklet pre-warming */}
@@ -1283,15 +1351,15 @@ export const MyRecipesScreen = () => {
         }
 
         const searchMeasurement = searchCollectionTarget.current;
-        const searchTarget = searchMeasurement
-          ? getCollectionSearchTarget(index, searchMeasurement)
-          : { x: COLLECTION_GRID_PADDING, y: 0, width: browsePos.width };
+        const searchTarget = getCollectionSearchTarget(
+          index,
+          searchMeasurement,
+        );
         const isBrowseNearScreen =
           browsePos.x > -COLLECTION_CARD_WIDTH &&
           browsePos.x < SCREEN_WIDTH + COLLECTION_CARD_WIDTH;
-        const isSearchNearScreen = searchMeasurement
-          ? searchTarget.y < SCREEN_HEIGHT + COLLECTION_OVERLAY_VERTICAL_BUFFER
-          : index < 8;
+        const isSearchNearScreen =
+          searchTarget.y < SCREEN_HEIGHT + COLLECTION_OVERLAY_VERTICAL_BUFFER;
 
         if (!isBrowseNearScreen && !isSearchNearScreen) {
           return null;
@@ -1352,13 +1420,25 @@ const styles = StyleSheet.create((theme, rt) => ({
   searchContainer: {
     paddingHorizontal: HORIZONTAL_PADDING,
   },
-  floatingSearchClip: {
+  floatingSearchTransition: {
     position: "absolute",
     top: rt.insets.top,
     left: HORIZONTAL_PADDING,
+    width: SEARCH_START_WIDTH,
     zIndex: 100,
     borderRadius: SEARCH_BAR_HEIGHT / 2,
     overflow: "hidden",
+    transformOrigin: "left center",
+  },
+  floatingSearchTransitionInner: {
+    width: SEARCH_START_WIDTH,
+    transformOrigin: "left center",
+  },
+  floatingSearchInput: {
+    position: "absolute",
+    top: rt.insets.top,
+    left: HORIZONTAL_PADDING + BACK_BUTTON_WIDTH + BACK_BUTTON_GAP,
+    zIndex: 100,
   },
   searchBarHidden: {
     opacity: 0,
@@ -1401,6 +1481,9 @@ const styles = StyleSheet.create((theme, rt) => ({
   collectionOverlayText: {
     paddingTop: 8,
     gap: 2,
+  },
+  collectionOverlayImage: {
+    transformOrigin: "top left",
   },
   collectionOverlayCaption: {
     color: theme.colors.textSecondary,

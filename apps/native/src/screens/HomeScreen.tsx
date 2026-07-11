@@ -4,7 +4,6 @@ import {
   type FlashListRef,
   type ListRenderItemInfo,
 } from "@shopify/flash-list";
-import { Image } from "expo-image";
 import { useState, useCallback, useMemo, useRef, memo, useEffect } from "react";
 import {
   View,
@@ -66,11 +65,7 @@ import {
 } from "@/lib/backgroundImportQueue";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
-import {
-  getImageUrl,
-  IMAGE_REQUEST_HEADERS,
-  selectFeedImagePreset,
-} from "@/utils/imageUrl";
+import { selectFeedImagePreset } from "@/utils/imageUrl";
 import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 // ─── Header Component ─────────────────────────────────────────────────────────
@@ -192,6 +187,10 @@ const HORIZONTAL_PADDING = 20;
 const BACK_BUTTON_WIDTH = 44;
 const HEADER_GAP = 6;
 const HEADER_HEIGHT = 52; // Height of the cook club title + avatar row
+const SEARCH_START_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
+const SEARCH_END_WIDTH =
+  SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - BACK_BUTTON_WIDTH - HEADER_GAP;
+const BACK_BUTTON_OFFSET = BACK_BUTTON_WIDTH + HEADER_GAP;
 const LOAD_LATEST_SHOW_SCROLL_Y = 200;
 const LOAD_LATEST_HIDE_SCROLL_Y = 120;
 const LOAD_LATEST_SCROLL_DOWN_HIDE_DISTANCE = 48;
@@ -199,11 +198,7 @@ const LOAD_LATEST_SCROLL_UP_DELAY_MS = 500;
 const LOAD_LATEST_ANIMATION_MS = 180;
 const SCROLL_DIRECTION_THRESHOLD = 2;
 const TAB_BAR_LIST_CLEARANCE = 112;
-const FEED_PREFETCH_AHEAD = 3;
-const FEED_PREFETCH_CONCURRENCY = 2;
-const activityViewabilityConfig = {
-  itemVisiblePercentThreshold: 35,
-};
+const NOOP = () => {};
 
 const ActivitySeparator = () => <VSpace size={16} />;
 const SearchUserSeparator = () => <VSpace size={6} />;
@@ -215,13 +210,6 @@ type HomeSearchUser = SearchUser & {
   recipeCount?: number;
   followerCount?: number;
 };
-
-function getPrimaryFeedImage(item: ActivityFeedListItem) {
-  if (item.type === "cooking_review") {
-    return item.review.images[0] ?? item.recipe.image;
-  }
-  return item.recipe.image;
-}
 
 interface SearchUserRowProps {
   user: HomeSearchUser;
@@ -279,9 +267,6 @@ export const HomeScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [commentActivityId, setCommentActivityId] = useState<number>(0);
   const [showLoadLatest, setShowLoadLatest] = useState(false);
-  const prefetchQueueRef = useRef<string[]>([]);
-  const prefetchInFlightCountRef = useRef(0);
-  const prefetchedImageUrlsRef = useRef(new Set<string>());
 
   // Track the search bar's Y position relative to the screen
   const searchBarY = useSharedValue(0);
@@ -366,90 +351,6 @@ export const HomeScreen = () => {
     fetchNextPage: activityFetchNext,
     refetch: activityRefetch,
   } = useActivityFeed();
-
-  const processPrefetchQueue = useCallback(() => {
-    while (
-      prefetchInFlightCountRef.current < FEED_PREFETCH_CONCURRENCY &&
-      prefetchQueueRef.current.length > 0
-    ) {
-      const nextUrl = prefetchQueueRef.current.shift();
-      if (!nextUrl) return;
-      if (prefetchedImageUrlsRef.current.has(nextUrl)) continue;
-
-      prefetchedImageUrlsRef.current.add(nextUrl);
-      prefetchInFlightCountRef.current += 1;
-      Image.prefetch(nextUrl, {
-        cachePolicy: "memory-disk",
-        headers: IMAGE_REQUEST_HEADERS,
-      })
-        .catch(() => false)
-        .finally(() => {
-          prefetchInFlightCountRef.current = Math.max(
-            0,
-            prefetchInFlightCountRef.current - 1,
-          );
-          processPrefetchQueue();
-        });
-    }
-  }, []);
-
-  const scheduleFeedImagePrefetch = useCallback(
-    (visibleIndexes: number[]) => {
-      if (visibleIndexes.length === 0) {
-        prefetchQueueRef.current = [];
-        return;
-      }
-
-      const targetIndexes = new Set<number>();
-      for (const index of visibleIndexes) {
-        targetIndexes.add(index);
-      }
-
-      const lastVisibleIndex = Math.max(...visibleIndexes);
-      for (
-        let index = lastVisibleIndex + 1;
-        index <= lastVisibleIndex + FEED_PREFETCH_AHEAD;
-        index++
-      ) {
-        targetIndexes.add(index);
-      }
-
-      const nextUrls: string[] = [];
-      for (const index of targetIndexes) {
-        const item = activityFeedItems[index];
-        if (!item) continue;
-
-        const url = getImageUrl(getPrimaryFeedImage(item), feedImagePreset);
-        if (!url || prefetchedImageUrlsRef.current.has(url)) continue;
-        if (!nextUrls.includes(url)) {
-          nextUrls.push(url);
-        }
-      }
-
-      prefetchQueueRef.current = nextUrls;
-      processPrefetchQueue();
-    },
-    [activityFeedItems, feedImagePreset, processPrefetchQueue],
-  );
-
-  const handleActivityViewableItemsChanged = useCallback(
-    ({
-      viewableItems,
-    }: {
-      viewableItems: { item?: ActivityFeedListItem; index?: number | null }[];
-    }) => {
-      const indexes: number[] = [];
-
-      for (const viewableItem of viewableItems) {
-        if (typeof viewableItem.index === "number") {
-          indexes.push(viewableItem.index);
-        }
-      }
-
-      scheduleFeedImagePrefetch(indexes);
-    },
-    [scheduleFeedImagePrefetch],
-  );
 
   // Search condition - only search users after two characters; otherwise show suggestions.
   const isSearchingUsers = debouncedSearch.length >= 2;
@@ -793,7 +694,7 @@ export const HomeScreen = () => {
           <View pointerEvents="none">
             <SearchBar
               value=""
-              onChangeText={() => {}}
+              onChangeText={NOOP}
               placeholder="Search cooks..."
             />
           </View>
@@ -882,48 +783,44 @@ export const HomeScreen = () => {
     opacity: searchProgress.get(),
   }));
 
-  // Floating search bar animates from its scroll position to fixed position
-  // Using a two-layer clip technique for GPU-accelerated animation:
-  // 1. Outer clip wrapper with overflow:hidden animates position (transforms) and width
-  // 2. Inner search bar width snaps to endWidth when animation completes for proper input visibility
-  const startWidth = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
-  const endWidth =
-    SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - BACK_BUTTON_WIDTH - HEADER_GAP;
-  const BACK_BUTTON_OFFSET = BACK_BUTTON_WIDTH + HEADER_GAP;
-
-  // Outer clip wrapper - animates position and clips content
-  const floatingSearchClipStyle = useAnimatedStyle(() => {
+  // Animate a fixed-size clipping layer and counter-scale its child. This
+  // preserves the original moving/shrinking bar without changing Yoga width
+  // or distorting the search text.
+  const floatingSearchTransitionStyle = useAnimatedStyle(() => {
     "worklet";
     const baseY = searchBarY.get() || searchModeY;
-    const deltaY = searchModeY - baseY;
-    const clipWidth =
-      startWidth + searchProgress.get() * (endWidth - startWidth);
+    const progress = searchProgress.get();
+    const startTranslateY = baseY - searchModeY;
+    const scaleX = 1 + progress * (SEARCH_END_WIDTH / SEARCH_START_WIDTH - 1);
 
     return {
-      top: baseY,
-      width: clipWidth,
-      overflow: "hidden" as const,
-      // GPU-accelerated position animation
+      // Keep the clone visible at progress 0 until React atomically swaps it
+      // for the inline Home search bar after the exit animation.
+      opacity: progress < 1 ? 1 : 0,
+      borderRadius: SEARCH_BAR_HEIGHT / 2 / scaleX,
       transform: [
-        { translateX: searchProgress.get() * BACK_BUTTON_OFFSET },
-        { translateY: searchProgress.get() * deltaY },
+        { translateX: progress * BACK_BUTTON_OFFSET },
+        { translateY: (1 - progress) * startTranslateY },
+        { scaleX },
       ],
     };
   });
 
-  // Inner search bar - full width during animation, snaps to endWidth when complete
-  const floatingSearchInnerStyle = useAnimatedStyle(() => {
+  const floatingSearchTransitionInnerStyle = useAnimatedStyle(() => {
     "worklet";
-    // When animation is complete, snap to endWidth so input area is fully visible
-    const width = searchProgress.get() === 1 ? endWidth : startWidth;
-    return { width };
+    const progress = searchProgress.get();
+    const scaleX = 1 + progress * (SEARCH_END_WIDTH / SEARCH_START_WIDTH - 1);
+
+    return { transform: [{ scaleX: 1 / scaleX }] };
+  });
+
+  const floatingSearchInputStyle = useAnimatedStyle(() => {
+    "worklet";
+    return { opacity: searchProgress.get() === 1 ? 1 : 0 };
   });
 
   // Back button scales in
   const backButtonAnimatedStyle = useAnimatedStyle(() => ({
-    position: "absolute",
-    top: searchModeY,
-    left: HORIZONTAL_PADDING,
     opacity: searchProgress.get(),
     transform: [{ scale: searchProgress.get() }],
   }));
@@ -978,8 +875,6 @@ export const HomeScreen = () => {
               ItemSeparatorComponent={ActivitySeparator}
               onEndReached={handleActivityLoadMore}
               onEndReachedThreshold={0.5}
-              onViewableItemsChanged={handleActivityViewableItemsChanged}
-              viewabilityConfig={activityViewabilityConfig}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[
                 styles.feedContent,
@@ -1076,7 +971,13 @@ export const HomeScreen = () => {
       {/* Floating Search Bar (appears during transition and in search mode) */}
       {showFloatingSearch && (
         <>
-          <Animated.View style={backButtonAnimatedStyle}>
+          <Animated.View
+            style={[
+              styles.backButtonContainer,
+              { top: searchModeY },
+              backButtonAnimatedStyle,
+            ]}
+          >
             <ScalePressable
               onPress={handleExitSearch}
               style={styles.backButton}
@@ -1088,17 +989,36 @@ export const HomeScreen = () => {
           </Animated.View>
 
           <Animated.View
-            style={[styles.floatingSearchClip, floatingSearchClipStyle]}
-            pointerEvents={isSearchActive ? "auto" : "none"}
+            style={[
+              styles.floatingSearchTransition,
+              floatingSearchTransitionStyle,
+            ]}
+            pointerEvents="none"
           >
-            <Animated.View style={floatingSearchInnerStyle}>
+            <Animated.View
+              style={[
+                styles.floatingSearchTransitionInner,
+                floatingSearchTransitionInnerStyle,
+              ]}
+            >
               <SearchBar
                 value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoFocus={isSearchActive}
+                onChangeText={NOOP}
                 placeholder="Search cooks..."
               />
             </Animated.View>
+          </Animated.View>
+
+          <Animated.View
+            style={[styles.floatingSearchInput, floatingSearchInputStyle]}
+            pointerEvents={isSearchActive ? "auto" : "none"}
+          >
+            <SearchBar
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus={isSearchActive}
+              placeholder="Search cooks..."
+            />
           </Animated.View>
         </>
       )}
@@ -1197,12 +1117,31 @@ const styles = StyleSheet.create((theme, rt) => ({
   searchBarHidden: {
     opacity: 0,
   },
-  floatingSearchClip: {
+  floatingSearchTransition: {
     position: "absolute",
+    top: rt.insets.top,
     left: HORIZONTAL_PADDING,
+    width: SEARCH_START_WIDTH,
     zIndex: 100,
     borderRadius: SEARCH_BAR_HEIGHT / 2,
     overflow: "hidden",
+    transformOrigin: "left center",
+  },
+  floatingSearchTransitionInner: {
+    width: SEARCH_START_WIDTH,
+    transformOrigin: "left center",
+  },
+  floatingSearchInput: {
+    position: "absolute",
+    top: rt.insets.top,
+    left: HORIZONTAL_PADDING + BACK_BUTTON_OFFSET,
+    width: SEARCH_END_WIDTH,
+    zIndex: 100,
+  },
+  backButtonContainer: {
+    position: "absolute",
+    left: HORIZONTAL_PADDING,
+    zIndex: 101,
   },
   searchModeHeader: {
     flexDirection: "row",

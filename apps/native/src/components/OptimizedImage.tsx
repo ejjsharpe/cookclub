@@ -3,6 +3,7 @@ import { memo, useMemo } from "react";
 
 import {
   getImageUrl,
+  getImageCacheKey,
   IMAGE_REQUEST_HEADERS,
   isPublicImageAsset,
   type ImagePreset,
@@ -21,6 +22,7 @@ export const OptimizedImage = memo(function OptimizedImage({
   contentFit = "cover",
   placeholderContentFit = "cover",
   transition = 120,
+  enforceEarlyResizing = true,
   recyclingKey,
   ...props
 }: OptimizedImageProps) {
@@ -42,10 +44,15 @@ export const OptimizedImage = memo(function OptimizedImage({
   return (
     <Image
       {...props}
-      source={{ uri, headers: IMAGE_REQUEST_HEADERS }}
+      source={{
+        uri,
+        headers: IMAGE_REQUEST_HEADERS,
+        cacheKey: getImageCacheKey(uri),
+      }}
       placeholder={placeholder}
       placeholderContentFit={placeholderContentFit}
       transition={transition}
+      enforceEarlyResizing={enforceEarlyResizing}
       recyclingKey={resolvedRecyclingKey}
       cachePolicy={cachePolicy}
       contentFit={contentFit}

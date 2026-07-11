@@ -91,6 +91,7 @@ const ReviewImageCarousel = memo(
             style={styles.reviewImage}
             priority={index === 0 ? priority : "low"}
             decodeFormat="rgb"
+            transition={0}
           />
         </View>
       ))}
@@ -196,6 +197,7 @@ const ReviewContentCard = memo(
               style={styles.recipeImage}
               priority={imagePriority}
               decodeFormat="rgb"
+              transition={0}
             />
           )}
           <View style={styles.recipeInfo}>
