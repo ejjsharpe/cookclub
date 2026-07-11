@@ -241,13 +241,6 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
   // Extra height added by scaling the image
   const imageHeightDelta = searchImageHeight - browseImageHeight;
 
-  // Shared translateX - computed once per frame, used by both imageStyle and textStyle
-  const animatedTranslateX = useDerivedValue(() => {
-    "worklet";
-    if (fadeOnly) return 0;
-    return searchProgress.get() * deltaX;
-  });
-
   // Memoize static position style to avoid recreation on each render
   const positionStyle = useMemo(
     () => ({
@@ -274,17 +267,14 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
       };
     }
 
+    const translateX = searchProgress.get() * deltaX;
     const translateY = searchProgress.get() * deltaY;
     // Scale interpolates from 1 to imageScale: 1 + progress * (imageScale - 1)
     const scale = 1 + searchProgress.get() * (imageScale - 1);
 
     return {
       opacity: 1,
-      transform: [
-        { translateX: animatedTranslateX.get() },
-        { translateY },
-        { scale },
-      ],
+      transform: [{ translateX }, { translateY }, { scale }],
     };
   });
 
@@ -304,12 +294,13 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
       };
     }
 
+    const translateX = searchProgress.get() * deltaX;
     // Text needs to move down by deltaY plus the extra image height from scaling
     const translateY = searchProgress.get() * (deltaY + imageHeightDelta);
 
     return {
       opacity: 1,
-      transform: [{ translateX: animatedTranslateX.get() }, { translateY }],
+      transform: [{ translateX }, { translateY }],
     };
   });
 
@@ -659,8 +650,11 @@ export const MyRecipesScreen = () => {
       }
 
       // Store positions and start animation
-      browsePositions.current = recipePositions;
-      browseCollectionPositions.current = collectionPositions;
+      if (tabToAnimate === "recipes") {
+        browsePositions.current = recipePositions;
+      } else {
+        browseCollectionPositions.current = collectionPositions;
+      }
       if (searchCollectionMeasurement) {
         searchCollectionTarget.current = searchCollectionMeasurement;
       }
@@ -677,10 +671,14 @@ export const MyRecipesScreen = () => {
       "worklet";
       const searchBarMeasurement = measure(searchBarRef);
       // Only measure refs that are actually attached to rendered components
-      const recipeMeasurement = hasRecipes ? measure(firstRecipeRef) : null;
-      const browseCollectionMeasurement = hasCollections
-        ? measure(firstBrowseCollectionRef)
-        : null;
+      const recipeMeasurement =
+        tabToAnimate === "recipes" && hasRecipes
+          ? measure(firstRecipeRef)
+          : null;
+      const browseCollectionMeasurement =
+        tabToAnimate === "collections" && hasCollections
+          ? measure(firstBrowseCollectionRef)
+          : null;
 
       // Only measure search collection if entering on collections tab
       let searchCollectionMeasured = null;
@@ -787,8 +785,11 @@ export const MyRecipesScreen = () => {
       }
 
       // Update positions BEFORE setting visibility
-      browsePositions.current = recipePositions;
-      browseCollectionPositions.current = collectionPositions;
+      if (currentTab === "recipes") {
+        browsePositions.current = recipePositions;
+      } else {
+        browseCollectionPositions.current = collectionPositions;
+      }
 
       // Update search collection target if we have a valid measurement
       if (searchCollectionMeasurement) {
@@ -812,10 +813,12 @@ export const MyRecipesScreen = () => {
     scheduleOnUI(() => {
       "worklet";
       // Only measure refs that are actually attached to rendered components
-      const recipeMeasurement = hasRecipes ? measure(firstRecipeRef) : null;
-      const browseCollectionMeasurement = hasCollections
-        ? measure(firstBrowseCollectionRef)
-        : null;
+      const recipeMeasurement =
+        currentTab === "recipes" && hasRecipes ? measure(firstRecipeRef) : null;
+      const browseCollectionMeasurement =
+        currentTab === "collections" && hasCollections
+          ? measure(firstBrowseCollectionRef)
+          : null;
 
       // Only measure search collection if on collections tab
       let searchCollectionMeasured = null;
