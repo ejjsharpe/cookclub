@@ -17,6 +17,9 @@
       "remote": true
     }
   ],
+  "images": {
+    "binding": "IMAGE_TRANSFORMER"
+  },
   "vars": {
     "R2_ACCOUNT_ID": "46fa47bc2bba51d75383b4dfe6e3deb1",
     "R2_S3_API_URL": "https://46fa47bc2bba51d75383b4dfe6e3deb1.r2.cloudflarestorage.com/cook-club-images-development",
@@ -42,6 +45,9 @@
           "remote": true
         }
       ],
+      "images": {
+        "binding": "IMAGE_TRANSFORMER"
+      },
       "routes": [
         { "pattern": "images.cookclub.app", "custom_domain": true }
       ],
