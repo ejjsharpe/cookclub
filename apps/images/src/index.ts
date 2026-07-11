@@ -22,7 +22,6 @@ import {
 import type { UploadFromUrlResponse, UploadImageResponse } from "./service";
 import { createThumbhashFromJpegBytes } from "./thumbhash";
 import {
-  buildCfImageOptions,
   getTransformPreset,
   hasTransformPreset,
   hasUnsupportedTransformParams,
@@ -126,23 +125,6 @@ function originUrlForKey(env: Env, key: string): string {
   return `${env.R2_ORIGIN_URL.replace(/\/+$/, "")}/${encodedKey}`;
 }
 
-function isLocalUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "0.0.0.0"
-    );
-  } catch {
-    return false;
-  }
-}
-
-function shouldUseDevImageFallback(env: Env): boolean {
-  return isLocalUrl(env.PUBLIC_URL) || isLocalUrl(env.R2_ORIGIN_URL);
-}
-
 function hasArrayBuffer(
   value: unknown,
 ): value is { arrayBuffer: () => Promise<ArrayBuffer> } {
@@ -152,34 +134,6 @@ function hasArrayBuffer(
     "arrayBuffer" in value &&
     typeof value.arrayBuffer === "function"
   );
-}
-
-function numberFromUnknown(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function imageInfoNumber(
-  info: unknown,
-  paths: readonly (readonly string[])[],
-): number | null {
-  if (!info || typeof info !== "object") return null;
-
-  for (const path of paths) {
-    let current: unknown = info;
-
-    for (const key of path) {
-      if (!current || typeof current !== "object" || !(key in current)) {
-        current = null;
-        break;
-      }
-      current = (current as Record<string, unknown>)[key];
-    }
-
-    const value = numberFromUnknown(current);
-    if (value !== null) return value;
-  }
-
-  return null;
 }
 
 function parseJpegDimensions(data: ArrayBuffer) {
@@ -242,111 +196,108 @@ async function fetchStoredImageTransform(
   });
 }
 
-async function getStoredImageInfo(env: Env, key: string) {
-  const response = await fetchStoredImageTransform(env, key, {
-    format: "json",
-    metadata: "none",
-    anim: false,
-  });
-
-  if (!response.ok) {
-    throw new Error(`Image metadata fetch failed with ${response.status}`);
-  }
-
-  return await response.json();
+function imageBindingOutputFormat(
+  acceptHeader: string | null,
+): ImageOutputOptions["format"] {
+  if (acceptHeader?.includes("image/avif")) return "image/avif";
+  if (acceptHeader?.includes("image/webp")) return "image/webp";
+  return NORMALIZED_IMAGE_TYPE;
 }
 
-async function getStoredImageInfoForAsset(env: Env, key: string) {
-  if (!shouldUseDevImageFallback(env)) {
-    return await getStoredImageInfo(env, key);
-  }
+function imageBindingTransformOptions(
+  options: ReturnType<typeof getTransformPreset>,
+): ImageTransform {
+  return {
+    width: options.width,
+    ...(options.height ? { height: options.height } : {}),
+    fit: options.fit,
+    ...(options.sharpen ? { sharpen: options.sharpen } : {}),
+  };
+}
 
-  try {
-    return await getStoredImageInfo(env, key);
-  } catch (error) {
-    console.log(
-      JSON.stringify({
-        event: "dev_image_metadata_fallback",
-        storageKey: key,
-        message: error instanceof Error ? error.message : "Unknown error",
-      }),
+async function transformStoredImageWithBinding(
+  env: Env,
+  key: string,
+  preset: ReturnType<typeof parseTransformPreset>,
+  acceptHeader: string | null,
+): Promise<Response> {
+  if (!preset) {
+    return Response.json(
+      { error: "Unsupported image transformation preset" },
+      { status: 400 },
     );
-    return null;
   }
-}
 
-async function createThumbhash(env: Env, key: string): Promise<string> {
-  const response = await fetchStoredImageTransform(env, key, {
-    width: 100,
-    height: 100,
-    fit: "scale-down",
-    quality: 50,
-    format: "jpeg",
-    metadata: "none",
-    anim: false,
+  const object = await env.IMAGES.get(key);
+  if (!object) {
+    return Response.json({ error: "Image not found" }, { status: 404 });
+  }
+
+  const transformOptions = getTransformPreset(preset);
+  const result = await env.IMAGE_TRANSFORMER.input(object.body)
+    .transform(imageBindingTransformOptions(transformOptions))
+    .output({
+      format: imageBindingOutputFormat(acceptHeader),
+      quality: transformOptions.quality,
+      anim: transformOptions.anim,
+    });
+
+  const response = result.response();
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  headers.set("Vary", "Accept");
+  headers.set(TRANSFORM_STATUS_HEADER, "transformed");
+  if (!headers.has("ETag")) {
+    headers.set(
+      "ETag",
+      `W/"${encodeURIComponent(key)}:${preset}:${imageBindingOutputFormat(acceptHeader)}"`,
+    );
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
-
-  if (!response.ok) {
-    throw new Error(`Image thumbhash fetch failed with ${response.status}`);
-  }
-
-  const data = await response.arrayBuffer();
-  return createThumbhashFromJpegBytes(data);
-}
-
-async function createThumbhashForAsset(env: Env, key: string): Promise<string> {
-  if (!shouldUseDevImageFallback(env)) {
-    return await createThumbhash(env, key);
-  }
-
-  try {
-    return await createThumbhash(env, key);
-  } catch {
-    return FALLBACK_THUMBHASH;
-  }
 }
 
 async function buildStoredImageAsset(
   env: Env,
   key: string,
 ): Promise<StoredImageAsset> {
-  const useDevFallback = shouldUseDevImageFallback(env);
-  const [object, info, thumbhash] = await Promise.all([
-    useDevFallback ? env.IMAGES.get(key) : env.IMAGES.head(key),
-    getStoredImageInfoForAsset(env, key),
-    createThumbhashForAsset(env, key),
-  ]);
-
+  const object = await env.IMAGES.get(key);
   if (!object) {
     throw new Error("Stored image not found");
   }
 
-  const width = imageInfoNumber(info, [
-    ["input", "width"],
-    ["source", "width"],
-    ["original", "width"],
-    ["image", "width"],
-    ["width"],
-  ]);
-  const height = imageInfoNumber(info, [
-    ["input", "height"],
-    ["source", "height"],
-    ["original", "height"],
-    ["image", "height"],
-    ["height"],
-  ]);
   const contentType = object.httpMetadata?.contentType;
-  const fallbackDimensions =
-    useDevFallback &&
-    contentType === NORMALIZED_IMAGE_TYPE &&
-    hasArrayBuffer(object)
-      ? parseJpegDimensions(await object.arrayBuffer())
-      : null;
-  const imageWidth = width ?? fallbackDimensions?.width;
-  const imageHeight = height ?? fallbackDimensions?.height;
-
-  if (!imageWidth || !imageHeight || !isAllowedImageContentType(contentType)) {
+  if (!isAllowedImageContentType(contentType)) {
     throw new Error("Stored image metadata is incomplete");
+  }
+
+  const data = hasArrayBuffer(object) ? await object.arrayBuffer() : null;
+  const dimensions =
+    contentType === NORMALIZED_IMAGE_TYPE && data
+      ? parseJpegDimensions(data)
+      : null;
+
+  if (!dimensions) {
+    throw new Error("Stored image metadata is incomplete");
+  }
+
+  let thumbhash = FALLBACK_THUMBHASH;
+  if (data) {
+    try {
+      thumbhash = createThumbhashFromJpegBytes(data);
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          event: "image_thumbhash_failed",
+          storageKey: key,
+          message: error instanceof Error ? error.message : "Unknown error",
+        }),
+      );
+    }
   }
 
   const publicUrl = imageUrlForKey(env, key);
@@ -356,8 +307,8 @@ async function buildStoredImageAsset(
     publicUrl,
     storageKey: key,
     key,
-    width: imageWidth,
-    height: imageHeight,
+    width: dimensions.width,
+    height: dimensions.height,
     contentType,
     byteSize: object.size,
     thumbhash,
@@ -903,8 +854,8 @@ async function getOriginalImageResponse(
  * Serve images with optional transformations.
  * GET /{key}?preset=feed_720
  *
- * Cloudflare Image Resizing requires fetching from an origin URL.
- * We use the R2 bucket's S3-compatible URL as the origin.
+ * Preset transforms use the Cloudflare Images binding against R2 object bytes.
+ * The origin-fetch branch remains for internal normalization requests.
  */
 app.get("/*", async (c) => {
   const url = new URL(c.req.url);
@@ -939,63 +890,16 @@ app.get("/*", async (c) => {
     });
   }
 
-  // If transformations requested, use Cloudflare Image Resizing via R2 origin
+  // If transformations requested, transform the R2 object bytes directly.
   if (preset) {
     const acceptHeader = c.req.header("Accept") ?? null;
-    const transformOptions = getTransformPreset(preset);
-    const cfImageOptions = buildCfImageOptions(transformOptions, acceptHeader);
-
-    // Fetch from R2's S3-compatible URL (the actual origin)
-    // This avoids recursive fetches to our own worker
-    const r2OriginUrl = originUrlForKey(c.env, key);
 
     try {
-      const transformedResponse = await fetch(r2OriginUrl, {
-        headers: {
-          [ORIGIN_FETCH_HEADER]: "1",
-          Accept: acceptHeader ?? IMAGE_ACCEPT_HEADER,
-        },
-        cf: {
-          image: cfImageOptions,
-          cacheEverything: true,
-          cacheTtl: 31536000, // 1 year
-        },
-      });
-
-      if (transformedResponse.ok) {
-        const headers = new Headers(transformedResponse.headers);
-        headers.set("Cache-Control", "public, max-age=31536000, immutable");
-        headers.set("Vary", "Accept");
-        headers.set(TRANSFORM_STATUS_HEADER, "transformed");
-        if (!headers.has("ETag")) {
-          headers.set(
-            "ETag",
-            `W/"${encodeURIComponent(key)}:${preset}:${cfImageOptions.format ?? "source"}"`,
-          );
-        }
-        return new Response(transformedResponse.body, { headers });
-      }
-
-      console.log(
-        JSON.stringify({
-          event: "image_transform_failed",
-          storageKey: key,
-          preset,
-          status: transformedResponse.status,
-          contentType: transformedResponse.headers.get("content-type"),
-        }),
-      );
-
-      return c.json(
-        {
-          error: "Image transformation failed",
-          status: transformedResponse.status,
-        },
-        502,
-        {
-          [TRANSFORM_STATUS_HEADER]: "failed",
-          "Cache-Control": "no-store",
-        },
+      return await transformStoredImageWithBinding(
+        c.env,
+        key,
+        preset,
+        acceptHeader,
       );
     } catch (error) {
       console.log(

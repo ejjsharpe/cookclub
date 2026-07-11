@@ -1,5 +1,6 @@
 export interface Env {
   IMAGES: R2Bucket;
+  IMAGE_TRANSFORMER: ImagesBinding;
   // R2 API credentials for presigned URLs
   R2_ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;
