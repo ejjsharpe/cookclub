@@ -100,7 +100,6 @@ function App() {
   const isFontsReady = isFontsLoaded || isFontsError;
   const [isImagesReady, setIsImagesReady] = useState(false);
   const [isNavigationReady, setIsNavigationReady] = useState(false);
-  const hasReportedAppLoadedRef = useRef(false);
   const navigationStateRef = useRef<
     React.ComponentProps<typeof Navigation>["initialState"] | undefined
   >(undefined);
@@ -134,10 +133,6 @@ function App() {
   useEffect(() => {
     if (isFontsReady && isNavigationReady && isImagesReady) {
       SplashScreen.hideAsync();
-      if (!hasReportedAppLoadedRef.current) {
-        Sentry.appLoaded();
-        hasReportedAppLoadedRef.current = true;
-      }
     }
   }, [isFontsReady, isNavigationReady, isImagesReady]);
 

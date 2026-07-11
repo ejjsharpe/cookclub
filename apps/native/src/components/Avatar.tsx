@@ -113,7 +113,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.primary,
   },
   proRing: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     borderRadius: theme.borderRadius.full,
     borderWidth: 2,
     borderColor: theme.colors.primary,

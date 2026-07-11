@@ -50,7 +50,7 @@
         {
           "reactNativeReleaseLevel": "experimental",
           "ios": {
-            "deploymentTarget": "15.1"
+            "deploymentTarget": "16.4"
           }
         }
       ],
@@ -61,7 +61,20 @@
           "photosPermission": "Allow cookclub to access your photos so you can add images to your recipes and profile."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FF0027",
+          "resizeMode": "contain",
+          "ios": {
+            "image": "./assets/ios-splash.png"
+          },
+          "android": {
+            "image": "./assets/android-splash.png"
+          }
+        }
+      ]
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -76,23 +89,13 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Allow cookclub to access your photos so you can choose a profile picture."
       },
-      "icon": "./assets/cookclub.icon",
-      "splash": {
-        "image": "./assets/ios-splash.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#FF0027"
-    }
+      "icon": "./assets/cookclub.icon"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#FF0027"
       },
-      "splash": {
-        "image": "./assets/android-splash.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#FF0027"
-    },
       "package": "com.shakyhand.cookclub",
       "googleServicesFile": "./google-services.json"
     },
