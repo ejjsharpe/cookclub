@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { View, TextInput, TouchableOpacity } from "react-native";
+import { View, Text, TextInput, TouchableOpacity } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Ionicons } from "@/components/Ionicons";
@@ -37,18 +37,32 @@ export function SearchBar({
   return (
     <View style={styles.container}>
       <Ionicons name="search" size={20} style={styles.searchIcon} />
-      <TextInput
-        ref={inputRef}
-        style={styles.input}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={styles.placeholder.color}
-        autoCapitalize="none"
-        autoCorrect={false}
-        onFocus={onFocus}
-        onBlur={onBlur}
-      />
+      <View style={styles.inputContainer}>
+        {value.length === 0 && (
+          <Text
+            style={[styles.inputText, styles.placeholder]}
+            numberOfLines={1}
+            pointerEvents="none"
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {placeholder}
+          </Text>
+        )}
+        <TextInput
+          ref={inputRef}
+          style={[styles.inputText, styles.input]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="transparent"
+          autoCapitalize="none"
+          autoCorrect={false}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        />
+      </View>
       {value.length > 0 && (
         <TouchableOpacity
           onPress={() => onChangeText("")}
@@ -75,8 +89,12 @@ const styles = StyleSheet.create((theme) => ({
     marginRight: 10,
     color: theme.colors.textTertiary,
   },
-  input: {
+  inputContainer: {
     flex: 1,
+    minHeight: SEARCH_BAR_HEIGHT,
+    justifyContent: "center",
+  },
+  inputText: {
     fontSize: 17,
     lineHeight: 22,
     letterSpacing: -0.4,
@@ -85,7 +103,14 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.text,
     fontFamily: theme.fonts.regular,
   },
+  input: {
+    flex: 1,
+    paddingVertical: 0,
+  },
   placeholder: {
+    position: "absolute",
+    right: 0,
+    left: 0,
     color: theme.colors.placeholderText,
   },
   clearButton: {

@@ -2418,6 +2418,7 @@ export const RecipeDetailScreen = () => {
         ref={scrollRef}
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         onScroll={scrollHandler}
         scrollEventThrottle={16}
       >
