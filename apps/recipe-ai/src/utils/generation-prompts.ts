@@ -84,14 +84,24 @@ Think like a real chef - pick 2-4 KEY ingredients that work well together and bu
   "cookTime": 30,
   "totalTime": 45,
   "servings": 4,
-  "ingredients": [
-    {"quantity": 2, "unit": "cup", "name": "rice", "preparation": null},
-    {"quantity": 1, "unit": "lb", "name": "chicken breast", "preparation": "cubed"},
-    {"quantity": 1, "unit": "cup", "name": "onion", "preparation": "diced"}
+  "ingredientSections": [
+    {
+      "name": null,
+      "ingredients": [
+        {"quantity": 2, "unit": "cup", "name": "rice"},
+        {"quantity": 1, "unit": "lb", "name": "chicken breast"},
+        {"quantity": 1, "unit": "cup", "name": "onion"}
+      ]
+    }
   ],
-  "instructions": [
-    {"text": "Step 1 description", "imageUrl": null},
-    {"text": "Step 2 description", "imageUrl": null}
+  "instructionSections": [
+    {
+      "name": null,
+      "instructions": [
+        {"text": "Step 1 description"},
+        {"text": "Step 2 description"}
+      ]
+    }
   ],
   "suggestedTags": [
     "Italian",

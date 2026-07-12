@@ -135,7 +135,7 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   pressHighlight: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: theme.colors.pressHighlight,
   },
   thumbnail: {

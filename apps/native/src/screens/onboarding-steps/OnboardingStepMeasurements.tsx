@@ -135,7 +135,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.primary + "10",
   },
   pressHighlight: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: theme.colors.pressHighlight,
   },
   optionContent: {

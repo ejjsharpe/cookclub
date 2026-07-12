@@ -311,7 +311,6 @@ const BackgroundImportCard = ({
         isFailed && styles.importCardFailed,
       ]}
     >
-      {isPending && <View pointerEvents="none" style={styles.importCardGlow} />}
       <View
         style={[
           styles.importIconContainer,
@@ -771,10 +770,6 @@ const styles = StyleSheet.create((theme, rt) => ({
   importCardFailed: {
     backgroundColor: theme.colors.inputBackground,
   },
-  importCardGlow: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "transparent",
-  },
   importIconContainer: {
     width: 42,
     height: 42,
@@ -845,7 +840,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     position: "relative",
   },
   pressHighlight: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: theme.colors.pressHighlight,
   },
   rowDisabled: {
