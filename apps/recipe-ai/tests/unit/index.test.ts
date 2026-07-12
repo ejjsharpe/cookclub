@@ -1102,6 +1102,165 @@ describe("RecipeAI.parse()", () => {
       expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
     });
 
+    it("uses reel audio as a fallback when Instagram has no instructions", async () => {
+      const instagramCaption =
+        "Creamy tomato pasta with 200 g spaghetti, 1 cup tomato sauce, and 2 tbsp parmesan.";
+      const transcript =
+        "First boil the spaghetti until al dente. Simmer the tomato sauce, toss in the pasta, then finish with parmesan.";
+      const audioUrl =
+        "https://scontent.example.cdninstagram.com/reel-audio.mp4?token=abc";
+      const crawlerPayload = {
+        result: {
+          data: {
+            xig_polaris_media: {
+              if_not_gated_logged_out: {
+                code: "AUDIORECIPE123",
+                pk: "123456",
+                user: { username: "pasta_creator" },
+                caption: { text: instagramCaption },
+                display_uri: "https://example.com/crawler-cover.jpg",
+                video_dash_manifest: `<?xml version="1.0"?><MPD><Period><AdaptationSet contentType="audio"><Representation mimeType="audio/mp4"><BaseURL>${audioUrl.replaceAll("&", "&amp;")}</BaseURL></Representation></AdaptationSet></Period></MPD>`,
+              },
+              comments_connection: { edges: [] },
+            },
+          },
+        },
+      };
+      const crawlerHtml = `<html><body><script type="application/json">${JSON.stringify(
+        crawlerPayload,
+      )}</script></body></html>`;
+      const ingredientsOnlyRecipe = {
+        name: "Creamy Tomato Pasta",
+        description: null,
+        prepTime: null,
+        cookTime: null,
+        totalTime: null,
+        servings: null,
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, quantity: 200, unit: "g", name: "spaghetti" },
+              { index: 1, quantity: 1, unit: "cup", name: "tomato sauce" },
+              { index: 2, quantity: 2, unit: "tbsp", name: "parmesan" },
+            ],
+          },
+        ],
+        instructionSections: [],
+      };
+
+      mockEnv.AI.run = vi.fn((model: string) => {
+        if (model === "@cf/openai/whisper") {
+          return Promise.resolve({ text: transcript, word_count: 19 });
+        }
+
+        const textAttemptCount = mockEnv.AI.run.mock.calls.filter(
+          ([calledModel]) => calledModel === SOCIAL_TEXT_MODEL,
+        ).length;
+        return Promise.resolve({
+          response: JSON.stringify(
+            textAttemptCount === 1
+              ? ingredientsOnlyRecipe
+              : {
+                  ...ingredientsOnlyRecipe,
+                  instructionSections: [
+                    {
+                      name: null,
+                      instructions: [
+                        {
+                          index: 0,
+                          instruction: "Boil the spaghetti until al dente.",
+                        },
+                        {
+                          index: 1,
+                          instruction:
+                            "Simmer the tomato sauce and toss in the pasta.",
+                        },
+                        {
+                          index: 2,
+                          instruction: "Finish with parmesan.",
+                        },
+                      ],
+                    },
+                  ],
+                },
+          ),
+        });
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (requested.startsWith("https://www.instagram.com/api/v1/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: instagramCaption,
+                thumbnail_url: "https://example.com/oembed-cover.jpg",
+              }),
+          });
+        }
+
+        if (requested === audioUrl) {
+          const audio = new Uint8Array([0, 1, 2, 3]);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({
+              "content-type": "audio/mp4",
+              "content-length": String(audio.byteLength),
+            }),
+            arrayBuffer: () => Promise.resolve(audio.buffer),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({
+            "content-type": "text/html",
+            "content-length": String(
+              new TextEncoder().encode(crawlerHtml).byteLength,
+            ),
+          }),
+          arrayBuffer: () =>
+            Promise.resolve(new TextEncoder().encode(crawlerHtml).buffer),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/AUDIORECIPE123/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
+          3,
+        );
+        expect(result.metadata.parseMethod).toBe("media_enriched");
+        expect(result.metadata.diagnostics?.selectedAttempt).toBe(
+          "instagram_audio",
+        );
+        expect(
+          result.metadata.diagnostics?.stageTimings?.some(
+            (stage) =>
+              stage.name === "instagram_audio" && stage.status === "success",
+          ),
+        ).toBe(true);
+      }
+      expect(mockEnv.AI.run.mock.calls.map(([model]) => model)).toEqual([
+        SOCIAL_TEXT_MODEL,
+        "@cf/openai/whisper",
+        SOCIAL_TEXT_MODEL,
+      ]);
+      expect(JSON.stringify(mockEnv.AI.run.mock.calls[2]?.[1])).toContain(
+        transcript,
+      );
+    });
+
     it("adds a creator recipe comment to Instagram AI evidence", async () => {
       const instagramCaption =
         "Creamy tomato pasta 16 oz spaghetti | 4 tbsp butter | 2 cups broth. Full recipe in the comments.";

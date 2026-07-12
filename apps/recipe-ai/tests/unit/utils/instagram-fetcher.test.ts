@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   extractInstagramCrawlerContent,
   extractInstagramContent,
+  fetchInstagramReelAudio,
   normalizeInstagramUrl,
   extractShortcode,
 } from "../../../src/utils/instagram-fetcher";
@@ -127,6 +128,8 @@ describe("instagram-fetcher", () => {
 
   describe("extractInstagramCrawlerContent", () => {
     it("selects a creator recipe comment from the public crawler payload", async () => {
+      const audioUrl =
+        "https://scontent.example.cdninstagram.com/reel-audio.mp4?token=abc&part=1";
       const payload = {
         result: {
           data: {
@@ -137,6 +140,7 @@ describe("instagram-fetcher", () => {
                 user: { username: "recipe_creator" },
                 caption: { text: "Pasta ingredients. Full recipe in comments" },
                 display_uri: "https://example.com/crawler-cover.jpg",
+                video_dash_manifest: `<?xml version="1.0"?><MPD><Period><AdaptationSet contentType="video"><Representation mimeType="video/mp4"><BaseURL>https://scontent.example.cdninstagram.com/video.mp4</BaseURL></Representation></AdaptationSet><AdaptationSet contentType="audio"><Representation mimeType="audio/mp4"><BaseURL>${audioUrl.replaceAll("&", "&amp;")}</BaseURL></Representation></AdaptationSet></Period></MPD>`,
               },
               comments_connection: {
                 edges: [
@@ -157,6 +161,10 @@ describe("instagram-fetcher", () => {
                     },
                   },
                 ],
+              },
+              lightweight_duplicate: {
+                code: "ABC123",
+                caption: { text: "A duplicate without media renditions" },
               },
             },
           },
@@ -184,6 +192,7 @@ describe("instagram-fetcher", () => {
       expect(result.caption).toContain("Full recipe in comments");
       expect(result.authorName).toBe("recipe_creator");
       expect(result.images).toEqual(["https://example.com/crawler-cover.jpg"]);
+      expect(result.audioUrl).toBe(audioUrl);
       expect(result.comments).toEqual([
         expect.objectContaining({
           username: "recipe_creator",
@@ -214,6 +223,55 @@ describe("instagram-fetcher", () => {
           "https://www.instagram.com/reel/ABC123/",
         ),
       ).rejects.toThrow("HTML response too large");
+    });
+  });
+
+  describe("fetchInstagramReelAudio", () => {
+    beforeEach(() => {
+      global.fetch = vi.fn();
+    });
+
+    it("downloads a bounded audio-only reel rendition", async () => {
+      const audio = new Uint8Array([0, 1, 2, 3]);
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "audio/mp4",
+          "content-length": String(audio.byteLength),
+        }),
+        arrayBuffer: () => Promise.resolve(audio.buffer),
+      });
+
+      await expect(
+        fetchInstagramReelAudio(
+          "https://scontent.example.cdninstagram.com/reel-audio.mp4",
+        ),
+      ).resolves.toEqual(audio);
+    });
+
+    it("rejects audio from an unapproved host", async () => {
+      await expect(
+        fetchInstagramReelAudio("https://example.com/reel-audio.mp4"),
+      ).rejects.toThrow("approved CDN");
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it("rejects oversized audio before buffering it", async () => {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "audio/mp4",
+          "content-length": String(5 * 1024 * 1024),
+        }),
+      });
+
+      await expect(
+        fetchInstagramReelAudio(
+          "https://scontent.example.cdninstagram.com/large-audio.mp4",
+        ),
+      ).rejects.toThrow("response too large");
     });
   });
 });

@@ -13,6 +13,8 @@ import {
   extractInstagramCrawlerContent,
   extractInstagramContent as extractInstagramContentOembed,
   extractShortcode,
+  fetchInstagramReelAudio,
+  type InstagramCrawlerContent,
 } from "../utils/instagram-fetcher";
 import {
   appendFallbackPath,
@@ -60,6 +62,7 @@ const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
 const SOCIAL_TEXT_MODEL = DEFAULT_TEXT_MODEL;
 const SOCIAL_PROMPT_VARIANT = "compact_social";
 const SOCIAL_MAX_TOKENS = 8192;
+const INSTAGRAM_AUDIO_MODEL = "@cf/openai/whisper";
 
 interface SocialParseOptions {
   diagnostics?: ParseMetadata["diagnostics"];
@@ -346,6 +349,7 @@ async function parseSocialAi(
     noContentMessage: string;
     aiErrorCode: string;
     aiOptions?: AiExtractionOptions;
+    selectedAttempt?: string;
   },
 ): Promise<ParseResult> {
   const aiStart = Date.now();
@@ -404,7 +408,7 @@ async function parseSocialAi(
   if (aiAttempt.result?.success && !shouldRetry) {
     return socialResultWithDiagnostics(aiAttempt.result, options.url, {
       ...diagnostics,
-      selectedAttempt: options.parseMethod,
+      selectedAttempt: options.selectedAttempt ?? options.parseMethod,
     });
   }
 
@@ -442,14 +446,14 @@ async function parseSocialAi(
     if (retryAttempt.result?.success) {
       return socialResultWithDiagnostics(retryAttempt.result, options.url, {
         ...diagnostics,
-        selectedAttempt: `${options.parseMethod}_retry`,
+        selectedAttempt: `${options.selectedAttempt ?? options.parseMethod}_retry`,
       });
     }
 
     if (aiAttempt.result?.success) {
       return socialResultWithDiagnostics(aiAttempt.result, options.url, {
         ...diagnostics,
-        selectedAttempt: options.parseMethod,
+        selectedAttempt: options.selectedAttempt ?? options.parseMethod,
       });
     }
 
@@ -473,6 +477,51 @@ async function parseSocialAi(
   );
 }
 
+function isInstagramReelUrl(url: string): boolean {
+  try {
+    return /^\/reels?\//i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function hasRecipeInstructions(result: ParseResult): boolean {
+  return (
+    result.success &&
+    result.data.instructionSections.some(
+      (section) => section.instructions.length > 0,
+    )
+  );
+}
+
+function instagramRecipeContent(
+  caption: string | null,
+  comments: string[],
+  transcript?: string | null,
+) {
+  return buildEnrichedSocialRecipeText({
+    caption,
+    pageText: comments.length
+      ? `Selected public comments:\n${comments
+          .map((comment, index) => `${index + 1}. ${comment}`)
+          .join("\n")}`
+      : null,
+    transcript,
+  });
+}
+
+async function transcribeInstagramAudio(
+  env: Env,
+  audioUrl: string,
+): Promise<string | null> {
+  const audio = await fetchInstagramReelAudio(audioUrl);
+  const result = await env.AI.run(INSTAGRAM_AUDIO_MODEL, {
+    audio: Array.from(audio),
+  });
+  const transcript = result.text.trim();
+  return transcript.length >= 20 ? transcript : null;
+}
+
 async function parseInstagramUrl(
   env: Env,
   url: string,
@@ -485,6 +534,7 @@ async function parseInstagramUrl(
   let caption: string | null = null;
   let images: string[] = [];
   let comments: string[] = [];
+  let crawlerResult: InstagramCrawlerContent | null = null;
 
   const fetchStart = Date.now();
   try {
@@ -502,52 +552,59 @@ async function parseInstagramUrl(
     );
   }
 
-  if (!caption || mentionsRecipeInComments(caption)) {
+  const loadCrawlerContent = async (
+    stageName: string,
+  ): Promise<InstagramCrawlerContent | null> => {
+    if (crawlerResult) return crawlerResult;
+
     const commentsStart = Date.now();
     try {
-      const crawlerResult = await extractInstagramCrawlerContent(url);
+      crawlerResult = await extractInstagramCrawlerContent(url);
       caption ??= crawlerResult.caption;
       images = Array.from(new Set([...images, ...crawlerResult.images]));
       comments = crawlerResult.comments.map((comment) => comment.text);
       diagnostics = recordDiagnosticsStage(
         diagnostics,
-        "instagram_comments",
+        stageName,
         commentsStart,
-        comments.length > 0 ? "success" : "skipped",
-        `${comments.length}_selected`,
+        stageName === "instagram_comments" && comments.length === 0
+          ? "skipped"
+          : "success",
+        `${comments.length}_comment(s),${crawlerResult.audioUrl ? "audio_found" : "no_audio"}`,
       );
+      return crawlerResult;
     } catch (error) {
       diagnostics = recordDiagnosticsStage(
         diagnostics,
-        "instagram_comments",
+        stageName,
         commentsStart,
         "error",
         error instanceof Error ? error.message : "instagram_comments_failed",
       );
+      return null;
     }
+  };
+
+  if (!caption || mentionsRecipeInComments(caption)) {
+    await loadCrawlerContent("instagram_comments");
   }
 
+  const initialLinkedUrls = extractSocialRecipeLinks(
+    [caption, ...comments],
+    url,
+  );
   const linked = await tryLinkedRecipeUrls(
-    extractSocialRecipeLinks([caption, ...comments], url),
+    initialLinkedUrls,
     diagnostics,
     options,
   );
   diagnostics = linked.diagnostics;
   if (linked.result?.success) return linked.result;
 
-  const content = buildEnrichedSocialRecipeText({
-    caption,
-    pageText: comments.length
-      ? `Selected public comments:\n${comments
-          .map((comment, index) => `${index + 1}. ${comment}`)
-          .join("\n")}`
-      : null,
-  });
-
-  return parseSocialAi(env, {
+  const initialResult = await parseSocialAi(env, {
     url,
     platform: "instagram",
-    content,
+    content: instagramRecipeContent(caption, comments),
     images,
     parseMethod: comments.length ? "media_enriched" : "ai_only",
     diagnostics,
@@ -555,6 +612,92 @@ async function parseInstagramUrl(
       "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
     aiErrorCode: "INSTAGRAM_PARSE_FAILED",
     aiOptions: options?.aiOptions,
+  });
+
+  if (!isInstagramReelUrl(url) || hasRecipeInstructions(initialResult)) {
+    return initialResult;
+  }
+
+  diagnostics = initialResult.metadata?.diagnostics ?? diagnostics;
+  const fallbackCrawlerResult = await loadCrawlerContent(
+    "instagram_reel_metadata",
+  );
+
+  const fallbackLinkedUrls = extractSocialRecipeLinks(
+    [caption, ...comments],
+    url,
+  ).filter((candidate) => !initialLinkedUrls.includes(candidate));
+  const fallbackLinked = await tryLinkedRecipeUrls(
+    fallbackLinkedUrls,
+    diagnostics,
+    options,
+  );
+  diagnostics = fallbackLinked.diagnostics;
+  if (fallbackLinked.result?.success) return fallbackLinked.result;
+
+  const audioUrl = fallbackCrawlerResult?.audioUrl;
+  if (!audioUrl) {
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "instagram_audio"),
+      "instagram_audio",
+      Date.now(),
+      "skipped",
+      "no_audio_url",
+    );
+    return withDiagnostics(initialResult, "url", diagnostics);
+  }
+
+  const transcriptionStart = Date.now();
+  let transcript: string | null = null;
+  try {
+    transcript = await transcribeInstagramAudio(env, audioUrl);
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "instagram_audio"),
+      "instagram_audio",
+      transcriptionStart,
+      transcript ? "success" : "skipped",
+      transcript ? `${transcript.length}_characters` : "empty_transcript",
+    );
+  } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "instagram_audio"),
+      "instagram_audio",
+      transcriptionStart,
+      "error",
+      error instanceof Error ? error.message : "instagram_audio_failed",
+    );
+  }
+
+  if (!transcript) {
+    return withDiagnostics(initialResult, "url", diagnostics);
+  }
+
+  const audioResult = await parseSocialAi(env, {
+    url,
+    platform: "instagram",
+    content: instagramRecipeContent(caption, comments, transcript),
+    images,
+    parseMethod: "media_enriched",
+    selectedAttempt: "instagram_audio",
+    diagnostics,
+    noContentMessage:
+      "Could not extract recipe content from this Instagram reel or its audio.",
+    aiErrorCode: "INSTAGRAM_AUDIO_PARSE_FAILED",
+    aiOptions: options?.aiOptions,
+  });
+
+  if (
+    hasRecipeInstructions(audioResult) ||
+    (!initialResult.success && audioResult.success)
+  ) {
+    return audioResult;
+  }
+
+  const initialDiagnostics = initialResult.metadata?.diagnostics;
+  return withDiagnostics(initialResult, "url", {
+    ...(audioResult.metadata?.diagnostics ?? diagnostics),
+    selectedAttempt: initialDiagnostics?.selectedAttempt,
+    qualityScore: initialDiagnostics?.qualityScore,
   });
 }
 

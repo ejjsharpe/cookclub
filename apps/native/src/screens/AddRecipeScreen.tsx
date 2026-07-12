@@ -172,7 +172,9 @@ const ImportProgressBar = ({ active }: { active: boolean }) => {
 
   useEffect(() => {
     if (active) {
+      cancelAnimation(positionProgress);
       completionProgress.set(0);
+      positionProgress.set(0);
       positionProgress.set(
         withRepeat(
           withTiming(1, {
@@ -192,6 +194,11 @@ const ImportProgressBar = ({ active }: { active: boolean }) => {
         }),
       );
     }
+
+    return () => {
+      cancelAnimation(positionProgress);
+      cancelAnimation(completionProgress);
+    };
   }, [active, completionProgress, positionProgress]);
 
   const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
@@ -205,21 +212,27 @@ const ImportProgressBar = ({ active }: { active: boolean }) => {
   const travelWidth = Math.max(0, trackWidth - segmentWidth);
 
   const indicatorStyle = useAnimatedStyle(() => {
-    const activeLeft = positionProgress.get() * travelWidth;
-    const activeRight = activeLeft + segmentWidth;
-    const completion = completionProgress.get();
-    const left = activeLeft * (1 - completion);
-    const right = activeRight + (trackWidth - activeRight) * completion;
-
     return {
-      width: right - left,
-      transform: [{ translateX: left }],
+      transform: [{ translateX: positionProgress.get() * travelWidth }],
     };
-  }, [segmentWidth, trackWidth, travelWidth]);
+  }, [travelWidth]);
+
+  const completionStyle = useAnimatedStyle(() => ({
+    opacity: completionProgress.get(),
+  }));
 
   return (
     <View style={styles.importProgressTrack} onLayout={handleTrackLayout}>
-      <Animated.View style={[styles.importProgressIndicator, indicatorStyle]} />
+      <Animated.View
+        style={[
+          styles.importProgressIndicator,
+          { width: segmentWidth },
+          indicatorStyle,
+        ]}
+      />
+      <Animated.View
+        style={[styles.importProgressCompletion, completionStyle]}
+      />
     </View>
   );
 };
@@ -743,6 +756,12 @@ const styles = StyleSheet.create((theme, rt) => ({
   importProgressIndicator: {
     width: IMPORT_PROGRESS_BAR_WIDTH,
     height: "100%",
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.primary,
+  },
+  importProgressCompletion: {
+    position: "absolute",
+    inset: 0,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.primary,
   },

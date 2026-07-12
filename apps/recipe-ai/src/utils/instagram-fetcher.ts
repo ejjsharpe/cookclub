@@ -1,6 +1,10 @@
 import * as cheerio from "cheerio";
 
-import { readLimitedText, validateFetchUrl } from "./html-fetcher";
+import {
+  readLimitedBytes,
+  readLimitedText,
+  validateFetchUrl,
+} from "./html-fetcher";
 
 interface InstagramOembedResponse {
   version?: string;
@@ -23,8 +27,12 @@ interface InstagramOembedResponse {
 const INSTAGRAM_OEMBED_TIMEOUT_MS = 8_000;
 const INSTAGRAM_CRAWLER_TIMEOUT_MS = 10_000;
 const INSTAGRAM_CRAWLER_MAX_BYTES = 1_500_000;
+const INSTAGRAM_AUDIO_TIMEOUT_MS = 15_000;
+const INSTAGRAM_AUDIO_MAX_BYTES = 4 * 1024 * 1024;
+const INSTAGRAM_AUDIO_MAX_REDIRECTS = 2;
 const INSTAGRAM_CRAWLER_USER_AGENT =
   "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+const INSTAGRAM_CDN_DOMAINS = ["cdninstagram.com", "fbcdn.net"];
 
 export interface InstagramComment {
   text: string;
@@ -42,6 +50,7 @@ export interface InstagramContent {
 
 export interface InstagramCrawlerContent extends InstagramContent {
   comments: InstagramComment[];
+  audioUrl?: string;
 }
 
 /**
@@ -101,6 +110,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function findMediaByShortcode(value: unknown, shortcode: string) {
   const stack: unknown[] = [value];
   let visited = 0;
+  let fallback: Record<string, unknown> | null = null;
 
   while (stack.length && visited < 100_000) {
     const current = stack.pop();
@@ -109,14 +119,45 @@ function findMediaByShortcode(value: unknown, shortcode: string) {
     visited += 1;
 
     if (record.code === shortcode) {
-      const caption = asRecord(record.caption);
-      if (typeof caption?.text === "string") return record;
+      if (typeof record.video_dash_manifest === "string") return record;
+      fallback ??= record;
     }
 
     stack.push(...(Array.isArray(current) ? current : Object.values(record)));
   }
 
-  return null;
+  return fallback;
+}
+
+function isInstagramCdnUrl(url: string): boolean {
+  const parsed = validateFetchUrl(url);
+  const hostname = parsed.hostname.toLowerCase();
+  return INSTAGRAM_CDN_DOMAINS.some(
+    (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+  );
+}
+
+function extractAudioUrl(media: Record<string, unknown>): string | undefined {
+  if (typeof media.video_dash_manifest !== "string") return undefined;
+
+  const $ = cheerio.load(media.video_dash_manifest, { xmlMode: true });
+  const candidates = [
+    ...$('AdaptationSet[contentType="audio"] BaseURL').toArray(),
+    ...$('Representation[mimeType^="audio/"] BaseURL').toArray(),
+  ];
+
+  for (const element of candidates) {
+    const url = $(element).text().trim();
+    if (!url) continue;
+
+    try {
+      if (isInstagramCdnUrl(url)) return url;
+    } catch {
+      // Ignore invalid or non-public media URLs from the untrusted payload.
+    }
+  }
+
+  return undefined;
 }
 
 function commentScore(comment: InstagramComment): number {
@@ -213,6 +254,7 @@ function extractCrawlerPayload(
           authorName: creatorUsername,
           mediaId: typeof media.pk === "string" ? media.pk : undefined,
           comments,
+          audioUrl: extractAudioUrl(media),
         };
       }
     }
@@ -221,6 +263,72 @@ function extractCrawlerPayload(
   }
 
   return null;
+}
+
+/**
+ * Download the audio-only DASH rendition exposed by Instagram for a reel.
+ * The byte cap keeps the subsequent Whisper request within Worker memory.
+ */
+export async function fetchInstagramReelAudio(
+  audioUrl: string,
+): Promise<Uint8Array> {
+  if (!isInstagramCdnUrl(audioUrl)) {
+    throw new Error("Instagram audio URL is not hosted on an approved CDN");
+  }
+
+  let currentUrl = audioUrl;
+  for (
+    let redirectCount = 0;
+    redirectCount <= INSTAGRAM_AUDIO_MAX_REDIRECTS;
+    redirectCount++
+  ) {
+    const response = await fetch(currentUrl, {
+      signal: AbortSignal.timeout(INSTAGRAM_AUDIO_TIMEOUT_MS),
+      redirect: "manual",
+      headers: {
+        Accept: "audio/mp4,audio/*;q=0.9,application/octet-stream;q=0.8",
+        Referer: "https://www.instagram.com/",
+        "User-Agent": INSTAGRAM_CRAWLER_USER_AGENT,
+      },
+    });
+
+    if (
+      response.status >= 300 &&
+      response.status < 400 &&
+      response.headers.has("location")
+    ) {
+      if (redirectCount === INSTAGRAM_AUDIO_MAX_REDIRECTS) {
+        throw new Error("Instagram audio returned too many redirects");
+      }
+
+      const nextUrl = new URL(response.headers.get("location")!, currentUrl);
+      if (!isInstagramCdnUrl(nextUrl.toString())) {
+        throw new Error("Instagram audio redirected to an unsupported host");
+      }
+      currentUrl = nextUrl.toString();
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Instagram audio returned ${response.status}: ${response.statusText}`,
+      );
+    }
+
+    const contentType = response.headers.get("content-type")?.toLowerCase();
+    if (
+      contentType &&
+      !contentType.startsWith("audio/") &&
+      !contentType.startsWith("video/mp4") &&
+      !contentType.startsWith("application/octet-stream")
+    ) {
+      throw new Error(`Unsupported Instagram audio type: ${contentType}`);
+    }
+
+    return readLimitedBytes(response, INSTAGRAM_AUDIO_MAX_BYTES);
+  }
+
+  throw new Error("Could not download Instagram audio");
 }
 
 /**
