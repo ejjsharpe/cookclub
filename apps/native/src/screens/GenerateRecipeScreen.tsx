@@ -5,14 +5,22 @@ import {
   FlatList,
   TextInput,
   Pressable,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from "react-native";
-import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
+import {
+  KeyboardAvoidingView,
+  useReanimatedKeyboardAnimation,
+} from "react-native-keyboard-controller";
+import Animated, {
+  FadeInUp,
+  FadeInDown,
+  interpolate,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
 import { useGenerateRecipeChat } from "@/api/chat";
+import { useGenerateRecipeImage } from "@/api/recipe";
 import { Ionicons } from "@/components/Ionicons";
 import { SafeAreaView } from "@/components/SafeAreaView";
 import { Text } from "@/components/Text";
@@ -45,17 +53,43 @@ const RECIPE_PROMPTS = [
   "Something cozy for two",
 ];
 
+function formatIngredient(ingredient: {
+  quantity?: number | null;
+  unit?: string | null;
+  name: string;
+}) {
+  return [ingredient.quantity, ingredient.unit, ingredient.name]
+    .filter((part) => part !== null && part !== undefined && part !== "")
+    .join(" ");
+}
+
 export const GenerateRecipeScreen = () => {
   const { navigate } = useNavigation();
   const theme = UnistylesRuntime.getTheme();
+  const bottomInset = UnistylesRuntime.insets.bottom;
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [inputText, setInputText] = useState("");
   const [conversationState, setConversationState] =
     useState<ConversationState>(INITIAL_STATE);
   const [status, setStatus] = useState<ChatStatus>("idle");
+  const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
+  const inputContainerAnimatedStyle = useAnimatedStyle(() => ({
+    paddingBottom: interpolate(
+      keyboardProgress.get(),
+      [0, 1],
+      [bottomInset + 10, 10],
+    ),
+  }));
 
   const chatMutation = useGenerateRecipeChat();
+  const imageMutation = useGenerateRecipeImage();
+
+  const scrollToBottom = useCallback((animated: boolean) => {
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -94,7 +128,33 @@ export const GenerateRecipeScreen = () => {
           setMessages((prev) => [...prev, assistantMessage]);
           setConversationState(result.updatedState);
         } else if (result.type === "recipe") {
-          // Recipe generated - navigate to detail editor
+          setStatus("generating");
+
+          const ingredients = result.recipe.ingredientSections.flatMap(
+            (section) => section.ingredients.map(formatIngredient),
+          );
+          const instructions = result.recipe.instructionSections.flatMap(
+            (section) =>
+              section.instructions.map(
+                (instruction) => instruction.instruction,
+              ),
+          );
+          let generatedImage:
+            | { publicUrl: string; imageUploadId: string }
+            | undefined;
+
+          try {
+            generatedImage = await imageMutation.mutateAsync({
+              name: result.recipe.name,
+              description: result.recipe.description,
+              ingredients,
+              instructions,
+            });
+          } catch {
+            // Keep the completed recipe when image generation is unavailable.
+            // The editor offers the same AI image action for a manual retry.
+          }
+
           navigate("RecipeDetail", {
             parsedRecipe: {
               success: true,
@@ -106,6 +166,7 @@ export const GenerateRecipeScreen = () => {
               },
             },
             mode: "edit",
+            generatedImage,
           });
         }
       } catch {
@@ -121,7 +182,14 @@ export const GenerateRecipeScreen = () => {
         setStatus("idle");
       }
     },
-    [messages, conversationState, status, chatMutation, navigate],
+    [
+      messages,
+      conversationState,
+      status,
+      chatMutation,
+      imageMutation,
+      navigate,
+    ],
   );
 
   const renderMessage = useCallback(
@@ -161,7 +229,10 @@ export const GenerateRecipeScreen = () => {
             </View>
 
             {item.suggestedReplies && item.suggestedReplies.length > 0 && (
-              <View style={styles.suggestedReplies}>
+              <View
+                style={styles.suggestedReplies}
+                onLayout={() => scrollToBottom(true)}
+              >
                 {item.suggestedReplies.map((reply) => (
                   <Pressable
                     key={reply}
@@ -187,7 +258,7 @@ export const GenerateRecipeScreen = () => {
         </Animated.View>
       );
     },
-    [sendMessage, status],
+    [scrollToBottom, sendMessage, status],
   );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
@@ -211,8 +282,9 @@ export const GenerateRecipeScreen = () => {
 
       <KeyboardAvoidingView
         style={styles.chatArea}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={10}
+        behavior="padding"
+        keyboardVerticalOffset={0}
+        automaticOffset
       >
         <FlatList
           ref={flatListRef}
@@ -267,22 +339,22 @@ export const GenerateRecipeScreen = () => {
                 <ActivityIndicator size="small" color={theme.colors.primary} />
                 <Text type="caption" style={styles.loadingText}>
                   {status === "generating"
-                    ? "Creating your recipe..."
+                    ? "Creating a photo for your recipe..."
                     : "Thinking through the next step..."}
                 </Text>
               </Animated.View>
             ) : null
           }
-          onContentSizeChange={() =>
-            flatListRef.current?.scrollToEnd({ animated: true })
-          }
-          onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={() => scrollToBottom(true)}
+          onLayout={() => scrollToBottom(false)}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         />
 
-        <View style={styles.inputContainer}>
+        <Animated.View
+          style={[styles.inputContainer, inputContainerAnimatedStyle]}
+        >
           <View style={styles.inputPill}>
             <TextInput
               style={styles.textInput}
@@ -316,7 +388,7 @@ export const GenerateRecipeScreen = () => {
               color={inputText.trim() && status === "idle" ? "#fff" : "#9A9A9A"}
             />
           </Pressable>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -198,6 +198,10 @@ function isPreviewParams(params: AppParamList["RecipeDetail"]): params is {
   parsedRecipe: ParsedRecipe;
   mode?: RecipeDetailMode;
   importJobId?: string;
+  generatedImage?: {
+    publicUrl: string;
+    imageUploadId: string;
+  };
 } {
   return "parsedRecipe" in params;
 }
@@ -300,9 +304,28 @@ function draftFromRecipe(recipe: RecipeLike): RecipeDraft {
   };
 }
 
-function draftFromParsedRecipe(parsedRecipe: ParsedRecipe): RecipeDraft | null {
+function draftFromParsedRecipe(
+  parsedRecipe: ParsedRecipe,
+  generatedImage?: { publicUrl: string; imageUploadId: string },
+): RecipeDraft | null {
   const previewRecipe = transformParsedRecipeForPreview(parsedRecipe);
-  return previewRecipe ? draftFromRecipe(previewRecipe) : null;
+  if (!previewRecipe) return null;
+
+  const draft = draftFromRecipe(previewRecipe);
+  if (!generatedImage) return draft;
+
+  return {
+    ...draft,
+    images: [
+      {
+        id: createDraftId("generated-image"),
+        uri: generatedImage.publicUrl,
+        isRemote: false,
+        uploadKey: generatedImage.imageUploadId,
+      },
+      ...draft.images,
+    ],
+  };
 }
 
 function createBlankDraft(): RecipeDraft {
@@ -435,6 +458,7 @@ export const RecipeDetailScreen = () => {
   const isBlankDraftMode = isBlankDraftParams(params);
   const parsedRecipe = isPreviewMode ? params.parsedRecipe : null;
   const importJobId = isPreviewMode ? params.importJobId : undefined;
+  const generatedImage = isPreviewMode ? params.generatedImage : undefined;
   const recipeId = "recipeId" in params ? params.recipeId : null;
   const isImportReviewMode = Boolean(importJobId);
   const shouldStartEditing =
@@ -476,7 +500,8 @@ export const RecipeDetailScreen = () => {
   const [isEditing, setIsEditing] = useState(shouldStartEditing);
   const [draft, setDraft] = useState<RecipeDraft | null>(() => {
     if (isBlankDraftMode) return createBlankDraft();
-    if (parsedRecipe) return draftFromParsedRecipe(parsedRecipe);
+    if (parsedRecipe)
+      return draftFromParsedRecipe(parsedRecipe, generatedImage);
     return null;
   });
   const initialDraftRef = useRef<RecipeDraft | null>(draft);
@@ -547,7 +572,7 @@ export const RecipeDetailScreen = () => {
     if (isBlankDraftMode) {
       nextDraft = createBlankDraft();
     } else if (parsedRecipe) {
-      nextDraft = draftFromParsedRecipe(parsedRecipe);
+      nextDraft = draftFromParsedRecipe(parsedRecipe, generatedImage);
     } else if (fetchedRecipe) {
       nextDraft = draftFromRecipe(fetchedRecipe);
     }
@@ -558,7 +583,13 @@ export const RecipeDetailScreen = () => {
     initialDraftRef.current = nextDraft;
     draftSourceRef.current = sourceKey;
     setCurrentImageIndex(0);
-  }, [fetchedRecipe, isBlankDraftMode, parsedRecipe, sourceKey]);
+  }, [
+    fetchedRecipe,
+    generatedImage,
+    isBlankDraftMode,
+    parsedRecipe,
+    sourceKey,
+  ]);
 
   useEffect(() => {
     if (recipe?.servings && !hasInitializedServings.current) {
