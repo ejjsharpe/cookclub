@@ -1,4 +1,6 @@
-import { validateFetchUrl } from "./html-fetcher";
+import * as cheerio from "cheerio";
+
+import { readLimitedText, validateFetchUrl } from "./html-fetcher";
 
 interface InstagramOembedResponse {
   version?: string;
@@ -19,6 +21,28 @@ interface InstagramOembedResponse {
 }
 
 const INSTAGRAM_OEMBED_TIMEOUT_MS = 8_000;
+const INSTAGRAM_CRAWLER_TIMEOUT_MS = 10_000;
+const INSTAGRAM_CRAWLER_MAX_BYTES = 1_500_000;
+const INSTAGRAM_CRAWLER_USER_AGENT =
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+
+export interface InstagramComment {
+  text: string;
+  username?: string;
+  likeCount: number;
+  isCreator: boolean;
+}
+
+export interface InstagramContent {
+  caption: string | null;
+  images: string[];
+  authorName?: string;
+  mediaId?: string;
+}
+
+export interface InstagramCrawlerContent extends InstagramContent {
+  comments: InstagramComment[];
+}
 
 /**
  * Extract recipe content from Instagram using the oembed API.
@@ -32,7 +56,7 @@ const INSTAGRAM_OEMBED_TIMEOUT_MS = 8_000;
  */
 export async function extractInstagramContent(
   url: string,
-): Promise<{ caption: string | null; images: string[]; authorName?: string }> {
+): Promise<InstagramContent> {
   validateFetchUrl(url);
   // Clean the URL - remove query params and tracking
   const cleanUrl = normalizeInstagramUrl(url);
@@ -64,7 +88,186 @@ export async function extractInstagramContent(
     caption: data.title || null,
     images,
     authorName: data.author_name,
+    mediaId: data.media_id,
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function findMediaByShortcode(value: unknown, shortcode: string) {
+  const stack: unknown[] = [value];
+  let visited = 0;
+
+  while (stack.length && visited < 100_000) {
+    const current = stack.pop();
+    const record = asRecord(current);
+    if (!record) continue;
+    visited += 1;
+
+    if (record.code === shortcode) {
+      const caption = asRecord(record.caption);
+      if (typeof caption?.text === "string") return record;
+    }
+
+    stack.push(...(Array.isArray(current) ? current : Object.values(record)));
+  }
+
+  return null;
+}
+
+function commentScore(comment: InstagramComment): number {
+  const text = comment.text;
+  if (text.trim().length < 20) return 0;
+
+  let score = comment.isCreator ? 60 : 0;
+  score += Math.min(20, Math.floor(text.length / 80) * 4);
+  if (
+    /\b(?:ingredients?|instructions?|directions?|method|recipe)\b/i.test(text)
+  ) {
+    score += 25;
+  }
+  if (
+    /\b\d+(?:[./]\d+)?\s*(?:g|kg|ml|l|oz|lb|cups?|tbsp|tsp|minutes?|mins?|hours?|hrs?)\b/i.test(
+      text,
+    )
+  ) {
+    score += 15;
+  }
+  if (
+    /\b(?:add|bake|boil|cook|fold|fry|heat|mix|pour|roast|simmer|stir|whisk)\b/i.test(
+      text,
+    )
+  ) {
+    score += 10;
+  }
+
+  return score + Math.min(comment.likeCount, 20);
+}
+
+function extractCrawlerPayload(
+  payload: unknown,
+  shortcode: string,
+): InstagramCrawlerContent | null {
+  const stack: unknown[] = [payload];
+  let visited = 0;
+
+  while (stack.length && visited < 100_000) {
+    const current = stack.pop();
+    const record = asRecord(current);
+    if (!record) continue;
+    visited += 1;
+
+    const rootMedia = asRecord(record.xig_polaris_media);
+    if (rootMedia) {
+      const media = findMediaByShortcode(rootMedia, shortcode);
+      if (media) {
+        const user = asRecord(media.user);
+        const creatorUsername =
+          typeof user?.username === "string" ? user.username : undefined;
+        const caption = asRecord(media.caption);
+        const commentsConnection = asRecord(rootMedia.comments_connection);
+        const edges = Array.isArray(commentsConnection?.edges)
+          ? commentsConnection.edges
+          : [];
+        const comments = edges
+          .map((edge): InstagramComment | null => {
+            const node = asRecord(asRecord(edge)?.node);
+            const commentUser = asRecord(node?.user);
+            if (typeof node?.text !== "string") return null;
+            const username =
+              typeof commentUser?.username === "string"
+                ? commentUser.username
+                : undefined;
+
+            return {
+              text: node.text.trim(),
+              username,
+              likeCount:
+                typeof node.comment_like_count === "number"
+                  ? node.comment_like_count
+                  : 0,
+              isCreator: Boolean(
+                username &&
+                creatorUsername &&
+                username.toLowerCase() === creatorUsername.toLowerCase(),
+              ),
+            };
+          })
+          .filter((comment): comment is InstagramComment => Boolean(comment))
+          .map((comment) => ({ comment, score: commentScore(comment) }))
+          .filter(({ score }) => score >= 20)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5)
+          .map(({ comment }) => comment);
+
+        const images =
+          typeof media.display_uri === "string" ? [media.display_uri] : [];
+
+        return {
+          caption: typeof caption?.text === "string" ? caption.text : null,
+          images,
+          authorName: creatorUsername,
+          mediaId: typeof media.pk === "string" ? media.pk : undefined,
+          comments,
+        };
+      }
+    }
+
+    stack.push(...(Array.isArray(current) ? current : Object.values(record)));
+  }
+
+  return null;
+}
+
+/**
+ * Extract the structured public payload rendered for search crawlers.
+ *
+ * Instagram's anonymous comments REST endpoint redirects to login, while its
+ * public reel HTML includes a small comments connection for search crawlers.
+ * This stays a best-effort enrichment: callers must keep the oEmbed caption
+ * when the crawler payload or useful comments are unavailable.
+ */
+export async function extractInstagramCrawlerContent(
+  url: string,
+): Promise<InstagramCrawlerContent> {
+  validateFetchUrl(url);
+  const cleanUrl = normalizeInstagramUrl(url);
+  const shortcode = extractShortcode(cleanUrl);
+  if (!shortcode) throw new Error("Instagram URL does not contain a shortcode");
+
+  const response = await fetch(cleanUrl, {
+    signal: AbortSignal.timeout(INSTAGRAM_CRAWLER_TIMEOUT_MS),
+    redirect: "manual",
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      "User-Agent": INSTAGRAM_CRAWLER_USER_AGENT,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Instagram crawler page returned ${response.status}: ${response.statusText}`,
+    );
+  }
+
+  const html = await readLimitedText(response, INSTAGRAM_CRAWLER_MAX_BYTES);
+  const $ = cheerio.load(html);
+  for (const script of $('script[type="application/json"]').toArray()) {
+    try {
+      const content = $(script).text().trim();
+      if (!content.includes("xig_polaris_media")) continue;
+      const result = extractCrawlerPayload(JSON.parse(content), shortcode);
+      if (result) return result;
+    } catch {
+      // Instagram emits many unrelated data scripts; malformed ones are noise.
+    }
+  }
+
+  throw new Error("Instagram crawler page did not contain post data");
 }
 
 /**

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import {
+  extractInstagramCrawlerContent,
   extractInstagramContent,
   normalizeInstagramUrl,
   extractShortcode,
@@ -121,6 +122,98 @@ describe("instagram-fetcher", () => {
 
       expect(result.caption).toBe(null);
       expect(result.images).toEqual([]);
+    });
+  });
+
+  describe("extractInstagramCrawlerContent", () => {
+    it("selects a creator recipe comment from the public crawler payload", async () => {
+      const payload = {
+        result: {
+          data: {
+            xig_polaris_media: {
+              if_not_gated_logged_out: {
+                code: "ABC123",
+                pk: "123456",
+                user: { username: "recipe_creator" },
+                caption: { text: "Pasta ingredients. Full recipe in comments" },
+                display_uri: "https://example.com/crawler-cover.jpg",
+              },
+              comments_connection: {
+                edges: [
+                  {
+                    node: {
+                      __typename: "XIGComment",
+                      text: "PASTA",
+                      user: { username: "viewer" },
+                      comment_like_count: 0,
+                    },
+                  },
+                  {
+                    node: {
+                      __typename: "XIGComment",
+                      text: "Instructions: Boil the pasta, simmer the sauce, then stir together for 2 minutes.",
+                      user: { username: "recipe_creator" },
+                      comment_like_count: 12,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      const html = `<html><body><script type="application/json">${JSON.stringify(
+        payload,
+      )}</script></body></html>`;
+
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "text/html",
+          "content-length": String(new TextEncoder().encode(html).byteLength),
+        }),
+        arrayBuffer: () =>
+          Promise.resolve(new TextEncoder().encode(html).buffer),
+      });
+
+      const result = await extractInstagramCrawlerContent(
+        "https://www.instagram.com/reel/ABC123/",
+      );
+
+      expect(result.caption).toContain("Full recipe in comments");
+      expect(result.authorName).toBe("recipe_creator");
+      expect(result.images).toEqual(["https://example.com/crawler-cover.jpg"]);
+      expect(result.comments).toEqual([
+        expect.objectContaining({
+          username: "recipe_creator",
+          isCreator: true,
+          text: expect.stringContaining("Boil the pasta"),
+        }),
+      ]);
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://www.instagram.com/reel/ABC123/",
+        expect.objectContaining({
+          redirect: "manual",
+          headers: expect.objectContaining({
+            "User-Agent": expect.stringContaining("Googlebot"),
+          }),
+        }),
+      );
+    });
+
+    it("rejects oversized crawler pages", async () => {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-length": "2000000" }),
+      });
+
+      await expect(
+        extractInstagramCrawlerContent(
+          "https://www.instagram.com/reel/ABC123/",
+        ),
+      ).rejects.toThrow("HTML response too large");
     });
   });
 });

@@ -10,6 +10,7 @@ import {
 } from "../utils/html-cleaner";
 import { fetchHtml } from "../utils/html-fetcher";
 import {
+  extractInstagramCrawlerContent,
   extractInstagramContent as extractInstagramContentOembed,
   extractShortcode,
 } from "../utils/instagram-fetcher";
@@ -56,7 +57,7 @@ const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
   reddit: ["reddit.com"],
 };
 
-const SOCIAL_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const SOCIAL_TEXT_MODEL = DEFAULT_TEXT_MODEL;
 const SOCIAL_PROMPT_VARIANT = "compact_social";
 const SOCIAL_MAX_TOKENS = 8192;
 
@@ -80,10 +81,57 @@ function isAiJsonParseError(error: unknown): boolean {
 
 function shouldRetrySocialAiWithScout(
   error: unknown,
+  result: ParseResult | null,
+  content: string,
   aiOptions?: AiExtractionOptions,
 ): boolean {
   const initialModel = aiOptions?.textModel ?? SOCIAL_TEXT_MODEL;
-  return isAiJsonParseError(error) && initialModel === SOCIAL_TEXT_MODEL;
+  if (initialModel !== SOCIAL_TEXT_MODEL) return false;
+  if (isAiJsonParseError(error)) return true;
+  if (!result?.success) return false;
+
+  const explicitIngredientCount = countExplicitIngredientLines(content);
+  if (explicitIngredientCount === 0) return false;
+
+  const parsedIngredientCount = result.data.ingredientSections.reduce(
+    (count, section) => count + section.ingredients.length,
+    0,
+  );
+  return parsedIngredientCount < explicitIngredientCount;
+}
+
+function countExplicitIngredientLines(content: string): number {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  let inIngredients = false;
+  let count = 0;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (/^ingredients?\s*:?$/i.test(line)) {
+      inIngredients = true;
+      continue;
+    }
+    if (
+      inIngredients &&
+      /^(?:instructions?|directions?|method|steps|preparation)\s*:?$/i.test(
+        line,
+      )
+    ) {
+      break;
+    }
+    if (inIngredients && /^[-*•·▪▫◦]\s*\S/.test(line)) count += 1;
+  }
+
+  return count;
+}
+
+function mentionsRecipeInComments(caption: string | null): boolean {
+  return Boolean(
+    caption &&
+    /\b(?:full\s+)?recipe(?:\s+is)?\s+(?:in|inside)\s+(?:the\s+)?comments?\b/i.test(
+      caption,
+    ),
+  );
 }
 
 function hostnameMatches(hostname: string, domain: string): boolean {
@@ -346,14 +394,21 @@ async function parseSocialAi(
     options.parseMethod,
   );
 
-  if (aiAttempt.result?.success) {
+  const shouldRetry = shouldRetrySocialAiWithScout(
+    aiAttempt.error,
+    aiAttempt.result,
+    options.content,
+    options.aiOptions,
+  );
+
+  if (aiAttempt.result?.success && !shouldRetry) {
     return socialResultWithDiagnostics(aiAttempt.result, options.url, {
       ...diagnostics,
       selectedAttempt: options.parseMethod,
     });
   }
 
-  if (shouldRetrySocialAiWithScout(aiAttempt.error, options.aiOptions)) {
+  if (shouldRetry) {
     const retryStart = Date.now();
     const retryAttempt = await tryAiRecipeCandidate(
       env,
@@ -365,10 +420,10 @@ async function parseSocialAi(
       `[${options.platform}:scout_retry]`,
       {
         cache: false,
+        ...options.aiOptions,
         textModel: DEFAULT_TEXT_MODEL,
         promptVariant: SOCIAL_PROMPT_VARIANT,
         maxTokens: SOCIAL_MAX_TOKENS,
-        ...options.aiOptions,
       },
     );
 
@@ -388,6 +443,13 @@ async function parseSocialAi(
       return socialResultWithDiagnostics(retryAttempt.result, options.url, {
         ...diagnostics,
         selectedAttempt: `${options.parseMethod}_retry`,
+      });
+    }
+
+    if (aiAttempt.result?.success) {
+      return socialResultWithDiagnostics(aiAttempt.result, options.url, {
+        ...diagnostics,
+        selectedAttempt: options.parseMethod,
       });
     }
 
@@ -422,6 +484,7 @@ async function parseInstagramUrl(
   let diagnostics = options?.diagnostics;
   let caption: string | null = null;
   let images: string[] = [];
+  let comments: string[] = [];
 
   const fetchStart = Date.now();
   try {
@@ -439,20 +502,54 @@ async function parseInstagramUrl(
     );
   }
 
+  if (!caption || mentionsRecipeInComments(caption)) {
+    const commentsStart = Date.now();
+    try {
+      const crawlerResult = await extractInstagramCrawlerContent(url);
+      caption ??= crawlerResult.caption;
+      images = Array.from(new Set([...images, ...crawlerResult.images]));
+      comments = crawlerResult.comments.map((comment) => comment.text);
+      diagnostics = recordDiagnosticsStage(
+        diagnostics,
+        "instagram_comments",
+        commentsStart,
+        comments.length > 0 ? "success" : "skipped",
+        `${comments.length}_selected`,
+      );
+    } catch (error) {
+      diagnostics = recordDiagnosticsStage(
+        diagnostics,
+        "instagram_comments",
+        commentsStart,
+        "error",
+        error instanceof Error ? error.message : "instagram_comments_failed",
+      );
+    }
+  }
+
   const linked = await tryLinkedRecipeUrls(
-    extractSocialRecipeLinks([caption], url),
+    extractSocialRecipeLinks([caption, ...comments], url),
     diagnostics,
     options,
   );
   diagnostics = linked.diagnostics;
   if (linked.result?.success) return linked.result;
 
+  const content = buildEnrichedSocialRecipeText({
+    caption,
+    pageText: comments.length
+      ? `Selected public comments:\n${comments
+          .map((comment, index) => `${index + 1}. ${comment}`)
+          .join("\n")}`
+      : null,
+  });
+
   return parseSocialAi(env, {
     url,
     platform: "instagram",
-    content: caption,
+    content,
     images,
-    parseMethod: "ai_only",
+    parseMethod: comments.length ? "media_enriched" : "ai_only",
     diagnostics,
     noContentMessage:
       "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",

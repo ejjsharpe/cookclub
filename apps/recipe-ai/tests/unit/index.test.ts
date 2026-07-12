@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { RecipeAI } from "../../src/index";
 
-const SOCIAL_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const SOCIAL_TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 
 const browserFetcherMocks = vi.hoisted(() => ({
   fetchHtmlWithBrowser: vi.fn(),
@@ -1102,7 +1102,248 @@ describe("RecipeAI.parse()", () => {
       expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
     });
 
-    it("retries any social AI import with Scout when the compact model returns malformed JSON", async () => {
+    it("adds a creator recipe comment to Instagram AI evidence", async () => {
+      const instagramCaption =
+        "Creamy tomato pasta 16 oz spaghetti | 4 tbsp butter | 2 cups broth. Full recipe in the comments.";
+      const creatorComment =
+        "Instructions: Cook the spaghetti until al dente. Melt the butter, add the broth, and simmer. Toss with the spaghetti and serve.";
+      const crawlerPayload = {
+        result: {
+          data: {
+            xig_polaris_media: {
+              if_not_gated_logged_out: {
+                code: "COMMENTRECIPE123",
+                pk: "123456",
+                user: { username: "pasta_creator" },
+                caption: { text: instagramCaption },
+                display_uri: "https://example.com/crawler-cover.jpg",
+              },
+              comments_connection: {
+                edges: [
+                  {
+                    node: {
+                      __typename: "XIGComment",
+                      text: creatorComment,
+                      user: { username: "pasta_creator" },
+                      comment_like_count: 25,
+                    },
+                  },
+                  {
+                    node: {
+                      __typename: "XIGComment",
+                      text: "PASTA",
+                      user: { username: "viewer" },
+                      comment_like_count: 0,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      const crawlerHtml = `<html><body><script type="application/json">${JSON.stringify(
+        crawlerPayload,
+      )}</script></body></html>`;
+
+      mockEnv.AI.run = vi.fn().mockResolvedValue({
+        response: JSON.stringify({
+          name: "Creamy Tomato Pasta",
+          description: null,
+          prepTime: null,
+          cookTime: null,
+          totalTime: null,
+          servings: null,
+          ingredientSections: [
+            {
+              name: null,
+              ingredients: [
+                { index: 0, quantity: 16, unit: "oz", name: "spaghetti" },
+                { index: 1, quantity: 4, unit: "tbsp", name: "butter" },
+                { index: 2, quantity: 2, unit: "cup", name: "broth" },
+              ],
+            },
+          ],
+          instructionSections: [
+            {
+              name: null,
+              instructions: [
+                { index: 0, instruction: "Cook the spaghetti until al dente." },
+                {
+                  index: 1,
+                  instruction: "Melt the butter, add the broth, and simmer.",
+                },
+                { index: 2, instruction: "Toss with the spaghetti and serve." },
+              ],
+            },
+          ],
+        }),
+      });
+
+      global.fetch = vi.fn((requestUrl: string | URL) => {
+        const requested = String(requestUrl);
+        if (requested.startsWith("https://www.instagram.com/api/v1/oembed")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: () =>
+              Promise.resolve({
+                title: instagramCaption,
+                author_name: "pasta_creator",
+                thumbnail_url: "https://example.com/oembed-cover.jpg",
+              }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({
+            "content-type": "text/html",
+            "content-length": String(
+              new TextEncoder().encode(crawlerHtml).byteLength,
+            ),
+          }),
+          arrayBuffer: () =>
+            Promise.resolve(new TextEncoder().encode(crawlerHtml).buffer),
+        });
+      }) as any;
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/COMMENTRECIPE123/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.instructionSections[0]?.instructions).toHaveLength(
+          3,
+        );
+        expect(result.metadata.parseMethod).toBe("media_enriched");
+        expect(
+          result.metadata.diagnostics?.stageTimings?.some(
+            (stage) =>
+              stage.name === "instagram_comments" && stage.status === "success",
+          ),
+        ).toBe(true);
+      }
+      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(mockEnv.AI.run.mock.calls[0]?.[1])).toContain(
+        creatorComment,
+      );
+    });
+
+    it("retries Instagram captions when the fast model drops explicit ingredients", async () => {
+      const instagramCaption = `Complete tomato pasta
+
+Ingredients:
+• 200 g spaghetti
+• 1 cup tomato sauce
+• 2 tbsp parmesan
+
+Instructions:
+1. Boil the spaghetti.
+2. Toss with tomato sauce and parmesan.`;
+      const baseRecipe = {
+        name: "Complete Tomato Pasta",
+        description: null,
+        prepTime: null,
+        cookTime: 15,
+        totalTime: null,
+        servings: 2,
+        instructionSections: [
+          {
+            name: null,
+            instructions: [
+              { index: 0, instruction: "Boil the spaghetti." },
+              {
+                index: 1,
+                instruction: "Toss with tomato sauce and parmesan.",
+              },
+            ],
+          },
+        ],
+      };
+
+      mockEnv.AI.run = vi
+        .fn()
+        .mockResolvedValueOnce({
+          response: JSON.stringify({
+            ...baseRecipe,
+            ingredientSections: [
+              {
+                name: null,
+                ingredients: [
+                  { index: 0, quantity: 200, unit: "g", name: "spaghetti" },
+                  {
+                    index: 1,
+                    quantity: 1,
+                    unit: "cup",
+                    name: "tomato sauce",
+                  },
+                ],
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          response: JSON.stringify({
+            ...baseRecipe,
+            ingredientSections: [
+              {
+                name: null,
+                ingredients: [
+                  { index: 0, quantity: 200, unit: "g", name: "spaghetti" },
+                  {
+                    index: 1,
+                    quantity: 1,
+                    unit: "cup",
+                    name: "tomato sauce",
+                  },
+                  {
+                    index: 2,
+                    quantity: 2,
+                    unit: "tbsp",
+                    name: "parmesan",
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () =>
+          Promise.resolve({
+            title: instagramCaption,
+            thumbnail_url: "https://example.com/instagram.jpg",
+          }),
+      });
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://www.instagram.com/reel/INCOMPLETE123/",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.ingredientSections[0]?.ingredients).toHaveLength(3);
+        expect(result.metadata.diagnostics?.selectedAttempt).toBe(
+          "ai_only_retry",
+        );
+      }
+      expect(mockEnv.AI.run).toHaveBeenCalledTimes(2);
+      expect(mockEnv.AI.run.mock.calls[0]?.[0]).toBe(SOCIAL_TEXT_MODEL);
+      expect(mockEnv.AI.run.mock.calls[1]?.[0]).toBe(
+        "@cf/meta/llama-4-scout-17b-16e-instruct",
+      );
+    });
+
+    it("retries malformed social AI output with Scout", async () => {
       const instagramCaption =
         "Sheet pan chicken kefta Ingredients: 1.5 lb ground chicken 2 tbsp tomato paste. Directions: spread on a sheet pan and bake.";
 
