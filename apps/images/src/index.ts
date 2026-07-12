@@ -11,6 +11,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
+import { arrayBufferToStream, readBoundedResponseBody } from "./image-data";
 import {
   extensionFromContentType,
   generateGeneratedTempKey,
@@ -51,6 +52,7 @@ const MAX_REMOTE_IMAGE_REDIRECTS = 3;
 const ORIGIN_FETCH_HEADER = "x-cookclub-origin-fetch";
 const TRANSFORM_STATUS_HEADER = "x-cookclub-image-transform";
 const IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/*,*/*";
+const SOURCE_IMAGE_ACCEPT_HEADER = "image/jpeg,image/webp,image/png";
 const NORMALIZED_IMAGE_TYPE = "image/jpeg" satisfies ImageContentType;
 const FALLBACK_THUMBHASH = "";
 
@@ -123,58 +125,6 @@ function imageUrlForKey(env: Env, key: string): string {
 function originUrlForKey(env: Env, key: string): string {
   const encodedKey = key.split("/").map(encodeURIComponent).join("/");
   return `${env.R2_ORIGIN_URL.replace(/\/+$/, "")}/${encodedKey}`;
-}
-
-function hasArrayBuffer(
-  value: unknown,
-): value is { arrayBuffer: () => Promise<ArrayBuffer> } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "arrayBuffer" in value &&
-    typeof value.arrayBuffer === "function"
-  );
-}
-
-function parseJpegDimensions(data: ArrayBuffer) {
-  const bytes = new Uint8Array(data);
-  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
-    return null;
-  }
-
-  let offset = 2;
-  while (offset + 9 < bytes.length) {
-    while (bytes[offset] === 0xff) offset++;
-
-    const marker = bytes[offset++];
-    if (marker === undefined) return null;
-    if (marker === 0xd9 || marker === 0xda) return null;
-    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
-
-    if (offset + 2 > bytes.length) return null;
-
-    const segmentLength = (bytes[offset]! << 8) | bytes[offset + 1]!;
-    if (segmentLength < 2 || offset + segmentLength > bytes.length) {
-      return null;
-    }
-
-    const isStartOfFrame =
-      (marker >= 0xc0 && marker <= 0xc3) ||
-      (marker >= 0xc5 && marker <= 0xc7) ||
-      (marker >= 0xc9 && marker <= 0xcb) ||
-      (marker >= 0xcd && marker <= 0xcf);
-
-    if (isStartOfFrame) {
-      return {
-        height: (bytes[offset + 3]! << 8) | bytes[offset + 4]!,
-        width: (bytes[offset + 5]! << 8) | bytes[offset + 6]!,
-      };
-    }
-
-    offset += segmentLength;
-  }
-
-  return null;
 }
 
 async function fetchStoredImageTransform(
@@ -275,29 +225,40 @@ async function buildStoredImageAsset(
     throw new Error("Stored image metadata is incomplete");
   }
 
-  const data = hasArrayBuffer(object) ? await object.arrayBuffer() : null;
-  const dimensions =
-    contentType === NORMALIZED_IMAGE_TYPE && data
-      ? parseJpegDimensions(data)
-      : null;
-
-  if (!dimensions) {
+  const data = await object.arrayBuffer();
+  const info = await env.IMAGE_TRANSFORMER.info(arrayBufferToStream(data));
+  if (
+    !("width" in info) ||
+    !isAllowedImageContentType(info.format) ||
+    info.format !== contentType
+  ) {
     throw new Error("Stored image metadata is incomplete");
   }
 
   let thumbhash = FALLBACK_THUMBHASH;
-  if (data) {
-    try {
-      thumbhash = createThumbhashFromJpegBytes(data);
-    } catch (error) {
-      console.log(
-        JSON.stringify({
-          event: "image_thumbhash_failed",
-          storageKey: key,
-          message: error instanceof Error ? error.message : "Unknown error",
-        }),
-      );
+  try {
+    let thumbhashJpeg = data;
+    if (contentType !== NORMALIZED_IMAGE_TYPE) {
+      const result = await env.IMAGE_TRANSFORMER.input(
+        arrayBufferToStream(data),
+      )
+        .transform({ width: 100, height: 100, fit: "scale-down" })
+        .output({ format: NORMALIZED_IMAGE_TYPE, quality: 85, anim: false });
+      const response = result.response();
+      if (!response.ok) {
+        throw new Error(`Thumbhash image transform failed: ${response.status}`);
+      }
+      thumbhashJpeg = await response.arrayBuffer();
     }
+    thumbhash = createThumbhashFromJpegBytes(thumbhashJpeg);
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        event: "image_thumbhash_failed",
+        storageKey: key,
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
   }
 
   const publicUrl = imageUrlForKey(env, key);
@@ -307,8 +268,8 @@ async function buildStoredImageAsset(
     publicUrl,
     storageKey: key,
     key,
-    width: dimensions.width,
-    height: dimensions.height,
+    width: info.width,
+    height: info.height,
     contentType,
     byteSize: object.size,
     thumbhash,
@@ -320,8 +281,9 @@ async function readNormalizedRemoteImage(
   maxFileSize: number,
 ): Promise<ArrayBuffer> {
   const attempts = [
-    { width: 2560, quality: 84 },
-    { width: 2048, quality: 80 },
+    { width: 2560, quality: 92 },
+    { width: 2048, quality: 88 },
+    { width: 1600, quality: 84 },
   ];
 
   let lastSize = 0;
@@ -331,7 +293,7 @@ async function readNormalizedRemoteImage(
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: IMAGE_ACCEPT_HEADER,
+        Accept: SOURCE_IMAGE_ACCEPT_HEADER,
       },
       redirect: "manual",
       cf: {
@@ -651,7 +613,7 @@ export class ImageService extends WorkerEntrypoint<Env> {
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept: IMAGE_ACCEPT_HEADER,
+            Accept: SOURCE_IMAGE_ACCEPT_HEADER,
           },
           redirect: "manual",
         });
@@ -688,38 +650,30 @@ export class ImageService extends WorkerEntrypoint<Env> {
       // Validate content type
       const contentType = response.headers.get("content-type");
       const mediaType = contentType?.toLowerCase().split(";")[0]?.trim();
-      if (
-        !mediaType ||
-        !["image/jpeg", "image/png", "image/webp"].includes(mediaType)
-      ) {
+      if (!isAllowedImageContentType(mediaType)) {
         return {
           success: false,
           error: `Invalid content type: ${contentType}`,
         };
       }
 
-      // Check content length if available
-      const contentLength = response.headers.get("content-length");
-      if (
-        contentLength &&
-        parseInt(contentLength, 10) > TRUSTED_SOURCE_MAX_FILE_SIZE
-      ) {
-        return {
-          success: false,
-          error: `Image too large: ${contentLength} bytes (max ${TRUSTED_SOURCE_MAX_FILE_SIZE})`,
-        };
-      }
-
       const maxFileSize = getMaxFileSizeForDestinationKey(destinationKey);
-      const imageData = await readNormalizedRemoteImage(
-        currentUrl,
-        maxFileSize,
+      const sourceData = await readBoundedResponseBody(
+        response,
+        TRUSTED_SOURCE_MAX_FILE_SIZE,
       );
+      const preserveSource = sourceData.byteLength <= maxFileSize;
+      const imageData = preserveSource
+        ? sourceData
+        : await readNormalizedRemoteImage(currentUrl, maxFileSize);
+      const storedContentType = preserveSource
+        ? mediaType
+        : NORMALIZED_IMAGE_TYPE;
 
       // Upload to R2
       await this.env.IMAGES.put(destinationKey, imageData, {
         httpMetadata: {
-          contentType: NORMALIZED_IMAGE_TYPE,
+          contentType: storedContentType,
         },
       });
 

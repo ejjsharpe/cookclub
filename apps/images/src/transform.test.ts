@@ -2,12 +2,28 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCfImageOptions,
+  getTransformPreset,
   hasTransformPreset,
   hasUnsupportedTransformParams,
   parseTransformPreset,
 } from "./transform";
 
 describe("image transform presets", () => {
+  it("does not upscale feed images and uses gentler delivery quality", () => {
+    expect(getTransformPreset("feed_720")).toMatchObject({
+      fit: "crop",
+      quality: 85,
+    });
+    expect(getTransformPreset("feed_960")).toMatchObject({
+      fit: "crop",
+      quality: 86,
+    });
+    expect(getTransformPreset("feed_1080")).toMatchObject({
+      fit: "crop",
+      quality: 88,
+    });
+  });
+
   it("accepts only named presets", () => {
     const params = new URLSearchParams("preset=feed_720&v=123");
 
