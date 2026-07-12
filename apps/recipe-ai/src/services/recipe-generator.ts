@@ -67,12 +67,7 @@ const CONVERSATION_RESPONSE_SCHEMA = {
     },
     readyToGenerate: { type: "boolean" },
   },
-  required: [
-    "message",
-    "suggestedReplies",
-    "updatedState",
-    "readyToGenerate",
-  ],
+  required: ["message", "suggestedReplies", "updatedState", "readyToGenerate"],
   additionalProperties: false,
 } as const;
 
@@ -168,7 +163,7 @@ interface GeneratedRecipeAiResponse {
   cookTime: number | null; // minutes
   totalTime: number | null; // minutes
   servings: number;
-  ingredientSections?: {
+  ingredientSections: {
     name: string | null;
     ingredients: {
       quantity: number | null;
@@ -176,21 +171,12 @@ interface GeneratedRecipeAiResponse {
       name: string;
     }[];
   }[];
-  instructionSections?: {
+  instructionSections: {
     name: string | null;
     instructions: {
       text: string;
       imageUrl?: string | null;
     }[];
-  }[];
-  ingredients?: {
-    quantity: number | null;
-    unit: string | null;
-    name: string;
-  }[];
-  instructions?: {
-    text: string;
-    imageUrl?: string | null;
   }[];
   suggestedTags?: string[];
 }
@@ -254,24 +240,24 @@ function normalizeConversationState(
 
 function normalizeGeneratedRecipe(value: unknown): ParsedRecipe {
   const generated = asRecord(value, "recipe");
-  const rawIngredientSections = Array.isArray(generated.ingredientSections)
-    ? generated.ingredientSections
-    : Array.isArray(generated.ingredients)
-      ? [{ name: null, ingredients: generated.ingredients }]
-      : null;
-  const rawInstructionSections = Array.isArray(generated.instructionSections)
-    ? generated.instructionSections
-    : Array.isArray(generated.instructions)
-      ? [{ name: null, instructions: generated.instructions }]
-      : null;
+  const rawIngredientSections = generated.ingredientSections;
+  const rawInstructionSections = generated.instructionSections;
 
-  if (!rawIngredientSections?.length || !rawInstructionSections?.length) {
+  if (
+    !Array.isArray(rawIngredientSections) ||
+    rawIngredientSections.length === 0 ||
+    !Array.isArray(rawInstructionSections) ||
+    rawInstructionSections.length === 0
+  ) {
     throw new Error("AI returned a recipe without ingredients or instructions");
   }
 
   const ingredientSections = rawIngredientSections.map((rawSection) => {
     const section = asRecord(rawSection, "ingredient section");
-    if (!Array.isArray(section.ingredients) || section.ingredients.length === 0) {
+    if (
+      !Array.isArray(section.ingredients) ||
+      section.ingredients.length === 0
+    ) {
       throw new Error("AI returned an empty ingredient section");
     }
 
@@ -304,10 +290,7 @@ function normalizeGeneratedRecipe(value: unknown): ParsedRecipe {
         const instruction = asRecord(rawInstruction, "instruction");
         return {
           index,
-          instruction: requiredString(
-            instruction.text ?? instruction.instruction,
-            "instruction text",
-          ),
+          instruction: requiredString(instruction.text, "instruction text"),
           imageUrl: nullableString(instruction.imageUrl),
         };
       }),

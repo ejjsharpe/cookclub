@@ -7,6 +7,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   suggestedReplies?: string[];
+  isError?: boolean;
   timestamp: Date;
 }
 

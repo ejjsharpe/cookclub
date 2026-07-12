@@ -74,10 +74,12 @@ export const GenerateRecipeScreen = () => {
 
       try {
         const result = await chatMutation.mutateAsync({
-          messages: [...messages, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          messages: [...messages, userMessage]
+            .filter((message) => !message.isError)
+            .map((message) => ({
+              role: message.role,
+              content: message.content,
+            })),
           conversationState,
         });
 
@@ -91,10 +93,8 @@ export const GenerateRecipeScreen = () => {
           };
           setMessages((prev) => [...prev, assistantMessage]);
           setConversationState(result.updatedState);
-          setStatus("idle");
         } else if (result.type === "recipe") {
           // Recipe generated - navigate to detail editor
-          setStatus("idle");
           navigate("RecipeDetail", {
             parsedRecipe: {
               success: true,
@@ -113,9 +113,11 @@ export const GenerateRecipeScreen = () => {
           id: (Date.now() + 1).toString(),
           role: "assistant",
           content: "Sorry, something went wrong. Please try again.",
+          isError: true,
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, errorMessage]);
+      } finally {
         setStatus("idle");
       }
     },
@@ -207,75 +209,79 @@ export const GenerateRecipeScreen = () => {
         </View>
       </View>
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.messageList}
-        ListHeaderComponent={
-          <Animated.View entering={FadeInDown.duration(240)}>
-            <View style={styles.heroCard}>
-              <View style={styles.heroIcon}>
-                <Ionicons
-                  name="sparkles"
-                  size={22}
-                  style={styles.heroIconGlyph}
-                />
-              </View>
-              <View style={styles.heroText}>
-                <Text type="headline">Build a recipe from what you have</Text>
-                <Text type="subheadline" style={styles.heroSubtitle}>
-                  Share ingredients, time, cravings, or dietary needs. I will
-                  narrow it down before creating the recipe.
-                </Text>
-              </View>
-            </View>
-            <View style={styles.promptRow}>
-              {RECIPE_PROMPTS.map((prompt) => (
-                <Pressable
-                  key={prompt}
-                  style={({ pressed }) => [
-                    styles.promptChip,
-                    pressed && status === "idle" && styles.pressedChip,
-                    status !== "idle" && styles.disabledChip,
-                  ]}
-                  onPress={() => sendMessage(prompt)}
-                  disabled={status !== "idle"}
-                >
-                  <Text type="caption" style={styles.promptText}>
-                    {prompt}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </Animated.View>
-        }
-        onContentSizeChange={() =>
-          flatListRef.current?.scrollToEnd({ animated: true })
-        }
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      />
-
-      {status !== "idle" && (
-        <Animated.View
-          entering={FadeInDown.duration(200)}
-          style={styles.loadingContainer}
-        >
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-          <Text type="caption" style={styles.loadingText}>
-            {status === "generating"
-              ? "Creating your recipe..."
-              : "Thinking through the next step..."}
-          </Text>
-        </Animated.View>
-      )}
-
       <KeyboardAvoidingView
+        style={styles.chatArea}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={10}
       >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.messageList}
+          ListHeaderComponent={
+            <Animated.View entering={FadeInDown.duration(240)}>
+              <View style={styles.heroCard}>
+                <View style={styles.heroIcon}>
+                  <Ionicons
+                    name="sparkles"
+                    size={22}
+                    style={styles.heroIconGlyph}
+                  />
+                </View>
+                <View style={styles.heroText}>
+                  <Text type="headline">Build a recipe from what you have</Text>
+                  <Text type="subheadline" style={styles.heroSubtitle}>
+                    Share ingredients, time, cravings, or dietary needs. I will
+                    narrow it down before creating the recipe.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.promptRow}>
+                {RECIPE_PROMPTS.map((prompt) => (
+                  <Pressable
+                    key={prompt}
+                    style={({ pressed }) => [
+                      styles.promptChip,
+                      pressed && status === "idle" && styles.pressedChip,
+                      status !== "idle" && styles.disabledChip,
+                    ]}
+                    onPress={() => sendMessage(prompt)}
+                    disabled={status !== "idle"}
+                  >
+                    <Text type="caption" style={styles.promptText}>
+                      {prompt}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </Animated.View>
+          }
+          ListFooterComponent={
+            status !== "idle" ? (
+              <Animated.View
+                entering={FadeInDown.duration(200)}
+                style={styles.loadingContainer}
+              >
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <Text type="caption" style={styles.loadingText}>
+                  {status === "generating"
+                    ? "Creating your recipe..."
+                    : "Thinking through the next step..."}
+                </Text>
+              </Animated.View>
+            ) : null
+          }
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
+          onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        />
+
         <View style={styles.inputContainer}>
           <View style={styles.inputPill}>
             <TextInput
@@ -353,11 +359,15 @@ const styles = StyleSheet.create((theme, rt) => ({
   headerIcon: {
     color: theme.colors.primary,
   },
+  chatArea: {
+    flex: 1,
+  },
   messageList: {
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 16,
     flexGrow: 1,
+    justifyContent: "flex-end",
     gap: 14,
   },
   heroCard: {
@@ -503,7 +513,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     gap: 8,
     paddingVertical: 9,
     paddingHorizontal: 13,
-    marginBottom: 8,
+    marginTop: 4,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.background,
     borderWidth: StyleSheet.hairlineWidth,
