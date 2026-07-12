@@ -79,6 +79,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     fontSize: 17,
     lineHeight: 22,
+    letterSpacing: -0.4,
     includeFontPadding: false,
     textAlignVertical: "center",
     color: theme.colors.text,
