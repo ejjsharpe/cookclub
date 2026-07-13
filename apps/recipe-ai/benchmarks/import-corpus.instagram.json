@@ -25,5 +25,32 @@
     "input": "https://www.instagram.com/reel/DAjCVJ0IRLK/",
     "cache": "cold",
     "expectedCoverImage": true
+  },
+  {
+    "id": "instagram-reel-dajvqmrtxav",
+    "type": "instagram_reel_real",
+    "mode": "url",
+    "platform": "instagram",
+    "input": "https://www.instagram.com/reel/DaJVqmrTXAV/",
+    "cache": "cold",
+    "expectedCoverImage": true
+  },
+  {
+    "id": "instagram-reel-dwl-3waryg8",
+    "type": "instagram_reel_real",
+    "mode": "url",
+    "platform": "instagram",
+    "input": "https://www.instagram.com/reel/DWL_3WaRYG8/",
+    "cache": "cold",
+    "expectedCoverImage": true
+  },
+  {
+    "id": "instagram-reel-dy6fsfjh0ja",
+    "type": "instagram_reel_real",
+    "mode": "url",
+    "platform": "instagram",
+    "input": "https://www.instagram.com/reel/DY6fsFjh0Ja/",
+    "cache": "cold",
+    "expectedCoverImage": true
   }
 ]

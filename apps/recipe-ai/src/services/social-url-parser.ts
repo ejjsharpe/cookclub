@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { Buffer } from "node:buffer";
 
 import type { Env, ParseMetadata, ParseResult } from "../types";
 import { DEFAULT_TEXT_MODEL, type AiExtractionOptions } from "./ai-client";
@@ -62,7 +63,9 @@ const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
 const SOCIAL_TEXT_MODEL = DEFAULT_TEXT_MODEL;
 const SOCIAL_PROMPT_VARIANT = "compact_social";
 const SOCIAL_MAX_TOKENS = 8192;
-const INSTAGRAM_AUDIO_MODEL = "@cf/openai/whisper";
+const INSTAGRAM_AUDIO_MODEL = "@cf/openai/whisper-large-v3-turbo";
+const INSTAGRAM_AUDIO_PROMPT =
+  "A cooking recipe narration with ingredient names, quantities, temperatures, timings, and preparation steps.";
 
 interface SocialParseOptions {
   diagnostics?: ParseMetadata["diagnostics"];
@@ -91,7 +94,10 @@ function shouldRetrySocialAiWithScout(
   const initialModel = aiOptions?.textModel ?? SOCIAL_TEXT_MODEL;
   if (initialModel !== SOCIAL_TEXT_MODEL) return false;
   if (isAiJsonParseError(error)) return true;
-  if (!result?.success) return false;
+  if (error) return false;
+  if (!result?.success) {
+    return /Audio transcript:\s*\S/i.test(content);
+  }
 
   const explicitIngredientCount = countExplicitIngredientLines(content);
   if (explicitIngredientCount === 0) return false;
@@ -513,11 +519,39 @@ function instagramRecipeContent(
 async function transcribeInstagramAudio(
   env: Env,
   audioUrl: string,
+  caption: string | null,
 ): Promise<string | null> {
   const audio = await fetchInstagramReelAudio(audioUrl);
-  const result = await env.AI.run(INSTAGRAM_AUDIO_MODEL, {
-    audio: Array.from(audio),
-  });
+  const audioBase64 = Buffer.from(audio).toString("base64");
+  const captionContext = caption?.replace(/\s+/g, " ").trim().slice(0, 500);
+  const initialPrompt = captionContext
+    ? `${INSTAGRAM_AUDIO_PROMPT} Post caption context: ${captionContext}`
+    : INSTAGRAM_AUDIO_PROMPT;
+  const transcribe = (language?: string) =>
+    env.AI.run(INSTAGRAM_AUDIO_MODEL, {
+      audio: audioBase64,
+      task: "transcribe",
+      vad_filter: true,
+      initial_prompt: initialPrompt,
+      ...(language ? { language } : {}),
+    });
+
+  let result;
+  try {
+    result = await transcribe();
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !/(?:different|multiple) languages|force a single language/i.test(
+        error.message,
+      )
+    ) {
+      throw error;
+    }
+
+    result = await transcribe("en");
+  }
+
   const transcript = result.text.trim();
   return transcript.length >= 20 ? transcript : null;
 }
@@ -650,7 +684,7 @@ async function parseInstagramUrl(
   const transcriptionStart = Date.now();
   let transcript: string | null = null;
   try {
-    transcript = await transcribeInstagramAudio(env, audioUrl);
+    transcript = await transcribeInstagramAudio(env, audioUrl, caption);
     diagnostics = recordDiagnosticsStage(
       appendFallbackPath(diagnostics, "instagram_audio"),
       "instagram_audio",

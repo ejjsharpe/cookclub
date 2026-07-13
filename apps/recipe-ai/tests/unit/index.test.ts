@@ -1102,7 +1102,7 @@ describe("RecipeAI.parse()", () => {
       expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
     });
 
-    it("uses reel audio as a fallback when Instagram has no instructions", async () => {
+    it("retries mixed-language reel audio and incomplete transcript extraction", async () => {
       const instagramCaption =
         "Creamy tomato pasta with 200 g spaghetti, 1 cup tomato sauce, and 2 tbsp parmesan.";
       const transcript =
@@ -1148,9 +1148,38 @@ describe("RecipeAI.parse()", () => {
         ],
         instructionSections: [],
       };
+      const instructions = [
+        {
+          index: 0,
+          instruction: "Boil the spaghetti until al dente.",
+        },
+        {
+          index: 1,
+          instruction: "Simmer the tomato sauce and toss in the pasta.",
+        },
+        { index: 2, instruction: "Finish with parmesan." },
+      ];
+      const instructionsOnlyRecipe = {
+        ...ingredientsOnlyRecipe,
+        ingredientSections: [],
+        instructionSections: [{ name: null, instructions }],
+      };
+      const completeRecipe = {
+        ...ingredientsOnlyRecipe,
+        instructionSections: [{ name: null, instructions }],
+      };
+      let transcriptionAttemptCount = 0;
 
       mockEnv.AI.run = vi.fn((model: string) => {
-        if (model === "@cf/openai/whisper") {
+        if (model === "@cf/openai/whisper-large-v3-turbo") {
+          transcriptionAttemptCount += 1;
+          if (transcriptionAttemptCount === 1) {
+            return Promise.reject(
+              new Error(
+                "Unsupported audio input: force a single language for audio with different languages",
+              ),
+            );
+          }
           return Promise.resolve({ text: transcript, word_count: 19 });
         }
 
@@ -1161,29 +1190,9 @@ describe("RecipeAI.parse()", () => {
           response: JSON.stringify(
             textAttemptCount === 1
               ? ingredientsOnlyRecipe
-              : {
-                  ...ingredientsOnlyRecipe,
-                  instructionSections: [
-                    {
-                      name: null,
-                      instructions: [
-                        {
-                          index: 0,
-                          instruction: "Boil the spaghetti until al dente.",
-                        },
-                        {
-                          index: 1,
-                          instruction:
-                            "Simmer the tomato sauce and toss in the pasta.",
-                        },
-                        {
-                          index: 2,
-                          instruction: "Finish with parmesan.",
-                        },
-                      ],
-                    },
-                  ],
-                },
+              : textAttemptCount === 2
+                ? instructionsOnlyRecipe
+                : completeRecipe,
           ),
         });
       });
@@ -1242,7 +1251,7 @@ describe("RecipeAI.parse()", () => {
         );
         expect(result.metadata.parseMethod).toBe("media_enriched");
         expect(result.metadata.diagnostics?.selectedAttempt).toBe(
-          "instagram_audio",
+          "instagram_audio_retry",
         );
         expect(
           result.metadata.diagnostics?.stageTimings?.some(
@@ -1253,10 +1262,24 @@ describe("RecipeAI.parse()", () => {
       }
       expect(mockEnv.AI.run.mock.calls.map(([model]) => model)).toEqual([
         SOCIAL_TEXT_MODEL,
-        "@cf/openai/whisper",
+        "@cf/openai/whisper-large-v3-turbo",
+        "@cf/openai/whisper-large-v3-turbo",
+        SOCIAL_TEXT_MODEL,
         SOCIAL_TEXT_MODEL,
       ]);
-      expect(JSON.stringify(mockEnv.AI.run.mock.calls[2]?.[1])).toContain(
+      expect(mockEnv.AI.run.mock.calls[1]?.[1]).toMatchObject({
+        audio: "AAECAw==",
+        task: "transcribe",
+        vad_filter: true,
+        initial_prompt: expect.stringContaining("cooking recipe"),
+      });
+      expect(mockEnv.AI.run.mock.calls[1]?.[1]).toMatchObject({
+        initial_prompt: expect.stringContaining(instagramCaption),
+      });
+      expect(mockEnv.AI.run.mock.calls[2]?.[1]).toMatchObject({
+        language: "en",
+      });
+      expect(JSON.stringify(mockEnv.AI.run.mock.calls[4]?.[1])).toContain(
         transcript,
       );
     });

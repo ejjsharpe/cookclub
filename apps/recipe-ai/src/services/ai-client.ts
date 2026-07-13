@@ -65,6 +65,8 @@ Rules:
 - Split ingredient quantity, unit, name, and preparation.
 - Preserve ingredient and instruction sections when the source groups them.
 - Social captions/transcripts can contain terse method fragments. Extract supported cooking/prep actions into ordered steps.
+- Ingredients may be stated inline in narration or method steps instead of in a dedicated list. Extract every ingredient directly named in supported cooking or preparation actions, using null quantity/unit when unstated.
+- Captions may contain the correct spelling for dish-specific names misheard in the audio transcript. Use caption terminology to correct an obvious transcript homophone only when both clearly refer to the same dish or ingredient.
 - Do not invent missing quantities, temperatures, timings, or techniques.
 - If ingredients are present but there is no actionable method evidence, return "instructionSections": [].
 - For missing optional string fields use null; for missing arrays use [].`;
