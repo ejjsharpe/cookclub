@@ -22,15 +22,15 @@
     "hono": "4.12.23"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.16.9",
-    "@cloudflare/workers-types": "4.20260525.1",
+    "@cloudflare/vitest-pool-workers": "0.18.4",
+    "@cloudflare/workers-types": "5.20260713.1",
     "@repo/tsconfig": "workspace:*",
     "@types/node": "25.9.1",
     "eslint-config-universe": "15.2.0",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
     "wait-on": "9.0.10",
-    "wrangler": "4.94.0"
+    "wrangler": "4.110.0"
   },
   "eslintConfig": {
     "extends": "universe/node"

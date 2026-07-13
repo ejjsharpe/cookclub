@@ -28,11 +28,11 @@
     "cheerio": "1.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.16.9",
+    "@cloudflare/vitest-pool-workers": "0.18.4",
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
-    "wrangler": "4.94.0"
+    "wrangler": "4.110.0"
   },
   "eslintConfig": {
     "extends": "universe/node"
