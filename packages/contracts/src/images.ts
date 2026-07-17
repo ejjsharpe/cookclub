@@ -222,6 +222,12 @@ export interface UploadImageResponse {
   error?: string;
 }
 
+export interface NormalizeImageResponse {
+  success: boolean;
+  imageData?: ArrayBuffer;
+  error?: string;
+}
+
 export interface ImageService {
   presign(
     contentType: ImageContentType,
@@ -243,4 +249,8 @@ export interface ImageService {
     contentType: ImageContentType,
     ownerId?: string,
   ): Promise<UploadImageResponse>;
+  normalizeImage(
+    imageData: ArrayBuffer,
+    contentType: ImageContentType,
+  ): Promise<NormalizeImageResponse>;
 }

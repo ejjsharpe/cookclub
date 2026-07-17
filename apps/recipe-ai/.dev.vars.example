@@ -1,0 +1,4 @@
+CEREBRAS_API_KEY="your-cerebras-api-key"
+GROQ_API_KEY="your-groq-api-key"
+REPLICATE_API_TOKEN="your-replicate-api-token"
+YOUTUBE_API_KEY="your-youtube-api-key"

@@ -1,17 +1,14 @@
 import type { NutritionInput, NutritionResponse } from "@repo/contracts";
 
 import type { Nutrition } from "../schema";
-import type { Env } from "../types";
 import {
   DEFAULT_MAX_TOKENS,
-  parseAiJsonPayload,
-  runAiModel,
+  parseAiJsonResponse,
+  type AiClient,
 } from "../utils/ai-response-parser";
 import { fetchHtml } from "../utils/html-fetcher";
 import { normalizeNutrition } from "../utils/nutrition-normalizer";
 import { extractStructuredRecipeCandidates } from "../utils/structured-data";
-
-const TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast" as const;
 
 function hasNutritionValues(nutrition: Nutrition | null | undefined) {
   if (!nutrition) return false;
@@ -43,7 +40,9 @@ function hasCoreNutritionValues(nutrition: Nutrition | null | undefined) {
   ].every((value) => typeof value === "number" && Number.isFinite(value));
 }
 
-function confidenceRank(confidence: Nutrition["confidence"] | null | undefined) {
+function confidenceRank(
+  confidence: Nutrition["confidence"] | null | undefined,
+) {
   switch (confidence) {
     case "high":
       return 3;
@@ -172,7 +171,7 @@ ${instructions}
 }
 
 async function runNutritionModel(
-  ai: Env["AI"],
+  ai: AiClient,
   recipe: NutritionInput["recipe"],
   existingNutrition?: Nutrition | null,
 ): Promise<Nutrition> {
@@ -192,9 +191,9 @@ async function runNutritionModel(
     temperature: 0.1,
   };
 
-  const response = await runAiModel(ai, TEXT_MODEL, request);
+  const response = await ai.complete("text", request);
   const nutrition = normalizeNutrition(
-    parseAiJsonPayload<Record<string, unknown>>(response),
+    parseAiJsonResponse<Record<string, unknown>>(response),
     "ai_estimated",
   );
   if (!hasNutritionValues(nutrition)) {
@@ -205,7 +204,7 @@ async function runNutritionModel(
 }
 
 async function estimateNutritionWithAi(
-  ai: Env["AI"],
+  ai: AiClient,
   recipe: NutritionInput["recipe"],
   existingNutrition?: Nutrition | null,
 ): Promise<Nutrition> {
@@ -213,8 +212,8 @@ async function estimateNutritionWithAi(
 }
 
 export async function generateNutrition(
-  env: Env,
   input: NutritionInput,
+  ai: AiClient,
 ): Promise<NutritionResponse> {
   const existing = input.recipe.nutrition;
   if (hasNutritionValues(existing)) {
@@ -237,7 +236,7 @@ export async function generateNutrition(
 
     try {
       const estimated = await estimateNutritionWithAi(
-        env.AI,
+        ai,
         input.recipe,
         normalizedExisting,
       );
@@ -268,7 +267,7 @@ export async function generateNutrition(
 
   try {
     const estimated = await estimateNutritionWithAi(
-      env.AI,
+      ai,
       input.recipe,
       extracted,
     );

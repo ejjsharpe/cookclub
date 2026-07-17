@@ -1,9 +1,8 @@
 import type { Nutrition, ParsedRecipe } from "../schema";
-import type { Env } from "../types";
 import {
   DEFAULT_MAX_TOKENS,
-  parseAiJsonPayload,
-  runAiModel,
+  parseAiJsonResponse,
+  type AiClient,
 } from "../utils/ai-response-parser";
 import { normalizeNutrition } from "../utils/nutrition-normalizer";
 import {
@@ -15,16 +14,7 @@ import {
   createImageExtractionPrompt,
 } from "../utils/prompts";
 
-// Cloudflare Workers AI models
-export const DEFAULT_TEXT_MODEL =
-  "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
-const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct" as const;
-
-export interface AiExtractionOptions {
-  textModel?: string;
-  promptVariant?: string;
-  maxTokens?: number;
-}
+export type AiExtractionProfile = "default" | "social";
 
 const COMPACT_SOCIAL_EXTRACTION_PROMPT = `You are a strict JSON recipe extraction API. Return only valid JSON, with no markdown or commentary.
 
@@ -71,8 +61,8 @@ Rules:
 - If ingredients are present but there is no actionable method evidence, return "instructionSections": [].
 - For missing optional string fields use null; for missing arrays use [].`;
 
-function extractionSystemPrompt(promptVariant?: string): string {
-  if (promptVariant === "compact_social") {
+function extractionSystemPrompt(profile: AiExtractionProfile): string {
+  if (profile === "social") {
     return COMPACT_SOCIAL_EXTRACTION_PROMPT;
   }
 
@@ -81,15 +71,15 @@ function extractionSystemPrompt(promptVariant?: string): string {
 
 function recipeExtractionRequest(
   messages: { role: string; content: unknown }[],
-  maxTokens?: number,
+  profile: AiExtractionProfile = "default",
 ) {
   return {
     messages,
-    max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: profile === "social" ? 8_192 : DEFAULT_MAX_TOKENS,
   };
 }
 
-export interface AiIngredient {
+interface AiIngredient {
   index: number;
   quantity: number | null;
   unit: string | null;
@@ -97,18 +87,18 @@ export interface AiIngredient {
   preparation: string | null;
 }
 
-export interface AiInstruction {
+interface AiInstruction {
   index: number;
   instruction: string;
   imageUrl?: string | null;
 }
 
-export interface AiIngredientSection {
+interface AiIngredientSection {
   name: string | null;
   ingredients: AiIngredient[];
 }
 
-export interface AiInstructionSection {
+interface AiInstructionSection {
   name: string | null;
   instructions: AiInstruction[];
 }
@@ -341,33 +331,28 @@ function normalizeAiRecipeResult(value: unknown): AiRecipeResult {
 }
 
 /**
- * Extract and parse AI response - handles both string and pre-parsed object
+ * Extract and parse an AI response.
  */
-function parseAiResponse(response: unknown): AiRecipeResult {
-  return normalizeAiRecipeResult(parseAiJsonPayload(response));
+function parseAiResponse(response: string): AiRecipeResult {
+  return normalizeAiRecipeResult(parseAiJsonResponse(response));
 }
 
 /**
  * Extract recipe from text using AI
  */
 export async function parseRecipeFromText(
-  ai: Env["AI"],
+  ai: AiClient,
   text: string,
-  options: AiExtractionOptions = {},
 ): Promise<AiRecipeResult> {
-  const response = await runAiModel(
-    ai,
-    options.textModel ?? DEFAULT_TEXT_MODEL,
-    recipeExtractionRequest(
-      [
-        {
-          role: "system",
-          content: extractionSystemPrompt(options.promptVariant),
-        },
-        { role: "user", content: createTextExtractionPrompt(text) },
-      ],
-      options.maxTokens,
-    ),
+  const response = await ai.complete(
+    "text",
+    recipeExtractionRequest([
+      {
+        role: "system",
+        content: extractionSystemPrompt("default"),
+      },
+      { role: "user", content: createTextExtractionPrompt(text) },
+    ]),
   );
 
   return parseAiResponse(response);
@@ -377,22 +362,21 @@ export async function parseRecipeFromText(
  * Extract recipe from cleaned HTML using AI
  */
 export async function parseRecipeFromHtml(
-  ai: Env["AI"],
+  ai: AiClient,
   cleanedHtml: string,
-  options: AiExtractionOptions = {},
+  profile: AiExtractionProfile = "default",
 ): Promise<AiRecipeResult> {
-  const response = await runAiModel(
-    ai,
-    options.textModel ?? DEFAULT_TEXT_MODEL,
+  const response = await ai.complete(
+    "text",
     recipeExtractionRequest(
       [
         {
           role: "system",
-          content: extractionSystemPrompt(options.promptVariant),
+          content: extractionSystemPrompt(profile),
         },
         { role: "user", content: createHtmlExtractionPrompt(cleanedHtml) },
       ],
-      options.maxTokens,
+      profile,
     ),
   );
 
@@ -403,32 +387,27 @@ export async function parseRecipeFromHtml(
  * Repair a partial recipe using AI
  */
 export async function repairRecipeFromEvidence(
-  ai: Env["AI"],
+  ai: AiClient,
   evidence: string,
   partialRecipe: ParsedRecipe | null,
-  options: AiExtractionOptions = {},
 ): Promise<AiRecipeResult> {
-  const response = await runAiModel(
-    ai,
-    options.textModel ?? DEFAULT_TEXT_MODEL,
-    recipeExtractionRequest(
-      [
-        {
-          role: "system",
-          content: extractionSystemPrompt(options.promptVariant),
-        },
-        {
-          role: "user",
-          content: createRepairExtractionPrompt({
-            evidence,
-            partialRecipeJson: partialRecipe
-              ? JSON.stringify(partialRecipe).slice(0, 8_000)
-              : null,
-          }),
-        },
-      ],
-      options.maxTokens,
-    ),
+  const response = await ai.complete(
+    "text",
+    recipeExtractionRequest([
+      {
+        role: "system",
+        content: extractionSystemPrompt("default"),
+      },
+      {
+        role: "user",
+        content: createRepairExtractionPrompt({
+          evidence,
+          partialRecipeJson: partialRecipe
+            ? JSON.stringify(partialRecipe).slice(0, 8_000)
+            : null,
+        }),
+      },
+    ]),
   );
 
   return parseAiResponse(response);
@@ -438,18 +417,11 @@ export async function repairRecipeFromEvidence(
  * Extract recipe from image using AI
  */
 export async function parseRecipeFromImage(
-  ai: Env["AI"],
+  ai: AiClient,
   imageData: string,
-  _mimeType: string,
+  mimeType: string,
 ): Promise<AiRecipeResult> {
-  // Convert base64 to Uint8Array for the AI model
-  const binaryString = atob(imageData);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  const response = await runAiModel(ai, VISION_MODEL, {
+  const response = await ai.complete("vision", {
     messages: [
       { role: "system", content: IMAGE_EXTRACTION_SYSTEM_PROMPT },
       {
@@ -457,8 +429,10 @@ export async function parseRecipeFromImage(
         content: [
           { type: "text", text: createImageExtractionPrompt() },
           {
-            type: "image",
-            image: bytes,
+            type: "image_url",
+            image_url: {
+              url: `data:${mimeType};base64,${imageData}`,
+            },
           },
         ],
       },

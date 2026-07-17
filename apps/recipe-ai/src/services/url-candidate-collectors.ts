@@ -127,7 +127,9 @@ export function deterministicHtmlCandidates(
   return [
     ...structuredRecipeCandidates(html, htmlUrl, sourceUrl, imageUrls),
     {
-      recipe: visibleRecipe ? mergeRecipeImages(visibleRecipe, imageUrls) : null,
+      recipe: visibleRecipe
+        ? mergeRecipeImages(visibleRecipe, imageUrls)
+        : null,
       source: "visible",
       parseMethod: "visible_card",
       evidence: {

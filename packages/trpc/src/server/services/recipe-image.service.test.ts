@@ -12,6 +12,7 @@ const createImageService = () => ({
   delete: vi.fn(),
   uploadFromUrl: vi.fn(),
   uploadImage: vi.fn(),
+  normalizeImage: vi.fn(),
 });
 
 function createAsset(key: string) {

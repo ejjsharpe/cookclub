@@ -34,7 +34,7 @@ const INSTAGRAM_CRAWLER_USER_AGENT =
   "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 const INSTAGRAM_CDN_DOMAINS = ["cdninstagram.com", "fbcdn.net"];
 
-export interface InstagramComment {
+interface InstagramComment {
   text: string;
   username?: string;
   likeCount: number;

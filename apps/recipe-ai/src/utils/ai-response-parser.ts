@@ -1,22 +1,15 @@
 export const DEFAULT_MAX_TOKENS = 8192;
 
-export function extractAiResponsePayload(response: unknown): unknown {
-  if (typeof response === "string") return response;
-  if (!response || typeof response !== "object") return response;
+export type AiWorkload = "text" | "vision";
 
-  const record = response as Record<string, unknown>;
-  return record.response ?? record.generated_text ?? record.result ?? response;
+export interface AiClient {
+  complete(
+    workload: AiWorkload,
+    request: Record<string, unknown>,
+  ): Promise<string>;
 }
 
-export async function runAiModel(
-  ai: Ai,
-  model: string,
-  request: Record<string, unknown>,
-): Promise<unknown> {
-  return await (
-    ai as { run: (model: string, request: unknown) => Promise<unknown> }
-  ).run(model, request);
-}
+export const RECIPE_AI_INFERENCE_CLIENT = Symbol("recipe-ai-inference-client");
 
 /**
  * Parse JSON from AI response text, handling potential markdown code blocks
@@ -75,21 +68,4 @@ export function parseAiJsonResponse<T>(response: string): T {
       `Failed to parse AI response as JSON: ${jsonStr.slice(0, 500)}`,
     );
   }
-}
-
-export function parseAiJsonPayload<T>(
-  response: unknown,
-  emptyMessage = "Invalid AI response format",
-): T {
-  const payload = extractAiResponsePayload(response);
-
-  if (!payload) {
-    throw new Error(emptyMessage);
-  }
-
-  if (typeof payload !== "string") {
-    return payload as T;
-  }
-
-  return parseAiJsonResponse<T>(payload);
 }

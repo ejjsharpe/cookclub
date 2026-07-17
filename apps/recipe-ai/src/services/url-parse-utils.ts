@@ -1,9 +1,10 @@
 import type { ParsedRecipe } from "../schema";
 import { ParsedRecipeSchema } from "../schema";
 import type { Env, ParseMetadata, ParseResult } from "../types";
-import { parseRecipeFromHtml, type AiExtractionOptions } from "./ai-client";
+import { parseRecipeFromHtml, type AiExtractionProfile } from "./ai-client";
 import { cacheRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
+import type { AiClient } from "../utils/ai-response-parser";
 import {
   evaluateRecipeQuality,
   normalizeRecipeForImport,
@@ -21,8 +22,10 @@ interface CandidateOptions {
   diagnostics?: ParseMetadata["diagnostics"];
 }
 
-interface AiCandidateOptions extends AiExtractionOptions {
+interface AiCandidateOptions {
   cache?: boolean;
+  aiClient: AiClient;
+  extractionProfile?: AiExtractionProfile;
 }
 
 export interface RecipeCandidate {
@@ -87,7 +90,7 @@ function candidateId(candidate: RecipeCandidate, index: number): string {
   );
 }
 
-export function evaluateRecipeCandidate(
+function evaluateRecipeCandidate(
   candidate: RecipeCandidate,
   index = 0,
 ): EvaluatedRecipeCandidate | RejectedRecipeCandidate {
@@ -236,8 +239,9 @@ async function resultFromEvaluatedCandidate(
 ): Promise<ParseResult> {
   const diagnostics = options.diagnostics;
   const recipe = candidate.recipe;
+  const shouldCache = options.cache ?? candidate.cache ?? true;
 
-  if (candidate.cache !== false) {
+  if (shouldCache) {
     try {
       await cacheRecipe(env.RECIPE_CACHE, cacheUrl, recipe);
     } catch (error) {
@@ -330,7 +334,7 @@ export async function tryAiRecipeCandidate(
   source: RecipeQualitySource,
   parseMethod: UrlParseMethod,
   logPrefix: string,
-  options: AiCandidateOptions = {},
+  options: AiCandidateOptions,
 ): Promise<AiRecipeAttempt> {
   if (!content || content.trim().length < 50) {
     return { result: null, error: null };
@@ -339,9 +343,9 @@ export async function tryAiRecipeCandidate(
   const startTime = Date.now();
   try {
     const aiResult = await parseRecipeFromHtml(
-      env.AI,
+      options.aiClient,
       content,
-      options,
+      options.extractionProfile,
     );
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "url",

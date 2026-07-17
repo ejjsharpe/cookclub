@@ -38,7 +38,7 @@ function hostnameMatches(hostname: string, domain: string): boolean {
 }
 
 function stripTrailingUrlPunctuation(value: string): string {
-  let candidate = value.trim().replace(/^[('"[\{]+/, "");
+  let candidate = value.trim().replace(/^[('"[{]+/, "");
 
   while (/[),.!?;:'"\]}]$/.test(candidate)) {
     candidate = candidate.slice(0, -1);

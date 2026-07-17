@@ -6,7 +6,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --inspector-port 9230",
-    "generate-types": "wrangler types",
+    "generate-types": "wrangler types --env-file .dev.vars.example",
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify",
     "deploy:prod": "wrangler deploy --env production --minify",
@@ -16,10 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:all": "vitest run && vitest run --config vitest.integration.config.ts",
-    "benchmark:imports": "bun scripts/import-benchmark.ts",
-    "benchmark:imports:instagram": "bun scripts/import-benchmark.ts --corpus benchmarks/import-corpus.instagram.json --real --endpoint http://127.0.0.1:8788/benchmark/parse",
-    "benchmark:imports:youtube": "bun scripts/import-benchmark.ts --corpus benchmarks/import-corpus.youtube.json --real --endpoint http://127.0.0.1:8788/benchmark/parse"
+    "test:all": "vitest run && vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "1.1.0",

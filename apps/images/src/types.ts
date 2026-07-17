@@ -26,6 +26,7 @@ export type {
   VerifyResponse,
   MoveResult,
   MoveResponse,
+  NormalizeImageResponse,
   UploadImageResponse,
 } from "./service";
 

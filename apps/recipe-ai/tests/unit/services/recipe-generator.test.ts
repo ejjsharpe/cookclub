@@ -46,15 +46,15 @@ const sectionedRecipe = {
 
 function createMockAi() {
   return {
-    run: vi.fn(),
+    complete: vi.fn(),
   };
 }
 
 describe("processChat", () => {
   it("uses a JSON schema and returns the next conversation message", async () => {
     const mockAi = createMockAi();
-    mockAi.run.mockResolvedValue({
-      response: {
+    mockAi.complete.mockResolvedValue(
+      JSON.stringify({
         message: "What kind of food are you in the mood for?",
         suggestedReplies: ["Italian", "Comfort food"],
         updatedState: {
@@ -62,8 +62,8 @@ describe("processChat", () => {
           ingredients: ["chicken", "rice"],
         },
         readyToGenerate: false,
-      },
-    });
+      }),
+    );
 
     const result = await processChat(
       mockAi as any,
@@ -75,7 +75,7 @@ describe("processChat", () => {
       type: "message",
       updatedState: { ingredients: ["chicken", "rice"] },
     });
-    expect(mockAi.run.mock.calls[0]?.[1]).toMatchObject({
+    expect(mockAi.complete.mock.calls[0]?.[1]).toMatchObject({
       response_format: {
         type: "json_schema",
         json_schema: { type: "object" },
@@ -85,16 +85,16 @@ describe("processChat", () => {
 
   it("generates a recipe as soon as the final answer completes the state", async () => {
     const mockAi = createMockAi();
-    mockAi.run
-      .mockResolvedValueOnce({
-        response: {
+    mockAi.complete
+      .mockResolvedValueOnce(
+        JSON.stringify({
           message: "Perfect, I have everything I need.",
           suggestedReplies: [],
           updatedState: completeState,
           readyToGenerate: false,
-        },
-      })
-      .mockResolvedValueOnce({ response: sectionedRecipe });
+        }),
+      )
+      .mockResolvedValueOnce(JSON.stringify(sectionedRecipe));
 
     const result = await processChat(
       mockAi as any,
@@ -112,8 +112,8 @@ describe("processChat", () => {
         },
       );
     }
-    expect(mockAi.run).toHaveBeenCalledTimes(2);
-    expect(mockAi.run.mock.calls[1]?.[1]).toMatchObject({
+    expect(mockAi.complete).toHaveBeenCalledTimes(2);
+    expect(mockAi.complete.mock.calls[1]?.[1]).toMatchObject({
       response_format: {
         type: "json_schema",
         json_schema: {

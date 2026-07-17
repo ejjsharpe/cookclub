@@ -364,6 +364,44 @@ async function normalizeStoredObjectToJpeg(
   throw new Error(`Image too large: ${lastSize} bytes (max ${maxFileSize})`);
 }
 
+async function normalizeImageBytesToJpeg(
+  env: Env,
+  imageData: ArrayBuffer,
+  maxFileSize: number,
+): Promise<ArrayBuffer> {
+  const attempts = [
+    { width: 2560, quality: 84 },
+    { width: 2048, quality: 80 },
+    { width: 1600, quality: 76 },
+  ];
+
+  let lastError: Error | null = null;
+  for (const attempt of attempts) {
+    const result = await env.IMAGE_TRANSFORMER.input(
+      arrayBufferToStream(imageData),
+    )
+      .transform({ width: attempt.width, fit: "scale-down" })
+      .output({
+        format: NORMALIZED_IMAGE_TYPE,
+        quality: attempt.quality,
+        anim: false,
+      });
+    const response = result.response();
+    if (!response.ok) {
+      throw new Error(`Failed to normalize image: ${response.status}`);
+    }
+
+    try {
+      return await readBoundedResponseBody(response, maxFileSize);
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error : new Error("Failed to normalize image");
+    }
+  }
+
+  throw lastError ?? new Error("Failed to normalize image");
+}
+
 async function copyHostedImage(
   env: Env,
   sourceKey: string,
@@ -751,6 +789,35 @@ export class ImageService extends WorkerEntrypoint<Env> {
         publicUrl: asset.publicUrl,
         key: asset.key,
         asset,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /** Convert a trusted image payload to bounded JPEG bytes for AI providers. */
+  async normalizeImage(imageData: ArrayBuffer, contentType: ImageContentType) {
+    try {
+      if (!isAllowedImageContentType(contentType)) {
+        return { success: false, error: "Invalid content type" };
+      }
+      if (imageData.byteLength > TRUSTED_SOURCE_MAX_FILE_SIZE) {
+        return {
+          success: false,
+          error: `Image too large: ${imageData.byteLength} bytes (max ${TRUSTED_SOURCE_MAX_FILE_SIZE})`,
+        };
+      }
+
+      return {
+        success: true,
+        imageData: await normalizeImageBytesToJpeg(
+          this.env,
+          imageData,
+          PHOTO_MAX_FILE_SIZE,
+        ),
       };
     } catch (error) {
       return {

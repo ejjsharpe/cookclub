@@ -3,6 +3,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import { RecipeAI } from "../../src/index";
 import type { Env } from "../../src/types";
+import {
+  RECIPE_AI_INFERENCE_CLIENT,
+  type AiClient,
+} from "../../src/utils/ai-response-parser";
 
 // Valid AI response for mocking (uses section structure)
 const validAiResponse = JSON.stringify({
@@ -84,16 +88,19 @@ function htmlResponse() {
 describe("RecipeAI Integration Tests", () => {
   let parser: RecipeAI;
   let mockEnv: Env;
+  let mockAi: AiClient & { complete: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    // Create a mock env with AI binding
-    mockEnv = {
-      ...env,
-      AI: {
-        run: vi.fn().mockResolvedValue({ response: validAiResponse }),
-      },
-    } as unknown as Env;
+    mockEnv = env as unknown as Env;
+    mockAi = {
+      complete: vi.fn().mockResolvedValue(validAiResponse),
+    };
     parser = new RecipeAI(createExecutionContext(), mockEnv);
+    (
+      parser as unknown as {
+        [RECIPE_AI_INFERENCE_CLIENT]: () => AiClient;
+      }
+    )[RECIPE_AI_INFERENCE_CLIENT] = () => mockAi;
   });
 
   describe("URL parsing", () => {
@@ -117,7 +124,7 @@ describe("RecipeAI Integration Tests", () => {
         expect(result.metadata.parseMethod).toBe("visible_card");
         expect(result.metadata.source).toBe("url");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockAi.complete).not.toHaveBeenCalled();
     });
 
     it("extracts ingredients with quantities", async () => {
@@ -187,23 +194,13 @@ describe("RecipeAI Integration Tests", () => {
     });
   });
 
-  describe("text parsing with AI", () => {
-    it("parses recipe from plain text", async () => {
+  describe("text parsing", () => {
+    it("uses AI for unstructured cooking notes", async () => {
       const recipeText = `
-        Simple Pasta Recipe
-
-        Ingredients:
-        - 1 lb spaghetti
-        - 2 cups marinara sauce
-        - 1/4 cup parmesan cheese
-
-        Instructions:
-        1. Boil pasta according to package directions
-        2. Drain and return to pot
-        3. Add sauce and toss to coat
-        4. Serve with parmesan on top
-
-        Serves 4
+        Cooking video transcript: Today I am sharing my favourite cookies.
+        The presenter talks through creaming softened butter with sugar, then
+        adding the dry mixture and chocolate chips before baking the shaped
+        cookies until their edges are golden. This makes a tray for a party.
       `;
 
       const result = await parser.parse({
@@ -213,12 +210,12 @@ describe("RecipeAI Integration Tests", () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        // Name comes from AI mock response
         expect(result.data.name).toBe("Classic Chocolate Chip Cookies");
         expect(result.data.ingredientSections.length).toBeGreaterThan(0);
         expect(result.data.instructionSections.length).toBeGreaterThan(0);
         expect(result.metadata.source).toBe("text");
       }
+      expect(mockAi.complete).toHaveBeenCalled();
     });
 
     it("rejects text that is too short", async () => {

@@ -9,7 +9,7 @@ import {
 // Mock AI binding
 function createMockAi(response: string) {
   return {
-    run: vi.fn().mockResolvedValue({ response }),
+    complete: vi.fn().mockResolvedValue(response),
   };
 }
 
@@ -78,7 +78,7 @@ describe("parseRecipeFromText", () => {
       source: "ai_estimated",
       confidence: "medium",
     });
-    expect(mockAi.run).toHaveBeenCalled();
+    expect(mockAi.complete).toHaveBeenCalled();
   });
 
   it("handles JSON wrapped in markdown code blocks", async () => {
@@ -107,21 +107,12 @@ describe("parseRecipeFromText", () => {
 
   it("throws error on empty response", async () => {
     const mockAi = {
-      run: vi.fn().mockResolvedValue({ response: "" }),
+      complete: vi.fn().mockResolvedValue(""),
     };
 
     await expect(
       parseRecipeFromText(mockAi as any, "Recipe text"),
-    ).rejects.toThrow("Invalid AI response format");
-  });
-
-  it("handles response object with generated_text field", async () => {
-    const mockAi = {
-      run: vi.fn().mockResolvedValue({ generated_text: validRecipeJson }),
-    };
-    const result = await parseRecipeFromText(mockAi as any, "Recipe text");
-
-    expect(result.name).toBe("Test Recipe");
+    ).rejects.toThrow("Failed to parse AI response as JSON");
   });
 
   it("normalizes nested section quantity and timing strings", async () => {
@@ -161,7 +152,7 @@ describe("parseRecipeFromText", () => {
 
   it("handles string response directly", async () => {
     const mockAi = {
-      run: vi.fn().mockResolvedValue(validRecipeJson),
+      complete: vi.fn().mockResolvedValue(validRecipeJson),
     };
     const result = await parseRecipeFromText(mockAi as any, "Recipe text");
 
@@ -182,8 +173,8 @@ describe("parseRecipeFromHtml", () => {
     );
 
     expect(result.name).toBe("Test Recipe");
-    expect(mockAi.run).toHaveBeenCalledWith(
-      expect.any(String),
+    expect(mockAi.complete).toHaveBeenCalledWith(
+      "text",
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: "system" }),
@@ -197,7 +188,7 @@ describe("parseRecipeFromHtml", () => {
     const mockAi = createMockAi(validRecipeJson);
     await parseRecipeFromHtml(mockAi as any, "My recipe HTML content");
 
-    const call = mockAi.run.mock.calls[0]!;
+    const call = mockAi.complete.mock.calls[0]!;
     const userMessage = call[1].messages.find(
       (m: { role: string }) => m.role === "user",
     );
@@ -220,20 +211,28 @@ describe("parseRecipeFromImage", () => {
     );
 
     expect(result.name).toBe("Test Recipe");
-    expect(mockAi.run).toHaveBeenCalled();
+    expect(mockAi.complete).toHaveBeenCalled();
+    expect(mockAi.complete.mock.calls[0]?.[0]).toBe("vision");
   });
 
-  it("converts base64 to Uint8Array for AI model", async () => {
+  it("sends the image as a base64 data URI", async () => {
     const mockAi = createMockAi(validRecipeJson);
     const base64Image = btoa("test image");
     await parseRecipeFromImage(mockAi as any, base64Image, "image/jpeg");
 
-    const call = mockAi.run.mock.calls[0]!;
+    const call = mockAi.complete.mock.calls[0]!;
     const userMessage = call[1].messages.find(
       (m: { role: string }) => m.role === "user",
     );
     expect(userMessage.content).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "image" })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "image_url",
+          image_url: {
+            url: expect.stringMatching(/^data:image\/jpeg;base64,/),
+          },
+        }),
+      ]),
     );
   });
 

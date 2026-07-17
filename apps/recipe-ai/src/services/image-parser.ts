@@ -1,7 +1,10 @@
+import { Buffer } from "node:buffer";
+
 import type { Env, ParseResult } from "../types";
 import { parseRecipeFromImage } from "./ai-client";
 import { aiResultToRecipe } from "./recipe-mapper";
 import { acceptedCandidate } from "./url-parse-utils";
+import type { AiClient } from "../utils/ai-response-parser";
 import {
   appendFallbackPath,
   recordDiagnosticsStage,
@@ -10,26 +13,47 @@ import {
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const VALID_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
+function imageBytes(imageData: string): Uint8Array<ArrayBuffer> {
+  const binaryString = atob(imageData);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function normalizeImageForAi(
+  env: Env,
+  imageData: string,
+  mimeType: string,
+): Promise<{ imageData: string; mimeType: string }> {
+  if (mimeType !== "image/webp") return { imageData, mimeType };
+
+  const bytes = imageBytes(imageData);
+  const normalized = await env.IMAGE_SERVICE.normalizeImage(
+    bytes.buffer,
+    "image/webp",
+  );
+  if (!normalized.success || !normalized.imageData) {
+    throw new Error(normalized.error || "Failed to convert WebP image.");
+  }
+
+  return {
+    imageData: Buffer.from(normalized.imageData).toString("base64"),
+    mimeType: "image/jpeg",
+  };
+}
+
 async function uploadSourceImage(
   env: Env,
   imageData: string,
   mimeType: string,
 ): Promise<string[]> {
-  if (!env.IMAGE_SERVICE) return [];
-
   try {
-    const binaryString = atob(imageData);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
+    const bytes = imageBytes(imageData);
 
-    const imageBuffer = bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    );
     const uploadResult = await env.IMAGE_SERVICE.uploadImage(
-      imageBuffer,
+      bytes.buffer,
       mimeType as "image/jpeg" | "image/png" | "image/webp",
     );
 
@@ -52,6 +76,7 @@ export async function parseImage(
   env: Env,
   imageData: string,
   mimeType: string,
+  ai: AiClient,
 ): Promise<ParseResult> {
   let diagnostics = {};
 
@@ -80,32 +105,12 @@ export async function parseImage(
   // Validate base64 and estimate size
   try {
     const decodedLength = atob(imageData).length;
-      if (decodedLength > MAX_IMAGE_SIZE) {
-        return {
-          success: false,
-          error: {
-            code: "IMAGE_TOO_LARGE",
-            message: `Image must be under ${MAX_IMAGE_SIZE / 1024 / 1024}MB`,
-          },
-          metadata: {
-            source: "image",
-            confidence: "low",
-            diagnostics: recordDiagnosticsStage(
-              diagnostics,
-              "ai",
-              Date.now(),
-              "skipped",
-              "image_too_large",
-            ),
-          },
-        };
-      }
-    } catch {
+    if (decodedLength > MAX_IMAGE_SIZE) {
       return {
         success: false,
         error: {
-          code: "INVALID_BASE64",
-          message: "Invalid base64 image data",
+          code: "IMAGE_TOO_LARGE",
+          message: `Image must be under ${MAX_IMAGE_SIZE / 1024 / 1024}MB`,
         },
         metadata: {
           source: "image",
@@ -115,15 +120,40 @@ export async function parseImage(
             "ai",
             Date.now(),
             "skipped",
-            "invalid_base64",
+            "image_too_large",
           ),
         },
       };
     }
+  } catch {
+    return {
+      success: false,
+      error: {
+        code: "INVALID_BASE64",
+        message: "Invalid base64 image data",
+      },
+      metadata: {
+        source: "image",
+        confidence: "low",
+        diagnostics: recordDiagnosticsStage(
+          diagnostics,
+          "ai",
+          Date.now(),
+          "skipped",
+          "invalid_base64",
+        ),
+      },
+    };
+  }
 
   try {
     const aiStart = Date.now();
-    const aiResult = await parseRecipeFromImage(env.AI, imageData, mimeType);
+    const normalizedImage = await normalizeImageForAi(env, imageData, mimeType);
+    const aiResult = await parseRecipeFromImage(
+      ai,
+      normalizedImage.imageData,
+      normalizedImage.mimeType,
+    );
     diagnostics = recordDiagnosticsStage(
       appendFallbackPath(diagnostics, "ai"),
       "ai",

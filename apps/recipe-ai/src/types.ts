@@ -2,12 +2,10 @@ import type { ImageService } from "@repo/contracts/images";
 
 export type Env = Omit<Cloudflare.Env, "IMAGE_SERVICE"> & {
   IMAGE_SERVICE: ImageService;
-  YOUTUBE_API_KEY: string;
 };
 
 // Re-export service types for convenience
 export type {
-  RecipeAIService,
   ParseInput,
   ParseDiagnostics,
   ParseMetadata,
@@ -20,7 +18,6 @@ export type {
   GenerateRecipeImageResponse,
   NutritionInput,
   NutritionResponse,
-  PersonalizationGoal,
   PersonalizeRecipeInput,
 } from "./service";
 

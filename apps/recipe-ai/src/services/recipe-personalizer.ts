@@ -5,14 +5,11 @@ import type {
 } from "@repo/contracts/recipe-ai";
 
 import type { ParsedRecipe } from "../schema";
-import type { Env } from "../types";
 import {
   DEFAULT_MAX_TOKENS,
-  parseAiJsonPayload,
-  runAiModel,
+  parseAiJsonResponse,
+  type AiClient,
 } from "../utils/ai-response-parser";
-
-const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
 
 const GOAL_LABELS: Record<PersonalizationGoal, string> = {
   vegetarian: "make it vegetarian",
@@ -70,8 +67,8 @@ const PERSONALIZE_RECIPE_SYSTEM_PROMPT = `You are a Recipe Personalisation API. 
   ]
 }`;
 
-function parseAiResponse(response: unknown): ParsedRecipe {
-  return parseAiJsonPayload<ParsedRecipe>(response);
+function parseAiResponse(response: string): ParsedRecipe {
+  return parseAiJsonResponse<ParsedRecipe>(response);
 }
 
 function createPersonalizationPrompt(input: PersonalizeRecipeInput): string {
@@ -103,11 +100,11 @@ function withPreservedMetadata(
 }
 
 export async function personalizeRecipe(
-  ai: Env["AI"],
+  ai: AiClient,
   input: PersonalizeRecipeInput,
 ): Promise<ParseResponse> {
   try {
-    const response = await runAiModel(ai, TEXT_MODEL, {
+    const response = await ai.complete("text", {
       messages: [
         { role: "system", content: PERSONALIZE_RECIPE_SYSTEM_PROMPT },
         { role: "user", content: createPersonalizationPrompt(input) },

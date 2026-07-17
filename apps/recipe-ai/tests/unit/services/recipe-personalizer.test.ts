@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { personalizeRecipe } from "../../../src/services/recipe-personalizer";
 
-function createMockAi(response: unknown) {
+function createMockAi(response: string) {
   return {
-    run: vi.fn().mockResolvedValue(response),
+    complete: vi.fn().mockResolvedValue(response),
   };
 }
 
@@ -60,7 +60,7 @@ const personalizedRecipe = {
 
 describe("personalizeRecipe", () => {
   it("returns a parsed recipe response and preserves original images", async () => {
-    const mockAi = createMockAi({ response: JSON.stringify(personalizedRecipe) });
+    const mockAi = createMockAi(JSON.stringify(personalizedRecipe));
 
     const result = await personalizeRecipe(mockAi as any, {
       recipe: originalRecipe,
@@ -78,9 +78,9 @@ describe("personalizeRecipe", () => {
   });
 
   it("accepts JSON wrapped in markdown code fences", async () => {
-    const mockAi = createMockAi({
-      response: `\`\`\`json\n${JSON.stringify(personalizedRecipe)}\n\`\`\``,
-    });
+    const mockAi = createMockAi(
+      `\`\`\`json\n${JSON.stringify(personalizedRecipe)}\n\`\`\``,
+    );
 
     const result = await personalizeRecipe(mockAi as any, {
       recipe: originalRecipe,
@@ -93,7 +93,7 @@ describe("personalizeRecipe", () => {
   });
 
   it("includes goals and notes in the prompt", async () => {
-    const mockAi = createMockAi({ response: JSON.stringify(personalizedRecipe) });
+    const mockAi = createMockAi(JSON.stringify(personalizedRecipe));
 
     await personalizeRecipe(mockAi as any, {
       recipe: originalRecipe,
@@ -102,7 +102,7 @@ describe("personalizeRecipe", () => {
       customNotes: "keep it Italian",
     });
 
-    const call = mockAi.run.mock.calls[0]!;
+    const call = mockAi.complete.mock.calls[0]!;
     const userMessage = call[1].messages.find(
       (message: { role: string }) => message.role === "user",
     );
@@ -115,7 +115,7 @@ describe("personalizeRecipe", () => {
 
   it("returns a failure response for invalid JSON", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const mockAi = createMockAi({ response: "not json" });
+    const mockAi = createMockAi("not json");
 
     const result = await personalizeRecipe(mockAi as any, {
       recipe: originalRecipe,

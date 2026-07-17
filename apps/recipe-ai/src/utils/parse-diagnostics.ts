@@ -4,11 +4,11 @@ export type ParseSource = ParseMetadata["source"];
 
 const MAX_STAGE_TIMINGS = 32;
 
-export function elapsedMs(startTime: number): number {
+function elapsedMs(startTime: number): number {
   return Math.max(0, Date.now() - startTime);
 }
 
-export function appendDiagnosticsStage(
+function appendDiagnosticsStage(
   diagnostics: ParseDiagnostics | undefined,
   stage: NonNullable<ParseDiagnostics["stageTimings"]>[number],
 ): ParseDiagnostics {
@@ -50,7 +50,7 @@ export function appendFallbackPath(
   };
 }
 
-export function metadataFromResult(
+function metadataFromResult(
   result: ParseResult,
   source: ParseSource,
 ): ParseMetadata {

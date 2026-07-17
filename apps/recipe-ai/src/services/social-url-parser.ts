@@ -1,9 +1,9 @@
 import * as cheerio from "cheerio";
-import { Buffer } from "node:buffer";
 
 import type { Env, ParseMetadata, ParseResult } from "../types";
-import { DEFAULT_TEXT_MODEL, type AiExtractionOptions } from "./ai-client";
+import { transcribeGroqAudio } from "./groq-audio-client";
 import { tryAiRecipeCandidate } from "./url-parse-utils";
+import type { AiClient } from "../utils/ai-response-parser";
 import {
   cleanHtml,
   extractImageUrls,
@@ -60,17 +60,13 @@ const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
   reddit: ["reddit.com"],
 };
 
-const SOCIAL_TEXT_MODEL = DEFAULT_TEXT_MODEL;
-const SOCIAL_PROMPT_VARIANT = "compact_social";
-const SOCIAL_MAX_TOKENS = 8192;
-const INSTAGRAM_AUDIO_MODEL = "@cf/openai/whisper-large-v3-turbo";
 const INSTAGRAM_AUDIO_PROMPT =
   "A cooking recipe narration with ingredient names, quantities, temperatures, timings, and preparation steps.";
 
 interface SocialParseOptions {
   diagnostics?: ParseMetadata["diagnostics"];
   parseLinkedRecipeUrl?: (url: string) => Promise<ParseResult>;
-  aiOptions?: AiExtractionOptions;
+  aiClient: AiClient;
 }
 
 interface LinkedRecipeAttempt {
@@ -85,14 +81,11 @@ function isAiJsonParseError(error: unknown): boolean {
   );
 }
 
-function shouldRetrySocialAiWithScout(
+function shouldRetrySocialAi(
   error: unknown,
   result: ParseResult | null,
   content: string,
-  aiOptions?: AiExtractionOptions,
 ): boolean {
-  const initialModel = aiOptions?.textModel ?? SOCIAL_TEXT_MODEL;
-  if (initialModel !== SOCIAL_TEXT_MODEL) return false;
   if (isAiJsonParseError(error)) return true;
   if (error) return false;
   if (!result?.success) {
@@ -281,9 +274,9 @@ function socialResultWithDiagnostics(
 async function tryLinkedRecipeUrls(
   urls: string[],
   diagnostics: ParseMetadata["diagnostics"],
-  options?: SocialParseOptions,
+  options: SocialParseOptions,
 ): Promise<LinkedRecipeAttempt> {
-  if (!options?.parseLinkedRecipeUrl || urls.length === 0) {
+  if (!options.parseLinkedRecipeUrl || urls.length === 0) {
     return { result: null, diagnostics };
   }
 
@@ -354,7 +347,7 @@ async function parseSocialAi(
     diagnostics: ParseMetadata["diagnostics"];
     noContentMessage: string;
     aiErrorCode: string;
-    aiOptions?: AiExtractionOptions;
+    aiClient: AiClient;
     selectedAttempt?: string;
   },
 ): Promise<ParseResult> {
@@ -385,10 +378,8 @@ async function parseSocialAi(
     `[${options.platform}]`,
     {
       cache: false,
-      textModel: SOCIAL_TEXT_MODEL,
-      promptVariant: SOCIAL_PROMPT_VARIANT,
-      maxTokens: SOCIAL_MAX_TOKENS,
-      ...options.aiOptions,
+      aiClient: options.aiClient,
+      extractionProfile: "social",
     },
   );
 
@@ -404,11 +395,10 @@ async function parseSocialAi(
     options.parseMethod,
   );
 
-  const shouldRetry = shouldRetrySocialAiWithScout(
+  const shouldRetry = shouldRetrySocialAi(
     aiAttempt.error,
     aiAttempt.result,
     options.content,
-    options.aiOptions,
   );
 
   if (aiAttempt.result?.success && !shouldRetry) {
@@ -427,13 +417,11 @@ async function parseSocialAi(
       options.images,
       "social_ai",
       options.parseMethod,
-      `[${options.platform}:scout_retry]`,
+      `[${options.platform}:ai_retry]`,
       {
         cache: false,
-        ...options.aiOptions,
-        textModel: DEFAULT_TEXT_MODEL,
-        promptVariant: SOCIAL_PROMPT_VARIANT,
-        maxTokens: SOCIAL_MAX_TOKENS,
+        aiClient: options.aiClient,
+        extractionProfile: "social",
       },
     );
 
@@ -446,7 +434,7 @@ async function parseSocialAi(
         : retryAttempt.result?.success
           ? "success"
           : "skipped",
-      DEFAULT_TEXT_MODEL,
+      "same_workload_retry",
     );
 
     if (retryAttempt.result?.success) {
@@ -522,18 +510,16 @@ async function transcribeInstagramAudio(
   caption: string | null,
 ): Promise<string | null> {
   const audio = await fetchInstagramReelAudio(audioUrl);
-  const audioBase64 = Buffer.from(audio).toString("base64");
   const captionContext = caption?.replace(/\s+/g, " ").trim().slice(0, 500);
   const initialPrompt = captionContext
     ? `${INSTAGRAM_AUDIO_PROMPT} Post caption context: ${captionContext}`
     : INSTAGRAM_AUDIO_PROMPT;
   const transcribe = (language?: string) =>
-    env.AI.run(INSTAGRAM_AUDIO_MODEL, {
-      audio: audioBase64,
-      task: "transcribe",
-      vad_filter: true,
-      initial_prompt: initialPrompt,
-      ...(language ? { language } : {}),
+    transcribeGroqAudio({
+      apiKey: env.GROQ_API_KEY,
+      audio,
+      prompt: initialPrompt,
+      language,
     });
 
   let result;
@@ -552,19 +538,19 @@ async function transcribeInstagramAudio(
     result = await transcribe("en");
   }
 
-  const transcript = result.text.trim();
+  const transcript = result.trim();
   return transcript.length >= 20 ? transcript : null;
 }
 
 async function parseInstagramUrl(
   env: Env,
   url: string,
-  options?: SocialParseOptions,
+  options: SocialParseOptions,
 ): Promise<ParseResult> {
   const shortcode = extractShortcode(url) || "unknown";
   console.log(`Parsing Instagram URL [${shortcode}]:`, url);
 
-  let diagnostics = options?.diagnostics;
+  let diagnostics = options.diagnostics;
   let caption: string | null = null;
   let images: string[] = [];
   let comments: string[] = [];
@@ -645,7 +631,7 @@ async function parseInstagramUrl(
     noContentMessage:
       "Could not extract recipe content from Instagram. The post may not contain a recipe or may require login to view.",
     aiErrorCode: "INSTAGRAM_PARSE_FAILED",
-    aiOptions: options?.aiOptions,
+    aiClient: options.aiClient,
   });
 
   if (!isInstagramReelUrl(url) || hasRecipeInstructions(initialResult)) {
@@ -717,7 +703,7 @@ async function parseInstagramUrl(
     noContentMessage:
       "Could not extract recipe content from this Instagram reel or its audio.",
     aiErrorCode: "INSTAGRAM_AUDIO_PARSE_FAILED",
-    aiOptions: options?.aiOptions,
+    aiClient: options.aiClient,
   });
 
   if (
@@ -738,9 +724,9 @@ async function parseInstagramUrl(
 async function parseTikTokUrl(
   env: Env,
   url: string,
-  options?: SocialParseOptions,
+  options: SocialParseOptions,
 ): Promise<ParseResult> {
-  let diagnostics = options?.diagnostics;
+  let diagnostics = options.diagnostics;
   let result: TikTokContent = {
     caption: null,
     images: [],
@@ -788,7 +774,7 @@ async function parseTikTokUrl(
     noContentMessage:
       "Could not extract recipe content from TikTok. The video may not contain a recipe or the description may be too short.",
     aiErrorCode: "TIKTOK_PARSE_FAILED",
-    aiOptions: options?.aiOptions,
+    aiClient: options.aiClient,
   });
 }
 
@@ -817,9 +803,9 @@ function youtubeMetadataText(
 async function parseYouTubeUrl(
   env: Env,
   url: string,
-  options?: SocialParseOptions,
+  options: SocialParseOptions,
 ): Promise<ParseResult> {
-  let diagnostics = options?.diagnostics;
+  let diagnostics = options.diagnostics;
   const videoId = extractYouTubeVideoId(url);
   if (!videoId) {
     return failSocialParse(
@@ -948,7 +934,7 @@ async function parseYouTubeUrl(
     noContentMessage:
       "Could not extract recipe content from this YouTube video.",
     aiErrorCode: "YOUTUBE_PARSE_FAILED",
-    aiOptions: options?.aiOptions,
+    aiClient: options.aiClient,
   });
 }
 
@@ -956,9 +942,9 @@ async function parseGenericSocialUrl(
   env: Env,
   url: string,
   platform: SocialPlatform,
-  options?: SocialParseOptions,
+  options: SocialParseOptions,
 ): Promise<ParseResult> {
-  let diagnostics = options?.diagnostics;
+  let diagnostics = options.diagnostics;
   let html: string;
 
   const fetchStart = Date.now();
@@ -1002,7 +988,7 @@ async function parseGenericSocialUrl(
     diagnostics,
     noContentMessage: "Could not extract recipe content from this social link.",
     aiErrorCode: "AI_PARSE_FAILED",
-    aiOptions: options?.aiOptions,
+    aiClient: options.aiClient,
   });
 }
 
@@ -1010,7 +996,7 @@ export function parseSocialUrl(
   env: Env,
   url: string,
   platform: SocialPlatform,
-  options?: SocialParseOptions,
+  options: SocialParseOptions,
 ): Promise<ParseResult> {
   if (platform === "instagram") return parseInstagramUrl(env, url, options);
   if (platform === "tiktok") return parseTikTokUrl(env, url, options);

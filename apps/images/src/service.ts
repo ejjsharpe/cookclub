@@ -3,6 +3,7 @@ export type {
   ImageService,
   MoveResponse,
   MoveResult,
+  NormalizeImageResponse,
   PresignedUrlResponse,
   UploadImageResponse,
   UploadFromUrlResponse,

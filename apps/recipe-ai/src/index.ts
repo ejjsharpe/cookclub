@@ -1,6 +1,8 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-import type { AiExtractionOptions } from "./services/ai-client";
+import { createCerebrasClient } from "./services/cerebras-client";
+import { createFallbackAiClient } from "./services/fallback-ai-client";
+import { createGroqClient } from "./services/groq-client";
 import { rehostParsedRecipeImagesForResponse } from "./services/hosted-images";
 import { parseImage } from "./services/image-parser";
 import { generateNutrition } from "./services/nutrition-generator";
@@ -21,6 +23,10 @@ import type {
   NutritionResponse,
   PersonalizeRecipeInput,
 } from "./types";
+import {
+  RECIPE_AI_INFERENCE_CLIENT,
+  type AiClient,
+} from "./utils/ai-response-parser";
 import { finalizeParseDiagnostics } from "./utils/parse-diagnostics";
 
 export type {
@@ -55,7 +61,7 @@ function parseInputSource(input: ParseInput): "url" | "text" | "image" {
 async function parseWithEnv(
   env: Env,
   input: ParseInput,
-  options?: { skipImageRehost?: boolean; aiOptions?: AiExtractionOptions },
+  aiClient: AiClient,
 ): Promise<ParseResponse> {
   const parseStart = Date.now();
   try {
@@ -65,16 +71,16 @@ async function parseWithEnv(
       case "url":
         result = await parseUrl(env, input.data, {
           structuredOnly: input.structuredOnly,
-          aiOptions: options?.aiOptions,
+          aiClient,
         });
         break;
 
       case "text":
-        result = await parseText(env, input.data, options?.aiOptions);
+        result = await parseText(env, input.data, aiClient);
         break;
 
       case "image":
-        result = await parseImage(env, input.data, input.mimeType);
+        result = await parseImage(env, input.data, input.mimeType, aiClient);
         break;
 
       default:
@@ -92,9 +98,7 @@ async function parseWithEnv(
     }
 
     return finalizeParseDiagnostics(
-      options?.skipImageRehost
-        ? result
-        : await rehostParsedRecipeImagesForResponse(env, result),
+      await rehostParsedRecipeImagesForResponse(env, result),
       parseInputSource(input),
       parseStart,
     );
@@ -117,6 +121,13 @@ async function parseWithEnv(
   }
 }
 
+function createProductionAiClient(env: Env): AiClient {
+  return createFallbackAiClient(
+    createCerebrasClient(env.CEREBRAS_API_KEY),
+    createGroqClient(env.GROQ_API_KEY),
+  );
+}
+
 /**
  * Recipe AI Worker
  *
@@ -125,6 +136,10 @@ async function parseWithEnv(
  * Workers.
  */
 export class RecipeAI extends WorkerEntrypoint<Env> {
+  [RECIPE_AI_INFERENCE_CLIENT](): AiClient {
+    return createProductionAiClient(this.env);
+  }
+
   /**
    * Parse a recipe from URL, text, or image
    *
@@ -148,7 +163,7 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
    * });
    */
   async parse(input: ParseInput): Promise<ParseResponse> {
-    return parseWithEnv(this.env, input);
+    return parseWithEnv(this.env, input, this[RECIPE_AI_INFERENCE_CLIENT]());
   }
 
   /**
@@ -165,14 +180,14 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
    */
   async chat(input: ChatInput): Promise<ChatResponse> {
     return await processChat(
-      this.env.AI,
+      this[RECIPE_AI_INFERENCE_CLIENT](),
       input.messages,
       input.conversationState,
     );
   }
 
   async personalize(input: PersonalizeRecipeInput): Promise<ParseResponse> {
-    return await personalizeRecipe(this.env.AI, input);
+    return await personalizeRecipe(this[RECIPE_AI_INFERENCE_CLIENT](), input);
   }
 
   async generateImage(
@@ -182,7 +197,7 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
   }
 
   async nutrition(input: NutritionInput): Promise<NutritionResponse> {
-    return await generateNutrition(this.env, input);
+    return await generateNutrition(input, this[RECIPE_AI_INFERENCE_CLIENT]());
   }
 }
 
@@ -192,64 +207,12 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
  * Service Bindings from trusted Workers.
  */
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (
-      env.ENVIRONMENT !== "production" &&
-      url.pathname === "/benchmark/parse" &&
-      request.method === "POST"
-    ) {
-      try {
-        const input = (await request.json()) as ParseInput;
-        const textModel =
-          request.headers.get("x-recipe-ai-model") ??
-          url.searchParams.get("model");
-        const skipImageRehost =
-          request.headers.get("x-recipe-ai-skip-image-rehost") === "true" ||
-          url.searchParams.get("skipImageRehost") === "true";
-        const promptVariant =
-          request.headers.get("x-recipe-ai-prompt-variant") ??
-          url.searchParams.get("promptVariant");
-        const maxTokensHeader =
-          request.headers.get("x-recipe-ai-max-tokens") ??
-          url.searchParams.get("maxTokens");
-        const maxTokens = maxTokensHeader ? Number(maxTokensHeader) : null;
-        const aiOptions: AiExtractionOptions | undefined =
-          textModel || promptVariant || maxTokens
-            ? {
-                ...(textModel ? { textModel } : {}),
-                ...(promptVariant ? { promptVariant } : {}),
-                ...(maxTokens && Number.isFinite(maxTokens)
-                  ? { maxTokens }
-                  : {}),
-              }
-            : undefined;
-        return Response.json(
-          await parseWithEnv(env, input, { skipImageRehost, aiOptions }),
-        );
-      } catch (error) {
-        return Response.json(
-          {
-            success: false,
-            error: {
-              code: "INVALID_REQUEST",
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "Request body must be valid JSON.",
-            },
-          },
-          { status: 400 },
-        );
-      }
-    }
-
+  async fetch(_request: Request): Promise<Response> {
     return new Response(
       JSON.stringify({
         error: "This worker only accepts RPC calls via Service Bindings",
         usage:
-          "Add a service binding in your wrangler.toml and call env.RECIPE_AI.parse()",
+          "Add a service binding in your wrangler.jsonc and call env.RECIPE_AI.parse()",
       }),
       {
         status: 400,

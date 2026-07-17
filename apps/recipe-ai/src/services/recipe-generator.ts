@@ -5,15 +5,14 @@
 
 import type { ParsedRecipe } from "../schema";
 import type {
-  Env,
   ChatMessage,
   RecipeConversationState,
   ChatResponse,
 } from "../types";
 import {
   DEFAULT_MAX_TOKENS,
-  parseAiJsonPayload,
-  runAiModel,
+  parseAiJsonResponse,
+  type AiClient,
 } from "../utils/ai-response-parser";
 import {
   RECIPE_CONVERSATION_SYSTEM_PROMPT,
@@ -21,9 +20,6 @@ import {
   createConversationPrompt,
   createRecipeGenerationPrompt,
 } from "../utils/generation-prompts";
-
-// Cloudflare Workers AI model
-const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
 
 const nullableStringSchema = {
   anyOf: [{ type: "string" }, { type: "null" }],
@@ -334,19 +330,20 @@ function isConversationComplete(state: RecipeConversationState): boolean {
 /**
  * Parse AI response - handles both string and pre-parsed object
  */
-function parseResponse<T>(response: unknown): T {
-  return parseAiJsonPayload<T>(response, "Empty response from AI");
+function parseResponse<T>(response: string): T {
+  if (!response) throw new Error("Empty response from AI");
+  return parseAiJsonResponse<T>(response);
 }
 
 /**
  * Generate the final recipe based on collected information
  */
 async function generateRecipe(
-  ai: Env["AI"],
+  ai: AiClient,
   state: RecipeConversationState,
 ): Promise<ChatResponse> {
   try {
-    const response = await runAiModel(ai, TEXT_MODEL, {
+    const response = await ai.complete("text", {
       messages: [
         { role: "system", content: RECIPE_GENERATION_SYSTEM_PROMPT },
         { role: "user", content: createRecipeGenerationPrompt(state) },
@@ -408,7 +405,7 @@ function getInitialMessage(): ChatResponse {
  * Process a chat message and return AI response
  */
 export async function processChat(
-  ai: Env["AI"],
+  ai: AiClient,
   messages: ChatMessage[],
   state: RecipeConversationState,
 ): Promise<ChatResponse> {
@@ -424,7 +421,7 @@ export async function processChat(
     }
 
     // Continue the conversation
-    const response = await runAiModel(ai, TEXT_MODEL, {
+    const response = await ai.complete("text", {
       messages: [
         { role: "system", content: RECIPE_CONVERSATION_SYSTEM_PROMPT },
         { role: "user", content: createConversationPrompt(messages, state) },

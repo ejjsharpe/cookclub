@@ -1,10 +1,6 @@
 import { ParsedRecipeSchema } from "../schema";
 import type { Env, ParseResult } from "../types";
-import {
-  parseRecipeFromHtml,
-  repairRecipeFromEvidence,
-  type AiExtractionOptions,
-} from "./ai-client";
+import { parseRecipeFromHtml, repairRecipeFromEvidence } from "./ai-client";
 import { deleteCachedRecipe, getCachedRecipe } from "./cache";
 import { aiResultToRecipe } from "./recipe-mapper";
 import { parseSocialUrl } from "./social-url-parser";
@@ -21,6 +17,7 @@ import {
   type RecipeCandidate,
   selectBestRecipeCandidate,
 } from "./url-parse-utils";
+import type { AiClient } from "../utils/ai-response-parser";
 import {
   requiresBrowserRendering,
   fetchHtmlWithBrowser,
@@ -46,7 +43,7 @@ export interface ParseUrlOptions {
   structuredOnly?: boolean;
   /** Internal guard: linked-page fallbacks should not recursively parse social URLs. */
   allowSocial?: boolean;
-  aiOptions?: AiExtractionOptions;
+  aiClient: AiClient;
 }
 
 function elapsed(startTime: number): number {
@@ -67,13 +64,9 @@ function elapsed(startTime: number): number {
 export async function parseUrl(
   env: Env,
   url: string,
-  options?: ParseUrlOptions,
+  options: ParseUrlOptions,
 ): Promise<ParseResult> {
-  const {
-    structuredOnly = false,
-    allowSocial = true,
-    aiOptions,
-  } = options ?? {};
+  const { structuredOnly = false, allowSocial = true, aiClient } = options;
   let sourceSnapshot: Awaited<ReturnType<typeof createSourceSnapshot>>;
   const sourceSnapshotStart = Date.now();
   try {
@@ -139,8 +132,11 @@ export async function parseUrl(
     return parseSocialUrl(env, sourceUrl, socialPlatform, {
       diagnostics: sourceSnapshot.diagnostics,
       parseLinkedRecipeUrl: (linkedUrl) =>
-        parseUrl(env, linkedUrl, { allowSocial: false, aiOptions }),
-      aiOptions,
+        parseUrl(env, linkedUrl, {
+          allowSocial: false,
+          aiClient,
+        }),
+      aiClient,
     });
   }
 
@@ -455,16 +451,11 @@ export async function parseUrl(
     const bestPartialRecipe = bestPartialCandidate(candidates);
     const aiResult = bestPartialRecipe
       ? await repairRecipeFromEvidence(
-          env.AI,
+          aiClient,
           cleanedContent + stepImageContext,
           bestPartialRecipe,
-          aiOptions,
         )
-      : await parseRecipeFromHtml(
-          env.AI,
-          cleanedContent + stepImageContext,
-          aiOptions,
-        );
+      : await parseRecipeFromHtml(aiClient, cleanedContent + stepImageContext);
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "url",
       sourceUrl,

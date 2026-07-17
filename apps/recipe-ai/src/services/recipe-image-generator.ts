@@ -4,9 +4,7 @@ import type {
 } from "@repo/contracts/recipe-ai";
 
 import type { Env } from "../types";
-import { runAiModel } from "../utils/ai-response-parser";
-
-const IMAGE_MODEL = "@cf/stabilityai/stable-diffusion-xl-base-1.0" as const;
+import { generateReplicateImage } from "./replicate-image-client";
 
 function createRecipeImagePrompt(input: GenerateRecipeImageInput): string {
   const ingredients = input.ingredients?.filter(Boolean).slice(0, 12) ?? [];
@@ -49,27 +47,11 @@ export async function generateRecipeImage(
       };
     }
 
-    const response: unknown = await runAiModel(env.AI, IMAGE_MODEL, {
+    const imageData = await generateReplicateImage({
+      apiToken: env.REPLICATE_API_TOKEN,
       prompt: createRecipeImagePrompt(input),
-      negative_prompt:
-        "text, watermark, logo, people, hands, packaging, utensils blocking food, blurry, low quality, distorted food",
-      width: 1024,
-      height: 1024,
-      num_steps: 20,
-      guidance: 7.5,
       seed: randomImageSeed(),
     });
-
-    const imageData =
-      response instanceof ReadableStream
-        ? await new Response(response).arrayBuffer()
-        : response instanceof ArrayBuffer
-          ? response
-          : null;
-
-    if (!imageData) {
-      throw new Error("Image model returned an unsupported response.");
-    }
 
     const uploadResult = await env.IMAGE_SERVICE.uploadImage(
       imageData,

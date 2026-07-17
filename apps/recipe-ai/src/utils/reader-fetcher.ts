@@ -3,7 +3,7 @@ import { readLimitedText, validateFetchUrl } from "./html-fetcher";
 const READER_TIMEOUT_MS = 15_000;
 const MAX_READER_BYTES = 2 * 1024 * 1024;
 
-export function getReaderUrl(url: string): string {
+function getReaderUrl(url: string): string {
   const parsed = validateFetchUrl(url);
   return `https://r.jina.ai/http://${parsed.toString()}`;
 }

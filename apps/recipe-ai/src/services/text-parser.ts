@@ -1,7 +1,8 @@
 import type { Env, ParseResult } from "../types";
-import { parseRecipeFromText, type AiExtractionOptions } from "./ai-client";
+import { parseRecipeFromText } from "./ai-client";
 import { aiResultToRecipe } from "./recipe-mapper";
 import { acceptedCandidate } from "./url-parse-utils";
+import type { AiClient } from "../utils/ai-response-parser";
 import {
   appendFallbackPath,
   recordDiagnosticsStage,
@@ -14,7 +15,7 @@ import { extractRecipeOutline } from "../utils/recipe-outline-parser";
 export async function parseText(
   env: Env,
   text: string,
-  aiOptions?: AiExtractionOptions,
+  ai: AiClient,
 ): Promise<ParseResult> {
   let diagnostics = {};
 
@@ -87,11 +88,7 @@ export async function parseText(
     if (outlineResult) return outlineResult;
 
     const aiStart = Date.now();
-    const aiResult = await parseRecipeFromText(
-      env.AI,
-      text.trim(),
-      aiOptions,
-    );
+    const aiResult = await parseRecipeFromText(ai, text.trim());
     const recipe = aiResultToRecipe(aiResult, {
       sourceType: "text",
       sourceUrl: null,

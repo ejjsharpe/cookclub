@@ -36,7 +36,7 @@ function normalizeContainerUnit(value: string): string | null {
   return normalizeUnit(normalized);
 }
 
-export function parseFraction(value: string): number | null {
+function parseFraction(value: string): number | null {
   const trimmed = value.trim();
 
   const mixed = trimmed.match(/^(\d+)\s+(\d+)\/(\d+)$/);

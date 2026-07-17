@@ -25,7 +25,7 @@ const BLOCKED_HOSTNAMES = new Set([
 
 const BOT_BLOCK_STATUS_CODES = new Set([401, 403, 406, 429, 503]);
 
-export class HtmlFetchError extends Error {
+class HtmlFetchError extends Error {
   status?: number;
   statusText?: string;
 

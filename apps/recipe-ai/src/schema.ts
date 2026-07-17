@@ -1,3 +1,4 @@
+import type { ParsedRecipeNutrition } from "@repo/contracts/recipe";
 import { type } from "arktype";
 
 export const IngredientSchema = type({
@@ -13,44 +14,17 @@ export const InstructionSchema = type({
   "imageUrl?": "string | null",
 });
 
-export const IngredientSectionSchema = type({
+const IngredientSectionSchema = type({
   name: "string | null",
   ingredients: IngredientSchema.array(),
 });
 
-export const InstructionSectionSchema = type({
+const InstructionSectionSchema = type({
   name: "string | null",
   instructions: InstructionSchema.array(),
 });
 
-export const SourceTypeSchema = type(
-  "'url' | 'image' | 'text' | 'ai' | 'manual'",
-);
-
-export const NutritionSourceSchema = type(
-  "'extracted' | 'ai_estimated' | 'manual' | 'imported'",
-);
-
-export const NutritionConfidenceSchema = type("'high' | 'medium' | 'low'");
-
-export const NutritionSchema = type({
-  "calories?": "number | null",
-  "protein?": "number | null",
-  "carbohydrates?": "number | null",
-  "fat?": "number | null",
-  "saturatedFat?": "number | null",
-  "fiber?": "number | null",
-  "sugar?": "number | null",
-  "sodium?": "number | null",
-  "cholesterol?": "number | null",
-  "potassium?": "number | null",
-  "vitaminA?": "number | null",
-  "vitaminC?": "number | null",
-  "calcium?": "number | null",
-  "iron?": "number | null",
-  "source?": NutritionSourceSchema,
-  "confidence?": "('high' | 'medium' | 'low') | null",
-});
+const SourceTypeSchema = type("'url' | 'image' | 'text' | 'ai' | 'manual'");
 
 export const ParsedRecipeSchema = type({
   name: "string",
@@ -75,4 +49,4 @@ export type IngredientSection = typeof IngredientSectionSchema.infer;
 export type InstructionSection = typeof InstructionSectionSchema.infer;
 export type Tag = string;
 export type SourceType = typeof SourceTypeSchema.infer;
-export type Nutrition = typeof NutritionSchema.infer;
+export type Nutrition = ParsedRecipeNutrition;

@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { RecipeAI } from "../../src/index";
-
-const SOCIAL_TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
+import { RECIPE_AI_INFERENCE_CLIENT } from "../../src/utils/ai-response-parser";
 
 const browserFetcherMocks = vi.hoisted(() => ({
   fetchHtmlWithBrowser: vi.fn(),
@@ -131,8 +130,8 @@ function createMockEnv() {
   const kvStore = new Map<string, string>();
 
   return {
-    AI: {
-      run: vi.fn().mockResolvedValue({ response: validAiResponse }),
+    aiClient: {
+      complete: vi.fn().mockResolvedValue(validAiResponse),
     },
     RECIPE_CACHE: {
       get: vi.fn((key: string, type?: string) => {
@@ -147,6 +146,9 @@ function createMockEnv() {
       }),
     },
     IMAGE_PUBLIC_URL: "https://images.example.com",
+    CEREBRAS_API_KEY: "test-cerebras-key",
+    GROQ_API_KEY: "test-groq-key",
+    REPLICATE_API_TOKEN: "test-replicate-token",
     YOUTUBE_API_KEY: "test-youtube-key",
     IMAGE_SERVICE: {
       uploadFromUrl: vi.fn(async (_sourceUrl: string, key: string) => ({
@@ -159,6 +161,10 @@ function createMockEnv() {
         publicUrl: "https://images.example.com/temp/generated/source.jpg",
         key: "temp/generated/source.jpg",
       })),
+      normalizeImage: vi.fn(async (imageData: ArrayBuffer) => ({
+        success: true,
+        imageData,
+      })),
     },
     _kvStore: kvStore,
   };
@@ -168,6 +174,7 @@ function createMockEnv() {
 function createParser(env: ReturnType<typeof createMockEnv>) {
   const parser = new (RecipeAI as any)();
   parser.env = env;
+  parser[RECIPE_AI_INFERENCE_CLIENT] = () => env.aiClient;
   return parser;
 }
 
@@ -256,7 +263,7 @@ describe("RecipeAI.parse()", () => {
             "image_rehosting",
           ]),
         );
-        expect(mockEnv.AI.run).not.toHaveBeenCalled();
+        expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
       }
     });
 
@@ -453,7 +460,7 @@ describe("RecipeAI.parse()", () => {
         "https://example.com/recipe",
         expect.anything(),
       );
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("lets basic import use deterministic visible cards without AI", async () => {
@@ -468,7 +475,7 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.name).toBe("Recipe Title");
         expect(result.metadata.parseMethod).toBe("visible_card");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("falls back to AI when deterministic extractors cannot produce a recipe", async () => {
@@ -490,7 +497,7 @@ describe("RecipeAI.parse()", () => {
       if (result.success) {
         expect(result.data.name).toBe("Test Recipe");
         expect(result.metadata.parseMethod).toBe("ai_only");
-        expect(mockEnv.AI.run).toHaveBeenCalled();
+        expect(mockEnv.aiClient.complete).toHaveBeenCalled();
       }
     });
 
@@ -536,7 +543,7 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.name).toBe("Structured Cake");
         expect(result.metadata.parseMethod).toBe("schema_org");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("chooses the strongest structured candidate when a page exposes several", async () => {
@@ -603,7 +610,7 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.name).toBe("Detailed Cake");
         expect(result.metadata.parseMethod).toBe("schema_org");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("uses AMP and print alternates before AI", async () => {
@@ -668,7 +675,7 @@ describe("RecipeAI.parse()", () => {
         ]);
         expect(result.metadata.parseMethod).toBe("schema_org");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("uses WordPress REST content before AI", async () => {
@@ -734,15 +741,15 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.name).toBe("WP Rest Pie");
         expect(result.metadata.parseMethod).toBe("visible_card");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("accepts ingredient-only TikTok AI output", async () => {
       const tiktokCaption =
         "fudgy browniess🤤 recipe by Handle the Heat: 5 tbsp butter 1 1/4 cups sugar 2 eggs plus 1 egg yolk 1 tsp vanilla 1/3 cup vegetable oil 3/4 cup cocoa powder 1/2 cup flour 1/8 tsp baking soda 1 tbsp cornstarch 1/4 tsp salt 3/4 cup chocolate chips #brownies #fudgybrownies #brownierecipe";
 
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Fudgy Brownies",
           description: null,
           prepTime: null,
@@ -767,7 +774,7 @@ describe("RecipeAI.parse()", () => {
             confidence: "low",
           },
         }),
-      });
+      );
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -800,7 +807,7 @@ describe("RecipeAI.parse()", () => {
         expect(result.metadata.parseMethod).toBe("ai_only");
         expect(result.metadata.confidence).toBe("low");
       }
-      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
+      expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(1);
     });
 
     it("canonicalizes TikTok short URLs before parsing and metadata", async () => {
@@ -808,8 +815,8 @@ describe("RecipeAI.parse()", () => {
       const caption =
         "Tomato pasta Ingredients: 200 g spaghetti 1 cup tomato sauce Directions: 1. Boil the spaghetti. 2. Toss with tomato sauce.";
 
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Tomato Pasta",
           description: null,
           prepTime: null,
@@ -835,7 +842,7 @@ describe("RecipeAI.parse()", () => {
             },
           ],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -907,13 +914,13 @@ describe("RecipeAI.parse()", () => {
         </html>
       `;
 
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Invalid Social Recipe",
           ingredientSections: [],
           instructionSections: [],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const url = String(requestUrl);
@@ -976,7 +983,7 @@ describe("RecipeAI.parse()", () => {
           ) ?? [];
         expect(stageNames).toContain("linked_url");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("uses TikTok caption-only AI when no subtitles are available", async () => {
@@ -1009,9 +1016,9 @@ describe("RecipeAI.parse()", () => {
         ],
       };
 
-      mockEnv.AI.run = vi.fn((model: string) => {
-        expect(model).toBe(SOCIAL_TEXT_MODEL);
-        return Promise.resolve({ response: JSON.stringify(captionAiRecipe) });
+      mockEnv.aiClient.complete = vi.fn((workload: string) => {
+        expect(workload).toBe("text");
+        return Promise.resolve(JSON.stringify(captionAiRecipe));
       });
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
@@ -1047,15 +1054,15 @@ describe("RecipeAI.parse()", () => {
         expect(result.data.name).toBe("Tomato Pasta");
         expect(result.metadata.parseMethod).toBe("ai_only");
       }
-      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
+      expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(1);
     });
 
     it("accepts ingredients-only Instagram AI output", async () => {
       const instagramCaption =
         "Easy tomato pasta Ingredients: 200 g spaghetti 1 cup tomato sauce Directions: 1. Boil the spaghetti. 2. Toss with tomato sauce and serve.";
 
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Easy Tomato Pasta",
           description: null,
           prepTime: null,
@@ -1073,7 +1080,7 @@ describe("RecipeAI.parse()", () => {
           instructionSections: [],
           suggestedTags: [],
         }),
-      });
+      );
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -1099,7 +1106,7 @@ describe("RecipeAI.parse()", () => {
         expect(result.metadata.parseMethod).toBe("ai_only");
         expect(result.metadata.confidence).toBe("low");
       }
-      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
+      expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(1);
     });
 
     it("retries mixed-language reel audio and incomplete transcript extraction", async () => {
@@ -1168,35 +1175,20 @@ describe("RecipeAI.parse()", () => {
         ...ingredientsOnlyRecipe,
         instructionSections: [{ name: null, instructions }],
       };
-      let transcriptionAttemptCount = 0;
-
-      mockEnv.AI.run = vi.fn((model: string) => {
-        if (model === "@cf/openai/whisper-large-v3-turbo") {
-          transcriptionAttemptCount += 1;
-          if (transcriptionAttemptCount === 1) {
-            return Promise.reject(
-              new Error(
-                "Unsupported audio input: force a single language for audio with different languages",
-              ),
-            );
-          }
-          return Promise.resolve({ text: transcript, word_count: 19 });
-        }
-
-        const textAttemptCount = mockEnv.AI.run.mock.calls.filter(
-          ([calledModel]) => calledModel === SOCIAL_TEXT_MODEL,
-        ).length;
-        return Promise.resolve({
-          response: JSON.stringify(
+      mockEnv.aiClient.complete = vi.fn(() => {
+        const textAttemptCount = mockEnv.aiClient.complete.mock.calls.length;
+        return Promise.resolve(
+          JSON.stringify(
             textAttemptCount === 1
               ? ingredientsOnlyRecipe
               : textAttemptCount === 2
                 ? instructionsOnlyRecipe
                 : completeRecipe,
           ),
-        });
+        );
       });
 
+      let transcriptionAttemptCount = 0;
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
         if (requested.startsWith("https://www.instagram.com/api/v1/oembed")) {
@@ -1223,6 +1215,25 @@ describe("RecipeAI.parse()", () => {
             }),
             arrayBuffer: () => Promise.resolve(audio.buffer),
           });
+        }
+
+        if (
+          requested === "https://api.groq.com/openai/v1/audio/transcriptions"
+        ) {
+          transcriptionAttemptCount += 1;
+          return transcriptionAttemptCount === 1
+            ? Promise.resolve(
+                Response.json(
+                  {
+                    error: {
+                      message:
+                        "Force a single language for audio with different languages",
+                    },
+                  },
+                  { status: 400 },
+                ),
+              )
+            : Promise.resolve(Response.json({ text: transcript }));
         }
 
         return Promise.resolve({
@@ -1260,28 +1271,36 @@ describe("RecipeAI.parse()", () => {
           ),
         ).toBe(true);
       }
-      expect(mockEnv.AI.run.mock.calls.map(([model]) => model)).toEqual([
-        SOCIAL_TEXT_MODEL,
-        "@cf/openai/whisper-large-v3-turbo",
-        "@cf/openai/whisper-large-v3-turbo",
-        SOCIAL_TEXT_MODEL,
-        SOCIAL_TEXT_MODEL,
-      ]);
-      expect(mockEnv.AI.run.mock.calls[1]?.[1]).toMatchObject({
-        audio: "AAECAw==",
-        task: "transcribe",
-        vad_filter: true,
-        initial_prompt: expect.stringContaining("cooking recipe"),
-      });
-      expect(mockEnv.AI.run.mock.calls[1]?.[1]).toMatchObject({
-        initial_prompt: expect.stringContaining(instagramCaption),
-      });
-      expect(mockEnv.AI.run.mock.calls[2]?.[1]).toMatchObject({
-        language: "en",
-      });
-      expect(JSON.stringify(mockEnv.AI.run.mock.calls[4]?.[1])).toContain(
-        transcript,
+      expect(
+        mockEnv.aiClient.complete.mock.calls.map(([workload]) => workload),
+      ).toEqual(["text", "text", "text"]);
+      const transcriptionCalls = vi
+        .mocked(global.fetch)
+        .mock.calls.filter(
+          ([url]) =>
+            String(url) ===
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+        );
+      expect(transcriptionCalls).toHaveLength(2);
+      const firstForm = transcriptionCalls[0]?.[1]?.body as FormData;
+      const secondForm = transcriptionCalls[1]?.[1]?.body as FormData;
+      expect(firstForm.get("model")).toBe("whisper-large-v3-turbo");
+      expect(firstForm.get("prompt")).toEqual(
+        expect.stringContaining("cooking recipe"),
       );
+      expect(firstForm.get("prompt")).toEqual(
+        expect.stringContaining(instagramCaption),
+      );
+      expect(firstForm.get("language")).toBeNull();
+      expect(secondForm.get("language")).toBe("en");
+      const audioFile = firstForm.get("file");
+      expect(audioFile).toBeInstanceOf(Blob);
+      await expect((audioFile as Blob).arrayBuffer()).resolves.toEqual(
+        new Uint8Array([0, 1, 2, 3]).buffer,
+      );
+      expect(
+        JSON.stringify(mockEnv.aiClient.complete.mock.calls[2]?.[1]),
+      ).toContain(transcript);
     });
 
     it("adds a creator recipe comment to Instagram AI evidence", async () => {
@@ -1328,8 +1347,8 @@ describe("RecipeAI.parse()", () => {
         crawlerPayload,
       )}</script></body></html>`;
 
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Creamy Tomato Pasta",
           description: null,
           prepTime: null,
@@ -1360,7 +1379,7 @@ describe("RecipeAI.parse()", () => {
             },
           ],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -1410,13 +1429,13 @@ describe("RecipeAI.parse()", () => {
           ),
         ).toBe(true);
       }
-      expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
-      expect(JSON.stringify(mockEnv.AI.run.mock.calls[0]?.[1])).toContain(
-        creatorComment,
-      );
+      expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.stringify(mockEnv.aiClient.complete.mock.calls[0]?.[1]),
+      ).toContain(creatorComment);
     });
 
-    it("retries Instagram captions when the fast model drops explicit ingredients", async () => {
+    it("retries Instagram captions when the first AI attempt drops explicit ingredients", async () => {
       const instagramCaption = `Complete tomato pasta
 
 Ingredients:
@@ -1448,10 +1467,10 @@ Instructions:
         ],
       };
 
-      mockEnv.AI.run = vi
+      mockEnv.aiClient.complete = vi
         .fn()
-        .mockResolvedValueOnce({
-          response: JSON.stringify({
+        .mockResolvedValueOnce(
+          JSON.stringify({
             ...baseRecipe,
             ingredientSections: [
               {
@@ -1468,9 +1487,9 @@ Instructions:
               },
             ],
           }),
-        })
-        .mockResolvedValueOnce({
-          response: JSON.stringify({
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({
             ...baseRecipe,
             ingredientSections: [
               {
@@ -1493,7 +1512,7 @@ Instructions:
               },
             ],
           }),
-        });
+        );
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -1518,25 +1537,22 @@ Instructions:
           "ai_only_retry",
         );
       }
-      expect(mockEnv.AI.run).toHaveBeenCalledTimes(2);
-      expect(mockEnv.AI.run.mock.calls[0]?.[0]).toBe(SOCIAL_TEXT_MODEL);
-      expect(mockEnv.AI.run.mock.calls[1]?.[0]).toBe(
-        "@cf/meta/llama-4-scout-17b-16e-instruct",
-      );
+      expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(2);
+      expect(mockEnv.aiClient.complete.mock.calls[0]?.[0]).toBe("text");
+      expect(mockEnv.aiClient.complete.mock.calls[1]?.[0]).toBe("text");
     });
 
-    it("retries malformed social AI output with Scout", async () => {
+    it("retries malformed social AI output", async () => {
       const instagramCaption =
         "Sheet pan chicken kefta Ingredients: 1.5 lb ground chicken 2 tbsp tomato paste. Directions: spread on a sheet pan and bake.";
 
-      mockEnv.AI.run = vi
+      mockEnv.aiClient.complete = vi
         .fn()
-        .mockResolvedValueOnce({
-          response:
-            '{ "name": "Sheet Pan Chicken Kefta", "ingredientSections": [{ "name": null, "ingredients": [{ "index": 0, "quantity": 1.5, "unit": "lb", "name": "ground chicken", "pr',
-        })
-        .mockResolvedValueOnce({
-          response: JSON.stringify({
+        .mockResolvedValueOnce(
+          '{ "name": "Sheet Pan Chicken Kefta", "ingredientSections": [{ "name": null, "ingredients": [{ "index": 0, "quantity": 1.5, "unit": "lb", "name": "ground chicken", "pr',
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({
             name: "Sheet Pan Chicken Kefta",
             description: null,
             prepTime: null,
@@ -1576,7 +1592,7 @@ Instructions:
             ],
             suggestedTags: ["dinner"],
           }),
-        });
+        );
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -1610,11 +1626,9 @@ Instructions:
         );
       }
 
-      expect(mockEnv.AI.run).toHaveBeenCalledTimes(2);
-      expect(mockEnv.AI.run.mock.calls[0]?.[0]).toBe(SOCIAL_TEXT_MODEL);
-      expect(mockEnv.AI.run.mock.calls[1]?.[0]).toBe(
-        "@cf/meta/llama-4-scout-17b-16e-instruct",
-      );
+      expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(2);
+      expect(mockEnv.aiClient.complete.mock.calls[0]?.[0]).toBe("text");
+      expect(mockEnv.aiClient.complete.mock.calls[1]?.[0]).toBe("text");
     });
 
     it("imports a linked recipe page when an Instagram caption only contains the recipe URL", async () => {
@@ -1640,13 +1654,13 @@ Instructions:
         </html>
       `;
 
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Invalid Social Recipe",
           ingredientSections: [],
           instructionSections: [],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const url = String(requestUrl);
@@ -1705,12 +1719,12 @@ Instructions:
         expect(stageNames).toContain("linked_url");
         expect(stageNames).not.toContain("ai");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("parses YouTube recipe details from the video description", async () => {
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Tomato Pasta",
           description: null,
           prepTime: null,
@@ -1736,7 +1750,7 @@ Instructions:
             },
           ],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -1823,15 +1837,14 @@ Instructions:
       }
     });
 
-    it("retries YouTube social AI with Scout when the compact model returns malformed JSON", async () => {
-      mockEnv.AI.run = vi
+    it("retries YouTube social AI when the first response contains malformed JSON", async () => {
+      mockEnv.aiClient.complete = vi
         .fn()
-        .mockResolvedValueOnce({
-          response:
-            '{ "name": "Sheet Pan Chicken Kefta", "ingredientSections": [{ "name": "Chicken Kefta", "ingredients": [{ "index": 0, "quantity": 1.5, "unit": "lb", "name": "ground chicken", "pr',
-        })
-        .mockResolvedValueOnce({
-          response: JSON.stringify({
+        .mockResolvedValueOnce(
+          '{ "name": "Sheet Pan Chicken Kefta", "ingredientSections": [{ "name": "Chicken Kefta", "ingredients": [{ "index": 0, "quantity": 1.5, "unit": "lb", "name": "ground chicken", "pr',
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({
             name: "Sheet Pan Chicken Kefta",
             description: null,
             prepTime: null,
@@ -1871,7 +1884,7 @@ Instructions:
             ],
             suggestedTags: ["dinner"],
           }),
-        });
+        );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -1964,11 +1977,9 @@ Instructions:
         );
       }
 
-      expect(mockEnv.AI.run).toHaveBeenCalledTimes(2);
-      expect(mockEnv.AI.run.mock.calls[0]?.[0]).toBe(SOCIAL_TEXT_MODEL);
-      expect(mockEnv.AI.run.mock.calls[1]?.[0]).toBe(
-        "@cf/meta/llama-4-scout-17b-16e-instruct",
-      );
+      expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(2);
+      expect(mockEnv.aiClient.complete.mock.calls[0]?.[0]).toBe("text");
+      expect(mockEnv.aiClient.complete.mock.calls[1]?.[0]).toBe("text");
     });
 
     it("rehosts YouTube social images through the shared generated-image path", async () => {
@@ -1981,8 +1992,8 @@ Instructions:
       );
 
       (mockEnv as any).IMAGE_SERVICE = { uploadFromUrl };
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Tomato Pasta",
           description: null,
           prepTime: null,
@@ -2008,7 +2019,7 @@ Instructions:
             },
           ],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -2098,7 +2109,7 @@ Instructions:
       );
 
       (mockEnv as any).IMAGE_SERVICE = { uploadFromUrl };
-      mockEnv.AI.run = vi.fn();
+      mockEnv.aiClient.complete = vi.fn();
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -2182,7 +2193,7 @@ Instructions:
         expect(result.error.code).toBe("YOUTUBE_NO_RECIPE_EVIDENCE");
       }
       expect(uploadFromUrl).not.toHaveBeenCalled();
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("imports a linked recipe page from a YouTube creator comment before AI", async () => {
@@ -2207,7 +2218,7 @@ Instructions:
         </html>
       `;
 
-      mockEnv.AI.run = vi.fn();
+      mockEnv.aiClient.complete = vi.fn();
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
         if (
@@ -2299,12 +2310,12 @@ Instructions:
           result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
         ).toContain("linked_url");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("uses YouTube captions for spoken recipe imports", async () => {
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Spoken Pancakes",
           description: null,
           prepTime: null,
@@ -2330,7 +2341,7 @@ Instructions:
             },
           ],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -2427,16 +2438,16 @@ Instructions:
         expect(result.data.name).toBe("Spoken Pancakes");
         expect(result.metadata.parseMethod).toBe("media_enriched");
       }
-      expect(JSON.stringify(mockEnv.AI.run.mock.calls)).toContain(
+      expect(JSON.stringify(mockEnv.aiClient.complete.mock.calls)).toContain(
         "Audio transcript:",
       );
-      expect(JSON.stringify(mockEnv.AI.run.mock.calls)).toContain(
+      expect(JSON.stringify(mockEnv.aiClient.complete.mock.calls)).toContain(
         "Use 1 cup flour",
       );
     });
 
     it("fails spoken-only YouTube videos when no transcript is usable", async () => {
-      mockEnv.AI.run = vi.fn();
+      mockEnv.aiClient.complete = vi.fn();
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
         if (
@@ -2497,12 +2508,12 @@ Instructions:
       if (!result.success) {
         expect(result.error.code).toBe("YOUTUBE_NO_RECIPE_EVIDENCE");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("continues YouTube parsing when comments are disabled", async () => {
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "No Comment Pasta",
           description: null,
           prepTime: null,
@@ -2525,7 +2536,7 @@ Instructions:
             },
           ],
         }),
-      });
+      );
 
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
@@ -2599,7 +2610,7 @@ Instructions:
     });
 
     it("fails unavailable YouTube videos clearly", async () => {
-      mockEnv.AI.run = vi.fn();
+      mockEnv.aiClient.complete = vi.fn();
       global.fetch = vi.fn((requestUrl: string | URL) => {
         const requested = String(requestUrl);
         if (
@@ -2641,7 +2652,7 @@ Instructions:
         expect(result.error.code).toBe("YOUTUBE_METADATA_FAILED");
         expect(result.error.message).toContain("not available");
       }
-      expect(mockEnv.AI.run).not.toHaveBeenCalled();
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
 
     it("rejects social links during structured-only basic import without fetching", async () => {
@@ -2748,15 +2759,13 @@ Instructions:
       };
 
       const recipeExtractionRequests: Record<string, unknown>[] = [];
-      mockEnv.AI.run = vi.fn(
-        (model: string, request: Record<string, unknown>) => {
-          if (model === SOCIAL_TEXT_MODEL) {
+      mockEnv.aiClient.complete = vi.fn(
+        (workload: string, request: Record<string, unknown>) => {
+          if (workload === "text") {
             recipeExtractionRequests.push(request);
           }
 
-          return Promise.resolve({
-            response: JSON.stringify(enrichedAiRecipe),
-          });
+          return Promise.resolve(JSON.stringify(enrichedAiRecipe));
         },
       );
 
@@ -2921,7 +2930,7 @@ Serves 4
       if (result.success) {
         expect(result.data.name).toBe("Reader Fallback Cake");
         expect(result.metadata.parseMethod).toBe("reader");
-        expect(mockEnv.AI.run).not.toHaveBeenCalled();
+        expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
       }
     });
 
@@ -2963,7 +2972,7 @@ Serves 4
         expect(
           result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
         ).toEqual(expect.arrayContaining(["ai", "image_rehosting"]));
-        expect(mockEnv.AI.run).toHaveBeenCalled();
+        expect(mockEnv.aiClient.complete).toHaveBeenCalled();
       }
     });
 
@@ -3030,8 +3039,8 @@ Serves 4
           publicUrl: "https://images.example.com/source.jpg",
         }),
       };
-      mockEnv.AI.run = vi.fn().mockResolvedValue({
-        response: JSON.stringify({
+      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+        JSON.stringify({
           name: "Toast Plate",
           description: null,
           prepTime: null,
@@ -3058,7 +3067,7 @@ Serves 4
             },
           ],
         }),
-      });
+      );
 
       const result = await parser.parse({
         type: "image",
@@ -3111,13 +3120,21 @@ Serves 4
     });
 
     it("accepts WebP images", async () => {
+      const webpData = btoa("fake webp data");
       const result = await parser.parse({
         type: "image",
-        data: btoa("fake webp data"),
+        data: webpData,
         mimeType: "image/webp",
       });
 
       expect(result.success).toBe(true);
+      expect(mockEnv.IMAGE_SERVICE.normalizeImage).toHaveBeenCalledWith(
+        expect.any(ArrayBuffer),
+        "image/webp",
+      );
+      expect(
+        JSON.stringify(mockEnv.aiClient.complete.mock.calls[0]?.[1]),
+      ).toContain("data:image/jpeg;base64");
     });
   });
 
@@ -3145,7 +3162,9 @@ Serves 4
           Promise.resolve(new TextEncoder().encode(aiOnlyHtml).buffer),
         text: () => Promise.resolve(aiOnlyHtml),
       });
-      mockEnv.AI.run = vi.fn().mockRejectedValue(new Error("AI service down"));
+      mockEnv.aiClient.complete = vi
+        .fn()
+        .mockRejectedValue(new Error("AI service down"));
 
       const result = await parser.parse({
         type: "url",
@@ -3225,8 +3244,8 @@ describe("RecipeAI.nutrition()", () => {
   });
 
   it("generates nutrition with AI when no nutrition exists", async () => {
-    mockEnv.AI.run = vi.fn().mockResolvedValue({
-      response: JSON.stringify({
+    mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+      JSON.stringify({
         calories: 510,
         protein: 14,
         carbohydrates: 82,
@@ -3243,7 +3262,7 @@ describe("RecipeAI.nutrition()", () => {
         iron: null,
         confidence: "medium",
       }),
-    });
+    );
 
     const result = await parser.nutrition({
       recipe: recipeWithoutNutrition,
@@ -3262,8 +3281,8 @@ describe("RecipeAI.nutrition()", () => {
       });
     }
 
-    expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
-    const request = mockEnv.AI.run.mock.calls[0]?.[1] as Record<
+    expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(1);
+    const request = mockEnv.aiClient.complete.mock.calls[0]?.[1] as Record<
       string,
       unknown
     >;
@@ -3273,15 +3292,15 @@ describe("RecipeAI.nutrition()", () => {
   });
 
   it("generates nutrition in one plain JSON AI request", async () => {
-    mockEnv.AI.run = vi.fn().mockResolvedValue({
-      response: JSON.stringify({
+    mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+      JSON.stringify({
         kcal: "530 kcal",
         protein_g: "22 g",
         carbs_g: "65 g",
         total_fat: "17 g",
         confidence: "low",
       }),
-    });
+    );
 
     const result = await parser.nutrition({
       recipe: recipeWithoutNutrition,
@@ -3300,8 +3319,8 @@ describe("RecipeAI.nutrition()", () => {
       });
     }
 
-    expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
-    const request = mockEnv.AI.run.mock.calls[0]?.[1] as Record<
+    expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(1);
+    const request = mockEnv.aiClient.complete.mock.calls[0]?.[1] as Record<
       string,
       unknown
     >;
@@ -3309,8 +3328,8 @@ describe("RecipeAI.nutrition()", () => {
   });
 
   it("fills missing core fields when existing imported nutrition is partial", async () => {
-    mockEnv.AI.run = vi.fn().mockResolvedValue({
-      response: JSON.stringify({
+    mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
+      JSON.stringify({
         calories: 600,
         protein: 20,
         carbohydrates: 64,
@@ -3321,7 +3340,7 @@ describe("RecipeAI.nutrition()", () => {
         sodium: 520,
         confidence: "medium",
       }),
-    });
+    );
 
     const result = await parser.nutrition({
       recipe: {
@@ -3352,8 +3371,8 @@ describe("RecipeAI.nutrition()", () => {
       });
     }
 
-    expect(mockEnv.AI.run).toHaveBeenCalledTimes(1);
-    const request = mockEnv.AI.run.mock.calls[0]?.[1] as Record<
+    expect(mockEnv.aiClient.complete).toHaveBeenCalledTimes(1);
+    const request = mockEnv.aiClient.complete.mock.calls[0]?.[1] as Record<
       string,
       unknown
     >;
@@ -3389,7 +3408,7 @@ describe("RecipeAI.nutrition()", () => {
       });
     }
 
-    expect(mockEnv.AI.run).not.toHaveBeenCalled();
+    expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
   });
 });
 
@@ -3397,8 +3416,7 @@ describe("default HTTP handler", () => {
   it("returns error response for direct HTTP access", async () => {
     const { default: handler } = await import("../../src/index");
     const mockRequest = new Request("https://example.com/");
-    const mockEnv = { AI: {}, RECIPE_CACHE: {} } as any;
-    const response = await handler.fetch(mockRequest, mockEnv);
+    const response = await handler.fetch(mockRequest);
 
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error: string };
