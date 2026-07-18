@@ -19,3 +19,9 @@ EXPO_ACCESS_TOKEN=
 # Optional: enables Adapty entitlement refresh and webhook handling
 ADAPTY_SECRET_API_KEY=
 ADAPTY_WEBHOOK_AUTHORIZATION=
+
+# Optional: additional browser/app origins accepted by CORS and Better Auth
+TRUSTED_ORIGINS=
+
+# Optional locally; required by the production Worker for Sentry reporting
+SENTRY_DSN=

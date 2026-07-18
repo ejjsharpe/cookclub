@@ -8,7 +8,9 @@
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify",
     "deploy:prod": "wrangler deploy --env production --minify",
-    "check-types": "tsc --noEmit",
+    "generate:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false",
+    "check:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false --check",
+    "check-types": "bun run check:worker-types && tsc --noEmit",
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
     "test": "vitest run",
     "test:watch": "vitest"

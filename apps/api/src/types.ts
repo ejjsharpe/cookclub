@@ -1,9 +1,12 @@
 import type { TRPCEnv } from "@repo/trpc/server/env";
 
-export type Env = TRPCEnv & {
-  SENTRY_DSN?: string;
-  SENTRY_ENVIRONMENT?: "development" | "production";
-};
+type ConfiguredTRPCEnv = Pick<Cloudflare.Env, keyof TRPCEnv>;
+
+/**
+ * Wrangler owns the complete binding list. TRPCEnv narrows the configured
+ * bindings that shared routers use to their domain-specific RPC/queue types.
+ */
+export type Env = Omit<Cloudflare.Env, keyof ConfiguredTRPCEnv> & TRPCEnv;
 
 export type AppHonoEnv = {
   Bindings: Env;
