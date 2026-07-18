@@ -54,6 +54,7 @@ const BACK_BUTTON_WIDTH = 44;
 const BACK_BUTTON_GAP = 6;
 const FILTER_BUTTON_SIZE = 44;
 const FILTER_BUTTON_GAP = 6;
+const RECIPE_SEARCH_PLACEHOLDER = "Search recipes, ingredients, collections...";
 const SEARCH_START_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
 const SEARCH_INPUT_WIDTH =
   SCREEN_WIDTH -
@@ -1127,7 +1128,7 @@ export const MyRecipesScreen = () => {
               <SearchBar
                 value=""
                 onChangeText={NOOP}
-                placeholder="Search recipes, collections..."
+                placeholder={RECIPE_SEARCH_PLACEHOLDER}
               />
             </View>
           </AnimatedPressable>
@@ -1252,7 +1253,7 @@ export const MyRecipesScreen = () => {
           <SearchBar
             value={searchQuery}
             onChangeText={NOOP}
-            placeholder="Search recipes, collections..."
+            placeholder={RECIPE_SEARCH_PLACEHOLDER}
           />
         </Animated.View>
       </Animated.View>
@@ -1275,7 +1276,7 @@ export const MyRecipesScreen = () => {
           ref={searchInputRef}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search recipes, collections..."
+          placeholder={RECIPE_SEARCH_PLACEHOLDER}
         />
       </Animated.View>
 

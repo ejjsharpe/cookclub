@@ -1,0 +1,1 @@
+export const MIN_RECIPE_SEARCH_LENGTH = 2;

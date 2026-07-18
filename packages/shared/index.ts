@@ -19,3 +19,4 @@ export {
   isRecognizedUnit,
   normalizeUnit,
 } from "./src/unitNormalizer";
+export { MIN_RECIPE_SEARCH_LENGTH } from "./src/recipeSearch";

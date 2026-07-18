@@ -1,3 +1,4 @@
+import { MIN_RECIPE_SEARCH_LENGTH } from "@repo/shared";
 import type { Inputs, Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import {
@@ -16,6 +17,17 @@ export type ParsedRecipe = Outputs["recipe"]["parseRecipeFromUrl"];
 export type PersonalizationGoal =
   Inputs["recipe"]["personalizeRecipe"]["goals"][number];
 export type Tag = RecipeListItem["tags"][number];
+
+type RecipeTRPC = ReturnType<typeof useTRPC>;
+type RecipeQueryClient = ReturnType<typeof useQueryClient>;
+
+function invalidateUserRecipeLists(
+  queryClient: RecipeQueryClient,
+  trpc: RecipeTRPC,
+) {
+  queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+  queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter());
+}
 
 // Parse recipe from URL using AI (Smart Import)
 export const useParseRecipeFromUrl = () => {
@@ -80,32 +92,52 @@ export const useGetUserRecipes = ({
 }: UseGetUserRecipesParams = {}) => {
   const trpc = useTRPC();
   const normalizedSearch = search?.trim() || undefined;
+  const isSearchActive =
+    (normalizedSearch?.length ?? 0) >= MIN_RECIPE_SEARCH_LENGTH;
   const normalizedTagIds = tagIds && tagIds.length > 0 ? tagIds : undefined;
   const normalizedMaxTotalTime =
     maxTotalTime != null && Number.isFinite(maxTotalTime)
       ? maxTotalTime
       : undefined;
 
-  const queryInput = useMemo(
+  const sharedInput = useMemo(
     () => ({
       limit,
-      ...(normalizedSearch ? { search: normalizedSearch } : {}),
       ...(normalizedTagIds ? { tagIds: normalizedTagIds } : {}),
       ...(normalizedMaxTotalTime != null
         ? { maxTotalTime: normalizedMaxTotalTime }
         : {}),
     }),
-    [limit, normalizedSearch, normalizedTagIds, normalizedMaxTotalTime],
+    [limit, normalizedTagIds, normalizedMaxTotalTime],
   );
 
-  const infiniteQueryOptions = trpc.recipe.getUserRecipes.infiniteQueryOptions(
-    queryInput,
+  const searchInput = useMemo(
+    () => ({
+      ...sharedInput,
+      query: normalizedSearch ?? "",
+    }),
+    [normalizedSearch, sharedInput],
+  );
+
+  const browseOptions = trpc.recipe.getUserRecipes.infiniteQueryOptions(
+    sharedInput,
+    { getNextPageParam: (lastPage) => lastPage?.nextCursor },
+  );
+  const searchOptions = trpc.recipe.searchUserRecipes.infiniteQueryOptions(
+    searchInput,
     { getNextPageParam: (lastPage) => lastPage?.nextCursor },
   );
 
-  return useInfiniteQuery({
-    ...infiniteQueryOptions,
+  const browseQuery = useInfiniteQuery({
+    ...browseOptions,
+    enabled: !isSearchActive,
   });
+  const searchQuery = useInfiniteQuery({
+    ...searchOptions,
+    enabled: isSearchActive,
+  });
+
+  return isSearchActive ? searchQuery : browseQuery;
 };
 
 // Get recipe detail
@@ -187,7 +219,7 @@ export const useImportRecipe = () => {
     ...trpc.recipe.importRecipe.mutationOptions(),
     onSuccess: () => {
       // Invalidate user's recipe list to show the imported recipe
-      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      invalidateUserRecipeLists(queryClient, trpc);
       // Invalidate recipe detail queries (user may view their new copy)
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
       queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
@@ -209,7 +241,7 @@ export const useDeleteRecipe = () => {
     ...trpc.recipe.deleteRecipe.mutationOptions(),
     onSuccess: () => {
       // Invalidate user's recipe list to remove the deleted recipe
-      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      invalidateUserRecipeLists(queryClient, trpc);
       // Invalidate recipe detail queries
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
       queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
@@ -231,7 +263,7 @@ export const useSaveRecipe = () => {
     ...trpc.recipe.postRecipe.mutationOptions(),
     onSuccess: () => {
       // Invalidate user's recipe list to show the new recipe
-      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      invalidateUserRecipeLists(queryClient, trpc);
       // Invalidate recipe detail queries
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
       queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
@@ -256,7 +288,7 @@ export const useUpdateRecipe = () => {
   return useMutation({
     ...trpc.recipe.updateRecipe.mutationOptions(),
     onSuccess: () => {
-      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      invalidateUserRecipeLists(queryClient, trpc);
       queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
       queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
       queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());

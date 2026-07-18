@@ -9,6 +9,7 @@ import { recipes as recipeData, type SourceType } from "./data/recipes";
 import { socialRecipes } from "./data/social-recipes";
 import { users as userData } from "./data/users";
 import * as schema from "./schemas";
+import { syncRecipeSearchDocument } from "./services/recipe/recipe-search-document.service";
 import { extractPreparation } from "./utils/ingredientParser";
 
 const rl = readline.createInterface({
@@ -1608,6 +1609,12 @@ async function main() {
       ...socialMediaRecipes,
       ...importedRecipes,
     ];
+    for (const recipe of allRecipes) {
+      await syncRecipeSearchDocument(db, recipe.id);
+    }
+    console.log(`✅ Synced ${allRecipes.length} recipe search documents`);
+    console.log("");
+
     await seedActivityFeed(db, users, allRecipes);
     console.log("");
 

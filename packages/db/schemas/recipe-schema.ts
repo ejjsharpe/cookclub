@@ -11,6 +11,7 @@ import {
   jsonb,
   uniqueIndex,
   check,
+  customType,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -49,16 +50,64 @@ export const recipes = pgTable(
   },
   (table) => [
     index("recipes_owner_id_idx").on(table.ownerId),
+    index("recipes_owner_created_id_idx").on(
+      table.ownerId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
     index("recipes_created_at_idx").on(table.createdAt),
     index("recipes_name_idx").on(table.name),
-    // Full-text search index for recipe name queries
-    index("recipes_name_search_idx").using(
-      "gin",
-      sql`to_tsvector('english', ${table.name})`,
-    ),
     check(
       "recipes_source_type_check",
       sql`${table.sourceType} IN ('url', 'image', 'text', 'ai', 'manual', 'user')`,
+    ),
+  ],
+);
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
+
+/**
+ * Denormalized full-text documents for private recipe-library search.
+ * Writers keep this table in sync after recipe ingredients are finalized.
+ */
+export const recipeSearchDocuments = pgTable(
+  "recipe_search_documents",
+  {
+    recipeId: integer("recipe_id")
+      .primaryKey()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    ingredientNames: text("ingredient_names").notNull().default(""),
+    titleVector: tsvector("title_vector")
+      .generatedAlwaysAs(sql`to_tsvector('english', ${sql.raw('"title"')})`)
+      .notNull(),
+    ingredientVector: tsvector("ingredient_vector")
+      .generatedAlwaysAs(
+        sql`to_tsvector('english', ${sql.raw('"ingredient_names"')})`,
+      )
+      .notNull(),
+    combinedVector: tsvector("combined_vector")
+      .generatedAlwaysAs(
+        sql`setweight(to_tsvector('english', ${sql.raw('"title"')}), 'A') || setweight(to_tsvector('english', ${sql.raw('"ingredient_names"')}), 'B')`,
+      )
+      .notNull(),
+  },
+  (table) => [
+    index("recipe_search_documents_owner_id_idx").on(table.ownerId),
+    index("recipe_search_documents_combined_vector_idx").using(
+      "gin",
+      table.combinedVector,
+    ),
+    index("recipe_search_documents_ingredient_vector_idx").using(
+      "gin",
+      table.ingredientVector,
     ),
   ],
 );

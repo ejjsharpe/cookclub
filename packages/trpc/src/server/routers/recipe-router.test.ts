@@ -34,6 +34,9 @@ const mockGetRecipeDetail = vi.fn();
 const mockGetStoredRecipeNutrition = vi.fn();
 const mockUpsertRecipeNutrition = vi.fn();
 const mockImportRecipe = vi.fn();
+const mockQueryUserRecipes = vi.fn();
+const mockQueryUserRecipesByOwner = vi.fn();
+const mockSearchUserRecipes = vi.fn();
 const mockGetSubscriptionStatus = vi.fn();
 
 vi.mock("@repo/db/services", () => ({
@@ -45,6 +48,10 @@ vi.mock("@repo/db/services", () => ({
   upsertRecipeNutrition: (...args: unknown[]) =>
     mockUpsertRecipeNutrition(...args),
   importRecipe: (...args: unknown[]) => mockImportRecipe(...args),
+  queryUserRecipes: (...args: unknown[]) => mockQueryUserRecipes(...args),
+  queryUserRecipesByOwner: (...args: unknown[]) =>
+    mockQueryUserRecipesByOwner(...args),
+  searchUserRecipes: (...args: unknown[]) => mockSearchUserRecipes(...args),
   queryPopularRecipesThisWeek: vi.fn(),
   DEFAULT_PRO_ACCESS_LEVEL_ID: "pro",
   getSubscriptionStatus: (...args: unknown[]) =>
@@ -267,6 +274,18 @@ describe("recipeRouter - activity integration", () => {
     mockCreateRecipe.mockResolvedValue({ id: 1, name: "Test Recipe" });
     mockUpdateRecipe.mockResolvedValue({ id: 1 });
     mockImportRecipe.mockResolvedValue({ id: 2 });
+    mockQueryUserRecipes.mockResolvedValue({
+      items: [],
+      nextCursor: undefined,
+    });
+    mockQueryUserRecipesByOwner.mockResolvedValue({
+      items: [],
+      nextCursor: undefined,
+    });
+    mockSearchUserRecipes.mockResolvedValue({
+      items: [],
+      nextCursor: undefined,
+    });
     mockGetRecipeDetail.mockResolvedValue({
       id: 1,
       name: "Creamy Pasta",
@@ -896,6 +915,92 @@ describe("recipeRouter - activity integration", () => {
           ],
         }),
       );
+    });
+  });
+
+  describe("searchUserRecipes", () => {
+    it("routes private-library searches through the database client", async () => {
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.searchUserRecipes({
+        query: "tomato pasta",
+        tagIds: [9, 4],
+        maxTotalTime: 30,
+        limit: 25,
+      });
+
+      expect(mockSearchUserRecipes).toHaveBeenCalledWith(mockDb, {
+        ownerId: "test-user-id",
+        query: "tomato pasta",
+        tagIds: [9, 4],
+        maxTotalTime: 30,
+        limit: 25,
+      });
+    });
+
+    it("rejects an excessive tag filter before querying", async () => {
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.searchUserRecipes({
+          query: "tomato",
+          tagIds: Array.from({ length: 51 }, (_, index) => index + 1),
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mockSearchUserRecipes).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("recipe list queries", () => {
+    it("routes current-user browsing through the database service", async () => {
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.getUserRecipes({
+        cursor: 1_752_840_000_000,
+        tagIds: [4, 9],
+        maxTotalTime: 30,
+        limit: 25,
+      });
+
+      expect(mockQueryUserRecipes).toHaveBeenCalledWith(mockDb, {
+        ownerId: "test-user-id",
+        cursor: 1_752_840_000_000,
+        tagIds: [4, 9],
+        maxTotalTime: 30,
+        limit: 25,
+      });
+    });
+
+    it("routes another user's recipes through the owner-list service", async () => {
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.getUserRecipesById({
+        userId: "another-user",
+        search: "pasta",
+        limit: 15,
+      });
+
+      expect(mockQueryUserRecipesByOwner).toHaveBeenCalledWith(mockDb, {
+        ownerId: "another-user",
+        search: "pasta",
+        limit: 15,
+      });
+    });
+
+    it("rejects excessive browse tags before querying", async () => {
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.getUserRecipes({
+          tagIds: Array.from({ length: 51 }, (_, index) => index + 1),
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(mockQueryUserRecipes).not.toHaveBeenCalled();
     });
   });
 

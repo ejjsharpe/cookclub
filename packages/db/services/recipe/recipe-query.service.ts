@@ -3,15 +3,17 @@ import { eq, and, desc, sql, inArray } from "drizzle-orm";
 
 import {
   recipes,
-  recipeImages,
   recipeCollections,
   collections,
-  recipeTags,
   tags,
   follows,
   user,
 } from "../../schemas";
 import type { DbClient } from "../types";
+import {
+  loadRecipeListRelations,
+  normalizeRecipeListLimit,
+} from "./recipe-list.service";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -33,29 +35,7 @@ export type RecipeListItem = Omit<typeof recipes.$inferSelect, "ownerId"> & {
 
 // ─── Helper Functions ──────────────────────────────────────────────────────
 
-/**
- * Group tags by recipe ID for batch assignment
- */
-export function groupTagsByRecipeId(
-  tagsData: { recipeId: number; tag: PublicRecipeTag | null }[],
-): Record<number, PublicRecipeTag[]> {
-  return tagsData.reduce(
-    (acc, item) => {
-      if (!acc[item.recipeId]) {
-        acc[item.recipeId] = [];
-      }
-      if (item.tag) {
-        acc[item.recipeId]!.push(item.tag);
-      }
-      return acc;
-    },
-    {} as Record<number, PublicRecipeTag[]>,
-  );
-}
-
-/**
- * Group collection IDs by recipe ID for batch assignment
- */
+/** Group collection IDs by recipe ID for batch assignment. */
 export function groupCollectionsByRecipeId(
   collectionsData: { recipeId: number; collectionId: number }[],
 ): Record<number, number[]> {
@@ -71,26 +51,6 @@ export function groupCollectionsByRecipeId(
   );
 }
 
-function toPublicImageAsset(row: {
-  url: string;
-  storageKey: string;
-  width: number;
-  height: number;
-  contentType: string;
-  byteSize: number;
-  thumbhash: string;
-}): PublicImageAsset {
-  return {
-    url: row.url,
-    storageKey: row.storageKey,
-    width: row.width,
-    height: row.height,
-    contentType: row.contentType as PublicImageAsset["contentType"],
-    byteSize: row.byteSize,
-    thumbhash: row.thumbhash,
-  };
-}
-
 // ─── Popular This Week Query ────────────────────────────────────────────────
 
 /**
@@ -102,7 +62,7 @@ export async function queryPopularRecipesThisWeek(
   userId: string,
   limit: number = 10,
 ): Promise<RecipeListItem[]> {
-  const normalizedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  const normalizedLimit = normalizeRecipeListLimit(limit);
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -148,20 +108,8 @@ export async function queryPopularRecipesThisWeek(
   // Fetch related data
   const recipeIds = queryResults.map((item) => item.recipe.id);
 
-  const [tagsData, collectionsData, imagesData] = await Promise.all([
-    recipeIds.length > 0
-      ? db
-          .select({
-            recipeId: recipeTags.recipeId,
-            tag: {
-              id: tags.id,
-              name: tags.name,
-            },
-          })
-          .from(recipeTags)
-          .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-          .where(inArray(recipeTags.recipeId, recipeIds))
-      : [],
+  const [relations, collectionsData] = await Promise.all([
+    loadRecipeListRelations(db, recipeIds),
     recipeIds.length > 0
       ? db
           .select({
@@ -180,41 +128,17 @@ export async function queryPopularRecipesThisWeek(
             ),
           )
       : [],
-    recipeIds.length > 0
-      ? db
-          .select({
-            recipeId: recipeImages.recipeId,
-            url: recipeImages.url,
-            storageKey: recipeImages.storageKey,
-            width: recipeImages.width,
-            height: recipeImages.height,
-            contentType: recipeImages.contentType,
-            byteSize: recipeImages.byteSize,
-            thumbhash: recipeImages.thumbhash,
-          })
-          .from(recipeImages)
-          .where(inArray(recipeImages.recipeId, recipeIds))
-          .orderBy(recipeImages.recipeId, recipeImages.id)
-      : [],
   ]);
 
-  // Group related data
-  const tagsByRecipe = groupTagsByRecipeId(tagsData);
   const collectionsByRecipe = groupCollectionsByRecipeId(collectionsData);
-  const firstImageByRecipe = new Map<number, PublicImageAsset>();
-  for (const image of imagesData) {
-    if (!firstImageByRecipe.has(image.recipeId)) {
-      firstImageByRecipe.set(image.recipeId, toPublicImageAsset(image));
-    }
-  }
 
   return queryResults.map((item) => ({
     ...item.recipe,
     owner: item.uploader,
-    coverImage: firstImageByRecipe.get(item.recipe.id) ?? null,
+    coverImage: relations.coverImageByRecipe.get(item.recipe.id) ?? null,
     collectionIds: collectionsByRecipe[item.recipe.id] || [],
     isFollowing: item.isFollowing,
-    tags: tagsByRecipe[item.recipe.id] || [],
+    tags: relations.tagsByRecipe.get(item.recipe.id) ?? [],
     relevanceScore: Number(item.recentEngagement),
   }));
 }

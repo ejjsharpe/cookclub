@@ -5,12 +5,10 @@ import type {
 } from "@repo/contracts";
 import type { PublicImageAsset } from "@repo/contracts/images";
 import {
-  recipeImages,
   recipes,
   recipeImportJobs,
   recipeCollections,
   collections,
-  user,
   tags,
   recipeTags,
   activityEvents,
@@ -22,12 +20,15 @@ import {
   getRecipeDetail,
   getStoredRecipeNutrition,
   importRecipe,
+  queryUserRecipes,
+  queryUserRecipesByOwner,
+  searchUserRecipes,
   upsertRecipeNutrition,
 } from "@repo/db/services";
 import { parseIngredients } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, lt, desc, and, ilike, count, inArray, isNull } from "drizzle-orm";
+import { eq, desc, and, count, isNull } from "drizzle-orm";
 
 import { PublicTRPCError } from "../public-errors";
 import { enforceRateLimit } from "../rate-limit";
@@ -193,7 +194,6 @@ const MAX_RECIPE_IMAGE_NAME_LENGTH = 200;
 const MAX_RECIPE_IMAGE_DESCRIPTION_LENGTH = 2_000;
 const MAX_RECIPE_IMAGE_ITEMS = 100;
 const MAX_RECIPE_IMAGE_ITEM_LENGTH = 1_000;
-const MAX_RECIPE_LIST_LIMIT = 100;
 const MAX_PERSONALIZATION_GOALS = 10;
 const MAX_PERSONALIZATION_NOTES_LENGTH = 2_000;
 
@@ -357,30 +357,6 @@ function isHttpUrl(value: string) {
   }
 }
 
-function toPublicImageAsset(row: {
-  url: string;
-  storageKey: string;
-  width: number;
-  height: number;
-  contentType: string;
-  byteSize: number;
-  thumbhash: string;
-}): PublicImageAsset {
-  return {
-    url: row.url,
-    storageKey: row.storageKey,
-    width: row.width,
-    height: row.height,
-    contentType: row.contentType as PublicImageAsset["contentType"],
-    byteSize: row.byteSize,
-    thumbhash: row.thumbhash,
-  };
-}
-
-function normalizeRecipeListLimit(limit: number) {
-  return Math.min(Math.max(Math.trunc(limit), 1), MAX_RECIPE_LIST_LIMIT);
-}
-
 function assertMaxLength(value: string, label: string, maxLength: number) {
   if (value.length <= maxLength) return;
 
@@ -388,6 +364,15 @@ function assertMaxLength(value: string, label: string, maxLength: number) {
     code: "PAYLOAD_TOO_LARGE",
     message: `${label} is too large.`,
   });
+}
+
+function assertRecipeTagFilterLimit(tagIds?: number[]) {
+  if (tagIds && tagIds.length > 50) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Too many recipe tags selected.",
+    });
+  }
 }
 
 function assertMaxArrayLength(
@@ -1086,145 +1071,69 @@ export const recipeRouter = router({
       type({
         limit: "number = 20",
         cursor: "number?",
-        search: "string?",
         tagIds: "number[]?",
         maxTotalTime: "number?", // in minutes
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { cursor, search, tagIds, maxTotalTime } = input;
-      const limit = normalizeRecipeListLimit(input.limit);
+      assertRecipeTagFilterLimit(input.tagIds);
 
       try {
-        // If filtering by tags, first get the recipe IDs that have any of the selected tags
-        let recipeIdsWithTags: number[] | undefined;
-        if (tagIds && tagIds.length > 0) {
-          const recipesWithTags = await ctx.db
-            .selectDistinct({ recipeId: recipeTags.recipeId })
-            .from(recipeTags)
-            .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-            .where(
-              and(
-                inArray(recipeTags.tagId, tagIds),
-                eq(tags.userId, ctx.user.id),
-              ),
-            );
-          recipeIdsWithTags = recipesWithTags.map((r) => r.recipeId);
+        return await queryUserRecipes(ctx.db, {
+          ownerId: ctx.user.id,
+          limit: input.limit,
+          ...(input.cursor ? { cursor: input.cursor } : {}),
+          ...(input.tagIds ? { tagIds: input.tagIds } : {}),
+          ...(input.maxTotalTime !== undefined
+            ? { maxTotalTime: input.maxTotalTime }
+            : {}),
+        });
+      } catch (error) {
+        throw mapServiceError(error);
+      }
+    }),
 
-          // If no recipes match the tags, return empty result
-          if (recipeIdsWithTags.length === 0) {
-            return { items: [], nextCursor: undefined };
-          }
-        }
+  searchUserRecipes: authedProcedure
+    .input(
+      type({
+        query: "string",
+        limit: "number = 20",
+        "cursor?": "string",
+        "tagIds?": "number[]",
+        "maxTotalTime?": "number",
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      if (input instanceof type.errors) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: input.summary });
+      }
 
-        // Query recipes owned by the current user (ownerId = currentUser)
-        const userRecipesList = await ctx.db
-          .select({
-            recipe: recipes,
-            uploader: {
-              id: user.id,
-              name: user.name,
-              username: user.username,
-              image: user.image,
-            },
-          })
-          .from(recipes)
-          .innerJoin(user, eq(recipes.ownerId, user.id))
-          .where(
-            and(
-              eq(recipes.ownerId, ctx.user.id),
-              cursor ? lt(recipes.createdAt, new Date(cursor)) : undefined,
-              search ? ilike(recipes.name, `%${search}%`) : undefined,
-              recipeIdsWithTags
-                ? inArray(recipes.id, recipeIdsWithTags)
-                : undefined,
-            ),
-          )
-          .orderBy(desc(recipes.createdAt))
-          .limit(limit + 1);
+      assertRecipeTagFilterLimit(input.tagIds);
 
-        // Get recipe IDs to fetch tags
-        const recipeIds = userRecipesList.map((item) => item.recipe.id);
-
-        const [tagsData, imagesData] =
-          recipeIds.length > 0
-            ? await Promise.all([
-                ctx.db
-                  .select({
-                    recipeId: recipeTags.recipeId,
-                    tag: {
-                      id: tags.id,
-                      name: tags.name,
-                    },
-                  })
-                  .from(recipeTags)
-                  .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-                  .where(inArray(recipeTags.recipeId, recipeIds)),
-                ctx.db
-                  .select({
-                    recipeId: recipeImages.recipeId,
-                    url: recipeImages.url,
-                    storageKey: recipeImages.storageKey,
-                    width: recipeImages.width,
-                    height: recipeImages.height,
-                    contentType: recipeImages.contentType,
-                    byteSize: recipeImages.byteSize,
-                    thumbhash: recipeImages.thumbhash,
-                  })
-                  .from(recipeImages)
-                  .where(inArray(recipeImages.recipeId, recipeIds))
-                  .orderBy(recipeImages.recipeId, recipeImages.id),
-              ])
-            : [[], []];
-
-        // Group tags by recipe
-        const tagsByRecipe = tagsData.reduce(
-          (acc, item) => {
-            if (!acc[item.recipeId]) {
-              acc[item.recipeId] = [];
-            }
-            if (item.tag) {
-              acc[item.recipeId]!.push(item.tag);
-            }
-            return acc;
-          },
-          {} as Record<number, { id: number; name: string }[]>,
+      try {
+        const startedAt = Date.now();
+        const result = await searchUserRecipes(ctx.db, {
+          ownerId: ctx.user.id,
+          query: input.query,
+          limit: input.limit,
+          ...(input.cursor ? { cursor: input.cursor } : {}),
+          ...(input.tagIds ? { tagIds: input.tagIds } : {}),
+          ...(input.maxTotalTime !== undefined
+            ? { maxTotalTime: input.maxTotalTime }
+            : {}),
+        });
+        console.log(
+          JSON.stringify({
+            requestId: ctx.requestId,
+            procedure: "recipe.searchUserRecipes",
+            durationMs: Date.now() - startedAt,
+            resultCount: result.items.length,
+            hasNextPage: Boolean(result.nextCursor),
+          }),
         );
-
-        const firstImageByRecipe = new Map<number, PublicImageAsset>();
-        for (const image of imagesData) {
-          if (!firstImageByRecipe.has(image.recipeId)) {
-            firstImageByRecipe.set(image.recipeId, toPublicImageAsset(image));
-          }
-        }
-
-        let items = userRecipesList.map((item) => ({
-          ...item.recipe,
-          coverImage: firstImageByRecipe.get(item.recipe.id) ?? null,
-          owner: item.uploader,
-          tags: tagsByRecipe[item.recipe.id] || [],
-        }));
-
-        // Filter by maxTotalTime if specified
-        if (maxTotalTime !== undefined) {
-          items = items.filter((item) => {
-            if (!item.totalTime) return false;
-            return item.totalTime <= maxTotalTime;
-          });
-        }
-
-        let nextCursor: number | undefined = undefined;
-        if (items.length > limit) {
-          const nextItem = items.pop();
-          nextCursor = nextItem?.createdAt.getTime();
-        }
-
-        return {
-          items,
-          nextCursor,
-        };
-      } catch (err) {
-        throw err;
+        return result;
+      } catch (error) {
+        throw mapServiceError(error);
       }
     }),
 
@@ -1239,106 +1148,15 @@ export const recipeRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { userId, cursor, search } = input;
-      const limit = normalizeRecipeListLimit(input.limit);
-
       try {
-        const userRecipesList = await ctx.db
-          .select({
-            recipe: recipes,
-            uploader: {
-              id: user.id,
-              name: user.name,
-              username: user.username,
-              image: user.image,
-            },
-          })
-          .from(recipes)
-          .innerJoin(user, eq(recipes.ownerId, user.id))
-          .where(
-            and(
-              eq(recipes.ownerId, userId),
-              cursor ? lt(recipes.createdAt, new Date(cursor)) : undefined,
-              search ? ilike(recipes.name, `%${search}%`) : undefined,
-            ),
-          )
-          .orderBy(desc(recipes.createdAt))
-          .limit(limit + 1);
-
-        // Get recipe IDs to fetch tags
-        const recipeIds = userRecipesList.map((item) => item.recipe.id);
-
-        const [tagsData, imagesData] =
-          recipeIds.length > 0
-            ? await Promise.all([
-                ctx.db
-                  .select({
-                    recipeId: recipeTags.recipeId,
-                    tag: {
-                      id: tags.id,
-                      name: tags.name,
-                    },
-                  })
-                  .from(recipeTags)
-                  .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-                  .where(inArray(recipeTags.recipeId, recipeIds)),
-                ctx.db
-                  .select({
-                    recipeId: recipeImages.recipeId,
-                    url: recipeImages.url,
-                    storageKey: recipeImages.storageKey,
-                    width: recipeImages.width,
-                    height: recipeImages.height,
-                    contentType: recipeImages.contentType,
-                    byteSize: recipeImages.byteSize,
-                    thumbhash: recipeImages.thumbhash,
-                  })
-                  .from(recipeImages)
-                  .where(inArray(recipeImages.recipeId, recipeIds))
-                  .orderBy(recipeImages.recipeId, recipeImages.id),
-              ])
-            : [[], []];
-
-        // Group tags by recipe
-        const tagsByRecipe = tagsData.reduce(
-          (acc, item) => {
-            if (!acc[item.recipeId]) {
-              acc[item.recipeId] = [];
-            }
-            if (item.tag) {
-              acc[item.recipeId]!.push(item.tag);
-            }
-            return acc;
-          },
-          {} as Record<number, { id: number; name: string }[]>,
-        );
-
-        const firstImageByRecipe = new Map<number, PublicImageAsset>();
-        for (const image of imagesData) {
-          if (!firstImageByRecipe.has(image.recipeId)) {
-            firstImageByRecipe.set(image.recipeId, toPublicImageAsset(image));
-          }
-        }
-
-        const items = userRecipesList.map((item) => ({
-          ...item.recipe,
-          coverImage: firstImageByRecipe.get(item.recipe.id) ?? null,
-          owner: item.uploader,
-          tags: tagsByRecipe[item.recipe.id] || [],
-        }));
-
-        let nextCursor: number | undefined = undefined;
-        if (items.length > limit) {
-          const nextItem = items.pop();
-          nextCursor = nextItem?.createdAt.getTime();
-        }
-
-        return {
-          items,
-          nextCursor,
-        };
-      } catch (err) {
-        throw err;
+        return await queryUserRecipesByOwner(ctx.db, {
+          ownerId: input.userId,
+          limit: input.limit,
+          ...(input.cursor ? { cursor: input.cursor } : {}),
+          ...(input.search ? { search: input.search } : {}),
+        });
+      } catch (error) {
+        throw mapServiceError(error);
       }
     }),
 
@@ -1632,7 +1450,7 @@ export const recipeRouter = router({
         return await queryPopularRecipesThisWeek(
           ctx.db,
           ctx.user.id,
-          normalizeRecipeListLimit(input.limit),
+          input.limit,
         );
       } catch (err) {
         console.error("Error fetching popular recipes:", err);

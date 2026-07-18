@@ -23,6 +23,7 @@ import {
 import { getOrCreateDefaultCollections } from "../collection/collection.service";
 import { ServiceError } from "../errors";
 import type { DbClient, TransactionClient } from "../types";
+import { syncRecipeSearchDocument } from "./recipe-search-document.service";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -629,6 +630,8 @@ export async function createRecipe(
       createdAt: new Date(),
     });
 
+    await syncRecipeSearchDocument(tx, recipe.id);
+
     return {
       ...recipe,
       ingredientSections: insertedIngredientSections,
@@ -768,6 +771,8 @@ export async function updateRecipe(
           recipeImageInsertValues(input.recipeId, image),
         ),
       );
+
+    await syncRecipeSearchDocument(tx, input.recipeId);
 
     return { id: updatedRecipe.id };
   });
@@ -1342,6 +1347,8 @@ export async function importRecipe(
       collectionId: defaultCollections.wantToCook.id,
       createdAt: new Date(),
     });
+
+    await syncRecipeSearchDocument(tx, newRecipe.id);
 
     return newRecipe;
   });
