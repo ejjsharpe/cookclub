@@ -5,6 +5,16 @@
   "account_id": "46fa47bc2bba51d75383b4dfe6e3deb1",
   "compatibility_flags": ["nodejs_compat"],
   "compatibility_date": "2025-02-20",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
   "dev": {
     "port": 8787,
   },

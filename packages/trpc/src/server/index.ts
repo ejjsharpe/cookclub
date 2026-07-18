@@ -15,6 +15,12 @@ import { router } from "./trpc";
 
 export { createContext };
 export {
+  getPublicErrorMessage,
+  PublicTRPCError,
+  publicCodeForTransport,
+  publicErrorForResponse,
+} from "./public-errors";
+export {
   failRecipeImportJob,
   processPushNotificationReceipts,
   processRecipeImportJob,

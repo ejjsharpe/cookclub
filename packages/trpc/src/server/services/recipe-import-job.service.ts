@@ -1,3 +1,4 @@
+import type { PublicErrorCode } from "@repo/contracts";
 import { recipeImportJobs } from "@repo/db/schemas";
 import {
   refundSmartImportUsageForPeriod,
@@ -7,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, isNull, lt, ne, or } from "drizzle-orm";
 
 import type { RecipeImportJobMessage, TRPCEnv } from "../env";
+import { getPublicErrorMessage, PublicTRPCError } from "../public-errors";
 
 export type ImportJobMode = "url" | "text" | "image";
 export type ImportJobType = "basic" | "smart";
@@ -36,7 +38,7 @@ export type ProcessRecipeImportJobResult = "processed" | "skipped" | "busy";
 export const RECIPE_IMPORT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
 export const RECIPE_IMPORT_JOB_STALE_MS = 60 * 1000;
 export const RECIPE_IMPORT_JOB_STALE_ERROR =
-  "Import timed out. Please try again.";
+  getPublicErrorMessage("IMPORT_TIMED_OUT");
 const MAX_PARSE_DIAGNOSTIC_STAGES = 32;
 
 export type StaleRecipeImportJobCandidate = {
@@ -52,10 +54,75 @@ function processingStartedAtMatches(processingStartedAt: Date | null) {
     : isNull(recipeImportJobs.processingStartedAt);
 }
 
-export function getImportErrorMessage(error: unknown) {
-  if (error instanceof TRPCError) return error.message;
-  if (error instanceof Error) return error.message;
-  return "Something went wrong while importing.";
+export type PersistedImportErrorCode = Extract<
+  PublicErrorCode,
+  | "IMPORT_INVALID_URL"
+  | "IMPORT_UNSUPPORTED_SOURCE"
+  | "IMPORT_SOURCE_UNAVAILABLE"
+  | "IMPORT_RECIPE_NOT_FOUND"
+  | "IMPORT_IMAGE_INVALID"
+  | "PAYLOAD_TOO_LARGE"
+  | "IMPORT_TIMED_OUT"
+  | "IMPORT_FAILED"
+  | "SERVICE_UNAVAILABLE"
+>;
+
+const IMPORT_ERROR_CODES = new Set<PersistedImportErrorCode>([
+  "IMPORT_INVALID_URL",
+  "IMPORT_UNSUPPORTED_SOURCE",
+  "IMPORT_SOURCE_UNAVAILABLE",
+  "IMPORT_RECIPE_NOT_FOUND",
+  "IMPORT_IMAGE_INVALID",
+  "PAYLOAD_TOO_LARGE",
+  "IMPORT_TIMED_OUT",
+  "IMPORT_FAILED",
+  "SERVICE_UNAVAILABLE",
+]);
+
+export function mapImportFailure(
+  upstreamCode: string | undefined,
+  mode: ImportJobMode,
+): PersistedImportErrorCode {
+  switch (upstreamCode) {
+    case "INVALID_URL":
+      return "IMPORT_INVALID_URL";
+    case "UNSUPPORTED_URL":
+      return "IMPORT_UNSUPPORTED_SOURCE";
+    case "FETCH_FAILED":
+      return "IMPORT_SOURCE_UNAVAILABLE";
+    case "NO_STRUCTURED_DATA":
+    case "NO_CONTENT":
+    case "NO_RECIPE":
+      return "IMPORT_RECIPE_NOT_FOUND";
+    case "INVALID_MIME_TYPE":
+    case "INVALID_BASE64":
+      return "IMPORT_IMAGE_INVALID";
+    case "INPUT_TOO_LONG":
+    case "IMAGE_TOO_LARGE":
+      return "PAYLOAD_TOO_LARGE";
+    case "VALIDATION_FAILED":
+      return mode === "url" ? "IMPORT_RECIPE_NOT_FOUND" : "IMPORT_FAILED";
+    default:
+      return "IMPORT_FAILED";
+  }
+}
+
+export function getImportErrorCode(
+  error: unknown,
+  mode: ImportJobMode,
+): PersistedImportErrorCode {
+  if (
+    error instanceof PublicTRPCError &&
+    IMPORT_ERROR_CODES.has(error.appCode as PersistedImportErrorCode)
+  ) {
+    return error.appCode as PersistedImportErrorCode;
+  }
+  if (error instanceof TRPCError && error.code === "PAYLOAD_TOO_LARGE") {
+    return "PAYLOAD_TOO_LARGE";
+  }
+  return mode === "image" && error instanceof TRPCError
+    ? "IMPORT_IMAGE_INVALID"
+    : "IMPORT_FAILED";
 }
 
 export function isRecipeImportJobStale(
@@ -89,7 +156,7 @@ export async function failStaleRecipeImportJobs(
     const didFailJob = await failRecipeImportJob(
       ctx,
       { jobId: job.id, userId },
-      RECIPE_IMPORT_JOB_STALE_ERROR,
+      "IMPORT_TIMED_OUT",
     );
     if (didFailJob) failedJobIds.add(job.id);
   }
@@ -253,9 +320,9 @@ async function parseRecipeImportJob(
 ) {
   if (job.importType === "basic") {
     if (job.mode !== "url") {
-      throw new TRPCError({
+      throw new PublicTRPCError({
         code: "BAD_REQUEST",
-        message: "Basic Import only supports recipe URLs.",
+        appCode: "IMPORT_INVALID_URL",
       });
     }
 
@@ -285,9 +352,9 @@ async function parseRecipeImportJob(
     job.mimeType !== "image/png" &&
     job.mimeType !== "image/webp"
   ) {
-    throw new TRPCError({
+    throw new PublicTRPCError({
       code: "BAD_REQUEST",
-      message: "Unsupported image type.",
+      appCode: "IMPORT_IMAGE_INVALID",
     });
   }
 
@@ -312,9 +379,9 @@ export async function processRecipeImportJob(
     const result = await parseRecipeImportJob(ctx, job);
 
     if (!result.success) {
-      throw new TRPCError({
+      throw new PublicTRPCError({
         code: "BAD_REQUEST",
-        message: result.error.message,
+        appCode: mapImportFailure(result.error.code, job.mode),
       });
     }
 
@@ -331,6 +398,7 @@ export async function processRecipeImportJob(
         mimeType: null,
         recipe: resultForStorage,
         error: null,
+        errorCode: null,
         completedAt,
         processingStartedAt: null,
         updatedAt: completedAt,
@@ -356,7 +424,7 @@ export async function processRecipeImportJob(
     const failedJob = await failRecipeImportJob(
       ctx,
       message,
-      getImportErrorMessage(error),
+      getImportErrorCode(error, job.mode),
       { processingStartedAt: job.processingStartedAt },
     );
     return failedJob ? "processed" : "busy";
@@ -370,7 +438,7 @@ interface FailRecipeImportJobOptions {
 export async function failRecipeImportJob(
   ctx: RecipeImportJobContext,
   message: RecipeImportJobMessage,
-  error: string,
+  errorCode: PersistedImportErrorCode,
   options?: FailRecipeImportJobOptions,
 ) {
   const completedAt = new Date();
@@ -395,7 +463,8 @@ export async function failRecipeImportJob(
         status: "failed",
         inputData: "",
         mimeType: null,
-        error,
+        errorCode,
+        error: getPublicErrorMessage(errorCode),
         completedAt,
         processingStartedAt: null,
         updatedAt: completedAt,

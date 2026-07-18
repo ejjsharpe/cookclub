@@ -17,16 +17,21 @@ export type ServiceErrorCode =
  */
 export class ServiceError extends Error {
   public readonly code: ServiceErrorCode;
-  public readonly cause?: unknown;
+  public readonly details: { sourceUrl?: string } | undefined;
+  public readonly cause: unknown;
 
   constructor(
     code: ServiceErrorCode,
     message: string,
-    cause?: unknown,
+    options?: {
+      details?: { sourceUrl?: string };
+      cause?: unknown;
+    },
   ) {
     super(message);
     this.name = "ServiceError";
     this.code = code;
-    this.cause = cause;
+    this.details = options?.details;
+    this.cause = options?.cause;
   }
 }

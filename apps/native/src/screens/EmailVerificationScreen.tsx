@@ -13,6 +13,7 @@ import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { BaseButton } from "@/components/buttons/BaseButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import { authClient } from "@/lib/authClient";
 import type { AppParamList } from "@/navigation/navigationRef";
 
@@ -32,18 +33,18 @@ export const EmailVerificationScreen = () => {
         callbackURL: "cookclub://",
       });
       if (result.error) {
-        Alert.alert(
-          "Error",
-          result.error.message ?? "Failed to resend verification email.",
-        );
+        alertApiError("Verification Failed", result.error, {
+          operation: "auth.sendVerificationEmail",
+          fallback: "Failed to resend verification email. Please try again.",
+        });
       } else {
         Alert.alert("Sent", "A new verification email has been sent.");
       }
-    } catch {
-      Alert.alert(
-        "Error",
-        "Failed to resend verification email. Please try again.",
-      );
+    } catch (error) {
+      alertApiError("Verification Failed", error, {
+        operation: "auth.sendVerificationEmail",
+        fallback: "Failed to resend verification email. Please try again.",
+      });
     } finally {
       setIsResending(false);
     }

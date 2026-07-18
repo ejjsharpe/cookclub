@@ -10,8 +10,19 @@ import { Resend } from "resend";
 const FROM_EMAIL = "Cook Club <noreply@cookclub.app>";
 const REPLY_TO_EMAIL = "help@cookclub.app";
 const AUTH_BASE_PATH = "/auth";
-const SOCIAL_PROVIDERS = ["google", "apple"] as const;
-type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
+type SocialProvider = "google" | "apple";
+
+function privateErrorStack(error: unknown): string {
+  const stacks: string[] = [];
+  const seen = new Set<unknown>();
+  let current = error;
+  while (current instanceof Error && !seen.has(current) && stacks.length < 5) {
+    seen.add(current);
+    stacks.push(current.stack ?? current.name);
+    current = current.cause;
+  }
+  return stacks.join("\nCaused by: ");
+}
 
 export interface AuthEnv extends DbEnv {
   GOOGLE_CLIENT_ID?: string;
@@ -45,8 +56,7 @@ async function sendEmail(
     ...options,
   });
   if (error) {
-    console.error("Resend error:", error);
-    throw new Error(error.message);
+    throw new Error("Email provider request failed", { cause: error });
   }
 }
 
@@ -89,7 +99,10 @@ function getCallbackUrl(env: AuthEnv, provider: SocialProvider): string {
   return `${getAuthBaseUrl(env)}/callback/${provider}`;
 }
 
-export function getAuth(env: AuthEnv) {
+export function getAuth(
+  env: AuthEnv,
+  runtime: { requestId?: string; route?: string } = {},
+) {
   const db = getDb(env);
   const requireEmailVerification = shouldRequireEmailVerification(env);
   const googleProvider =
@@ -120,6 +133,35 @@ export function getAuth(env: AuthEnv) {
     baseURL: env.BETTER_AUTH_URL,
     basePath: AUTH_BASE_PATH,
     secret: env.BETTER_AUTH_SECRET,
+    onAPIError: {
+      onError(error) {
+        const candidate =
+          error && typeof error === "object"
+            ? (error as { status?: unknown; statusCode?: unknown })
+            : undefined;
+        const isExpectedClientError =
+          (typeof candidate?.statusCode === "number" &&
+            candidate.statusCode < 500) ||
+          (typeof candidate?.status === "string" &&
+            ![
+              "INTERNAL_SERVER_ERROR",
+              "BAD_GATEWAY",
+              "SERVICE_UNAVAILABLE",
+              "GATEWAY_TIMEOUT",
+            ].includes(candidate.status));
+        if (isExpectedClientError) return;
+
+        console.error(
+          JSON.stringify({
+            requestId: runtime.requestId ?? "unknown",
+            route: runtime.route ?? "auth",
+            status: 500,
+            publicCode: "SERVICE_UNAVAILABLE",
+            errorStack: privateErrorStack(error),
+          }),
+        );
+      },
+    },
     database: drizzleAdapter(db, {
       provider: "pg",
       schema,

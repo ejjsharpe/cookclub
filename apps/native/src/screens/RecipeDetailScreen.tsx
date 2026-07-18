@@ -90,8 +90,10 @@ import {
   type AddToMealPlanSheetRef,
 } from "@/components/mealPlan/AddToMealPlanSheet";
 import { useImageUpload } from "@/hooks/useImageUpload";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import { useBackgroundImportQueue } from "@/lib/backgroundImportQueue";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
+import { publicErrorDetails, resolvePublicError } from "@/lib/publicError";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
 import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
@@ -527,7 +529,10 @@ export const RecipeDetailScreen = () => {
     uploadProgress,
   } = useImageUpload({
     onError: (uploadError) => {
-      Alert.alert("Upload Error", uploadError.message);
+      alertApiError("Upload Error", uploadError, {
+        operation: "image.upload",
+        fallback: "Failed to upload the image. Please try again.",
+      });
     },
   });
 
@@ -818,10 +823,11 @@ export const RecipeDetailScreen = () => {
       navigation.dispatch(
         StackActions.replace("RecipeDetail", { recipeId: newRecipe.id }),
       );
-    } catch (err: any) {
-      const message =
-        err?.message || "Something went wrong while importing the recipe.";
-      Alert.alert("Import Failed", message);
+    } catch (error: unknown) {
+      alertApiError("Import Failed", error, {
+        operation: "recipe.importExisting",
+        fallback: "Something went wrong while importing the recipe.",
+      });
     }
   };
 
@@ -844,11 +850,11 @@ export const RecipeDetailScreen = () => {
         parsedRecipe: result as ParsedRecipe,
         mode: "edit",
       });
-    } catch (err: any) {
-      Alert.alert(
-        "Personalisation Failed",
-        err?.message || "Something went wrong while personalising the recipe.",
-      );
+    } catch (error: unknown) {
+      alertApiError("Personalisation Failed", error, {
+        operation: "recipe.personalize",
+        fallback: "Something went wrong while personalising the recipe.",
+      });
     }
   };
 
@@ -965,11 +971,11 @@ export const RecipeDetailScreen = () => {
           },
         ],
       }));
-    } catch (err: any) {
-      Alert.alert(
-        "Image creation failed",
-        err?.message || "Something went wrong while creating the image.",
-      );
+    } catch (error: unknown) {
+      alertApiError("Image Creation Failed", error, {
+        operation: "recipe.generateImage",
+        fallback: "Something went wrong while creating the image.",
+      });
     }
   }, [draft, generateRecipeImageMutation, requireProFeature, updateDraft]);
 
@@ -1337,11 +1343,11 @@ export const RecipeDetailScreen = () => {
           StackActions.replace("RecipeDetail", { recipeId: id }),
         );
       }
-    } catch (err: any) {
-      Alert.alert(
-        "Save Failed",
-        err?.message || "Something went wrong while saving the recipe.",
-      );
+    } catch (error: unknown) {
+      alertApiError("Save Failed", error, {
+        operation: isCreateMode ? "recipe.create" : "recipe.update",
+        fallback: "Something went wrong while saving the recipe.",
+      });
     }
   }, [
     draft,
@@ -1413,11 +1419,12 @@ export const RecipeDetailScreen = () => {
                         try {
                           await deleteMutation.mutateAsync({ recipeId: id });
                           navigation.goBack();
-                        } catch (err: any) {
-                          Alert.alert(
-                            "Error",
-                            err?.message || "Failed to delete recipe",
-                          );
+                        } catch (error: unknown) {
+                          alertApiError("Delete Failed", error, {
+                            operation: "recipe.delete",
+                            fallback:
+                              "Failed to delete recipe. Please try again.",
+                          });
                         }
                       },
                     },
@@ -1446,21 +1453,20 @@ export const RecipeDetailScreen = () => {
   ]);
 
   if (!isPreviewMode && !isBlankDraftMode && !isPending && (error || !recipe)) {
-    const isForbidden = (error as any)?.data?.code === "FORBIDDEN";
-    const sourceUrl = (error as any)?.data?.cause?.sourceUrl as
-      | string
-      | undefined;
+    const resolvedError = resolvePublicError(error, "Recipe not found.");
+    const isExternalRecipe = resolvedError.code === "EXTERNAL_RECIPE_SOURCE";
+    const { sourceUrl } = publicErrorDetails(error);
     const forbiddenSourceWebsiteName = getSourceWebsiteName(sourceUrl);
 
     return (
       <View style={[styles.screen, styles.centered]}>
         <Text type="bodyFaded">
-          {isForbidden
+          {isExternalRecipe
             ? "This recipe is from an external website"
             : "Recipe not found"}
         </Text>
         <VSpace size={16} />
-        {isForbidden && sourceUrl ? (
+        {isExternalRecipe && sourceUrl ? (
           <>
             <PrimaryButton
               onPress={() => {

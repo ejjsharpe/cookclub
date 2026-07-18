@@ -28,11 +28,7 @@ export const queue: ExportedHandlerQueueHandler<
       message.ack();
     } catch (error) {
       if (message.attempts >= 3) {
-        await failRecipeImportJob(
-          { db, env },
-          message.body,
-          "Import failed after multiple attempts. Please try again.",
-        );
+        await failRecipeImportJob({ db, env }, message.body, "IMPORT_FAILED");
         message.ack();
         continue;
       }
@@ -42,7 +38,8 @@ export const queue: ExportedHandlerQueueHandler<
           task: "recipe-import-job",
           queue: batch.queue,
           messageId: message.id,
-          error: error instanceof Error ? error.message : String(error),
+          errorStack:
+            error instanceof Error ? error.stack : "Non-Error queue failure",
         }),
       );
       message.retry({ delaySeconds: Math.min(60, 5 * message.attempts) });

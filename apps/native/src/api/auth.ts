@@ -2,15 +2,21 @@ import { useTRPC } from "@repo/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { authClient } from "@/lib/authClient";
+import {
+  resolvePublicError,
+  type ResolvedPublicError,
+} from "@/lib/publicError";
 import { getCurrentExpoPushToken } from "@/lib/pushNotifications";
 import { clearLocalSessionState } from "@/lib/sessionCleanup";
 
 export class AuthError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
+  code: ResolvedPublicError["code"];
+  requestId?: string;
+  constructor(error: ResolvedPublicError) {
+    super(error.message);
     this.name = "AuthError";
-    this.status = status;
+    this.code = error.code;
+    this.requestId = error.requestId;
   }
 }
 
@@ -27,8 +33,7 @@ export const useSignInWithEmail = () => {
       const result = await authClient.signIn.email({ email, password });
       if (result.error) {
         throw new AuthError(
-          result.error.message ?? "Sign in failed",
-          result.error.status ?? 500,
+          resolvePublicError(result.error, "Sign in failed."),
         );
       }
       return result.data;
@@ -57,8 +62,7 @@ export const useSignUpWithEmail = () => {
       });
       if (result.error) {
         throw new AuthError(
-          result.error.message ?? "Sign up failed",
-          result.error.status ?? 500,
+          resolvePublicError(result.error, "Sign up failed."),
         );
       }
       return result.data;
@@ -72,9 +76,18 @@ export const useSignUpWithEmail = () => {
 export const useSignInWithSocial = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    onError: (e) => console.log(e),
-    mutationFn: ({ provider }: { provider: "google" | "apple" }) =>
-      authClient.signIn.social({ provider, callbackURL: "/" }),
+    mutationFn: async ({ provider }: { provider: "google" | "apple" }) => {
+      const result = await authClient.signIn.social({
+        provider,
+        callbackURL: "/",
+      });
+      if (result.error) {
+        throw new AuthError(
+          resolvePublicError(result.error, "Social sign in failed."),
+        );
+      }
+      return result.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries();
     },
@@ -100,7 +113,13 @@ export const useSignOut = () => {
         console.warn("Failed to unregister push notifications", error);
       }
 
-      return authClient.signOut();
+      const result = await authClient.signOut();
+      if (result.error) {
+        throw new AuthError(
+          resolvePublicError(result.error, "Sign out failed."),
+        );
+      }
+      return result.data;
     },
     onSettled: async () => {
       await clearLocalSessionState(queryClient);

@@ -39,6 +39,7 @@ import { Text } from "@/components/Text";
 import { BackButton } from "@/components/buttons/BackButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import {
   createBackgroundImportId,
   useBackgroundImportQueue,
@@ -164,8 +165,11 @@ export const UserProfileScreen = () => {
       try {
         await importRecipeMutation.mutateAsync({ recipeId });
         Alert.alert("Success", "Recipe added to your collection!");
-      } catch (err: any) {
-        Alert.alert("Error", err?.message || "Failed to import recipe");
+      } catch (error: unknown) {
+        alertApiError("Import Failed", error, {
+          operation: "recipe.importExisting",
+          fallback: "Failed to import recipe. Please try again.",
+        });
       }
     },
     [importRecipeMutation],

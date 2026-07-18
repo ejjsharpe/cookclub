@@ -4,6 +4,8 @@ import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "react-native";
 
+import { alertApiError } from "@/lib/apiErrorAlert";
+
 // API Response Types
 export type ShoppingListWithMeta =
   Outputs["shopping"]["getUserShoppingLists"][number];
@@ -91,9 +93,10 @@ export const useAddRecipeToSpecificList = () => {
         queryClient.invalidateQueries(shoppingListFilter);
       },
       onError: (error) => {
-        const message =
-          error.message || "Failed to add recipe to shopping list";
-        Alert.alert("Error", message);
+        alertApiError("Shopping List Error", error, {
+          operation: "shopping.addRecipeToSpecificList",
+          fallback: "Failed to add recipe to shopping list.",
+        });
       },
     },
   );
@@ -153,9 +156,10 @@ export const useAddRecipeToShoppingList = () => {
           );
         }
 
-        const message =
-          error.message || "Failed to add recipe to shopping list";
-        Alert.alert("Error", message);
+        alertApiError("Shopping List Error", error, {
+          operation: "shopping.addRecipe",
+          fallback: "Failed to add recipe to shopping list.",
+        });
       },
       onSettled: () => {
         // Invalidate to ensure sync with server

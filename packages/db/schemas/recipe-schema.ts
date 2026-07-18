@@ -78,6 +78,7 @@ export const recipeImportJobs = pgTable(
     status: text("status").notNull().default("pending"),
     recipe: jsonb("recipe").$type<ParseResponse | null>(),
     error: text("error"),
+    errorCode: text("error_code"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     completedAt: timestamp("completed_at"),
@@ -104,6 +105,10 @@ export const recipeImportJobs = pgTable(
     check(
       "recipe_import_jobs_status_check",
       sql`${table.status} IN ('pending', 'processing', 'ready', 'failed')`,
+    ),
+    check(
+      "recipe_import_jobs_error_code_check",
+      sql`${table.errorCode} IS NULL OR ${table.errorCode} IN ('IMPORT_INVALID_URL', 'IMPORT_UNSUPPORTED_SOURCE', 'IMPORT_SOURCE_UNAVAILABLE', 'IMPORT_RECIPE_NOT_FOUND', 'IMPORT_IMAGE_INVALID', 'PAYLOAD_TOO_LARGE', 'IMPORT_TIMED_OUT', 'IMPORT_FAILED', 'SERVICE_UNAVAILABLE')`,
     ),
   ],
 );

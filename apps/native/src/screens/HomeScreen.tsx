@@ -59,6 +59,7 @@ import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 import { useDebounce } from "@/hooks/useDebounce";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import {
   createBackgroundImportId,
   useBackgroundImportQueue,
@@ -525,8 +526,11 @@ export const HomeScreen = () => {
       try {
         await importRecipeMutation.mutateAsync({ recipeId });
         Alert.alert("Success", "Recipe added to your collection!");
-      } catch (err: any) {
-        Alert.alert("Error", err?.message || "Failed to import recipe");
+      } catch (error: unknown) {
+        alertApiError("Import Failed", error, {
+          operation: "recipe.importExisting",
+          fallback: "Failed to import recipe. Please try again.",
+        });
       }
     },
     [importRecipeMutation],

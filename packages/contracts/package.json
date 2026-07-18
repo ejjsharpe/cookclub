@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./errors": "./src/errors.ts",
     "./feed": "./src/feed.ts",
     "./images": "./src/images.ts",
     "./recipe-ai": "./src/recipe-ai.ts",

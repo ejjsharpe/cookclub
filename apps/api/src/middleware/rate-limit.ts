@@ -1,8 +1,9 @@
+import { getPublicErrorMessage } from "@repo/trpc/server";
 import type { MiddlewareHandler } from "hono";
 
-import type { Env } from "../types";
+import type { AppHonoEnv } from "../types";
 
-export const enforceApiRateLimit: MiddlewareHandler<{ Bindings: Env }> = async (
+export const enforceApiRateLimit: MiddlewareHandler<AppHonoEnv> = async (
   c,
   next,
 ) => {
@@ -17,7 +18,14 @@ export const enforceApiRateLimit: MiddlewareHandler<{ Bindings: Env }> = async (
   const outcome = await c.env.API_RATE_LIMITER.limit({ key: `ip:${ip}` });
 
   if (!outcome.success) {
-    return c.json({ error: "Too many requests" }, 429);
+    return c.json(
+      {
+        code: "RATE_LIMITED",
+        message: getPublicErrorMessage("RATE_LIMITED"),
+        requestId: c.get("requestId"),
+      },
+      429,
+    );
   }
 
   return next();

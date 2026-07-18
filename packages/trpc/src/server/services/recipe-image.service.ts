@@ -92,7 +92,7 @@ async function prepareUploadedImages(
       .join(", ");
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: `Failed to move uploaded images: ${message}`,
+      cause: new Error(`Failed to move uploaded images: ${message}`),
     });
   }
 
@@ -101,7 +101,9 @@ async function prepareUploadedImages(
     await cleanupMovedRecipeImages(deps.imageService, successfulMovedKeys);
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
-      message: `Image move did not return asset metadata for ${missingAssetResult.to}`,
+      cause: new Error(
+        `Image move did not return asset metadata for ${missingAssetResult.to}`,
+      ),
     });
   }
 
@@ -171,10 +173,7 @@ async function prepareDirectImages(
       await cleanupMovedRecipeImages(deps.imageService, movedKeys);
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message:
-          error instanceof Error
-            ? `Failed to prepare image: ${error.message}`
-            : "Failed to prepare image",
+        cause: error,
       });
     }
   }
@@ -256,8 +255,12 @@ async function prepareInstructionImageUrl(
     return publicUrl;
   } catch (error) {
     console.warn(
-      "Dropping instruction image that could not be prepared:",
-      error instanceof Error ? error.message : error,
+      JSON.stringify({
+        task: "prepare-instruction-image",
+        publicCode: "SERVICE_UNAVAILABLE",
+        errorStack:
+          error instanceof Error ? error.stack : "Non-Error image failure",
+      }),
     );
     return null;
   }

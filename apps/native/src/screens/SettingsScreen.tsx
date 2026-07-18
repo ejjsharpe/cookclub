@@ -11,6 +11,7 @@ import { ProBadge } from "@/components/ProBadge";
 import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { useSubscription } from "@/lib/subscription";
 import {
@@ -157,10 +158,10 @@ export const SettingsScreen = () => {
   const deleteAccount = () => {
     deleteAccountMutation.mutate(undefined, {
       onError: (error) => {
-        Alert.alert(
-          "Delete Account Failed",
-          error.message || "Please try again.",
-        );
+        alertApiError("Delete Account Failed", error, {
+          operation: "account.delete",
+          fallback: "Please try again.",
+        });
       },
     });
   };

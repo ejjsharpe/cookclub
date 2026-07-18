@@ -91,7 +91,7 @@ describe("recipe import queue", () => {
     expect(mocks.failRecipeImportJob).toHaveBeenCalledWith(
       { db: mocks.db, env: {} },
       message.body,
-      "Import failed after multiple attempts. Please try again.",
+      "IMPORT_FAILED",
     );
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.retry).not.toHaveBeenCalled();

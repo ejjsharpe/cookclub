@@ -13,6 +13,8 @@ import {
 import { AppState, type AppStateStatus } from "react-native";
 
 import type { ParsedRecipe } from "@/api/recipe";
+import { reportApiError } from "@/lib/apiErrorAlert";
+import { resolvePublicError } from "@/lib/publicError";
 import { useSessionContext } from "@/lib/sessionContext";
 
 export type BackgroundImportMode = "url" | "text" | "image";
@@ -51,6 +53,7 @@ export interface BackgroundImport {
   status: BackgroundImportStatus;
   recipe?: ParsedRecipe;
   error?: string;
+  errorCode?: string;
 }
 
 interface BackgroundImportQueueContextValue {
@@ -73,7 +76,13 @@ const mapImportJobToImport = (job: RecipeImportJob): BackgroundImport => ({
   title: job.title,
   status: job.status as BackgroundImportStatus,
   recipe: job.recipe?.success ? job.recipe : undefined,
-  error: job.error ?? undefined,
+  ...(job.errorCode && { errorCode: job.errorCode }),
+  error: job.errorCode
+    ? resolvePublicError(
+        { data: { appCode: job.errorCode } },
+        "Something went wrong while importing.",
+      ).message
+    : (job.error ?? undefined),
 });
 
 export function BackgroundImportQueueProvider({ children }: PropsWithChildren) {
@@ -200,16 +209,18 @@ export function BackgroundImportQueueProvider({ children }: PropsWithChildren) {
       if (!("run" in task)) {
         createImportJob.mutate(task, {
           onError: (err) => {
+            const publicError = reportApiError(err, {
+              operation: "recipe.createImportJob",
+              fallback: "Something went wrong while importing.",
+            });
             setLocalImports((current) =>
               current.map((item) =>
                 item.id === task.id
                   ? {
                       ...item,
                       status: "failed",
-                      error:
-                        err instanceof Error
-                          ? err.message
-                          : "Something went wrong while importing.",
+                      error: publicError.message,
+                      errorCode: publicError.code,
                     }
                   : item,
               ),
@@ -236,16 +247,18 @@ export function BackgroundImportQueueProvider({ children }: PropsWithChildren) {
           );
         })
         .catch((err: unknown) => {
+          const publicError = reportApiError(err, {
+            operation: "recipe.import",
+            fallback: "Something went wrong while importing.",
+          });
           setLocalImports((current) =>
             current.map((item) =>
               item.id === task.id
                 ? {
                     ...item,
                     status: "failed",
-                    error:
-                      err instanceof Error
-                        ? err.message
-                        : "Something went wrong while importing.",
+                    error: publicError.message,
+                    errorCode: publicError.code,
                   }
                 : item,
             ),

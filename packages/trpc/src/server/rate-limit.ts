@@ -1,6 +1,5 @@
-import { TRPCError } from "@trpc/server";
-
 import type { Context } from "./context";
+import { PublicTRPCError } from "./public-errors";
 
 export type RateLimitBucket =
   | "recipe_parse_url"
@@ -46,9 +45,9 @@ async function limitOrThrow(
 
   const outcome = await limiter.limit({ key });
   if (!outcome.success) {
-    throw new TRPCError({
+    throw new PublicTRPCError({
       code: "TOO_MANY_REQUESTS",
-      message: "You have hit the rate limit for this action. Try again later.",
+      appCode: "RATE_LIMITED",
     });
   }
 }

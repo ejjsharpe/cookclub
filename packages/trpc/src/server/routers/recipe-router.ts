@@ -29,6 +29,7 @@ import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
 import { eq, lt, desc, and, ilike, count, inArray, isNull } from "drizzle-orm";
 
+import { PublicTRPCError } from "../public-errors";
 import { enforceRateLimit } from "../rate-limit";
 import { propagateActivityToFollowersInBackground } from "../services/activity";
 import {
@@ -42,6 +43,7 @@ import {
   failRecipeImportJob,
   type ImportJobMode,
   type ImportJobRecord,
+  mapImportFailure,
 } from "../services/recipe-import-job.service";
 import {
   assertSmartImportAllowance,
@@ -529,6 +531,13 @@ function getImportRateLimitKey(mode: ImportJobMode) {
   }
 }
 
+function importFailureError(code: string | undefined, mode: ImportJobMode) {
+  return new PublicTRPCError({
+    code: "BAD_REQUEST",
+    appCode: mapImportFailure(code, mode),
+  });
+}
+
 export const recipeRouter = router({
   listImportJobs: authedProcedure.query(async ({ ctx }) => {
     const [jobs, subscriptionStatus] = await Promise.all([
@@ -541,6 +550,7 @@ export const recipeRouter = router({
           status: recipeImportJobs.status,
           recipe: recipeImportJobs.recipe,
           error: recipeImportJobs.error,
+          errorCode: recipeImportJobs.errorCode,
           createdAt: recipeImportJobs.createdAt,
           updatedAt: recipeImportJobs.updatedAt,
           completedAt: recipeImportJobs.completedAt,
@@ -571,6 +581,7 @@ export const recipeRouter = router({
         ...job,
         status: didFailStaleJob ? "failed" : job.status,
         error: didFailStaleJob ? RECIPE_IMPORT_JOB_STALE_ERROR : job.error,
+        errorCode: didFailStaleJob ? "IMPORT_TIMED_OUT" : job.errorCode,
         completedAt: didFailStaleJob ? new Date() : job.completedAt,
         recipe:
           !didFailStaleJob && job.recipe
@@ -596,29 +607,29 @@ export const recipeRouter = router({
         });
       }
       if (input.importType === "basic" && input.mode !== "url") {
-        throw new TRPCError({
+        throw new PublicTRPCError({
           code: "BAD_REQUEST",
-          message: "Basic Import only supports recipe URLs.",
+          appCode: "IMPORT_INVALID_URL",
         });
       }
       if (input.mode === "image" && !input.mimeType) {
-        throw new TRPCError({
+        throw new PublicTRPCError({
           code: "BAD_REQUEST",
-          message: "Image imports require a mime type.",
+          appCode: "IMPORT_IMAGE_INVALID",
         });
       }
 
       const inputData = input.data.trim();
       if (inputData.length > MAX_IMPORT_DATA_LENGTH[input.mode]) {
-        throw new TRPCError({
+        throw new PublicTRPCError({
           code: "PAYLOAD_TOO_LARGE",
-          message: "Import source is too large.",
+          appCode: "PAYLOAD_TOO_LARGE",
         });
       }
       if (input.mode === "url" && !isHttpUrl(inputData)) {
-        throw new TRPCError({
+        throw new PublicTRPCError({
           code: "BAD_REQUEST",
-          message: "Recipe URL is invalid.",
+          appCode: "IMPORT_INVALID_URL",
         });
       }
 
@@ -704,13 +715,11 @@ export const recipeRouter = router({
         await failRecipeImportJob(
           { db: ctx.db, env: ctx.env },
           { jobId: job.id, userId: job.userId },
-          error instanceof Error
-            ? error.message
-            : "Unable to queue this import.",
+          "SERVICE_UNAVAILABLE",
         );
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Unable to queue this import.",
+          cause: error,
         });
       }
 
@@ -722,6 +731,7 @@ export const recipeRouter = router({
         status: "pending" as const,
         recipe: null,
         error: null,
+        errorCode: null,
         createdAt: now,
         updatedAt: now,
         completedAt: null,
@@ -756,15 +766,16 @@ export const recipeRouter = router({
         });
 
         if (!result.success) {
-          console.log(
-            "Smart import failed:",
-            result.error.code,
-            result.error.message,
+          console.warn(
+            JSON.stringify({
+              requestId: ctx.requestId,
+              procedure: "recipe.parseRecipeFromUrl",
+              status: 400,
+              publicCode: mapImportFailure(result.error.code, "url"),
+              internalCode: result.error.code,
+            }),
           );
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: result.error.message,
-          });
+          throw importFailureError(result.error.code, "url");
         }
 
         const subscriptionStatus = await consumeSmartImportAllowance(ctx);
@@ -793,10 +804,7 @@ export const recipeRouter = router({
         });
 
         if (!result.success) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: result.error.message,
-          });
+          throw importFailureError(result.error.code, "url");
         }
 
         return parseResponseForEntitlement(result, subscriptionStatus.isPro);
@@ -823,10 +831,7 @@ export const recipeRouter = router({
       });
 
       if (!result.success) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: result.error.message,
-        });
+        throw importFailureError(result.error.code, "text");
       }
 
       const subscriptionStatus = await consumeSmartImportAllowance(ctx);
@@ -856,10 +861,7 @@ export const recipeRouter = router({
       });
 
       if (!result.success) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: result.error.message,
-        });
+        throw importFailureError(result.error.code, "image");
       }
 
       const subscriptionStatus = await consumeSmartImportAllowance(ctx);
@@ -879,9 +881,9 @@ export const recipeRouter = router({
       });
 
       if (result.type === "error") {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error.message,
+        throw new PublicTRPCError({
+          code: "BAD_GATEWAY",
+          appCode: "SERVICE_UNAVAILABLE",
         });
       }
 
@@ -927,9 +929,9 @@ export const recipeRouter = router({
         });
 
         if (!result.success) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: result.error.message,
+          throw new PublicTRPCError({
+            code: "BAD_GATEWAY",
+            appCode: "SERVICE_UNAVAILABLE",
           });
         }
 
@@ -963,9 +965,9 @@ export const recipeRouter = router({
       });
 
       if (!result.success) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: result.error.message,
+        throw new PublicTRPCError({
+          code: "BAD_GATEWAY",
+          appCode: "SERVICE_UNAVAILABLE",
         });
       }
 
@@ -1370,16 +1372,17 @@ export const recipeRouter = router({
           });
         } catch (nutritionError) {
           console.error("Nutrition service call failed:", nutritionError);
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Could not generate nutrition for this recipe.",
+          throw new PublicTRPCError({
+            code: "BAD_GATEWAY",
+            appCode: "SERVICE_UNAVAILABLE",
+            cause: nutritionError,
           });
         }
 
         if (!result.success) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: result.error.message,
+          throw new PublicTRPCError({
+            code: "BAD_GATEWAY",
+            appCode: "SERVICE_UNAVAILABLE",
           });
         }
 

@@ -1,7 +1,7 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { useNavigation } from "@react-navigation/native";
 import { forwardRef, useState, useImperativeHandle, useRef } from "react";
-import { Platform, View, Alert } from "react-native";
+import { Platform, View } from "react-native";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
 import { useSignInWithEmail, useSignInWithSocial, AuthError } from "@/api/auth";
@@ -12,6 +12,7 @@ import { BaseButton } from "@/components/buttons/BaseButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { SignInWithAppleButton } from "@/components/buttons/SignInWithAppleButton";
 import { SignInWithGoogleButton } from "@/components/buttons/SignInWithGoogleButton";
+import { alertApiError } from "@/lib/apiErrorAlert";
 
 export interface SignInSheetProps {
   onSwitchToSignUp?: () => void;
@@ -45,14 +46,17 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
         {
           onSuccess: dismissSheet,
           onError: async (error) => {
-            if (error instanceof AuthError && error.status === 403) {
+            if (
+              error instanceof AuthError &&
+              error.code === "EMAIL_NOT_VERIFIED"
+            ) {
               await dismissSheet();
               navigation.navigate("EmailVerification", { email });
             } else {
-              Alert.alert(
-                "Sign In Failed",
-                error.message || "Please try again.",
-              );
+              alertApiError("Sign In Failed", error, {
+                operation: "auth.signIn.email",
+                fallback: "Please check your details and try again.",
+              });
             }
           },
         },
@@ -64,7 +68,17 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
     };
 
     const onPressSignInWithSocial = (provider: "google" | "apple") => {
-      signInWithSocial({ provider }, { onSuccess: dismissSheet });
+      signInWithSocial(
+        { provider },
+        {
+          onSuccess: dismissSheet,
+          onError: (error) =>
+            alertApiError("Sign In Failed", error, {
+              operation: `auth.signIn.${provider}`,
+              fallback: "Social sign in failed. Please try again.",
+            }),
+        },
+      );
     };
 
     return (

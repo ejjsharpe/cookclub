@@ -6,9 +6,9 @@ import {
   type DbClient,
   type TransactionClient,
 } from "@repo/db/services";
-import { TRPCError } from "@trpc/server";
 
 import type { Context } from "../context";
+import { PublicTRPCError } from "../public-errors";
 
 type AuthedContext = Pick<Context, "env"> & {
   db: DbClient | TransactionClient;
@@ -47,9 +47,9 @@ export async function requirePro(ctx: AuthedContext) {
   const status = await getSubscriptionStatus(ctx.db, ctx.user.id);
 
   if (!status.isPro) {
-    throw new TRPCError({
+    throw new PublicTRPCError({
       code: "FORBIDDEN",
-      message: "This feature requires Cook Club Pro.",
+      appCode: "PRO_REQUIRED",
     });
   }
 
@@ -57,8 +57,9 @@ export async function requirePro(ctx: AuthedContext) {
 }
 
 function smartImportLimitError() {
-  return new TRPCError({
+  return new PublicTRPCError({
     code: "FORBIDDEN",
+    appCode: "SMART_IMPORT_LIMIT_REACHED",
     message:
       "You've used your 5 free Smart Imports this month. Upgrade to Cook Club Pro for unlimited Smart Imports.",
   });
@@ -124,9 +125,9 @@ export async function refreshAdaptyEntitlement(ctx: AuthedContext) {
   }
 
   if (!response.ok) {
-    throw new TRPCError({
+    throw new PublicTRPCError({
       code: "BAD_GATEWAY",
-      message: "Could not refresh subscription status.",
+      appCode: "SERVICE_UNAVAILABLE",
     });
   }
 

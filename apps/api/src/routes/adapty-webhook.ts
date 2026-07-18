@@ -6,7 +6,7 @@ import {
 } from "@repo/db/services";
 import type { Hono } from "hono";
 
-import type { Env } from "../types";
+import type { AppHonoEnv } from "../types";
 
 const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
 const textEncoder = new TextEncoder();
@@ -91,7 +91,7 @@ function pickDate(
   return null;
 }
 
-export function registerAdaptyWebhookRoutes(app: Hono<{ Bindings: Env }>) {
+export function registerAdaptyWebhookRoutes(app: Hono<AppHonoEnv>) {
   app.post("/api/adapty/webhook", async (c) => {
     const expectedAuthorization = c.env.ADAPTY_WEBHOOK_AUTHORIZATION;
     if (!expectedAuthorization) {

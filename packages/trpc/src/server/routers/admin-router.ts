@@ -27,6 +27,7 @@ import {
 
 import { deleteUserAccountData } from "./user-router";
 import type { Context } from "../context";
+import { PublicTRPCError } from "../public-errors";
 import { router, authedProcedure } from "../trpc";
 
 const UserRoleValidator = type("'admin' | 'user'");
@@ -98,6 +99,14 @@ function normalizeLimit(limit: number | undefined) {
 
 function normalizeOffset(offset: number | undefined) {
   return Math.max(Math.trunc(offset ?? 0), 0);
+}
+
+function publicAdminInputError(message: string) {
+  return new PublicTRPCError({
+    code: "BAD_REQUEST",
+    appCode: "INVALID_INPUT",
+    message,
+  });
 }
 
 function mapAuthError(error: unknown, fallbackMessage: string): TRPCError {
@@ -443,10 +452,7 @@ export const adminRouter = router({
       await requireAdminPermission(ctx, "ban");
 
       if (input.userId === ctx.user.id) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You cannot ban your own admin account.",
-        });
+        throw publicAdminInputError("You cannot ban your own admin account.");
       }
 
       try {
@@ -506,10 +512,9 @@ export const adminRouter = router({
       await requireAdminPermission(ctx, "delete");
 
       if (input.userId === ctx.user.id) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You cannot delete your own admin account.",
-        });
+        throw publicAdminInputError(
+          "You cannot delete your own admin account.",
+        );
       }
 
       const targetUser = await getTargetUserForDeletion(ctx, input.userId);
@@ -517,10 +522,9 @@ export const adminRouter = router({
         targetUser.email.trim().toLowerCase() !==
         input.confirmationEmail.trim().toLowerCase()
       ) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Enter the user's email address to confirm deletion.",
-        });
+        throw publicAdminInputError(
+          "Enter the user's email address to confirm deletion.",
+        );
       }
 
       const result = await deleteUserAccountData(ctx, input.userId);

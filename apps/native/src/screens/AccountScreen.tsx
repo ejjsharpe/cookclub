@@ -20,6 +20,7 @@ import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { useAvatarUpload } from "@/hooks/useAvatarUpload";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import { authClient } from "@/lib/authClient";
 import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
 import { appendImageVersion, getImageUrl } from "@/utils/imageUrl";
@@ -138,7 +139,16 @@ export const AccountScreen = () => {
 
       // Change email via Better Auth
       if (emailChanged) {
-        await authClient.changeEmail({ newEmail: email });
+        const changeEmailResult = await authClient.changeEmail({
+          newEmail: email,
+        });
+        if (changeEmailResult.error) {
+          alertApiError("Email Change Failed", changeEmailResult.error, {
+            operation: "auth.changeEmail",
+            fallback: "Failed to change your email. Please try again.",
+          });
+          return;
+        }
         Alert.alert(
           "Verification Sent",
           "A verification email has been sent to your new address. Please check your inbox.",
@@ -148,8 +158,11 @@ export const AccountScreen = () => {
       }
 
       navigation.goBack();
-    } catch (error: any) {
-      Alert.alert("Error", error?.message ?? "Failed to save changes.");
+    } catch (error: unknown) {
+      alertApiError("Save Failed", error, {
+        operation: "account.save",
+        fallback: "Failed to save changes. Please try again.",
+      });
     } finally {
       setIsSubmitting(false);
     }

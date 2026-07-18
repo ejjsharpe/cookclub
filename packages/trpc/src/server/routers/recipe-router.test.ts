@@ -397,7 +397,10 @@ describe("recipeRouter - activity integration", () => {
           title: "not a url",
           data: "not a url",
         }),
-      ).rejects.toThrow("Recipe URL is invalid.");
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        appCode: "IMPORT_INVALID_URL",
+      });
 
       expect(mockDb.insert).not.toHaveBeenCalled();
       expect(mockEnv.RECIPE_IMPORT_URL_QUEUE.send).not.toHaveBeenCalled();
@@ -717,9 +720,9 @@ describe("recipeRouter - activity integration", () => {
       const ctx = createMockContext(mockDb, { env: mockEnv });
       const caller = recipeRouter.createCaller(ctx as any);
 
-      await expect(caller.postRecipe(validRecipeInput)).rejects.toThrow(
-        "Failed to prepare image: Remote cover unavailable",
-      );
+      await expect(caller.postRecipe(validRecipeInput)).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
 
       expect(mockCreateRecipe).not.toHaveBeenCalled();
     });
@@ -972,7 +975,10 @@ describe("recipeRouter - activity integration", () => {
           recipeId: 1,
           goals: ["meal_prep"],
         }),
-      ).rejects.toThrow("Failed to personalise recipe");
+      ).rejects.toMatchObject({
+        code: "BAD_GATEWAY",
+        appCode: "SERVICE_UNAVAILABLE",
+      });
     });
   });
 });

@@ -48,6 +48,7 @@ import {
 } from "@/components/SmartImportSheet";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import {
   useBackgroundImportQueue,
   type BackgroundImport,
@@ -540,11 +541,11 @@ export const AddRecipeScreen = () => {
         parsedRecipe: result as ParsedRecipe,
         mode: "edit",
       });
-    } catch (err: any) {
-      Alert.alert(
-        "Personalisation Failed",
-        err?.message || "Something went wrong while personalising the recipe.",
-      );
+    } catch (error: unknown) {
+      alertApiError("Personalisation Failed", error, {
+        operation: "recipe.personalize",
+        fallback: "Something went wrong while personalising the recipe.",
+      });
     }
   };
 

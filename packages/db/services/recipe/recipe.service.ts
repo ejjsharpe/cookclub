@@ -842,8 +842,9 @@ export async function getRecipeDetail(
       "FORBIDDEN",
       "This recipe can only be viewed on the original source website.",
       {
-        sourceUrl: recipeData.recipe.sourceUrl,
-        recipeName: recipeData.recipe.name,
+        ...(recipeData.recipe.sourceUrl && {
+          details: { sourceUrl: recipeData.recipe.sourceUrl },
+        }),
       },
     );
   }

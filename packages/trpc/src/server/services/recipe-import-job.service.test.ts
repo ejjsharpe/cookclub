@@ -17,6 +17,7 @@ vi.mock("@repo/db/schemas", () => ({
     status: "status",
     recipe: "recipe",
     error: "error",
+    errorCode: "errorCode",
     createdAt: "createdAt",
     updatedAt: "updatedAt",
     completedAt: "completedAt",
@@ -46,6 +47,7 @@ import {
   failRecipeImportJob,
   failStaleRecipeImportJobs,
   isRecipeImportJobStale,
+  mapImportFailure,
   RECIPE_IMPORT_JOB_STALE_ERROR,
   processRecipeImportJob,
 } from "./recipe-import-job.service";
@@ -65,6 +67,7 @@ type FakeJob = {
   refundedAt: Date | null;
   recipe?: unknown;
   error?: string | null;
+  errorCode?: string | null;
   completedAt?: Date | null;
   updatedAt?: Date | null;
 };
@@ -85,6 +88,7 @@ function createJob(overrides: Partial<FakeJob> = {}): FakeJob {
     refundedAt: null,
     recipe: null,
     error: null,
+    errorCode: null,
     completedAt: null,
     updatedAt: null,
     ...overrides,
@@ -364,7 +368,10 @@ describe("recipe import job service", () => {
     expect(db._state.job?.status).toBe("failed");
     expect(db._state.job?.inputData).toBe("");
     expect(db._state.job?.mimeType).toBeNull();
-    expect(db._state.job?.error).toBe("No recipe found");
+    expect(db._state.job?.errorCode).toBe("IMPORT_RECIPE_NOT_FOUND");
+    expect(db._state.job?.error).toBe(
+      "We could not find a recipe at that source.",
+    );
     expect(mocks.refundSmartImportUsageForPeriod).toHaveBeenCalledWith(
       db,
       "user-1",
@@ -379,7 +386,7 @@ describe("recipe import job service", () => {
     await failRecipeImportJob(
       { db: db as any, env: createEnv() as any },
       { jobId: "job-1", userId: "user-1" },
-      "Unable to queue this import.",
+      "SERVICE_UNAVAILABLE",
     );
 
     expect(db._state.job?.status).toBe("failed");
@@ -394,7 +401,7 @@ describe("recipe import job service", () => {
     await failRecipeImportJob(
       { db: db as any, env: createEnv() as any },
       { jobId: "job-1", userId: "user-1" },
-      "Late failure",
+      "IMPORT_FAILED",
     );
 
     expect(db._state.job?.status).toBe("ready");
@@ -412,10 +419,13 @@ describe("recipe import job service", () => {
     ).resolves.toBe("processed");
 
     expect(db._state.job?.status).toBe("failed");
-    expect(db._state.job?.error).toBe("Unsupported image type.");
+    expect(db._state.job?.errorCode).toBe("IMPORT_IMAGE_INVALID");
+    expect(db._state.job?.error).toBe(
+      "Choose a valid recipe image and try again.",
+    );
   });
 
-  it("uses the TRPCError message when failing jobs", async () => {
+  it("does not persist an arbitrary TRPCError message", async () => {
     const db = createFakeDb(createJob());
     const parse = vi.fn().mockRejectedValue(
       new TRPCError({
@@ -430,7 +440,10 @@ describe("recipe import job service", () => {
     );
 
     expect(db._state.job?.status).toBe("failed");
-    expect(db._state.job?.error).toBe("Cannot parse this recipe.");
+    expect(db._state.job?.errorCode).toBe("IMPORT_FAILED");
+    expect(db._state.job?.error).toBe(
+      "Something went wrong while importing. Please try again.",
+    );
   });
 
   it("detects pending and processing jobs that have exceeded the stale timeout", () => {
@@ -505,6 +518,23 @@ describe("recipe import job service", () => {
     expect(failedJobIds).toEqual(new Set(["job-1"]));
     expect(db._state.job?.status).toBe("failed");
     expect(db._state.job?.error).toBe(RECIPE_IMPORT_JOB_STALE_ERROR);
+    expect(db._state.job?.errorCode).toBe("IMPORT_TIMED_OUT");
     expect(db._state.job?.inputData).toBe("");
+  });
+
+  it.each([
+    ["INVALID_URL", "url", "IMPORT_INVALID_URL"],
+    ["UNSUPPORTED_URL", "url", "IMPORT_UNSUPPORTED_SOURCE"],
+    ["FETCH_FAILED", "url", "IMPORT_SOURCE_UNAVAILABLE"],
+    ["NO_CONTENT", "url", "IMPORT_RECIPE_NOT_FOUND"],
+    ["VALIDATION_FAILED", "url", "IMPORT_RECIPE_NOT_FOUND"],
+    ["VALIDATION_FAILED", "text", "IMPORT_FAILED"],
+    ["INVALID_MIME_TYPE", "image", "IMPORT_IMAGE_INVALID"],
+    ["INVALID_BASE64", "image", "IMPORT_IMAGE_INVALID"],
+    ["INPUT_TOO_LONG", "text", "PAYLOAD_TOO_LARGE"],
+    ["IMAGE_TOO_LARGE", "image", "PAYLOAD_TOO_LARGE"],
+    ["AI_PARSE_FAILED", "url", "IMPORT_FAILED"],
+  ] as const)("maps %s %s failures to %s", (code, mode, expected) => {
+    expect(mapImportFailure(code, mode)).toBe(expected);
   });
 });

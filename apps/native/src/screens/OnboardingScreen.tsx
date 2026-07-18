@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, ScrollView, Alert, Dimensions } from "react-native";
+import { View, ScrollView, Dimensions } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Animated, {
   useSharedValue,
@@ -25,6 +25,7 @@ import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 import { useAvatarUpload } from "@/hooks/useAvatarUpload";
 import { useDebounce } from "@/hooks/useDebounce";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -113,8 +114,10 @@ export default function OnboardingScreen() {
         });
         triggerWelcome();
       } catch (error) {
-        console.error("Onboarding save error:", error);
-        Alert.alert("Error", "Failed to save your profile. Please try again.");
+        alertApiError("Profile Save Failed", error, {
+          operation: "onboarding.saveProfile",
+          fallback: "Failed to save your profile. Please try again.",
+        });
         setIsSubmitting(false);
       }
     }
