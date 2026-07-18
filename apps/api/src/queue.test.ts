@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   processRecipeImportJob: vi.fn(),
   failRecipeImportJob: vi.fn(),
+  captureImportFailure: vi.fn(),
+  captureQueueException: vi.fn(),
 }));
 
 vi.mock("@repo/db", () => ({
@@ -15,6 +17,11 @@ vi.mock("@repo/trpc/server", () => ({
   processRecipeImportJob: mocks.processRecipeImportJob,
   failRecipeImportJob: mocks.failRecipeImportJob,
   RECIPE_IMPORT_PROCESSING_LEASE_MS: 5 * 60 * 1000,
+}));
+
+vi.mock("./observability/sentry", () => ({
+  captureImportFailure: mocks.captureImportFailure,
+  captureQueueException: mocks.captureQueueException,
 }));
 
 // eslint-disable-next-line import/first
@@ -53,11 +60,39 @@ describe("recipe import queue", () => {
     await queue(createBatch(message) as any, {} as any, {} as any);
 
     expect(mocks.processRecipeImportJob).toHaveBeenCalledWith(
-      { db: mocks.db, env: {} },
+      {
+        db: mocks.db,
+        env: {},
+        reportFailure: expect.any(Function),
+      },
       message.body,
     );
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.retry).not.toHaveBeenCalled();
+  });
+
+  it("forwards handled import failures to observability", async () => {
+    const message = createMessage();
+    const failure = {
+      jobId: "job-1",
+      userId: "user-1",
+      importType: "smart" as const,
+      mode: "url" as const,
+      errorCode: "IMPORT_SOURCE_UNAVAILABLE" as const,
+      upstreamCode: "FETCH_FAILED",
+      sourceHost: "instagram.com",
+    };
+    mocks.processRecipeImportJob.mockImplementation(async (context) => {
+      context.reportFailure(failure);
+      return "processed";
+    });
+
+    await queue(createBatch(message) as any, {} as any, {} as any);
+
+    expect(mocks.captureImportFailure).toHaveBeenCalledWith(
+      failure,
+      "cookclub-recipe-import-url-development",
+    );
   });
 
   it("retries busy jobs without acknowledging them", async () => {
@@ -69,6 +104,7 @@ describe("recipe import queue", () => {
     expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 310 });
     expect(message.ack).not.toHaveBeenCalled();
     expect(mocks.failRecipeImportJob).not.toHaveBeenCalled();
+    expect(mocks.captureQueueException).not.toHaveBeenCalled();
   });
 
   it("retries retryable errors before the final attempt", async () => {
@@ -80,6 +116,10 @@ describe("recipe import queue", () => {
     expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 10 });
     expect(message.ack).not.toHaveBeenCalled();
     expect(mocks.failRecipeImportJob).not.toHaveBeenCalled();
+    expect(mocks.captureQueueException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ attempts: 2, terminal: false }),
+    );
   });
 
   it("marks the job failed and acknowledges after repeated errors", async () => {
@@ -95,5 +135,9 @@ describe("recipe import queue", () => {
     );
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.retry).not.toHaveBeenCalled();
+    expect(mocks.captureQueueException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ attempts: 3, terminal: true }),
+    );
   });
 });

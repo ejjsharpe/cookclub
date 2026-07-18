@@ -31,6 +31,17 @@ export type ImportJobRecord = {
 export type RecipeImportJobContext = {
   db: DbClient;
   env: TRPCEnv;
+  reportFailure?: (failure: RecipeImportFailureEvent) => void;
+};
+
+export type RecipeImportFailureEvent = {
+  jobId: string;
+  userId: string;
+  importType: ImportJobType;
+  mode: ImportJobMode;
+  errorCode: PersistedImportErrorCode;
+  upstreamCode?: string;
+  sourceHost?: string;
 };
 
 export type ProcessRecipeImportJobResult = "processed" | "skipped" | "busy";
@@ -40,6 +51,16 @@ export const RECIPE_IMPORT_JOB_STALE_MS = 60 * 1000;
 export const RECIPE_IMPORT_JOB_STALE_ERROR =
   getPublicErrorMessage("IMPORT_TIMED_OUT");
 const MAX_PARSE_DIAGNOSTIC_STAGES = 32;
+
+function sourceHostForJob(job: ImportJobRecord) {
+  if (job.mode !== "url") return undefined;
+
+  try {
+    return new URL(job.inputData).hostname;
+  } catch {
+    return undefined;
+  }
+}
 
 export type StaleRecipeImportJobCandidate = {
   id: string;
@@ -379,9 +400,20 @@ export async function processRecipeImportJob(
     const result = await parseRecipeImportJob(ctx, job);
 
     if (!result.success) {
+      const errorCode = mapImportFailure(result.error.code, job.mode);
+      const sourceHost = sourceHostForJob(job);
+      ctx.reportFailure?.({
+        jobId: job.id,
+        userId: job.userId,
+        importType: job.importType,
+        mode: job.mode,
+        errorCode,
+        upstreamCode: result.error.code,
+        ...(sourceHost && { sourceHost }),
+      });
       throw new PublicTRPCError({
         code: "BAD_REQUEST",
-        appCode: mapImportFailure(result.error.code, job.mode),
+        appCode: errorCode,
       });
     }
 

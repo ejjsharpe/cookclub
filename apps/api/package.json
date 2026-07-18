@@ -19,6 +19,8 @@
     "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/trpc": "workspace:*",
+    "@sentry/cloudflare": "10.66.0",
+    "@sentry/hono": "10.66.0",
     "hono": "4.12.23"
   },
   "devDependencies": {

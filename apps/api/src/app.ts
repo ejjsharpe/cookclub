@@ -1,9 +1,11 @@
 import { getPublicErrorMessage } from "@repo/trpc/server";
+import { sentry } from "@sentry/hono/cloudflare";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { enforceApiRateLimit } from "./middleware/rate-limit";
 import { requestLogger } from "./middleware/request-logger";
+import { getSentryOptions } from "./observability/sentry";
 import { registerAdaptyWebhookRoutes } from "./routes/adapty-webhook";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerHealthRoutes } from "./routes/health";
@@ -52,6 +54,7 @@ const credentialedCors = cors({
 export function createApp() {
   const app = new Hono<AppHonoEnv>();
 
+  app.use(sentry(app, getSentryOptions));
   app.use("*", requestLogger);
   app.use("/auth/*", credentialedCors);
   app.use("/trpc/*", credentialedCors);

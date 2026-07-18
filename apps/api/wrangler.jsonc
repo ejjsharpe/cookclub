@@ -107,6 +107,7 @@
   ],
   "vars": {
     "BETTER_AUTH_URL": "http://localhost:8787",
+    "SENTRY_ENVIRONMENT": "development",
     // Public URL for images through the transform Worker
     "IMAGE_PUBLIC_URL": "http://localhost:8789",
     "APPLE_BUNDLE_IDENTIFIER": "com.shakyhand.cookclub",
@@ -223,6 +224,7 @@
       ],
       "vars": {
         "BETTER_AUTH_URL": "https://api.cookclub.app",
+        "SENTRY_ENVIRONMENT": "production",
         "IMAGE_PUBLIC_URL": "https://images.cookclub.app",
         "APPLE_BUNDLE_IDENTIFIER": "com.shakyhand.cookclub",
         "ADAPTY_PRO_ACCESS_LEVEL_ID": "pro",

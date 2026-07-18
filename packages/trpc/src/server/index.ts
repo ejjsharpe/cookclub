@@ -26,6 +26,7 @@ export {
   processRecipeImportJob,
   RECIPE_IMPORT_PROCESSING_LEASE_MS,
 } from "./services";
+export type { RecipeImportFailureEvent } from "./services";
 export type Context = Awaited<ReturnType<typeof createContext>>;
 
 export const appRouter = router({

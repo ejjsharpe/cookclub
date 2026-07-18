@@ -358,9 +358,10 @@ describe("recipe import job service", () => {
       success: false,
       error: { code: "NO_RECIPE", message: "No recipe found" },
     });
+    const reportFailure = vi.fn();
 
     const result = await processRecipeImportJob(
-      { db: db as any, env: createEnv(parse) as any },
+      { db: db as any, env: createEnv(parse) as any, reportFailure },
       { jobId: "job-1", userId: "user-1" },
     );
 
@@ -372,6 +373,15 @@ describe("recipe import job service", () => {
     expect(db._state.job?.error).toBe(
       "We could not find a recipe at that source.",
     );
+    expect(reportFailure).toHaveBeenCalledWith({
+      jobId: "job-1",
+      userId: "user-1",
+      importType: "smart",
+      mode: "url",
+      errorCode: "IMPORT_RECIPE_NOT_FOUND",
+      upstreamCode: "NO_RECIPE",
+      sourceHost: "example.com",
+    });
     expect(mocks.refundSmartImportUsageForPeriod).toHaveBeenCalledWith(
       db,
       "user-1",

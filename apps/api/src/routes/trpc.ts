@@ -7,6 +7,7 @@ import {
 import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import type { Hono } from "hono";
 
+import { captureApiException } from "../observability/sentry";
 import type { AppHonoEnv } from "../types";
 
 function privateErrorStack(error: unknown): string {
@@ -44,8 +45,18 @@ export function registerTrpcRoutes(app: Hono<AppHonoEnv>) {
           publicCode,
           ...(status >= 500 && { errorStack: privateErrorStack(error) }),
         };
-        if (status >= 500) console.error(JSON.stringify(log));
-        else console.warn(JSON.stringify(log));
+        if (status >= 500) {
+          captureApiException(error, {
+            operation: "trpc",
+            requestId: log.requestId,
+            procedure: path ?? "unknown",
+            status,
+            userId: ctx?.user?.id,
+          });
+          console.error(JSON.stringify(log));
+        } else {
+          console.warn(JSON.stringify(log));
+        }
       },
     }),
   );
