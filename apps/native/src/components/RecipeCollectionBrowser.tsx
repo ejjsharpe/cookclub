@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useMemo } from "react";
+import { memo, useCallback, useEffect, useRef, useMemo } from "react";
 import { View, Dimensions } from "react-native";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
+  Extrapolation,
+  interpolate,
   useAnimatedStyle,
   type SharedValue,
   type AnimatedRef,
@@ -36,6 +38,55 @@ import {
 export type { Recipe, CollectionWithMetadata, TabType };
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+export const SEARCH_RESULTS_CROSSFADE_START = 0.6;
+const ADDITIONAL_RECIPE_FADE_START = 0.4;
+
+interface AnimatedRecipeResultProps {
+  recipe: Recipe;
+  index: number;
+  transitionRecipeCount: number;
+  animationProgress?: SharedValue<number>;
+  onRecipePress: (recipeId: number) => void;
+}
+
+const AnimatedRecipeResult = memo(function AnimatedRecipeResult({
+  recipe,
+  index,
+  transitionRecipeCount,
+  animationProgress,
+  onRecipePress,
+}: AnimatedRecipeResultProps) {
+  const animatedStyle = useAnimatedStyle(() => {
+    "worklet";
+    if (!animationProgress) {
+      return {};
+    }
+
+    const progress = animationProgress.get();
+    if (index < transitionRecipeCount) {
+      return { opacity: progress >= 1 ? 1 : 0 };
+    }
+
+    const fadeProgress = interpolate(
+      progress,
+      [0, ADDITIONAL_RECIPE_FADE_START, 1],
+      [0, 0, 1],
+      Extrapolation.CLAMP,
+    );
+
+    return {
+      // The browser's parent also fades by progress. Compensate here so the
+      // visible result follows fadeProgress rather than progress squared.
+      opacity: progress > 0 ? Math.min(1, fadeProgress / progress) : 0,
+    };
+  });
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <RecipeCard recipe={recipe} onPressRecipeId={onRecipePress} />
+    </Animated.View>
+  );
+});
 
 interface RecipeCollectionBrowserProps {
   onRecipePress: (recipeId: number) => void;
@@ -59,6 +110,8 @@ interface RecipeCollectionBrowserProps {
   }) => void;
   /** Animation progress for header entrance (0 = hidden, 1 = visible) */
   headerAnimationProgress?: SharedValue<number>;
+  /** Number of leading recipes represented by moving transition clones */
+  transitionRecipeCount?: number;
   /** Initial tab to display */
   initialTab?: TabType;
   /** Ref attached to the first collection item for position measurement */
@@ -79,6 +132,7 @@ export const RecipeCollectionBrowser = ({
   onSearchQueryChange,
   onFilterStateChange,
   headerAnimationProgress,
+  transitionRecipeCount = 0,
   initialTab,
   firstCollectionRef,
   isActive,
@@ -166,14 +220,25 @@ export const RecipeCollectionBrowser = ({
     activeTab,
   ]);
 
-  // Hide list content until animation completes (prevents double recipe cards with overlay)
-  const listEntranceStyle = useAnimatedStyle(() => {
+  // Crossfade the real results in as the moving clones settle into place.
+  // Compensate for the parent search view's opacity so the combined on-screen
+  // opacity follows the crossfade rather than multiplying by progress twice.
+  const collectionsEntranceStyle = useAnimatedStyle(() => {
     "worklet";
     if (!headerAnimationProgress) {
       return {};
     }
+
+    const progress = headerAnimationProgress.get();
+    const crossfadeProgress = interpolate(
+      progress,
+      [0, SEARCH_RESULTS_CROSSFADE_START, 1],
+      [0, 0, 1],
+      Extrapolation.CLAMP,
+    );
+
     return {
-      opacity: headerAnimationProgress.get() >= 1 ? 1 : 0,
+      opacity: progress > 0 ? Math.min(1, crossfadeProgress / progress) : 0,
     };
   });
 
@@ -190,10 +255,16 @@ export const RecipeCollectionBrowser = ({
 
   // Render item callbacks
   const renderRecipe = useCallback(
-    ({ item }: { item: Recipe }) => (
-      <RecipeCard recipe={item} onPressRecipeId={onRecipePress} />
+    ({ item, index }: { item: Recipe; index: number }) => (
+      <AnimatedRecipeResult
+        recipe={item}
+        index={index}
+        transitionRecipeCount={transitionRecipeCount}
+        animationProgress={headerAnimationProgress}
+        onRecipePress={onRecipePress}
+      />
     ),
-    [onRecipePress],
+    [headerAnimationProgress, onRecipePress, transitionRecipeCount],
   );
 
   const renderCollection = useCallback(
@@ -342,7 +413,7 @@ export const RecipeCollectionBrowser = ({
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.listWrapper, listEntranceStyle]}>
+      <View style={styles.listWrapper}>
         <SwipeableTabView
           activeIndex={activeTabIndex}
           onIndexChange={handleSwipeTabChange}
@@ -350,9 +421,11 @@ export const RecipeCollectionBrowser = ({
           scrollProgress={scrollProgress}
         >
           {recipesContent}
-          {collectionsContent}
+          <Animated.View style={[styles.listWrapper, collectionsEntranceStyle]}>
+            {collectionsContent}
+          </Animated.View>
         </SwipeableTabView>
-      </Animated.View>
+      </View>
       <RecipeCollectionHeader
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}

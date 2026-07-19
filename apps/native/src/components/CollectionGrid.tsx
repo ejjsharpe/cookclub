@@ -154,6 +154,7 @@ export const CollectionGrid = forwardRef<
         getItemType={getItemType}
         ListHeaderComponent={ListHeader}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         numColumns={2}
         contentContainerStyle={styles.gridContent}
         scrollEventThrottle={20}

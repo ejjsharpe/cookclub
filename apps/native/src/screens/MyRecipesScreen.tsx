@@ -18,6 +18,7 @@ import Animated, {
   useDerivedValue,
   measure,
   withTiming,
+  Extrapolation,
   interpolate,
   Easing,
   type SharedValue,
@@ -34,7 +35,10 @@ import { CollectionGridCard, ImageGrid } from "@/components/CollectionGridCard";
 import { CreateCollectionCard } from "@/components/CreateCollectionCard";
 import { Ionicons } from "@/components/Ionicons";
 import { RecipeCard } from "@/components/RecipeCard";
-import { RecipeCollectionBrowser } from "@/components/RecipeCollectionBrowser";
+import {
+  RecipeCollectionBrowser,
+  SEARCH_RESULTS_CROSSFADE_START,
+} from "@/components/RecipeCollectionBrowser";
 import { SearchBar, SEARCH_BAR_HEIGHT } from "@/components/SearchBar";
 import { Skeleton, RecipeCardSkeleton, FadeIn } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
@@ -152,8 +156,12 @@ const RecentRecipesSkeleton = () => (
 
 // Animation config - static, moved to module scope to avoid hook overhead
 const ANIMATION_CONFIG = {
-  duration: 300,
+  duration: 250,
   easing: Easing.bezier(0.4, 0, 0.2, 1),
+};
+const SEARCH_ANIMATION_CONFIG = {
+  ...ANIMATION_CONFIG,
+  duration: 250,
 };
 
 // ─── Animated Recipe Overlay ─────────────────────────────────────────────────
@@ -187,8 +195,10 @@ const AnimatedRecipeOverlay = memo(function AnimatedRecipeOverlay({
       return { opacity: 0 };
     }
 
+    const progress = searchProgress.get();
+
     return {
-      transform: [{ translateY: searchProgress.get() * deltaY }],
+      transform: [{ translateY: progress * deltaY }],
       opacity: 1,
     };
   });
@@ -197,8 +207,6 @@ const AnimatedRecipeOverlay = memo(function AnimatedRecipeOverlay({
     <Animated.View
       style={[styles.recipeOverlay, topStyle, animatedStyle]}
       pointerEvents="none"
-      shouldRasterizeIOS
-      renderToHardwareTextureAndroid
     >
       <RecipeCard recipe={recipe} />
     </Animated.View>
@@ -262,21 +270,29 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
       return { opacity: 0 };
     }
 
+    const progress = searchProgress.get();
+    const overlayOpacity = interpolate(
+      progress,
+      [0, SEARCH_RESULTS_CROSSFADE_START, 1],
+      [1, 1, 0],
+      Extrapolation.CLAMP,
+    );
+
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: searchProgress.get(),
+        opacity: Math.min(progress, overlayOpacity),
         transform: [],
       };
     }
 
-    const translateX = searchProgress.get() * deltaX;
-    const translateY = searchProgress.get() * deltaY;
+    const translateX = progress * deltaX;
+    const translateY = progress * deltaY;
     // Scale interpolates from 1 to imageScale: 1 + progress * (imageScale - 1)
-    const scale = 1 + searchProgress.get() * (imageScale - 1);
+    const scale = 1 + progress * (imageScale - 1);
 
     return {
-      opacity: 1,
+      opacity: overlayOpacity,
       transform: [{ translateX }, { translateY }, { scale }],
     };
   });
@@ -289,20 +305,28 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
       return { opacity: 0 };
     }
 
+    const progress = searchProgress.get();
+    const overlayOpacity = interpolate(
+      progress,
+      [0, SEARCH_RESULTS_CROSSFADE_START, 1],
+      [1, 1, 0],
+      Extrapolation.CLAMP,
+    );
+
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: searchProgress.get(),
+        opacity: Math.min(progress, overlayOpacity),
         transform: [],
       };
     }
 
-    const translateX = searchProgress.get() * deltaX;
+    const translateX = progress * deltaX;
     // Text needs to move down by deltaY plus the extra image height from scaling
-    const translateY = searchProgress.get() * (deltaY + imageHeightDelta);
+    const translateY = progress * (deltaY + imageHeightDelta);
 
     return {
-      opacity: 1,
+      opacity: overlayOpacity,
       transform: [{ translateX }, { translateY }],
     };
   });
@@ -326,17 +350,11 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
           { width: displayWidth },
           imageStyle,
         ]}
-        shouldRasterizeIOS
-        renderToHardwareTextureAndroid
       >
         <ImageGrid images={previewImages} width={displayWidth} />
       </Animated.View>
       {/* Text with translate only (no scale) */}
-      <Animated.View
-        style={[styles.collectionOverlayText, textStyle]}
-        shouldRasterizeIOS
-        renderToHardwareTextureAndroid
-      >
+      <Animated.View style={[styles.collectionOverlayText, textStyle]}>
         <Text type="headline" numberOfLines={1}>
           {collection.name}
         </Text>
@@ -470,15 +488,24 @@ export const MyRecipesScreen = () => {
     [],
   );
 
+  const focusSearchInput = useCallback(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (isSearchActive) {
-      searchProgress.set(withTiming(1, ANIMATION_CONFIG));
-      searchInputRef.current?.focus();
+      searchProgress.set(
+        withTiming(1, SEARCH_ANIMATION_CONFIG, (finished) => {
+          if (finished) {
+            scheduleOnRN(focusSearchInput);
+          }
+        }),
+      );
     } else {
       searchInputRef.current?.blur();
-      searchProgress.set(withTiming(0, ANIMATION_CONFIG));
+      searchProgress.set(withTiming(0, SEARCH_ANIMATION_CONFIG));
     }
-  }, [isSearchActive, searchProgress]);
+  }, [focusSearchInput, isSearchActive, searchProgress]);
 
   // Animate filter button visibility based on active tab
   useEffect(() => {
@@ -1248,6 +1275,7 @@ export const MyRecipesScreen = () => {
             onSearchQueryChange={setSearchQuery}
             onFilterStateChange={handleFilterStateChange}
             headerAnimationProgress={searchProgress}
+            transitionRecipeCount={recentRecipes.length}
             initialTab={filterState?.activeTab ?? "recipes"}
             firstCollectionRef={firstSearchCollectionRef}
             isActive={isSearchActive}
@@ -1265,8 +1293,6 @@ export const MyRecipesScreen = () => {
             styles.floatingSearchTransitionInner,
             floatingSearchTransitionInnerStyle,
           ]}
-          shouldRasterizeIOS
-          renderToHardwareTextureAndroid
         >
           <SearchBar
             value={searchQuery}

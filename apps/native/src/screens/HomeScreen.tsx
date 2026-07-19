@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Dimensions,
   useWindowDimensions,
+  type TextInput,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -27,6 +28,7 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { scheduleOnRN } from "react-native-worklets";
 
 import {
   ActivityFeedListItem,
@@ -272,6 +274,7 @@ export const HomeScreen = () => {
   // Track the search bar's Y position relative to the screen
   const searchBarY = useSharedValue(0);
   const searchBarMeasuredY = useRef(0);
+  const searchInputRef = useRef<TextInput>(null);
 
   // Animation progress (0 = browse, 1 = search)
   const searchProgress = useSharedValue(0);
@@ -291,17 +294,27 @@ export const HomeScreen = () => {
 
   const animationConfig = useMemo(
     () => ({
-      duration: 300,
+      duration: 250,
       easing: Easing.bezier(0.4, 0, 0.2, 1),
     }),
     [],
   );
 
+  const focusSearchInput = useCallback(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (isSearchActive) {
       // Show floating search immediately when entering search mode
       setShowFloatingSearch(true);
-      searchProgress.set(withTiming(1, animationConfig));
+      searchProgress.set(
+        withTiming(1, animationConfig, (finished) => {
+          if (finished) {
+            scheduleOnRN(focusSearchInput);
+          }
+        }),
+      );
     } else {
       // Animate out, then hide floating search after animation completes
       searchProgress.set(withTiming(0, animationConfig));
@@ -310,7 +323,7 @@ export const HomeScreen = () => {
       }, animationConfig.duration);
       return () => clearTimeout(timeout);
     }
-  }, [isSearchActive, animationConfig, searchProgress]);
+  }, [focusSearchInput, isSearchActive, animationConfig, searchProgress]);
 
   useEffect(() => {
     loadLatestProgress.set(
@@ -954,6 +967,7 @@ export const HomeScreen = () => {
           ListEmptyComponent={renderSearchEmpty}
           ItemSeparatorComponent={SearchUserSeparator}
           onEndReachedThreshold={0.5}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing && isSearchActive}
@@ -1018,9 +1032,9 @@ export const HomeScreen = () => {
             pointerEvents={isSearchActive ? "auto" : "none"}
           >
             <SearchBar
+              ref={searchInputRef}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              autoFocus={isSearchActive}
               placeholder="Search cooks..."
             />
           </Animated.View>

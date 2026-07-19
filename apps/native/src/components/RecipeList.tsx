@@ -82,6 +82,7 @@ export const RecipeList = forwardRef<RecipeListRef, RecipeListProps>(
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={RecipeSeparator}
         scrollEventThrottle={32}
