@@ -1045,7 +1045,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     textAlignVertical: "center",
   },
   inputPlaceholder: {
-    color: theme.colors.textTertiary,
+    color: theme.colors.placeholderText,
   },
   addButton: {
     width: 44,

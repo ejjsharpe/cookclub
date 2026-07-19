@@ -18,7 +18,6 @@ import Animated, {
   useDerivedValue,
   measure,
   withTiming,
-  Extrapolation,
   interpolate,
   Easing,
   type SharedValue,
@@ -35,10 +34,7 @@ import { CollectionGridCard, ImageGrid } from "@/components/CollectionGridCard";
 import { CreateCollectionCard } from "@/components/CreateCollectionCard";
 import { Ionicons } from "@/components/Ionicons";
 import { RecipeCard } from "@/components/RecipeCard";
-import {
-  RecipeCollectionBrowser,
-  SEARCH_RESULTS_CROSSFADE_START,
-} from "@/components/RecipeCollectionBrowser";
+import { RecipeCollectionBrowser } from "@/components/RecipeCollectionBrowser";
 import { SearchBar, SEARCH_BAR_HEIGHT } from "@/components/SearchBar";
 import { Skeleton, RecipeCardSkeleton, FadeIn } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
@@ -271,17 +267,11 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
     }
 
     const progress = searchProgress.get();
-    const overlayOpacity = interpolate(
-      progress,
-      [0, SEARCH_RESULTS_CROSSFADE_START, 1],
-      [1, 1, 0],
-      Extrapolation.CLAMP,
-    );
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: Math.min(progress, overlayOpacity),
+        opacity: progress,
         transform: [],
       };
     }
@@ -292,7 +282,7 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
     const scale = 1 + progress * (imageScale - 1);
 
     return {
-      opacity: overlayOpacity,
+      opacity: 1,
       transform: [{ translateX }, { translateY }, { scale }],
     };
   });
@@ -306,17 +296,11 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
     }
 
     const progress = searchProgress.get();
-    const overlayOpacity = interpolate(
-      progress,
-      [0, SEARCH_RESULTS_CROSSFADE_START, 1],
-      [1, 1, 0],
-      Extrapolation.CLAMP,
-    );
 
     if (fadeOnly) {
       // Fade only: no transform, just fade in with progress
       return {
-        opacity: Math.min(progress, overlayOpacity),
+        opacity: progress,
         transform: [],
       };
     }
@@ -326,7 +310,7 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
     const translateY = progress * (deltaY + imageHeightDelta);
 
     return {
-      opacity: overlayOpacity,
+      opacity: 1,
       transform: [{ translateX }, { translateY }],
     };
   });

@@ -38,7 +38,6 @@ import {
 export type { Recipe, CollectionWithMetadata, TabType };
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-export const SEARCH_RESULTS_CROSSFADE_START = 0.6;
 const ADDITIONAL_RECIPE_FADE_START = 0.4;
 
 interface AnimatedRecipeResultProps {
@@ -220,25 +219,16 @@ export const RecipeCollectionBrowser = ({
     activeTab,
   ]);
 
-  // Crossfade the real results in as the moving clones settle into place.
-  // Compensate for the parent search view's opacity so the combined on-screen
-  // opacity follows the crossfade rather than multiplying by progress twice.
+  // Keep the real collection grid hidden while its transition clones move.
+  // At the final frame the clones and grid are aligned, so they can swap
+  // without changing the apparent opacity of the collection cards.
   const collectionsEntranceStyle = useAnimatedStyle(() => {
     "worklet";
     if (!headerAnimationProgress) {
       return {};
     }
-
-    const progress = headerAnimationProgress.get();
-    const crossfadeProgress = interpolate(
-      progress,
-      [0, SEARCH_RESULTS_CROSSFADE_START, 1],
-      [0, 0, 1],
-      Extrapolation.CLAMP,
-    );
-
     return {
-      opacity: progress > 0 ? Math.min(1, crossfadeProgress / progress) : 0,
+      opacity: headerAnimationProgress.get() >= 1 ? 1 : 0,
     };
   });
 
