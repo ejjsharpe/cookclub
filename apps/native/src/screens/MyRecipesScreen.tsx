@@ -197,6 +197,8 @@ const AnimatedRecipeOverlay = memo(function AnimatedRecipeOverlay({
     <Animated.View
       style={[styles.recipeOverlay, topStyle, animatedStyle]}
       pointerEvents="none"
+      shouldRasterizeIOS
+      renderToHardwareTextureAndroid
     >
       <RecipeCard recipe={recipe} />
     </Animated.View>
@@ -324,11 +326,17 @@ const AnimatedCollectionOverlay = memo(function AnimatedCollectionOverlay({
           { width: displayWidth },
           imageStyle,
         ]}
+        shouldRasterizeIOS
+        renderToHardwareTextureAndroid
       >
         <ImageGrid images={previewImages} width={displayWidth} />
       </Animated.View>
       {/* Text with translate only (no scale) */}
-      <Animated.View style={[styles.collectionOverlayText, textStyle]}>
+      <Animated.View
+        style={[styles.collectionOverlayText, textStyle]}
+        shouldRasterizeIOS
+        renderToHardwareTextureAndroid
+      >
         <Text type="headline" numberOfLines={1}>
           {collection.name}
         </Text>
@@ -650,10 +658,13 @@ export const MyRecipesScreen = () => {
         };
       }
 
-      // Store positions and start animation
-      if (tabToAnimate === "recipes") {
+      // Keep every valid geometry snapshot. The user can switch tabs while in
+      // search mode, when FlashList may detach the browse item we'd otherwise
+      // need to measure on exit.
+      if (recipePositions.length > 0) {
         browsePositions.current = recipePositions;
-      } else {
+      }
+      if (collectionPositions.length > 0) {
         browseCollectionPositions.current = collectionPositions;
       }
       if (searchCollectionMeasurement) {
@@ -670,22 +681,21 @@ export const MyRecipesScreen = () => {
     // Measure elements on UI thread - keep worklet lightweight
     scheduleOnUI(() => {
       "worklet";
-      const searchBarMeasurement = measure(searchBarRef);
-      // Only measure refs that are actually attached to rendered components
+      // Animated refs can be detached by a virtualized list. Calling measure()
+      // with that null shadow node throws in Worklets, so resolve it first.
+      const searchBarMeasurement =
+        searchBarRef() == null ? null : measure(searchBarRef);
       const recipeMeasurement =
-        tabToAnimate === "recipes" && hasRecipes
-          ? measure(firstRecipeRef)
-          : null;
+        hasRecipes && firstRecipeRef() != null ? measure(firstRecipeRef) : null;
       const browseCollectionMeasurement =
-        tabToAnimate === "collections" && hasCollections
+        hasCollections && firstBrowseCollectionRef() != null
           ? measure(firstBrowseCollectionRef)
           : null;
 
-      // Only measure search collection if entering on collections tab
-      let searchCollectionMeasured = null;
-      if (tabToAnimate === "collections") {
-        searchCollectionMeasured = measure(firstSearchCollectionRef);
-      }
+      const searchCollectionMeasured =
+        hasCollections && firstSearchCollectionRef() != null
+          ? measure(firstSearchCollectionRef)
+          : null;
 
       // Pass raw measurements back to JS thread for position calculations
       scheduleOnRN(processMeasurements, {
@@ -785,10 +795,12 @@ export const MyRecipesScreen = () => {
         };
       }
 
-      // Update positions BEFORE setting visibility
-      if (currentTab === "recipes") {
+      // Update only valid measurements so geometry captured on entry remains a
+      // safe fallback if FlashList has detached an item.
+      if (recipePositions.length > 0) {
         browsePositions.current = recipePositions;
-      } else {
+      }
+      if (collectionPositions.length > 0) {
         browseCollectionPositions.current = collectionPositions;
       }
 
@@ -813,19 +825,23 @@ export const MyRecipesScreen = () => {
     // Measure elements on UI thread - keep worklet lightweight
     scheduleOnUI(() => {
       "worklet";
-      // Only measure refs that are actually attached to rendered components
       const recipeMeasurement =
-        currentTab === "recipes" && hasRecipes ? measure(firstRecipeRef) : null;
+        currentTab === "recipes" && hasRecipes && firstRecipeRef() != null
+          ? measure(firstRecipeRef)
+          : null;
       const browseCollectionMeasurement =
-        currentTab === "collections" && hasCollections
+        currentTab === "collections" &&
+        hasCollections &&
+        firstBrowseCollectionRef() != null
           ? measure(firstBrowseCollectionRef)
           : null;
 
-      // Only measure search collection if on collections tab
-      let searchCollectionMeasured = null;
-      if (currentTab === "collections") {
-        searchCollectionMeasured = measure(firstSearchCollectionRef);
-      }
+      const searchCollectionMeasured =
+        currentTab === "collections" &&
+        hasCollections &&
+        firstSearchCollectionRef() != null
+          ? measure(firstSearchCollectionRef)
+          : null;
 
       // Pass raw measurements back to JS thread for position calculations
       scheduleOnRN(processMeasurements, {
@@ -1249,6 +1265,8 @@ export const MyRecipesScreen = () => {
             styles.floatingSearchTransitionInner,
             floatingSearchTransitionInnerStyle,
           ]}
+          shouldRasterizeIOS
+          renderToHardwareTextureAndroid
         >
           <SearchBar
             value={searchQuery}

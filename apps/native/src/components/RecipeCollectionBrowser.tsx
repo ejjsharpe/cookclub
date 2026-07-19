@@ -363,7 +363,7 @@ export const RecipeCollectionBrowser = ({
         hasActiveFilters={hasActiveFilters}
         onOpenFilters={handleOpenFilters}
         filterButtonStyle={filterButtonStyle}
-        headerAnimationProgress={headerAnimationProgress}
+        isActive={isActive}
       />
 
       {/* Filter Sheet */}

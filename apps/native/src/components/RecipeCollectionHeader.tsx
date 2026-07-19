@@ -1,8 +1,9 @@
 import { LinearGradient } from "expo-linear-gradient";
+import { useEffect } from "react";
 import { View, TouchableOpacity } from "react-native";
 import Animated, {
   useAnimatedStyle,
-  useDerivedValue,
+  useSharedValue,
   withSpring,
   interpolate,
   type SharedValue,
@@ -21,6 +22,7 @@ import type { TabType } from "@/hooks/useTabNavigation";
 // Full: search (44) + VSpace (12) + segmented (44) + VSpace (24) = 118
 export const HEADER_CONTENT_HEIGHT = 124;
 const SEARCH_BAR_ROW_HEIGHT = 56; // search (44) + VSpace (12)
+const SEGMENTED_CONTROL_SPRING_CONFIG = { mass: 0.5 };
 
 const tabOptions: TabOption<TabType>[] = [
   { value: "recipes", label: "Recipes" },
@@ -47,7 +49,7 @@ interface RecipeCollectionHeaderProps {
   }>;
 
   // Animation
-  headerAnimationProgress?: SharedValue<number>;
+  isActive?: boolean;
 }
 
 export const RecipeCollectionHeader = ({
@@ -60,22 +62,25 @@ export const RecipeCollectionHeader = ({
   hasActiveFilters,
   onOpenFilters,
   filterButtonStyle,
-  headerAnimationProgress,
+  isActive,
 }: RecipeCollectionHeaderProps) => {
   const theme = UnistylesRuntime.getTheme();
+  const segmentedControlProgress = useSharedValue(isActive === false ? 0 : 1);
 
-  // Spring animation for segmented control entrance
-  const segmentedControlSpring = useDerivedValue(() => {
-    return withSpring(headerAnimationProgress?.get() ?? 0, {
-      mass: 0.5,
-    });
-  });
+  // Start one spring when visibility changes instead of retargeting a spring
+  // from every frame of the parent timing animation.
+  useEffect(() => {
+    segmentedControlProgress.set(
+      withSpring(isActive === false ? 0 : 1, SEGMENTED_CONTROL_SPRING_CONFIG),
+    );
+  }, [isActive, segmentedControlProgress]);
 
   const headerEntranceStyle = useAnimatedStyle(() => {
     "worklet";
-    const scale = interpolate(segmentedControlSpring.get(), [0, 1], [0.8, 1]);
+    const progress = segmentedControlProgress.get();
+    const scale = interpolate(progress, [0, 1], [0.8, 1]);
     return {
-      opacity: segmentedControlSpring.get(),
+      opacity: progress,
       transform: [{ scale }],
     };
   });

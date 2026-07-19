@@ -30,7 +30,7 @@
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
-    "wrangler": "4.94.0"
+    "wrangler": "4.112.0"
   },
   "eslintConfig": {
     "extends": "universe/node"

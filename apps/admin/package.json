@@ -33,7 +33,7 @@
     "eslint-config-universe": "15.2.0",
     "typescript": "6.0.3",
     "vite": "8.0.14",
-    "wrangler": "4.94.0"
+    "wrangler": "4.112.0"
   },
   "eslintConfig": {
     "extends": "universe/web"
