@@ -63,7 +63,7 @@ function isSafeSourceUrl(value: unknown): value is string {
   }
 }
 
-export function sanitizePublicErrorDetails(
+function sanitizePublicErrorDetails(
   details: PublicErrorDetails | undefined,
 ): PublicErrorDetails | undefined {
   if (!isSafeSourceUrl(details?.sourceUrl)) return undefined;

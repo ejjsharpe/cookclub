@@ -1,379 +1,71 @@
-import { TrueSheet } from "@lodev09/react-native-true-sheet";
-import {
-  forwardRef,
-  useState,
-  useCallback,
-  useImperativeHandle,
-  useRef,
-} from "react";
-import {
-  View,
-  TouchableOpacity,
-  ActivityIndicator,
-  Image,
-  Alert,
-  ScrollView,
-} from "react-native";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { forwardRef } from "react";
 
 import {
+  useCancelShoppingListInvitation,
+  useGetShoppingListInvitationStatus,
   useGetShoppingListShareableUsers,
   useGetShoppingListShareStatus,
-  useGetShoppingListInvitationStatus,
   useInviteToShoppingList,
-  useCancelShoppingListInvitation,
   useRemoveShoppingListMember,
-  type ShoppingListShareableUser,
 } from "../../api/shopping";
-import { AppSheet } from "../AppSheet";
-import { VSpace } from "../Space";
-import { Text } from "../Text";
-
-import { Ionicons } from "@/components/Ionicons";
-
-type FriendState = "none" | "invited" | "shared";
-
-interface FriendItemProps {
-  friend: ShoppingListShareableUser;
-  state: FriendState;
-  onInvite: () => void;
-  onCancelInvitation: () => void;
-  onRemoveMember: () => void;
-  isPending: boolean;
-}
-
-const FriendItem = ({
-  friend,
-  state,
-  onInvite,
-  onCancelInvitation,
-  onRemoveMember,
-  isPending,
-}: FriendItemProps) => {
-  const handlePress = () => {
-    if (state === "shared") {
-      Alert.alert(
-        "Remove Access",
-        `Remove ${friend.name}'s access to this shopping list?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Remove Access",
-            style: "destructive",
-            onPress: onRemoveMember,
-          },
-        ],
-      );
-    } else if (state === "invited") {
-      Alert.alert(
-        "Cancel Invitation",
-        `Cancel the invitation to ${friend.name}?`,
-        [
-          { text: "Keep", style: "cancel" },
-          {
-            text: "Cancel Invitation",
-            style: "destructive",
-            onPress: onCancelInvitation,
-          },
-        ],
-      );
-    } else {
-      onInvite();
-    }
-  };
-
-  return (
-    <TouchableOpacity
-      style={styles.friendRow}
-      onPress={handlePress}
-      disabled={isPending}
-    >
-      {friend.image ? (
-        <Image source={{ uri: friend.image }} style={styles.avatar} />
-      ) : (
-        <View style={[styles.avatar, styles.avatarPlaceholder]}>
-          <Ionicons name="person" size={20} style={styles.avatarIcon} />
-        </View>
-      )}
-      <View style={styles.friendInfo}>
-        <Text type="body">{friend.name}</Text>
-        {state === "shared" && (
-          <Text type="caption" style={styles.accessText}>
-            Shared
-          </Text>
-        )}
-        {state === "invited" && (
-          <Text type="caption" style={styles.invitedText}>
-            Invited
-          </Text>
-        )}
-      </View>
-      {isPending ? (
-        <ActivityIndicator size="small" />
-      ) : state === "shared" ? (
-        <Ionicons name="checkmark-circle" size={24} style={styles.sharedIcon} />
-      ) : state === "invited" ? (
-        <Ionicons name="time-outline" size={24} style={styles.invitedIcon} />
-      ) : (
-        <Ionicons name="add-circle-outline" size={24} style={styles.addIcon} />
-      )}
-    </TouchableOpacity>
-  );
-};
+import {
+  ShareResourceSheet,
+  type ShareResourceSheetRef,
+} from "../ShareResourceSheet";
 
 export interface ShoppingListShareSheetProps {
   shoppingListId?: number;
   listName?: string;
 }
 
-export interface ShoppingListShareSheetRef {
-  present: () => void;
-  dismiss: () => void;
-}
+export type ShoppingListShareSheetRef = ShareResourceSheetRef;
 
 export const ShoppingListShareSheet = forwardRef<
   ShoppingListShareSheetRef,
   ShoppingListShareSheetProps
 >(({ shoppingListId, listName }, ref) => {
-  const theme = UnistylesRuntime.getTheme();
-  const sheetRef = useRef<TrueSheet>(null);
-  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
-
-  const { data: shareableUsers, isLoading: isLoadingUsers } =
+  const { data: friends, isLoading: isLoadingUsers } =
     useGetShoppingListShareableUsers();
   const { data: shareStatus, isLoading: isLoadingStatus } =
     useGetShoppingListShareStatus({
       shoppingListId: shoppingListId ?? 0,
-      enabled: !!shoppingListId,
+      enabled: Boolean(shoppingListId),
     });
   const { data: invitationStatus, isLoading: isLoadingInvitations } =
     useGetShoppingListInvitationStatus({
       shoppingListId: shoppingListId ?? 0,
-      enabled: !!shoppingListId,
+      enabled: Boolean(shoppingListId),
     });
-
-  const inviteMutation = useInviteToShoppingList();
-  const cancelInvitationMutation = useCancelShoppingListInvitation();
-  const removeMemberMutation = useRemoveShoppingListMember();
-
-  useImperativeHandle(ref, () => ({
-    present: () => sheetRef.current?.present(),
-    dismiss: () => sheetRef.current?.dismiss(),
-  }));
-
-  const sharedUserIds = new Set(shareStatus?.map((s) => s.userId) ?? []);
-  const invitedUserIds = new Set(invitationStatus?.map((i) => i.userId) ?? []);
-
-  const getFriendState = (userId: string): FriendState => {
-    if (sharedUserIds.has(userId)) return "shared";
-    if (invitedUserIds.has(userId)) return "invited";
-    return "none";
-  };
-
-  const handleInvite = useCallback(
-    async (userId: string) => {
-      if (!shoppingListId) return;
-      setPendingUserId(userId);
-      try {
-        await inviteMutation.mutateAsync({ shoppingListId, userId });
-      } catch {
-        // Error handled by mutation
-      } finally {
-        setPendingUserId(null);
-      }
-    },
-    [shoppingListId, inviteMutation],
-  );
-
-  const handleCancelInvitation = useCallback(
-    async (userId: string) => {
-      if (!shoppingListId) return;
-      setPendingUserId(userId);
-      try {
-        await cancelInvitationMutation.mutateAsync({
-          shoppingListId,
-          userId,
-        });
-      } catch {
-        // Error handled by mutation
-      } finally {
-        setPendingUserId(null);
-      }
-    },
-    [shoppingListId, cancelInvitationMutation],
-  );
-
-  const handleRemoveMember = useCallback(
-    async (userId: string) => {
-      if (!shoppingListId) return;
-      setPendingUserId(userId);
-      try {
-        await removeMemberMutation.mutateAsync({ shoppingListId, userId });
-      } catch {
-        // Error handled by mutation
-      } finally {
-        setPendingUserId(null);
-      }
-    },
-    [shoppingListId, removeMemberMutation],
-  );
-
-  const isLoading = isLoadingUsers || isLoadingStatus || isLoadingInvitations;
-  const hasShareableUsers = shareableUsers && shareableUsers.length > 0;
-  const sharedCount = shareStatus?.length ?? 0;
-  const invitedCount = invitationStatus?.length ?? 0;
+  const invite = useInviteToShoppingList();
+  const cancelInvitation = useCancelShoppingListInvitation();
+  const removeMember = useRemoveShoppingListMember();
 
   return (
-    <AppSheet
-      ref={sheetRef}
+    <ShareResourceSheet
+      ref={ref}
       title="Share Shopping List"
       subtitle={listName}
-      detents={[0.8]}
-      backgroundColor={theme.colors.background}
-      scrollable
-    >
-      <View>
-        <ScrollView style={styles.scrollView}>
-          <View style={styles.scrollContent}>
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" />
-              </View>
-            ) : !hasShareableUsers ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons
-                  name="people-outline"
-                  size={48}
-                  style={styles.emptyIcon}
-                />
-                <Text type="bodyFaded" style={styles.emptyText}>
-                  You don't have any friends to share with yet. Follow other
-                  users and have them follow you back to share shopping lists!
-                </Text>
-              </View>
-            ) : (
-              <>
-                {(sharedCount > 0 || invitedCount > 0) && (
-                  <View style={styles.sharedSummary}>
-                    <Ionicons
-                      name="people"
-                      size={18}
-                      style={styles.summaryIcon}
-                    />
-                    <Text type="body">
-                      {sharedCount > 0 &&
-                        `Shared with ${sharedCount} ${sharedCount === 1 ? "person" : "people"}`}
-                      {sharedCount > 0 && invitedCount > 0 && " · "}
-                      {invitedCount > 0 && `${invitedCount} pending`}
-                    </Text>
-                  </View>
-                )}
-
-                <Text type="heading" style={styles.sectionTitle}>
-                  Friends
-                </Text>
-                <VSpace size={12} />
-
-                {shareableUsers.map((friend) => (
-                  <FriendItem
-                    key={friend.id}
-                    friend={friend}
-                    state={getFriendState(friend.id)}
-                    onInvite={() => handleInvite(friend.id)}
-                    onCancelInvitation={() => handleCancelInvitation(friend.id)}
-                    onRemoveMember={() => handleRemoveMember(friend.id)}
-                    isPending={pendingUserId === friend.id}
-                  />
-                ))}
-              </>
-            )}
-          </View>
-        </ScrollView>
-      </View>
-    </AppSheet>
+      resourceLabel="shopping list"
+      resourcePlural="shopping lists"
+      friends={friends}
+      sharedUserIds={shareStatus?.map(({ userId }) => userId)}
+      invitedUserIds={invitationStatus?.map(({ userId }) => userId)}
+      isLoading={isLoadingUsers || isLoadingStatus || isLoadingInvitations}
+      onInvite={(userId) =>
+        shoppingListId
+          ? invite.mutateAsync({ shoppingListId, userId })
+          : Promise.resolve()
+      }
+      onCancelInvitation={(userId) =>
+        shoppingListId
+          ? cancelInvitation.mutateAsync({ shoppingListId, userId })
+          : Promise.resolve()
+      }
+      onRemoveMember={(userId) =>
+        shoppingListId
+          ? removeMember.mutateAsync({ shoppingListId, userId })
+          : Promise.resolve()
+      }
+    />
   );
 });
-
-const styles = StyleSheet.create((theme) => ({
-  scrollView: {
-    maxHeight: 500,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
-  },
-  loadingContainer: {
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  emptyIcon: {
-    color: theme.colors.textTertiary,
-    marginBottom: 12,
-  },
-  emptyText: {
-    textAlign: "center",
-    paddingHorizontal: 20,
-  },
-  sharedSummary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: theme.colors.primary + "15",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: theme.borderRadius.medium,
-    marginBottom: 20,
-  },
-  summaryIcon: {
-    color: theme.colors.primary,
-  },
-  sectionTitle: {
-    marginBottom: 4,
-  },
-  friendRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.inputBackground,
-  },
-  avatarPlaceholder: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarIcon: {
-    color: theme.colors.textTertiary,
-  },
-  friendInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  accessText: {
-    color: theme.colors.textSecondary,
-    marginTop: 2,
-  },
-  invitedText: {
-    color: "#F59E0B",
-    marginTop: 2,
-  },
-  sharedIcon: {
-    color: theme.colors.primary,
-  },
-  invitedIcon: {
-    color: "#F59E0B",
-  },
-  addIcon: {
-    color: theme.colors.textTertiary,
-  },
-}));

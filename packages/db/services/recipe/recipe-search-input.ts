@@ -3,7 +3,7 @@ import { isRecognizedUnit, MIN_RECIPE_SEARCH_LENGTH } from "@repo/shared";
 import { ServiceError } from "../errors";
 import { normalizeRecipeListLimit } from "./recipe-list.service";
 
-export const MAX_RECIPE_SEARCH_LENGTH = 100;
+const MAX_RECIPE_SEARCH_LENGTH = 100;
 export const MAX_RECIPE_SEARCH_LEXEMES = 10;
 
 const QUANTITY_TOKEN = /^(?:\d+(?:[./]\d+)?|[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])$/u;

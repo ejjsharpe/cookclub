@@ -3,7 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import type { Context } from "./context";
 import { getPublicErrorMessage, publicErrorForResponse } from "./public-errors";
 
-export const t = initTRPC.context<Context>().create({
+const t = initTRPC.context<Context>().create({
   isDev: false,
   errorFormatter({ shape, error, ctx }) {
     const publicError = publicErrorForResponse(error, shape.data.httpStatus);

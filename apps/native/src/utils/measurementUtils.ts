@@ -23,7 +23,7 @@ const G_PER_UNIT: Record<string, number> = {
 
 const ML_PER_CUP = 236.588;
 
-export interface MeasurementUnit {
+interface MeasurementUnit {
   name: string;
   abbreviations: string[];
   type: "volume" | "weight" | "count";
@@ -32,7 +32,7 @@ export interface MeasurementUnit {
 }
 
 // Simplified unit definitions - convert-units handles the conversion factors
-export const MEASUREMENT_UNITS: MeasurementUnit[] = [
+const MEASUREMENT_UNITS: MeasurementUnit[] = [
   // Volume - Imperial
   {
     name: "teaspoon",
@@ -169,14 +169,14 @@ function isCookingSpoonUnit(unit: MeasurementUnit | null | undefined): boolean {
   );
 }
 
-export interface DetectedMeasurement {
+interface DetectedMeasurement {
   amount: number;
   unit: MeasurementUnit | null;
   ingredient: string;
   originalText: string;
 }
 
-export function detectMeasurement(ingredientText: string): DetectedMeasurement {
+function detectMeasurement(ingredientText: string): DetectedMeasurement {
   const text = ingredientText.trim();
 
   // Regex to match common patterns: number + unit + ingredient
@@ -245,7 +245,7 @@ export function detectMeasurement(ingredientText: string): DetectedMeasurement {
   };
 }
 
-export function convertMeasurement(
+function convertMeasurement(
   amount: number,
   fromUnit: MeasurementUnit,
   toUnit: MeasurementUnit,
@@ -270,41 +270,6 @@ export function convertMeasurement(
   if (!fromFactor || !toFactor) return null;
 
   return (amount * fromFactor) / toFactor;
-}
-
-export function formatMeasurement(
-  amount: number,
-  unit: MeasurementUnit,
-): string {
-  // Handle fractions for common measurements
-  if (unit.system === "imperial" && unit.type === "volume") {
-    const fractions = [
-      { decimal: 0.125, fraction: "1/8" },
-      { decimal: 0.25, fraction: "1/4" },
-      { decimal: 0.33, fraction: "1/3" },
-      { decimal: 0.5, fraction: "1/2" },
-      { decimal: 0.66, fraction: "2/3" },
-      { decimal: 0.75, fraction: "3/4" },
-    ];
-
-    const wholeNumber = Math.floor(amount);
-    const decimal = amount - wholeNumber;
-
-    const closestFraction = fractions.find(
-      (f) => Math.abs(f.decimal - decimal) < 0.05,
-    );
-
-    if (closestFraction && wholeNumber > 0) {
-      return `${wholeNumber} ${closestFraction.fraction} ${unit.abbreviations[1] || unit.abbreviations[0]}`;
-    } else if (closestFraction && wholeNumber === 0) {
-      return `${closestFraction.fraction} ${unit.abbreviations[1] || unit.abbreviations[0]}`;
-    }
-  }
-
-  // Default formatting
-  const unitName =
-    amount === 1 ? unit.name : unit.abbreviations[1] || unit.abbreviations[0];
-  return `${amount} ${unitName}`;
 }
 
 export function convertIngredientText(

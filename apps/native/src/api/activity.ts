@@ -4,7 +4,6 @@ import {
   useInfiniteQuery,
   useMutation,
   useQueryClient,
-  useQuery,
 } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { useRef } from "react";
@@ -145,38 +144,6 @@ export const useCreateCookingReview = () => {
       },
     }),
   );
-};
-
-// Get reviews for a recipe
-interface UseRecipeReviewsParams {
-  recipeId: number;
-  limit?: number;
-}
-
-export const useRecipeReviews = ({
-  recipeId,
-  limit = 20,
-}: UseRecipeReviewsParams) => {
-  const trpc = useTRPC();
-
-  const infiniteQueryOptions =
-    trpc.activity.getRecipeReviews.infiniteQueryOptions(
-      { recipeId, limit },
-      { getNextPageParam: (lastPage) => lastPage?.nextCursor },
-    );
-
-  return useInfiniteQuery(infiniteQueryOptions);
-};
-
-// Get recipe rating
-interface UseRecipeRatingParams {
-  recipeId: number;
-}
-
-export const useRecipeRating = ({ recipeId }: UseRecipeRatingParams) => {
-  const trpc = useTRPC();
-
-  return useQuery(trpc.activity.getRecipeRating.queryOptions({ recipeId }));
 };
 
 // Get activities for a specific user (for profile pages)

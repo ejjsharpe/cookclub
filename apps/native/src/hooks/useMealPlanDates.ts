@@ -227,17 +227,4 @@ export const useMealPlanDates = ({
   };
 };
 
-export {
-  formatDateString,
-  isSameDay,
-  DAY_HEADER_HEIGHT,
-  DAY_CONTENT_HEIGHT,
-  DAY_FOOTER_HEIGHT,
-};
-export type {
-  DaySection,
-  MealPlanListItem,
-  HeaderItem,
-  ContentItem,
-  FooterItem,
-};
+export type { MealPlanListItem };

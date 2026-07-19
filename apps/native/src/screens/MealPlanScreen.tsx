@@ -31,13 +31,13 @@ import {
   type MealPlanEntry,
 } from "@/api/mealPlan";
 import { useUser } from "@/api/user";
+import { InvitationBanner } from "@/components/InvitationBanner";
 import { Ionicons } from "@/components/Ionicons";
 import { MealPlanSkeleton } from "@/components/Skeleton";
 import { StackedAvatars } from "@/components/StackedAvatars";
 import { Text } from "@/components/Text";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 import { DayGroup, DayHeader } from "@/components/mealPlan";
-import { InvitationBanner } from "@/components/mealPlan/InvitationBanner";
 import {
   MealPlanPickerSheet,
   type MealPlanPickerSheetRef,
@@ -482,7 +482,9 @@ export const MealPlanScreen = () => {
         {pendingInvitations?.map((invitation) => (
           <InvitationBanner
             key={invitation.id}
-            invitation={invitation}
+            inviterName={invitation.inviterName}
+            inviterImage={invitation.inviterImage}
+            resourceName={invitation.mealPlanName}
             onAccept={() =>
               acceptInvitation.mutate({ invitationId: invitation.id })
             }

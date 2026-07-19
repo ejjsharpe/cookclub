@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { View, ViewStyle, Dimensions } from "react-native";
+import { View, ViewStyle } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -126,7 +126,7 @@ const ActivityActionRowSkeleton = () => (
 );
 
 // Import Activity Card Skeleton (large image with overlay)
-export const ImportActivityCardSkeleton = () => {
+const ImportActivityCardSkeleton = () => {
   return (
     <View style={styles.card}>
       <ActivityUserHeaderSkeleton />
@@ -142,7 +142,7 @@ export const ImportActivityCardSkeleton = () => {
 };
 
 // Review Activity Card Skeleton (carousel + content card)
-export const ReviewActivityCardSkeleton = () => {
+const ReviewActivityCardSkeleton = () => {
   return (
     <View style={styles.card}>
       <ActivityUserHeaderSkeleton />
@@ -174,17 +174,6 @@ export const ReviewActivityCardSkeleton = () => {
 
       <ActivityActionRowSkeleton />
     </View>
-  );
-};
-
-// Legacy alias for backwards compatibility
-export const ActivityCardSkeleton = ({
-  showReviewImage = false,
-}: { showReviewImage?: boolean } = {}) => {
-  return showReviewImage ? (
-    <ReviewActivityCardSkeleton />
-  ) : (
-    <ImportActivityCardSkeleton />
   );
 };
 
@@ -240,11 +229,10 @@ export const MyRecipesListSkeleton = () => {
 
 // ─── Collection Card Skeleton ────────────────────────────────────────────────
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const GRID_PADDING = 20;
 const GRID_GAP = 12;
 
-export const CollectionGridCardSkeleton = () => {
+const CollectionGridCardSkeleton = () => {
   return (
     <View style={styles.collectionGridCard}>
       <Skeleton
@@ -474,92 +462,6 @@ export const UserProfileSkeleton = () => {
   );
 };
 
-// ─── Recipe Detail Skeleton ──────────────────────────────────────────────────
-
-const IMAGE_HEIGHT = 400;
-
-const IngredientItemSkeleton = () => (
-  <View style={styles.ingredientItem}>
-    <Skeleton width="86%" height={18} borderRadius={4} />
-  </View>
-);
-
-const MethodItemSkeleton = ({ short = false }: { short?: boolean }) => (
-  <View style={styles.methodItem}>
-    <Skeleton width={28} height={28} borderRadius={14} />
-    <View style={styles.methodContent}>
-      <Skeleton width="94%" height={18} borderRadius={4} />
-      <Skeleton width={short ? "64%" : "82%"} height={18} borderRadius={4} />
-    </View>
-  </View>
-);
-
-export const RecipeDetailSkeleton = () => {
-  return (
-    <View style={styles.recipeDetailScreen}>
-      {/* Cover Image */}
-      <View style={styles.coverSection}>
-        <Skeleton width={SCREEN_WIDTH} height={IMAGE_HEIGHT} borderRadius={0} />
-      </View>
-
-      {/* White Card */}
-      <View style={styles.whiteCard}>
-        {/* Summary */}
-        <View style={styles.summarySkeleton}>
-          <Skeleton width="88%" height={20} borderRadius={5} />
-          <Skeleton width="62%" height={20} borderRadius={5} />
-
-          <View style={styles.tagSkeletonRow}>
-            <Skeleton width={82} height={16} borderRadius={4} />
-            <Skeleton width={64} height={16} borderRadius={4} />
-          </View>
-
-          <View style={styles.metaSkeletonRow}>
-            <Skeleton width={92} height={34} borderRadius={17} />
-            <Skeleton width={92} height={34} borderRadius={17} />
-            <Skeleton width={100} height={34} borderRadius={17} />
-          </View>
-
-          <Skeleton width={124} height={24} borderRadius={5} />
-        </View>
-
-        <View style={styles.actionSkeletonRow}>
-          <Skeleton width="60%" height={50} borderRadius={25} />
-          <Skeleton width={50} height={50} borderRadius={25} />
-          <Skeleton width={50} height={50} borderRadius={25} />
-        </View>
-
-        <View style={styles.pageDivider} />
-
-        {/* Ingredients */}
-        <View style={styles.recipeSectionSkeleton}>
-          <Skeleton width={128} height={24} borderRadius={5} />
-          <Skeleton width={48} height={13} borderRadius={4} />
-          <View style={styles.listSkeleton}>
-            <IngredientItemSkeleton />
-            <IngredientItemSkeleton />
-            <IngredientItemSkeleton />
-            <IngredientItemSkeleton />
-          </View>
-        </View>
-
-        <View style={styles.pageDivider} />
-
-        {/* Method */}
-        <View style={styles.recipeSectionSkeleton}>
-          <Skeleton width={92} height={24} borderRadius={5} />
-          <Skeleton width={46} height={13} borderRadius={4} />
-          <View style={styles.listSkeleton}>
-            <MethodItemSkeleton />
-            <MethodItemSkeleton short />
-            <MethodItemSkeleton />
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-};
-
 const styles = StyleSheet.create((theme) => ({
   fadeIn: {
     flex: 1,
@@ -739,91 +641,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   dayFooterSkeleton: {
     height: 16,
-  },
-
-  // Recipe Detail styles
-  recipeDetailScreen: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  coverSection: {
-    height: IMAGE_HEIGHT,
-  },
-  whiteCard: {
-    backgroundColor: theme.colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginTop: -24,
-    paddingTop: 28,
-    paddingHorizontal: 20,
-    minHeight: 400,
-  },
-  spacer16: {
-    height: 16,
-  },
-  spacer24: {
-    height: 24,
-  },
-  timesRow: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  servingsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  tabBar: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  summarySkeleton: {
-    gap: 14,
-  },
-  tagSkeletonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  metaSkeletonRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  actionSkeletonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 14,
-  },
-  pageDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    marginTop: 30,
-    marginBottom: 24,
-    opacity: 0.4,
-  },
-  recipeSectionSkeleton: {
-    gap: 8,
-  },
-  listSkeleton: {
-    paddingTop: 16,
-  },
-  ingredientItem: {
-    paddingVertical: 10,
-  },
-  ingredientContent: {
-    flex: 1,
-    gap: 6,
-  },
-  methodItem: {
-    flexDirection: "row",
-    gap: 12,
-    paddingVertical: 16,
-  },
-  methodContent: {
-    flex: 1,
-    gap: 8,
-    paddingTop: 4,
   },
 
   // User Profile styles

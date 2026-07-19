@@ -151,8 +151,8 @@ vi.mock("arktype", () => {
     return validator;
   };
 
-  const mockType: any = (schema: unknown) => createValidator();
-  mockType.or = (...validators: unknown[]) => createValidator();
+  const mockType: any = (_schema: unknown) => createValidator();
+  mockType.or = (..._validators: unknown[]) => createValidator();
   mockType.errors = class extends Array {
     summary = "Validation error";
   };
@@ -499,17 +499,6 @@ describe("recipeRouter - activity integration", () => {
   });
 
   describe("direct AI payload limits", () => {
-    it("rejects oversized recipe text before calling the parser", async () => {
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await expect(
-        caller.parseRecipeFromText({ text: "x".repeat(100_001) }),
-      ).rejects.toHaveProperty("code", "PAYLOAD_TOO_LARGE");
-
-      expect(mockEnv.RECIPE_AI.parse).not.toHaveBeenCalled();
-    });
-
     it("rejects oversized chat messages before calling the parser", async () => {
       const ctx = createMockContext(mockDb, { env: mockEnv });
       const caller = recipeRouter.createCaller(ctx as any);

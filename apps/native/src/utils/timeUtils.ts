@@ -1,12 +1,4 @@
-import { formatDuration, intervalToDuration } from "date-fns";
-
-/**
- * Internal representation for TimePicker component
- */
-export interface TimeValue {
-  hours: number;
-  minutes: number;
-}
+import { formatDuration } from "date-fns";
 
 /**
  * Format minutes into a human-readable string
@@ -53,26 +45,4 @@ export function formatMinutesShort(minutes: number | null | undefined): string {
   } else {
     return `${mins} min`;
   }
-}
-
-/**
- * Get total minutes from TimeValue
- */
-export function getTotalMinutes(time: TimeValue): number {
-  return time.hours * 60 + time.minutes;
-}
-
-/**
- * Create TimeValue from total minutes
- */
-export function fromTotalMinutes(totalMinutes: number): TimeValue {
-  const duration = intervalToDuration({
-    start: 0,
-    end: totalMinutes * 60 * 1000,
-  });
-
-  return {
-    hours: duration.hours || 0,
-    minutes: duration.minutes || 0,
-  };
 }

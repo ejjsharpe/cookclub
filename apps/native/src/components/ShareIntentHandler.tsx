@@ -17,6 +17,7 @@ import {
 import { useSubscription } from "@/lib/subscription";
 import { isBasicImportUnsupportedUrl } from "@/utils/basicImport";
 import { imageToBase64 } from "@/utils/imageUtils";
+import { detectPendingShareIntent } from "@/utils/shareIntent";
 import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 const supportedImageMimeTypes = new Set([
@@ -165,45 +166,6 @@ export function ShareIntentHandler() {
     ],
   );
 
-  // Detect content type from share intent
-  const detectContentType = (
-    intent: typeof shareIntent,
-  ): PendingShareIntent | null => {
-    // Check for URL first
-    if (intent?.webUrl) {
-      return { type: "url", content: intent.webUrl, timestamp: Date.now() };
-    }
-
-    // Check for image files
-    if (intent?.files && intent.files.length > 0) {
-      const file = intent.files[0];
-      if (file?.mimeType?.startsWith("image/")) {
-        return {
-          type: "image",
-          content: file.path,
-          mimeType: file.mimeType,
-          timestamp: Date.now(),
-        };
-      }
-    }
-
-    // Check for text content
-    if (intent?.text) {
-      // Check if the text contains a URL
-      const urlMatch = intent.text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/i);
-      if (urlMatch) {
-        return { type: "url", content: urlMatch[0], timestamp: Date.now() };
-      }
-
-      // Otherwise treat as recipe text
-      if (intent.text.length >= 50) {
-        return { type: "text", content: intent.text, timestamp: Date.now() };
-      }
-    }
-
-    return null;
-  };
-
   // Check for pending share intent on mount (from previous session or pre-login)
   useEffect(() => {
     if (!isAdaptyConfigured()) {
@@ -236,7 +198,7 @@ export function ShareIntentHandler() {
       return;
     }
 
-    const detectedIntent = detectContentType(shareIntent);
+    const detectedIntent = detectPendingShareIntent(shareIntent);
     if (!detectedIntent) {
       resetShareIntent();
       return;

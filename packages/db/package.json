@@ -5,8 +5,7 @@
   "exports": {
     ".": "./index.ts",
     "./schemas": "./schemas/index.ts",
-    "./services": "./services/index.ts",
-    "./utils": "./utils/index.ts"
+    "./services": "./services/index.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -28,7 +27,6 @@
     "@neondatabase/serverless": "1.1.0",
     "@repo/contracts": "workspace:*",
     "@repo/shared": "workspace:*",
-    "bcryptjs": "3.0.3",
     "drizzle-orm": "0.45.2",
     "pg": "8.21.0"
   },
@@ -36,8 +34,6 @@
     "@cloudflare/workers-types": "4.20260525.1",
     "@dotenvx/dotenvx": "1.68.1",
     "@repo/tsconfig": "workspace:*",
-    "@types/bcrypt": "6.0.0",
-    "@types/bcryptjs": "3.0.0",
     "@types/pg": "8.20.0",
     "drizzle-kit": "0.31.10",
     "eslint-config-universe": "15.2.0",

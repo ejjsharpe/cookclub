@@ -47,7 +47,7 @@ export type RecipeImportFailureEvent = {
 export type ProcessRecipeImportJobResult = "processed" | "skipped" | "busy";
 
 export const RECIPE_IMPORT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
-export const RECIPE_IMPORT_JOB_STALE_MS = 60 * 1000;
+const RECIPE_IMPORT_JOB_STALE_MS = 60 * 1000;
 export const RECIPE_IMPORT_JOB_STALE_ERROR =
   getPublicErrorMessage("IMPORT_TIMED_OUT");
 const MAX_PARSE_DIAGNOSTIC_STAGES = 32;
@@ -128,7 +128,7 @@ export function mapImportFailure(
   }
 }
 
-export function getImportErrorCode(
+function getImportErrorCode(
   error: unknown,
   mode: ImportJobMode,
 ): PersistedImportErrorCode {

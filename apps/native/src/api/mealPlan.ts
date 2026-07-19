@@ -4,14 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "react-native";
 
 // API Response Types
-export type MealPlan = Outputs["mealPlan"]["getMealPlans"][number];
 export type MealPlanEntry = Outputs["mealPlan"]["getEntries"][number];
-export type ShareableUser = Outputs["mealPlan"]["getShareableUsers"][number];
 export type ShareStatus = Outputs["mealPlan"]["getShareStatus"][number];
-export type MealPlanInvitationStatus =
-  Outputs["mealPlan"]["getMealPlanInvitationStatus"][number];
-export type PendingMealPlanInvitation =
-  Outputs["mealPlan"]["getPendingMealPlanInvitations"][number];
 
 // Get all meal plans (owned + shared with user)
 export const useGetMealPlans = () => {
@@ -145,24 +139,6 @@ export const useRemoveFromMealPlan = () => {
     onSettled: () => {
       const entriesFilter = trpc.mealPlan.getEntries.pathFilter();
       queryClient.invalidateQueries(entriesFilter);
-    },
-  });
-
-  return useMutation(mutationOptions);
-};
-
-// Move an entry to a different slot
-export const useMoveEntry = () => {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  const mutationOptions = trpc.mealPlan.moveEntry.mutationOptions({
-    onSuccess: () => {
-      const entriesFilter = trpc.mealPlan.getEntries.pathFilter();
-      queryClient.invalidateQueries(entriesFilter);
-    },
-    onError: () => {
-      Alert.alert("Error", "Failed to move entry. Please try again.");
     },
   });
 

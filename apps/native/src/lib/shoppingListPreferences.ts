@@ -6,21 +6,6 @@ import { storage } from "./mmkv";
 const SELECTED_SHOPPING_LIST_ID_KEY = "selected_shopping_list_id";
 const SELECTED_SHOPPING_LIST_NAME_KEY = "selected_shopping_list_name";
 
-export function getSelectedShoppingList(): { id: number; name: string } | null {
-  const id = storage.getNumber(SELECTED_SHOPPING_LIST_ID_KEY);
-  const name = storage.getString(SELECTED_SHOPPING_LIST_NAME_KEY);
-  if (id === undefined || name === undefined) return null;
-  return { id, name };
-}
-
-export function setSelectedShoppingList(
-  listId: number,
-  listName: string,
-): void {
-  storage.set(SELECTED_SHOPPING_LIST_ID_KEY, listId);
-  storage.set(SELECTED_SHOPPING_LIST_NAME_KEY, listName);
-}
-
 export function clearSelectedShoppingList(): void {
   storage.delete(SELECTED_SHOPPING_LIST_ID_KEY);
   storage.delete(SELECTED_SHOPPING_LIST_NAME_KEY);

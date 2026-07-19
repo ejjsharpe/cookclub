@@ -42,16 +42,3 @@ export function applyThemePreference(preference: ThemePreference): void {
     Appearance.setColorScheme(preference);
   }
 }
-
-export function getThemeDisplayName(theme: ThemePreference): string {
-  switch (theme) {
-    case "light":
-      return "Light";
-    case "dark":
-      return "Dark";
-    case "system":
-      return "System";
-    default:
-      return "System";
-  }
-}

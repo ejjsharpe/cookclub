@@ -1,5 +1,9 @@
 import { neon } from "@neondatabase/serverless";
-import { classifyIngredientAisle, normalizeIngredientName } from "@repo/shared";
+import {
+  classifyIngredientAisle,
+  extractPreparation,
+  normalizeIngredientName,
+} from "@repo/shared";
 import { hashPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
@@ -10,7 +14,6 @@ import { socialRecipes } from "./data/social-recipes";
 import { users as userData } from "./data/users";
 import * as schema from "./schemas";
 import { syncRecipeSearchDocument } from "./services/recipe/recipe-search-document.service";
-import { extractPreparation } from "./utils/ingredientParser";
 
 const rl = readline.createInterface({
   input: process.stdin,

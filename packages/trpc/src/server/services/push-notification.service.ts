@@ -194,7 +194,7 @@ async function sendExpoPushBatch(
   return payload.data ?? [];
 }
 
-export async function sendPushForNotification(
+async function sendPushForNotification(
   db: DbClient,
   env: TRPCEnv,
   notification: NotificationItem,
@@ -240,7 +240,7 @@ export async function sendPushForNotification(
   await createPushNotificationTickets(db, ticketRows);
 }
 
-export async function createAndSendNotification(
+async function createAndSendNotification(
   ctx: { db: DbClient; env: TRPCEnv },
   params: CreateNotificationParams,
 ): Promise<NotificationItem | null> {

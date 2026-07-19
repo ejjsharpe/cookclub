@@ -34,7 +34,7 @@ export function getImageAcceptHeader(format: NativeImageFormat): string {
   }
 }
 
-export const NATIVE_IMAGE_FORMAT = resolveNativeImageFormat(
+const NATIVE_IMAGE_FORMAT = resolveNativeImageFormat(
   process.env.EXPO_PUBLIC_NATIVE_IMAGE_FORMAT,
 );
 

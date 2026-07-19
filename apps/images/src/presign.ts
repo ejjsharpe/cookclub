@@ -124,7 +124,7 @@ export function generateUserTempKey(
   return `temp/${sanitizeOwnerId(ownerId)}/${crypto.randomUUID()}.${extension}`;
 }
 
-export function sanitizeOwnerId(ownerId: string): string {
+function sanitizeOwnerId(ownerId: string): string {
   return ownerId.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 

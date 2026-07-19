@@ -1,22 +1,9 @@
 import { classifyIngredientAisle } from "@repo/shared";
-import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "react-native";
 
 import { alertApiError } from "@/lib/apiErrorAlert";
-
-// API Response Types
-export type ShoppingListWithMeta =
-  Outputs["shopping"]["getUserShoppingLists"][number];
-export type ShoppingListShareableUser =
-  Outputs["shopping"]["getShoppingListShareableUsers"][number];
-export type ShoppingListShareStatus =
-  Outputs["shopping"]["getShoppingListShareStatus"][number];
-export type ShoppingListInvitationStatus =
-  Outputs["shopping"]["getShoppingListInvitationStatus"][number];
-export type PendingShoppingListInvitation =
-  Outputs["shopping"]["getPendingShoppingListInvitations"][number];
 
 // Get user's shopping list (optionally by ID)
 export const useGetShoppingList = (params?: { shoppingListId?: number }) => {
@@ -97,74 +84,6 @@ export const useAddRecipeToSpecificList = () => {
           operation: "shopping.addRecipeToSpecificList",
           fallback: "Failed to add recipe to shopping list.",
         });
-      },
-    },
-  );
-
-  return useMutation(mutationOptions);
-};
-
-// Add recipe to shopping list with optimistic updates
-export const useAddRecipeToShoppingList = () => {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  type RecipeDetailOutput = any; // Type will be inferred from tRPC
-
-  const mutationOptions = trpc.shopping.addRecipeToShoppingList.mutationOptions(
-    {
-      networkMode: "offlineFirst",
-      onMutate: async (variables) => {
-        const { recipeId } = variables;
-
-        // Get query filters
-        const recipeDetailFilter = trpc.recipe.getRecipeDetail.pathFilter();
-        const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-
-        // Cancel outgoing refetches
-        await queryClient.cancelQueries(recipeDetailFilter);
-        await queryClient.cancelQueries(shoppingListFilter);
-
-        // Snapshot previous values
-        const recipeDetailQueryKey = trpc.recipe.getRecipeDetail.queryKey({
-          recipeId,
-        });
-        const previousRecipeDetail =
-          queryClient.getQueryData<RecipeDetailOutput>(recipeDetailQueryKey);
-
-        // Optimistically update recipe detail to show it's in shopping list
-        if (previousRecipeDetail) {
-          queryClient.setQueryData(recipeDetailQueryKey, {
-            ...previousRecipeDetail,
-            isInShoppingList: true,
-          });
-        }
-
-        return { previousRecipeDetail, recipeDetailQueryKey };
-      },
-      onSuccess: () => {
-        // Invalidate shopping list query to refresh
-        const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-        queryClient.invalidateQueries(shoppingListFilter);
-      },
-      onError: (error, variables, context) => {
-        // Rollback on error
-        if (context?.previousRecipeDetail && context?.recipeDetailQueryKey) {
-          queryClient.setQueryData(
-            context.recipeDetailQueryKey,
-            context.previousRecipeDetail,
-          );
-        }
-
-        alertApiError("Shopping List Error", error, {
-          operation: "shopping.addRecipe",
-          fallback: "Failed to add recipe to shopping list.",
-        });
-      },
-      onSettled: () => {
-        // Invalidate to ensure sync with server
-        const recipeDetailFilter = trpc.recipe.getRecipeDetail.pathFilter();
-        queryClient.invalidateQueries(recipeDetailFilter);
       },
     },
   );

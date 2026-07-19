@@ -1,3 +1,5 @@
+import { normalizeUnit } from "@repo/shared";
+
 import type {
   IngredientSection,
   InstructionSection,
@@ -5,7 +7,6 @@ import type {
   SourceType,
 } from "../schema";
 import type { AiRecipeResult } from "./ai-client";
-import { normalizeUnit } from "../utils/unit-normalizer";
 
 interface AiRecipeMappingOptions {
   sourceType: SourceType;

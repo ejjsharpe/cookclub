@@ -44,10 +44,8 @@ import {
   failRecipeImportJob,
   type ImportJobMode,
   type ImportJobRecord,
-  mapImportFailure,
 } from "../services/recipe-import-job.service";
 import {
-  assertSmartImportAllowance,
   consumeSmartImportAllowance,
   getCurrentSubscriptionStatus,
   requirePro,
@@ -116,7 +114,7 @@ const PersonalizationGoalValidator = type(
   "'vegetarian' | 'vegan' | 'gluten_free' | 'dairy_free' | 'low_carb' | 'high_protein' | 'budget' | 'healthier' | 'kid_friendly' | 'batch_cook' | 'meal_prep'",
 );
 
-export const RecipePostValidator = type({
+const RecipePostValidator = type({
   name: "string",
   ingredientSections: IngredientSectionRecord.array().atLeastLength(1),
   instructionSections: InstructionSectionRecord.array(),
@@ -136,7 +134,7 @@ export const RecipePostValidator = type({
   "nutrition?": "object | null",
 });
 
-export const RecipeUpdateValidator = type({
+const RecipeUpdateValidator = type({
   recipeId: "number",
   name: "string",
   ingredientSections: IngredientSectionRecord.array().atLeastLength(1),
@@ -156,8 +154,6 @@ export const RecipeUpdateValidator = type({
   servings: "number > 0",
   "nutrition?": "object | null",
 });
-
-const UrlValidator = type({ url: "string.url" });
 
 const MimeTypeValidator = type("'image/jpeg' | 'image/png' | 'image/webp'");
 
@@ -184,8 +180,6 @@ const MAX_IMPORT_DATA_LENGTH: Record<ImportJobMode, number> = {
   image: 2_500_000,
 };
 
-const MAX_AI_TEXT_LENGTH = MAX_IMPORT_DATA_LENGTH.text;
-const MAX_AI_IMAGE_BASE64_LENGTH = MAX_IMPORT_DATA_LENGTH.image;
 const MAX_CHAT_MESSAGES = 30;
 const MAX_CHAT_MESSAGE_LENGTH = 4_000;
 const MAX_CONVERSATION_STATE_FIELD_LENGTH = 1_000;
@@ -516,13 +510,6 @@ function getImportRateLimitKey(mode: ImportJobMode) {
   }
 }
 
-function importFailureError(code: string | undefined, mode: ImportJobMode) {
-  return new PublicTRPCError({
-    code: "BAD_REQUEST",
-    appCode: mapImportFailure(code, mode),
-  });
-}
-
 export const recipeRouter = router({
   listImportJobs: authedProcedure.query(async ({ ctx }) => {
     const [jobs, subscriptionStatus] = await Promise.all([
@@ -736,121 +723,6 @@ export const recipeRouter = router({
         );
 
       return { success: true };
-    }),
-
-  // Parse recipe from URL using AI
-  parseRecipeFromUrl: authedProcedure
-    .input(UrlValidator)
-    .mutation(async ({ ctx, input }) => {
-      try {
-        await enforceRateLimit(ctx, "recipe_parse_url");
-        await assertSmartImportAllowance(ctx);
-        const result = await ctx.env.RECIPE_AI.parse({
-          type: "url",
-          data: input.url,
-        });
-
-        if (!result.success) {
-          console.warn(
-            JSON.stringify({
-              requestId: ctx.requestId,
-              procedure: "recipe.parseRecipeFromUrl",
-              status: 400,
-              publicCode: mapImportFailure(result.error.code, "url"),
-              internalCode: result.error.code,
-            }),
-          );
-          throw importFailureError(result.error.code, "url");
-        }
-
-        const subscriptionStatus = await consumeSmartImportAllowance(ctx);
-        return parseResponseForEntitlement(result, subscriptionStatus.isPro);
-      } catch (e) {
-        if (e instanceof TRPCError) throw e;
-        console.error("Smart import error:", e);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to parse recipe",
-        });
-      }
-    }),
-
-  // Parse recipe from URL using structured data only (no AI) - for Basic Import
-  parseRecipeFromUrlBasic: authedProcedure
-    .input(UrlValidator)
-    .mutation(async ({ ctx, input }) => {
-      try {
-        await enforceRateLimit(ctx, "recipe_parse_url_basic");
-        const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
-        const result = await ctx.env.RECIPE_AI.parse({
-          type: "url",
-          data: input.url,
-          structuredOnly: true,
-        });
-
-        if (!result.success) {
-          throw importFailureError(result.error.code, "url");
-        }
-
-        return parseResponseForEntitlement(result, subscriptionStatus.isPro);
-      } catch (e) {
-        if (e instanceof TRPCError) throw e;
-        console.log(e, "ERROR");
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to parse recipe",
-        });
-      }
-    }),
-
-  // Parse recipe from text using AI
-  parseRecipeFromText: authedProcedure
-    .input(type({ text: "string" }))
-    .mutation(async ({ ctx, input }) => {
-      assertMaxLength(input.text, "Recipe text", MAX_AI_TEXT_LENGTH);
-      await enforceRateLimit(ctx, "recipe_parse_text");
-      await assertSmartImportAllowance(ctx);
-      const result = await ctx.env.RECIPE_AI.parse({
-        type: "text",
-        data: input.text,
-      });
-
-      if (!result.success) {
-        throw importFailureError(result.error.code, "text");
-      }
-
-      const subscriptionStatus = await consumeSmartImportAllowance(ctx);
-      return parseResponseForEntitlement(result, subscriptionStatus.isPro);
-    }),
-
-  // Parse recipe from image using AI (mutation due to large payload)
-  parseRecipeFromImage: authedProcedure
-    .input(
-      type({
-        imageBase64: "string",
-        mimeType: MimeTypeValidator,
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      assertMaxLength(
-        input.imageBase64,
-        "Recipe image",
-        MAX_AI_IMAGE_BASE64_LENGTH,
-      );
-      await enforceRateLimit(ctx, "recipe_parse_image");
-      await assertSmartImportAllowance(ctx);
-      const result = await ctx.env.RECIPE_AI.parse({
-        type: "image",
-        data: input.imageBase64,
-        mimeType: input.mimeType,
-      });
-
-      if (!result.success) {
-        throw importFailureError(result.error.code, "image");
-      }
-
-      const subscriptionStatus = await consumeSmartImportAllowance(ctx);
-      return parseResponseForEntitlement(result, subscriptionStatus.isPro);
     }),
 
   // Generate recipe via AI chat conversation

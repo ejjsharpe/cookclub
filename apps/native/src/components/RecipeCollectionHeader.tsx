@@ -20,7 +20,7 @@ import type { TabType } from "@/hooks/useTabNavigation";
 // Header content heights
 // Full: search (44) + VSpace (12) + segmented (44) + VSpace (24) = 118
 export const HEADER_CONTENT_HEIGHT = 124;
-export const SEARCH_BAR_ROW_HEIGHT = 56; // search (44) + VSpace (12)
+const SEARCH_BAR_ROW_HEIGHT = 56; // search (44) + VSpace (12)
 
 const tabOptions: TabOption<TabType>[] = [
   { value: "recipes", label: "Recipes" },

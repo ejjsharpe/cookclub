@@ -6,13 +6,6 @@ import { storage } from "./mmkv";
 const SELECTED_MEAL_PLAN_ID_KEY = "selected_meal_plan_id";
 const SELECTED_MEAL_PLAN_NAME_KEY = "selected_meal_plan_name";
 
-export function getSelectedMealPlan(): { id: number; name: string } | null {
-  const id = storage.getNumber(SELECTED_MEAL_PLAN_ID_KEY);
-  const name = storage.getString(SELECTED_MEAL_PLAN_NAME_KEY);
-  if (id === undefined || name === undefined) return null;
-  return { id, name };
-}
-
 export function setSelectedMealPlan(planId: number, planName: string): void {
   storage.set(SELECTED_MEAL_PLAN_ID_KEY, planId);
   storage.set(SELECTED_MEAL_PLAN_NAME_KEY, planName);

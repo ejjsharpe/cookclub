@@ -1,6 +1,5 @@
+import { normalizeUnit } from "@repo/shared";
 import { describe, it, expect } from "vitest";
-
-import { normalizeUnit } from "../../../src/utils/unit-normalizer";
 
 describe("normalizeUnit", () => {
   describe("volume units", () => {

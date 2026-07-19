@@ -1,13 +1,14 @@
-import { View, TouchableOpacity, Image, ActivityIndicator } from "react-native";
+import { Image } from "expo-image";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
-import type { PendingMealPlanInvitation } from "../../api/mealPlan";
-import { Text } from "../Text";
-
-import { Ionicons } from "@/components/Ionicons";
+import { Ionicons } from "./Ionicons";
+import { Text } from "./Text";
 
 interface InvitationBannerProps {
-  invitation: PendingMealPlanInvitation;
+  inviterName: string;
+  inviterImage?: string | null;
+  resourceName: string;
   onAccept: () => void;
   onDecline: () => void;
   isAccepting?: boolean;
@@ -15,7 +16,9 @@ interface InvitationBannerProps {
 }
 
 export const InvitationBanner = ({
-  invitation,
+  inviterName,
+  inviterImage,
+  resourceName,
   onAccept,
   onDecline,
   isAccepting,
@@ -26,11 +29,8 @@ export const InvitationBanner = ({
   return (
     <View style={styles.container}>
       <View style={styles.row}>
-        {invitation.inviterImage ? (
-          <Image
-            source={{ uri: invitation.inviterImage }}
-            style={styles.avatar}
-          />
+        {inviterImage ? (
+          <Image source={{ uri: inviterImage }} style={styles.avatar} />
         ) : (
           <View style={[styles.avatar, styles.avatarPlaceholder]}>
             <Ionicons name="person" size={16} style={styles.avatarIcon} />
@@ -38,13 +38,13 @@ export const InvitationBanner = ({
         )}
         <View style={styles.textContainer}>
           <Text type="body" style={styles.message}>
-            <Text type="highlight">{invitation.inviterName}</Text> invited you
-            to <Text type="highlight">{invitation.mealPlanName}</Text>
+            <Text type="highlight">{inviterName}</Text> invited you to{" "}
+            <Text type="highlight">{resourceName}</Text>
           </Text>
         </View>
       </View>
       <View style={styles.actions}>
-        <TouchableOpacity
+        <Pressable
           style={styles.declineButton}
           onPress={onDecline}
           disabled={isPending}
@@ -56,8 +56,8 @@ export const InvitationBanner = ({
               Decline
             </Text>
           )}
-        </TouchableOpacity>
-        <TouchableOpacity
+        </Pressable>
+        <Pressable
           style={styles.acceptButton}
           onPress={onAccept}
           disabled={isPending}
@@ -69,7 +69,7 @@ export const InvitationBanner = ({
               Accept
             </Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );

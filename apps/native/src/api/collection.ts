@@ -1,15 +1,8 @@
-import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "react-native";
 
 import { updateRecipeCollections } from "./utils/cache-helpers";
-
-// API Response Types
-// Use getUserCollectionsById which always returns metadata
-export type Collection =
-  Outputs["collection"]["getUserCollectionsById"][number];
-export type CollectionDetail = Outputs["collection"]["getCollectionDetail"];
 
 // Get user's collections with optional recipe membership info
 interface UseGetUserCollectionsParams {
@@ -190,24 +183,4 @@ export const useAddRecipeToCollection = () => {
   );
 
   return useMutation(mutationOptions);
-};
-
-// Get collections for a specific user (with metadata)
-interface UseGetUserCollectionsByIdParams {
-  userId: string;
-  search?: string;
-}
-
-export const useGetUserCollectionsById = ({
-  userId,
-  search = "",
-}: UseGetUserCollectionsByIdParams) => {
-  const trpc = useTRPC();
-
-  return useQuery(
-    trpc.collection.getUserCollectionsById.queryOptions({
-      userId,
-      search: search.trim() || undefined,
-    }),
-  );
 };

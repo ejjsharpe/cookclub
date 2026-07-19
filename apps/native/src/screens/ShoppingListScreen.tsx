@@ -44,6 +44,7 @@ import {
   useAcceptShoppingListInvitation,
   useDeclineShoppingListInvitation,
 } from "@/api/shopping";
+import { InvitationBanner } from "@/components/InvitationBanner";
 import { Ionicons } from "@/components/Ionicons";
 import { ShoppingListSkeleton, SkeletonContainer } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
@@ -52,7 +53,6 @@ import {
   AddRecipeToShoppingListSheet,
   type AddRecipeToShoppingListSheetRef,
 } from "@/components/shopping/AddRecipeToShoppingListSheet";
-import { ShoppingListInvitationBanner } from "@/components/shopping/ShoppingListInvitationBanner";
 import {
   ShoppingListPickerSheet,
   type ShoppingListPickerSheetRef,
@@ -694,9 +694,11 @@ export const ShoppingListScreen = () => {
         <VSpace size={insets.top + HEADER_HEIGHT + 8} />
         {/* Invitation Banners */}
         {pendingInvitations?.map((invitation) => (
-          <ShoppingListInvitationBanner
+          <InvitationBanner
             key={invitation.id}
-            invitation={invitation}
+            inviterName={invitation.inviterName}
+            inviterImage={invitation.inviterImage}
+            resourceName={invitation.shoppingListName}
             onAccept={() =>
               acceptInvitation.mutate({ invitationId: invitation.id })
             }

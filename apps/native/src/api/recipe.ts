@@ -13,10 +13,12 @@ import { useMemo } from "react";
 export type Recipe = Outputs["recipe"]["getRecipeDetail"];
 export type RecipeListItem =
   Outputs["recipe"]["getUserRecipes"]["items"][number];
-export type ParsedRecipe = Outputs["recipe"]["parseRecipeFromUrl"];
+export type ParsedRecipe = Extract<
+  NonNullable<Outputs["recipe"]["listImportJobs"][number]["recipe"]>,
+  { success: true }
+>;
 export type PersonalizationGoal =
   Inputs["recipe"]["personalizeRecipe"]["goals"][number];
-export type Tag = RecipeListItem["tags"][number];
 
 type RecipeTRPC = ReturnType<typeof useTRPC>;
 type RecipeQueryClient = ReturnType<typeof useQueryClient>;
@@ -28,54 +30,6 @@ function invalidateUserRecipeLists(
   queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
   queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter());
 }
-
-// Parse recipe from URL using AI (Smart Import)
-export const useParseRecipeFromUrl = () => {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    ...trpc.recipe.parseRecipeFromUrl.mutationOptions({ retry: false }),
-    onSettled: () => {
-      queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter());
-    },
-  });
-};
-
-// Parse recipe from URL using structured data only (Basic Import - no AI)
-export const useParseRecipeFromUrlBasic = () => {
-  const trpc = useTRPC();
-
-  return useMutation(
-    trpc.recipe.parseRecipeFromUrlBasic.mutationOptions({ retry: false }),
-  );
-};
-
-// Parse recipe from text using AI
-export const useParseRecipeFromText = () => {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    ...trpc.recipe.parseRecipeFromText.mutationOptions({ retry: false }),
-    onSettled: () => {
-      queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter());
-    },
-  });
-};
-
-// Parse recipe from image using AI
-export const useParseRecipeFromImage = () => {
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    ...trpc.recipe.parseRecipeFromImage.mutationOptions({ retry: false }),
-    onSettled: () => {
-      queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter());
-    },
-  });
-};
 
 interface UseGetUserRecipesParams {
   search?: string;
@@ -158,15 +112,6 @@ export const useRecipeDetail = ({
   });
 };
 
-// Get user preferences for filter suggestions
-export const useUserPreferences = () => {
-  const trpc = useTRPC();
-
-  return useQuery({
-    ...trpc.recipe.getUserPreferences.queryOptions(),
-  });
-};
-
 // Get all tags created by the current user
 export const useUserTags = () => {
   const trpc = useTRPC();
@@ -182,31 +127,6 @@ export const useUserRecipeTags = () => {
 
   return useQuery({
     ...trpc.recipe.getUserRecipeTags.queryOptions(),
-  });
-};
-
-// Get recipes uploaded by a specific user
-interface UseGetUserRecipesByIdParams {
-  userId: string;
-  search?: string;
-  limit?: number;
-}
-
-export const useGetUserRecipesById = ({
-  userId,
-  search,
-  limit = 20,
-}: UseGetUserRecipesByIdParams) => {
-  const trpc = useTRPC();
-
-  const infiniteQueryOptions =
-    trpc.recipe.getUserRecipesById.infiniteQueryOptions(
-      { userId, search, limit },
-      { getNextPageParam: (lastPage) => lastPage?.nextCursor },
-    );
-
-  return useInfiniteQuery({
-    ...infiniteQueryOptions,
   });
 };
 

@@ -2,8 +2,8 @@ import { getAisleOrder } from "@repo/shared";
 import { useMemo } from "react";
 
 // Layout heights for FlashList item types
-export const SECTION_HEADER_HEIGHT = 56;
-export const ITEM_HEIGHT = 58;
+const SECTION_HEADER_HEIGHT = 56;
+const ITEM_HEIGHT = 58;
 
 // ShoppingListItem from the API
 export interface ShoppingListItem {

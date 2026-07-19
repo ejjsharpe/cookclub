@@ -2,7 +2,7 @@ import { adapty, type AdaptyProfile } from "react-native-adapty";
 
 export const ADAPTY_PAYWALL_PLACEMENT_ID =
   process.env.EXPO_PUBLIC_ADAPTY_PAYWALL_PLACEMENT_ID ?? "pro_paywall";
-export const ADAPTY_PRO_ACCESS_LEVEL_ID =
+const ADAPTY_PRO_ACCESS_LEVEL_ID =
   process.env.EXPO_PUBLIC_ADAPTY_PRO_ACCESS_LEVEL_ID ?? "pro";
 
 const ADAPTY_SDK_KEY = process.env.EXPO_PUBLIC_ADAPTY_PUBLIC_SDK_KEY;

@@ -1,5 +1,6 @@
+import { normalizeUnit } from "@repo/shared";
+
 import type { Ingredient } from "../schema";
-import { normalizeUnit } from "./unit-normalizer";
 
 const UNICODE_FRACTIONS: Record<string, string> = {
   "\u00bc": "1/4",

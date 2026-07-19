@@ -63,7 +63,7 @@ function formatIngredient(ingredient: {
     .join(" ");
 }
 
-export const GenerateRecipeScreen = () => {
+const GenerateRecipeScreen = () => {
   const { navigate } = useNavigation();
   const theme = UnistylesRuntime.getTheme();
   const bottomInset = UnistylesRuntime.insets.bottom;

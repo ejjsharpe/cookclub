@@ -5,7 +5,7 @@ import { PropsWithChildren, useEffect } from "react";
 import { setupOnlineManager } from "./onlineManager";
 import { persistOptions } from "./queryPersister";
 
-export const queryClient = new QueryClient({
+const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days

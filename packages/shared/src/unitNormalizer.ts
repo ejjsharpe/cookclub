@@ -3,8 +3,8 @@ const UNIT_MAPPINGS: Record<string, string[]> = {
   gallon: ["gallon", "gallons", "gal", "gals"],
   quart: ["quart", "quarts", "qt", "qts"],
   pint: ["pint", "pints", "pt", "pts"],
-  tablespoon: ["tablespoon", "tablespoons", "tbsp", "tbs", "T"],
-  teaspoon: ["teaspoon", "teaspoons", "tsp", "ts", "t"],
+  tablespoon: ["tablespoon", "tablespoons", "tbsp", "tbs"],
+  teaspoon: ["teaspoon", "teaspoons", "tsp", "ts"],
   liter: ["liter", "liters", "litre", "litres", "l"],
   milliliter: ["milliliter", "milliliters", "millilitre", "millilitres", "ml"],
   pound: ["pound", "pounds", "lb", "lbs"],
@@ -26,6 +26,11 @@ const UNIT_MAPPINGS: Record<string, string[]> = {
   stick: ["stick", "sticks"],
 };
 
+const CASE_SENSITIVE_MAPPINGS: Record<string, string> = {
+  T: "tablespoon",
+  t: "teaspoon",
+};
+
 const VARIATION_TO_CANONICAL: Record<string, string> = {};
 
 for (const [canonical, variations] of Object.entries(UNIT_MAPPINGS)) {
@@ -36,7 +41,11 @@ for (const [canonical, variations] of Object.entries(UNIT_MAPPINGS)) {
 
 export function normalizeUnit(input: string | null): string | null {
   if (!input) return null;
-  const lowercased = input.toLowerCase().trim();
+  const trimmed = input.trim();
+  if (trimmed in CASE_SENSITIVE_MAPPINGS) {
+    return CASE_SENSITIVE_MAPPINGS[trimmed]!;
+  }
+  const lowercased = trimmed.toLowerCase();
   return VARIATION_TO_CANONICAL[lowercased] || lowercased;
 }
 

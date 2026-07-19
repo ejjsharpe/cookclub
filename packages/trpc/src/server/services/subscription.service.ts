@@ -35,7 +35,7 @@ interface AdaptyAccessLevel {
   expiresAt?: string | null;
 }
 
-export function getProAccessLevelId(ctx: Pick<Context, "env">) {
+function getProAccessLevelId(ctx: Pick<Context, "env">) {
   return ctx.env.ADAPTY_PRO_ACCESS_LEVEL_ID ?? DEFAULT_PRO_ACCESS_LEVEL_ID;
 }
 
@@ -65,7 +65,7 @@ function smartImportLimitError() {
   });
 }
 
-export async function assertSmartImportAllowance(ctx: AuthedContext) {
+async function assertSmartImportAllowance(ctx: AuthedContext) {
   const status = await getSubscriptionStatus(ctx.db, ctx.user.id);
 
   if (!status.isPro && (status.smartImports.remaining ?? 0) <= 0) {

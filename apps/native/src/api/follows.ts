@@ -4,17 +4,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 // API Response Types
 export type SearchUser = Outputs["follows"]["searchUsers"][number];
-export type UserProfile = Outputs["follows"]["getUserProfile"];
-export type FollowItem = Outputs["follows"]["getFollowing"][number];
 
 export const useFollowing = () => {
   const trpc = useTRPC();
   return useQuery(trpc.follows.getFollowing.queryOptions());
-};
-
-export const useFollowers = () => {
-  const trpc = useTRPC();
-  return useQuery(trpc.follows.getFollowers.queryOptions());
 };
 
 interface UseSearchUsersParams {
