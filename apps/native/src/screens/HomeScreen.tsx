@@ -304,6 +304,10 @@ export const HomeScreen = () => {
     searchInputRef.current?.focus();
   }, []);
 
+  const hideFloatingSearch = useCallback(() => {
+    setShowFloatingSearch(false);
+  }, []);
+
   useEffect(() => {
     if (isSearchActive) {
       // Show floating search immediately when entering search mode
@@ -317,13 +321,21 @@ export const HomeScreen = () => {
       );
     } else {
       // Animate out, then hide floating search after animation completes
-      searchProgress.set(withTiming(0, animationConfig));
-      const timeout = setTimeout(() => {
-        setShowFloatingSearch(false);
-      }, animationConfig.duration);
-      return () => clearTimeout(timeout);
+      searchProgress.set(
+        withTiming(0, animationConfig, (finished) => {
+          if (finished) {
+            scheduleOnRN(hideFloatingSearch);
+          }
+        }),
+      );
     }
-  }, [focusSearchInput, isSearchActive, animationConfig, searchProgress]);
+  }, [
+    focusSearchInput,
+    hideFloatingSearch,
+    isSearchActive,
+    animationConfig,
+    searchProgress,
+  ]);
 
   useEffect(() => {
     loadLatestProgress.set(
