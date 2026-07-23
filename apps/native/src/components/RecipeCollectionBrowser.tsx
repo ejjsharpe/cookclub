@@ -45,6 +45,7 @@ interface AnimatedRecipeResultProps {
   index: number;
   transitionRecipeCount: number;
   animationProgress?: SharedValue<number>;
+  transitionActive?: Readonly<SharedValue<boolean>>;
   onRecipePress: (recipeId: number) => void;
 }
 
@@ -53,6 +54,7 @@ const AnimatedRecipeResult = memo(function AnimatedRecipeResult({
   index,
   transitionRecipeCount,
   animationProgress,
+  transitionActive,
   onRecipePress,
 }: AnimatedRecipeResultProps) {
   const animatedStyle = useAnimatedStyle(() => {
@@ -63,7 +65,8 @@ const AnimatedRecipeResult = memo(function AnimatedRecipeResult({
 
     const progress = animationProgress.get();
     if (index < transitionRecipeCount) {
-      return { opacity: progress >= 1 ? 1 : 0 };
+      const overlayIsVisible = transitionActive?.get() === true;
+      return { opacity: progress >= 1 && !overlayIsVisible ? 1 : 0 };
     }
 
     const fadeProgress = interpolate(
@@ -111,6 +114,8 @@ interface RecipeCollectionBrowserProps {
   headerAnimationProgress?: SharedValue<number>;
   /** Number of leading recipes represented by moving transition clones */
   transitionRecipeCount?: number;
+  /** Whether moving transition clones currently own card visibility */
+  transitionActive?: Readonly<SharedValue<boolean>>;
   /** Initial tab to display */
   initialTab?: TabType;
   /** Ref attached to the first collection item for position measurement */
@@ -132,6 +137,7 @@ export const RecipeCollectionBrowser = ({
   onFilterStateChange,
   headerAnimationProgress,
   transitionRecipeCount = 0,
+  transitionActive,
   initialTab,
   firstCollectionRef,
   isActive,
@@ -227,8 +233,9 @@ export const RecipeCollectionBrowser = ({
     if (!headerAnimationProgress) {
       return {};
     }
+    const overlayIsVisible = transitionActive?.get() === true;
     return {
-      opacity: headerAnimationProgress.get() >= 1 ? 1 : 0,
+      opacity: headerAnimationProgress.get() >= 1 && !overlayIsVisible ? 1 : 0,
     };
   });
 
@@ -251,10 +258,16 @@ export const RecipeCollectionBrowser = ({
         index={index}
         transitionRecipeCount={transitionRecipeCount}
         animationProgress={headerAnimationProgress}
+        transitionActive={transitionActive}
         onRecipePress={onRecipePress}
       />
     ),
-    [headerAnimationProgress, onRecipePress, transitionRecipeCount],
+    [
+      headerAnimationProgress,
+      onRecipePress,
+      transitionActive,
+      transitionRecipeCount,
+    ],
   );
 
   const renderCollection = useCallback(

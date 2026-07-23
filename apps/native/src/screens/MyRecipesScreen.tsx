@@ -419,9 +419,11 @@ export const MyRecipesScreen = () => {
 
   // Animation progress (0 = browse, 1 = search)
   const searchProgress = useSharedValue(0);
-  // Derived value for animation boundary check - computed once per frame
-  const isAnimating = useDerivedValue(() => {
-    return searchProgress.get() > 0 && searchProgress.get() < 1;
+  // The same flag owns overlay and real-card visibility, making the handoff
+  // mutually exclusive even for partially transparent secondary text.
+  const transitionVisibility = useSharedValue(0);
+  const transitionActive = useDerivedValue(() => {
+    return transitionVisibility.get() > 0;
   });
   // Tracks which tab's overlays should be visible during animation ("recipes" or "collections")
   const animatingTab = useSharedValue<TabType>("recipes");
@@ -477,19 +479,31 @@ export const MyRecipesScreen = () => {
   }, []);
 
   useEffect(() => {
+    const targetProgress = isSearchActive ? 1 : 0;
+    if (searchProgress.get() !== targetProgress) {
+      transitionVisibility.set(1);
+    }
+
     if (isSearchActive) {
       searchProgress.set(
         withTiming(1, SEARCH_ANIMATION_CONFIG, (finished) => {
           if (finished) {
+            transitionVisibility.set(0);
             scheduleOnRN(focusSearchInput);
           }
         }),
       );
     } else {
       searchInputRef.current?.blur();
-      searchProgress.set(withTiming(0, SEARCH_ANIMATION_CONFIG));
+      searchProgress.set(
+        withTiming(0, SEARCH_ANIMATION_CONFIG, (finished) => {
+          if (finished) {
+            transitionVisibility.set(0);
+          }
+        }),
+      );
     }
-  }, [focusSearchInput, isSearchActive, searchProgress]);
+  }, [focusSearchInput, isSearchActive, searchProgress, transitionVisibility]);
 
   // Animate filter button visibility based on active tab
   useEffect(() => {
@@ -901,7 +915,7 @@ export const MyRecipesScreen = () => {
   const collectionCardsStyle = useAnimatedStyle(() => {
     "worklet";
     const overlayVisible =
-      animatingTab.get() === "collections" && isAnimating.get();
+      animatingTab.get() === "collections" && transitionActive.get();
     return {
       opacity: overlayVisible ? 0 : 1,
     };
@@ -1007,7 +1021,7 @@ export const MyRecipesScreen = () => {
   const recipeCardsStyle = useAnimatedStyle(() => {
     "worklet";
     const overlayVisible =
-      animatingTab.get() === "recipes" && isAnimating.get();
+      animatingTab.get() === "recipes" && transitionActive.get();
     return {
       opacity: overlayVisible ? 0 : 1,
     };
@@ -1260,6 +1274,7 @@ export const MyRecipesScreen = () => {
             onFilterStateChange={handleFilterStateChange}
             headerAnimationProgress={searchProgress}
             transitionRecipeCount={recentRecipes.length}
+            transitionActive={transitionActive}
             initialTab={filterState?.activeTab ?? "recipes"}
             firstCollectionRef={firstSearchCollectionRef}
             isActive={isSearchActive}
@@ -1369,7 +1384,7 @@ export const MyRecipesScreen = () => {
             searchY={getSearchTargetY(index)}
             searchProgress={searchProgress}
             animatingTab={animatingTab}
-            isAnimating={isAnimating}
+            isAnimating={transitionActive}
           />
         );
       })}
@@ -1411,7 +1426,7 @@ export const MyRecipesScreen = () => {
             searchWidth={searchTarget.width}
             searchProgress={searchProgress}
             animatingTab={animatingTab}
-            isAnimating={isAnimating}
+            isAnimating={transitionActive}
             fadeOnly={isOffScreen}
           />
         );
