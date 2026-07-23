@@ -9,11 +9,10 @@ import {
 } from "../../schemas";
 type RecipeSearchDocumentClient = PgDatabase<any, any, any>;
 
-/** Synchronize one document inside the recipe writer's transaction. */
-export async function syncRecipeSearchDocument(
+export function buildRecipeSearchDocumentSyncQuery(
   tx: RecipeSearchDocumentClient,
   recipeId: number,
-): Promise<void> {
+) {
   const ingredientNames = sql<string>`COALESCE((
     SELECT string_agg(
       ${recipeIngredients.name},
@@ -23,20 +22,20 @@ export async function syncRecipeSearchDocument(
     INNER JOIN ${recipeIngredients}
       ON ${recipeIngredients.sectionId} = ${ingredientSections.id}
     WHERE ${ingredientSections.recipeId} = ${recipes.id}
-  ), '')`.as("ingredient_names");
+  ), '')`;
 
-  await tx
+  return tx
     .insert(recipeSearchDocuments)
     .select(
-      tx
-        .select({
-          recipeId: recipes.id,
-          ownerId: recipes.ownerId,
-          title: recipes.name,
-          ingredientNames,
-        })
-        .from(recipes)
-        .where(eq(recipes.id, recipeId)),
+      sql`
+        SELECT
+          ${recipes.id},
+          ${recipes.ownerId},
+          ${recipes.name},
+          ${ingredientNames}
+        FROM ${recipes}
+        WHERE ${eq(recipes.id, recipeId)}
+      `,
     )
     .onConflictDoUpdate({
       target: recipeSearchDocuments.recipeId,
@@ -46,4 +45,12 @@ export async function syncRecipeSearchDocument(
         ingredientNames: sql`excluded.ingredient_names`,
       },
     });
+}
+
+/** Synchronize one document inside the recipe writer's transaction. */
+export async function syncRecipeSearchDocument(
+  tx: RecipeSearchDocumentClient,
+  recipeId: number,
+): Promise<void> {
+  await buildRecipeSearchDocumentSyncQuery(tx, recipeId);
 }
