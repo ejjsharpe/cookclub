@@ -4,64 +4,64 @@
   "main": "src/index.ts",
   "account_id": "46fa47bc2bba51d75383b4dfe6e3deb1",
   "compatibility_flags": ["nodejs_compat"],
-  "compatibility_date": "2025-02-20",
+  "compatibility_date": "2026-07-24",
   "observability": {
     "enabled": true,
     "logs": {
-      "head_sampling_rate": 1
+      "head_sampling_rate": 1,
     },
     "traces": {
       "enabled": true,
-      "head_sampling_rate": 0.01
-    }
+      "head_sampling_rate": 0.01,
+    },
   },
   "dev": {
-    "port": 8788
+    "port": 8788,
   },
   "workers_dev": false,
   "browser": {
-    "binding": "BROWSER"
+    "binding": "BROWSER",
   },
   "kv_namespaces": [
     {
       "binding": "RECIPE_CACHE",
       "id": "c2e51093e69d40aeaeb5e8a3abd47575",
-      "preview_id": "3674effd74a94a30a4a74c6dbbb5bcea"
-    }
+      "preview_id": "3674effd74a94a30a4a74c6dbbb5bcea",
+    },
   ],
   "services": [
     {
       "binding": "IMAGE_SERVICE",
       "service": "cookclub-images-development",
-      "entrypoint": "ImageService"
-    }
+      "entrypoint": "ImageService",
+    },
   ],
   "vars": {
-    "IMAGE_PUBLIC_URL": "https://pub-8a33f3240252485aa859a3ac8dd49465.r2.dev"
+    "IMAGE_PUBLIC_URL": "http://localhost:8789",
   },
   "env": {
     "production": {
       "name": "cookclub-recipe-ai-production",
       "browser": {
-        "binding": "BROWSER"
+        "binding": "BROWSER",
       },
       "kv_namespaces": [
         {
           "binding": "RECIPE_CACHE",
           "id": "3e1c6d35a41743e4a456d1463f0308f8",
-          "preview_id": "ac757232baee4b87a508160a308ec2c3"
-        }
+          "preview_id": "ac757232baee4b87a508160a308ec2c3",
+        },
       ],
       "services": [
         {
           "binding": "IMAGE_SERVICE",
           "service": "cookclub-images-production",
-          "entrypoint": "ImageService"
-        }
+          "entrypoint": "ImageService",
+        },
       ],
       "vars": {
-        "IMAGE_PUBLIC_URL": "https://images.cookclub.app"
-      }
-    }
-  }
+        "IMAGE_PUBLIC_URL": "https://images.cookclub.app",
+      },
+    },
+  },
 }

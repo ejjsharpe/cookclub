@@ -1,5 +1,8 @@
 import { getDb } from "@repo/db";
-import { processPushNotificationReceipts } from "@repo/trpc/server";
+import {
+  cleanupOrphanedRecipeImportImages,
+  processPushNotificationReceipts,
+} from "@repo/trpc/server";
 
 import type { Env } from "./types";
 
@@ -8,12 +11,24 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (
   env,
   _ctx,
 ) => {
-  const result = await processPushNotificationReceipts(getDb(env), env);
+  const db = getDb(env);
+  const [receiptResult, importImageResult] = await Promise.all([
+    processPushNotificationReceipts(db, env),
+    cleanupOrphanedRecipeImportImages(db, env.IMAGE_SERVICE),
+  ]);
   console.log(
     JSON.stringify({
       task: "push-notification-receipts",
-      checked: result.checked,
-      disabledTokens: result.disabledTokens,
+      checked: receiptResult.checked,
+      disabledTokens: receiptResult.disabledTokens,
+    }),
+  );
+  console.log(
+    JSON.stringify({
+      task: "recipe-import-image-cleanup",
+      checked: importImageResult.checked,
+      deletedJobs: importImageResult.deletedJobs,
+      expiredJobs: importImageResult.expiredJobs,
     }),
   );
 };

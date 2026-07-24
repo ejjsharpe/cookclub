@@ -63,6 +63,12 @@ function isPublicImageAsset(
   );
 }
 
+function shouldMoveTemporaryImage(key: string | null): key is string {
+  return Boolean(
+    key?.startsWith("temp/") && !key.startsWith("temp/generated/"),
+  );
+}
+
 async function prepareUploadedImages(
   input: RecipeImageInput,
   deps: PrepareRecipeImagesDeps,
@@ -130,7 +136,11 @@ async function prepareDirectImages(
   const movedKeys: string[] = [];
 
   for (const image of images) {
-    if (isPublicImageAsset(image) && !image.storageKey.startsWith("temp/")) {
+    if (
+      isPublicImageAsset(image) &&
+      !image.storageKey.startsWith("temp/") &&
+      !image.storageKey.startsWith("imports/")
+    ) {
       preparedImages.push(image);
       continue;
     }
@@ -141,7 +151,7 @@ async function prepareDirectImages(
       : permanentRecipeImageKey(assetGroupId);
 
     try {
-      if (existingKey?.startsWith("temp/")) {
+      if (shouldMoveTemporaryImage(existingKey)) {
         const moveResult = await deps.imageService.move(
           [{ from: existingKey, to: destinationKey }],
           deps.ownerId,
@@ -236,7 +246,7 @@ async function prepareInstructionImageUrl(
   );
 
   try {
-    if (existingKey?.startsWith("temp/")) {
+    if (shouldMoveTemporaryImage(existingKey)) {
       const publicUrl = await moveInstructionImage(
         existingKey,
         destinationKey,

@@ -1,12 +1,25 @@
 import type { ParsedRecipe, ParsedRecipeNutrition } from "./recipe";
 
+interface ParseImageStagingOptions {
+  /**
+   * Keeps rehosted images available for the lifetime of a background import
+   * job instead of placing them in the short-lived temp namespace.
+   */
+  imageStagingId?: string;
+}
+
 export type ParseInput =
-  | { type: "url"; data: string; structuredOnly?: boolean }
-  | { type: "text"; data: string }
+  | ({
+      type: "url";
+      data: string;
+      structuredOnly?: boolean;
+    } & ParseImageStagingOptions)
+  | ({ type: "text"; data: string } & ParseImageStagingOptions)
   | {
       type: "image";
       data: string;
       mimeType: "image/jpeg" | "image/png" | "image/webp";
+      imageStagingId?: string;
     };
 
 export type PersonalizationGoal =

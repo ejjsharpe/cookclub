@@ -1,3 +1,4 @@
+import { isValidImportImageStagingId } from "@repo/contracts/images";
 import { AwsClient } from "aws4fetch";
 
 import type { Env, PresignedUrlRequest, PresignedUrlResponse } from "./types";
@@ -102,6 +103,11 @@ export function validateKey(key: string): boolean {
   }
 
   // Must match allowed patterns (recipe IDs and user IDs are UUIDs)
+  const importKeyMatch = /^imports\/([^/]+)\/[a-zA-Z0-9-]+\.[a-z]+$/.exec(key);
+  if (importKeyMatch && isValidImportImageStagingId(importKeyMatch[1] ?? "")) {
+    return true;
+  }
+
   const allowedPatterns = [
     /^temp\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9-]+\.[a-z]+$/, // temp/{ownerId}/{uuid}.{ext}
     /^temp\/generated\/[a-zA-Z0-9-]+\.[a-z]+$/, // temp/generated/{uuid}.{ext}

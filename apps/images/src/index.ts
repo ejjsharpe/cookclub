@@ -12,6 +12,12 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { arrayBufferToStream, readBoundedResponseBody } from "./image-data";
+import { putAndInspectImage } from "./image-storage";
+import {
+  deleteImportImageStagingIds,
+  deleteImportImages,
+  listImportImageStagingIds,
+} from "./import-staging";
 import {
   extensionFromContentType,
   generateGeneratedTempKey,
@@ -49,9 +55,7 @@ const PHOTO_MAX_FILE_SIZE = 4 * 1024 * 1024;
 const AVATAR_MAX_FILE_SIZE = 512 * 1024;
 const TRUSTED_SOURCE_MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_REMOTE_IMAGE_REDIRECTS = 3;
-const ORIGIN_FETCH_HEADER = "x-cookclub-origin-fetch";
 const TRANSFORM_STATUS_HEADER = "x-cookclub-image-transform";
-const IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/*,*/*";
 const SOURCE_IMAGE_ACCEPT_HEADER = "image/jpeg,image/webp,image/png";
 const NORMALIZED_IMAGE_TYPE = "image/jpeg" satisfies ImageContentType;
 const FALLBACK_THUMBHASH = "";
@@ -120,30 +124,6 @@ function isAllowedImageContentType(
 
 function imageUrlForKey(env: Env, key: string): string {
   return publicImageUrlForKey(env.PUBLIC_URL, key);
-}
-
-function originUrlForKey(env: Env, key: string): string {
-  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
-  return `${env.R2_ORIGIN_URL.replace(/\/+$/, "")}/${encodedKey}`;
-}
-
-async function fetchStoredImageTransform(
-  env: Env,
-  key: string,
-  image: RequestInitCfPropertiesImage,
-  acceptHeader = IMAGE_ACCEPT_HEADER,
-): Promise<Response> {
-  return fetch(originUrlForKey(env, key), {
-    headers: {
-      Accept: acceptHeader,
-      [ORIGIN_FETCH_HEADER]: "1",
-    },
-    cf: {
-      image,
-      cacheEverything: true,
-      cacheTtl: 31536000,
-    },
-  });
 }
 
 function imageBindingOutputFormat(
@@ -324,46 +304,6 @@ async function readNormalizedRemoteImage(
   throw new Error(`Image too large: ${lastSize} bytes (max ${maxFileSize})`);
 }
 
-async function normalizeStoredObjectToJpeg(
-  env: Env,
-  sourceKey: string,
-  destinationKey: string,
-  maxFileSize: number,
-): Promise<void> {
-  const attempts = [
-    { width: 2560, quality: 84 },
-    { width: 2048, quality: 80 },
-  ];
-
-  let lastSize = 0;
-
-  for (const attempt of attempts) {
-    const response = await fetchStoredImageTransform(env, sourceKey, {
-      width: attempt.width,
-      fit: "scale-down",
-      quality: attempt.quality,
-      format: "jpeg",
-      metadata: "none",
-      anim: false,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to normalize stored image: ${response.status}`);
-    }
-
-    const data = await response.arrayBuffer();
-    lastSize = data.byteLength;
-    if (data.byteLength > maxFileSize) continue;
-
-    await env.IMAGES.put(destinationKey, data, {
-      httpMetadata: { contentType: NORMALIZED_IMAGE_TYPE },
-    });
-    return;
-  }
-
-  throw new Error(`Image too large: ${lastSize} bytes (max ${maxFileSize})`);
-}
-
 async function normalizeImageBytesToJpeg(
   env: Env,
   imageData: ArrayBuffer,
@@ -424,12 +364,16 @@ async function copyHostedImage(
     );
   }
 
-  await env.IMAGES.put(destinationKey, source.body, {
-    httpMetadata: source.httpMetadata,
-    customMetadata: source.customMetadata,
-  });
-
-  return await buildStoredImageAsset(env, destinationKey);
+  return await putAndInspectImage(
+    env.IMAGES,
+    destinationKey,
+    source.body,
+    {
+      httpMetadata: source.httpMetadata,
+      customMetadata: source.customMetadata,
+    },
+    () => buildStoredImageAsset(env, destinationKey),
+  );
 }
 
 /**
@@ -537,42 +481,23 @@ export class ImageService extends WorkerEntrypoint<Env> {
             };
           }
 
-          // Get the source object
-          const source = await this.env.IMAGES.get(from);
-          if (!source) {
-            return { from, to, success: false, error: "Source not found" };
+          const asset = await copyHostedImage(this.env, from, to);
+
+          // The destination is now fully validated. Source cleanup is
+          // idempotent and must not turn a committed image into a failed save.
+          try {
+            await this.env.IMAGES.delete(from);
+          } catch (error) {
+            console.error(
+              JSON.stringify({
+                event: "image_move_source_cleanup_failed",
+                sourceKey: from,
+                destinationKey: to,
+                message:
+                  error instanceof Error ? error.message : "Unknown error",
+              }),
+            );
           }
-
-          const contentType = source.httpMetadata?.contentType;
-          if (!isAllowedImageContentType(contentType)) {
-            return {
-              from,
-              to,
-              success: false,
-              error: "Invalid uploaded image content type",
-            };
-          }
-
-          const maxFileSize = getMaxFileSizeForDestinationKey(to);
-          if (source.size > maxFileSize) {
-            return {
-              from,
-              to,
-              success: false,
-              error: `Image too large: ${source.size} bytes (max ${maxFileSize})`,
-            };
-          }
-
-          // Copy to new location
-          await this.env.IMAGES.put(to, source.body, {
-            httpMetadata: source.httpMetadata,
-            customMetadata: source.customMetadata,
-          });
-
-          // Delete source
-          await this.env.IMAGES.delete(from);
-
-          const asset = await buildStoredImageAsset(this.env, to);
 
           return { from, to, success: true, asset };
         } catch (error) {
@@ -597,6 +522,20 @@ export class ImageService extends WorkerEntrypoint<Env> {
    */
   async delete(keys: string[]): Promise<void> {
     await Promise.all(keys.map((key) => this.env.IMAGES.delete(key)));
+  }
+
+  async deleteImportImages(imageStagingId: string): Promise<void> {
+    await deleteImportImages(this.env.IMAGES, imageStagingId);
+  }
+
+  async deleteImportImageStagingIds(
+    imageStagingIds: string[],
+  ): Promise<void> {
+    await deleteImportImageStagingIds(this.env.IMAGES, imageStagingIds);
+  }
+
+  async listImportImageStagingIds(): Promise<string[]> {
+    return await listImportImageStagingIds(this.env.IMAGES);
   }
 
   /**
@@ -708,14 +647,17 @@ export class ImageService extends WorkerEntrypoint<Env> {
         ? mediaType
         : NORMALIZED_IMAGE_TYPE;
 
-      // Upload to R2
-      await this.env.IMAGES.put(destinationKey, imageData, {
-        httpMetadata: {
-          contentType: storedContentType,
+      const asset = await putAndInspectImage(
+        this.env.IMAGES,
+        destinationKey,
+        imageData,
+        {
+          httpMetadata: {
+            contentType: storedContentType,
+          },
         },
-      });
-
-      const asset = await buildStoredImageAsset(this.env, destinationKey);
+        () => buildStoredImageAsset(this.env, destinationKey),
+      );
 
       return {
         success: true,
@@ -763,26 +705,22 @@ export class ImageService extends WorkerEntrypoint<Env> {
         : generateGeneratedTempKey(
             extensionFromContentType(NORMALIZED_IMAGE_TYPE),
           );
-      const rawKey = `${key}.source`;
-
-      await this.env.IMAGES.put(rawKey, imageData, {
-        httpMetadata: {
-          contentType,
+      const normalizedImageData = await normalizeImageBytesToJpeg(
+        this.env,
+        imageData,
+        PHOTO_MAX_FILE_SIZE,
+      );
+      const asset = await putAndInspectImage(
+        this.env.IMAGES,
+        key,
+        normalizedImageData,
+        {
+          httpMetadata: {
+            contentType: NORMALIZED_IMAGE_TYPE,
+          },
         },
-      });
-
-      try {
-        await normalizeStoredObjectToJpeg(
-          this.env,
-          rawKey,
-          key,
-          PHOTO_MAX_FILE_SIZE,
-        );
-      } finally {
-        await this.env.IMAGES.delete(rawKey);
-      }
-
-      const asset = await buildStoredImageAsset(this.env, key);
+        () => buildStoredImageAsset(this.env, key),
+      );
 
       return {
         success: true,
@@ -850,7 +788,6 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 async function getOriginalImageResponse(
   env: Env,
   key: string,
-  transformStatus: "original" | "origin" = "original",
 ): Promise<Response> {
   const object = await env.IMAGES.get(key);
 
@@ -865,7 +802,7 @@ async function getOriginalImageResponse(
     headers: {
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=31536000, immutable",
-      [TRANSFORM_STATUS_HEADER]: transformStatus,
+      [TRANSFORM_STATUS_HEADER]: "original",
       ETag: object.etag,
     },
   });
@@ -884,10 +821,6 @@ app.get("/*", async (c) => {
 
   if (!key || key === "health") {
     return c.json({ error: "Image key required" }, 400);
-  }
-
-  if (c.req.header(ORIGIN_FETCH_HEADER) === "1") {
-    return getOriginalImageResponse(c.env, key, "origin");
   }
 
   if (hasUnsupportedTransformParams(url.searchParams)) {

@@ -1,5 +1,6 @@
 import {
   imageKeyFromPublicUrl,
+  isValidImportImageStagingId,
   publicImageUrlForKey,
 } from "@repo/contracts/images";
 
@@ -13,10 +14,18 @@ import { selectBestRecipeImages } from "../utils/recipe-quality";
 
 interface RehostOptions {
   refreshGeneratedTemp?: boolean;
+  imageStagingId?: string;
 }
 
-function generatedTempImageKey() {
-  return `temp/generated/${crypto.randomUUID()}.jpg`;
+function imageStagingPrefix(imageStagingId: string | undefined) {
+  return imageStagingId && isValidImportImageStagingId(imageStagingId)
+    ? `imports/${imageStagingId}/`
+    : null;
+}
+
+function generatedImageKey(imageStagingId: string | undefined) {
+  const stagingPrefix = imageStagingPrefix(imageStagingId);
+  return `${stagingPrefix ?? "temp/generated/"}${crypto.randomUUID()}.jpg`;
 }
 
 function hostedImageKey(
@@ -26,13 +35,14 @@ function hostedImageKey(
   return imageKeyFromPublicUrl(imageUrl, env.IMAGE_PUBLIC_URL);
 }
 
-async function uploadImageUrlToGeneratedTemp(
+async function uploadImageUrlToStaging(
   env: Env,
   imageUrl: string,
+  imageStagingId: string | undefined,
 ): Promise<string | null> {
   if (!env.IMAGE_SERVICE) return null;
 
-  const destinationKey = generatedTempImageKey();
+  const destinationKey = generatedImageKey(imageStagingId);
   const result = await env.IMAGE_SERVICE.uploadFromUrl(
     imageUrl,
     destinationKey,
@@ -61,12 +71,20 @@ async function rehostImageUrl(
   if (!imageUrl) return null;
 
   const key = hostedImageKey(env, imageUrl);
-  if (key && (!options.refreshGeneratedTemp || !key.startsWith("temp/"))) {
+  const stagingPrefix = imageStagingPrefix(options.imageStagingId);
+  const isAlreadyStaged = stagingPrefix && key?.startsWith(stagingPrefix);
+  const shouldRefreshTemporaryImage =
+    options.refreshGeneratedTemp && key?.startsWith("temp/");
+
+  if (
+    key &&
+    (isAlreadyStaged || (!stagingPrefix && !shouldRefreshTemporaryImage))
+  ) {
     return imageUrl;
   }
 
   try {
-    return await uploadImageUrlToGeneratedTemp(env, imageUrl);
+    return await uploadImageUrlToStaging(env, imageUrl, options.imageStagingId);
   } catch (error) {
     console.log(
       "[rehost] Error uploading image:",
@@ -129,6 +147,7 @@ function rehostStageDetail(sourceImageCount: number, hostedImageCount: number) {
 export async function rehostParsedRecipeImagesForResponse(
   env: Env,
   result: ParseResult,
+  imageStagingId?: string,
 ): Promise<ParseResult> {
   const stageStart = Date.now();
   if (!result.success) {
@@ -149,6 +168,7 @@ export async function rehostParsedRecipeImagesForResponse(
   const { recipe, coverFailed, sourceImageCount, hostedImageCount } =
     await rehostRecipeImages(env, result.data, {
       refreshGeneratedTemp: result.metadata.cached === true,
+      imageStagingId,
     });
   const diagnostics = recordDiagnosticsStage(
     result.metadata.diagnostics,

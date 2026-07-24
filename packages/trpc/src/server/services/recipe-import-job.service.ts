@@ -9,6 +9,7 @@ import { and, eq, isNull, lt, ne, or } from "drizzle-orm";
 
 import type { RecipeImportJobMessage, TRPCEnv } from "../env";
 import { getPublicErrorMessage, PublicTRPCError } from "../public-errors";
+import { cleanupRecipeImportImagesBestEffort } from "./recipe-import-image-cleanup.service";
 
 export type ImportJobMode = "url" | "text" | "image";
 export type ImportJobType = "basic" | "smart";
@@ -47,7 +48,9 @@ export type RecipeImportFailureEvent = {
 export type ProcessRecipeImportJobResult = "processed" | "skipped" | "busy";
 
 export const RECIPE_IMPORT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
-const RECIPE_IMPORT_JOB_STALE_MS = 60 * 1000;
+export const RECIPE_IMPORT_PENDING_STALE_MS = 10 * 60 * 1000;
+export const RECIPE_IMPORT_PROCESSING_STALE_MS =
+  RECIPE_IMPORT_PROCESSING_LEASE_MS + 60 * 1000;
 export const RECIPE_IMPORT_JOB_STALE_ERROR =
   getPublicErrorMessage("IMPORT_TIMED_OUT");
 const MAX_PARSE_DIAGNOSTIC_STAGES = 32;
@@ -150,14 +153,17 @@ export function isRecipeImportJobStale(
   job: StaleRecipeImportJobCandidate,
   now = new Date(),
 ) {
-  const staleBefore = new Date(now.getTime() - RECIPE_IMPORT_JOB_STALE_MS);
-
   if (job.status === "pending") {
-    return job.updatedAt < staleBefore;
+    return (
+      job.updatedAt < new Date(now.getTime() - RECIPE_IMPORT_PENDING_STALE_MS)
+    );
   }
 
   if (job.status === "processing") {
-    return (job.processingStartedAt ?? job.updatedAt) < staleBefore;
+    return (
+      (job.processingStartedAt ?? job.updatedAt) <
+      new Date(now.getTime() - RECIPE_IMPORT_PROCESSING_STALE_MS)
+    );
   }
 
   return false;
@@ -178,6 +184,12 @@ export async function failStaleRecipeImportJobs(
       ctx,
       { jobId: job.id, userId },
       "IMPORT_TIMED_OUT",
+      job.status === "processing"
+        ? {
+            expectedStatus: "processing",
+            processingStartedAt: job.processingStartedAt,
+          }
+        : { expectedStatus: "pending" },
     );
     if (didFailJob) failedJobIds.add(job.id);
   }
@@ -351,6 +363,7 @@ async function parseRecipeImportJob(
       type: "url",
       data: job.inputData,
       structuredOnly: true,
+      imageStagingId: job.id,
     });
   }
 
@@ -358,6 +371,7 @@ async function parseRecipeImportJob(
     return await ctx.env.RECIPE_AI.parse({
       type: "url",
       data: job.inputData,
+      imageStagingId: job.id,
     });
   }
 
@@ -365,6 +379,7 @@ async function parseRecipeImportJob(
     return await ctx.env.RECIPE_AI.parse({
       type: "text",
       data: job.inputData,
+      imageStagingId: job.id,
     });
   }
 
@@ -383,6 +398,7 @@ async function parseRecipeImportJob(
     type: "image",
     data: job.inputData,
     mimeType: job.mimeType,
+    imageStagingId: job.id,
   });
 }
 
@@ -445,7 +461,15 @@ export async function processRecipeImportJob(
       )
       .returning({ id: recipeImportJobs.id });
 
-    return completedJob ? "processed" : "busy";
+    if (completedJob) return "processed";
+
+    const existingJob = await loadRecipeImportJobStatus(ctx, message);
+    if (!existingJob) {
+      await cleanupRecipeImportImagesBestEffort(ctx.env.IMAGE_SERVICE, job.id);
+      return "skipped";
+    }
+
+    return "busy";
   } catch (error) {
     if (!(error instanceof TRPCError)) {
       const resetJob = await resetRecipeImportJobForRetry(ctx, job);
@@ -457,13 +481,17 @@ export async function processRecipeImportJob(
       ctx,
       message,
       getImportErrorCode(error, job.mode),
-      { processingStartedAt: job.processingStartedAt },
+      {
+        expectedStatus: "processing",
+        processingStartedAt: job.processingStartedAt,
+      },
     );
     return failedJob ? "processed" : "busy";
   }
 }
 
 interface FailRecipeImportJobOptions {
+  expectedStatus?: "pending" | "processing";
   processingStartedAt?: Date | null;
 }
 
@@ -482,9 +510,11 @@ export async function failRecipeImportJob(
       ne(recipeImportJobs.status, "ready"),
     ];
 
-    if (options && "processingStartedAt" in options) {
+    if (options?.expectedStatus) {
+      conditions.push(eq(recipeImportJobs.status, options.expectedStatus));
+    }
+    if (options?.expectedStatus === "processing") {
       conditions.push(
-        eq(recipeImportJobs.status, "processing"),
         processingStartedAtMatches(options.processingStartedAt ?? null),
       );
     }
@@ -544,6 +574,13 @@ export async function failRecipeImportJob(
       completedAt,
     );
   });
+
+  if (didFailJob) {
+    await cleanupRecipeImportImagesBestEffort(
+      ctx.env.IMAGE_SERVICE,
+      message.jobId,
+    );
+  }
 
   return didFailJob;
 }

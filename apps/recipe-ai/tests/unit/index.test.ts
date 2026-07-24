@@ -351,6 +351,63 @@ describe("RecipeAI.parse()", () => {
       );
     });
 
+    it("keeps background import images in job-scoped staging", async () => {
+      const structuredHtml = `
+        <html>
+          <head>
+            <script type="application/ld+json">
+              ${JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Recipe",
+                name: "Carrot Soup",
+                image: ["https://example.com/cover.jpg"],
+                recipeYield: "2 servings",
+                recipeIngredient: ["1 cup stock", "2 carrots"],
+                recipeInstructions: ["Simmer until tender."],
+              })}
+            </script>
+          </head>
+          <body></body>
+        </html>
+      `;
+      const uploadFromUrl = vi.fn(
+        async (_sourceUrl: string, destinationKey: string) => ({
+          success: true,
+          publicUrl: `https://images.example.com/${destinationKey}`,
+          key: destinationKey,
+        }),
+      );
+      mockEnv.IMAGE_SERVICE.uploadFromUrl = uploadFromUrl;
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "text/html" }),
+        arrayBuffer: () =>
+          Promise.resolve(new TextEncoder().encode(structuredHtml).buffer),
+        text: () => Promise.resolve(structuredHtml),
+      });
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://example.com/recipe",
+        structuredOnly: true,
+        imageStagingId: "url-123",
+      });
+
+      expect(result.success).toBe(true);
+      expect(uploadFromUrl).toHaveBeenCalledWith(
+        "https://example.com/cover.jpg",
+        expect.stringMatching(/^imports\/url-123\/[a-zA-Z0-9-]+\.jpg$/),
+      );
+      if (result.success) {
+        expect(result.data.images).toEqual([
+          expect.stringMatching(
+            /^https:\/\/images\.example\.com\/imports\/url-123\/[a-zA-Z0-9-]+\.jpg$/,
+          ),
+        ]);
+      }
+    });
+
     it("drops failed step-image rehosting while keeping a hosted cover", async () => {
       const cachedRecipe = {
         name: "Cached Soup",
@@ -3029,6 +3086,28 @@ Serves 4
         expect(
           result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
         ).toEqual(expect.arrayContaining(["ai", "image_rehosting"]));
+      }
+    });
+
+    it("copies uploaded source images into background import staging", async () => {
+      const result = await parser.parse({
+        type: "image",
+        data: btoa("fake image data that is long enough"),
+        mimeType: "image/jpeg",
+        imageStagingId: "image-123",
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockEnv.IMAGE_SERVICE.uploadFromUrl).toHaveBeenCalledWith(
+        "https://images.example.com/temp/generated/source.jpg",
+        expect.stringMatching(/^imports\/image-123\/[a-zA-Z0-9-]+\.jpg$/),
+      );
+      if (result.success) {
+        expect(result.data.images).toEqual([
+          expect.stringMatching(
+            /^https:\/\/images\.example\.com\/imports\/image-123\/[a-zA-Z0-9-]+\.jpg$/,
+          ),
+        ]);
       }
     });
 

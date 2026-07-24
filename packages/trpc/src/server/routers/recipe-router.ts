@@ -3,7 +3,10 @@ import type {
   ParsedRecipe,
   PersonalizationGoal,
 } from "@repo/contracts";
-import type { PublicImageAsset } from "@repo/contracts/images";
+import {
+  isValidImportImageStagingId,
+  type PublicImageAsset,
+} from "@repo/contracts/images";
 import {
   recipes,
   recipeImportJobs,
@@ -15,7 +18,7 @@ import {
 } from "@repo/db/schemas";
 import {
   queryPopularRecipesThisWeek,
-  createRecipe,
+  createRecipeInTransaction,
   updateRecipe,
   getRecipeDetail,
   getStoredRecipeNutrition,
@@ -37,6 +40,7 @@ import {
   cleanupMovedRecipeImages,
   prepareRecipeImages,
 } from "../services/recipe-image.service";
+import { cleanupRecipeImportImagesBestEffort } from "../services/recipe-import-image-cleanup.service";
 import {
   enqueueRecipeImportJob,
   failStaleRecipeImportJobs,
@@ -115,6 +119,7 @@ const PersonalizationGoalValidator = type(
 );
 
 const RecipePostValidator = type({
+  "importJobId?": "string",
   name: "string",
   ingredientSections: IngredientSectionRecord.array().atLeastLength(1),
   instructionSections: InstructionSectionRecord.array(),
@@ -173,7 +178,6 @@ const CreateImportJobValidator = type({
 const ImportJobIdValidator = type({
   id: "string",
 });
-
 const MAX_IMPORT_DATA_LENGTH: Record<ImportJobMode, number> = {
   url: 4096,
   text: 100_000,
@@ -228,6 +232,7 @@ const GetNutritionValidator = type({
 });
 
 interface RecipePayloadInput {
+  importJobId?: string;
   name: string;
   images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
@@ -566,7 +571,7 @@ export const recipeRouter = router({
   createImportJob: authedProcedure
     .input(CreateImportJobValidator)
     .mutation(async ({ ctx, input }) => {
-      if (input.id.trim().length === 0) {
+      if (!isValidImportImageStagingId(input.id)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Import job id is required.",
@@ -713,14 +718,22 @@ export const recipeRouter = router({
   dismissImportJob: authedProcedure
     .input(ImportJobIdValidator)
     .mutation(async ({ ctx, input }) => {
-      await ctx.db
+      const [deletedJob] = await ctx.db
         .delete(recipeImportJobs)
         .where(
           and(
             eq(recipeImportJobs.id, input.id),
             eq(recipeImportJobs.userId, ctx.user.id),
           ),
+        )
+        .returning({ id: recipeImportJobs.id });
+
+      if (deletedJob) {
+        await cleanupRecipeImportImagesBestEffort(
+          ctx.env.IMAGE_SERVICE,
+          input.id,
         );
+      }
 
       return { success: true };
     }),
@@ -844,6 +857,43 @@ export const recipeRouter = router({
       validateRecipePayload(input);
 
       const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
+      const importJobId = input.importJobId;
+
+      if (importJobId) {
+        if (!isValidImportImageStagingId(importJobId)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid import job id.",
+          });
+        }
+
+        const [importJob] = await ctx.db
+          .select({
+            id: recipeImportJobs.id,
+            status: recipeImportJobs.status,
+          })
+          .from(recipeImportJobs)
+          .where(
+            and(
+              eq(recipeImportJobs.id, importJobId),
+              eq(recipeImportJobs.userId, ctx.user.id),
+            ),
+          )
+          .limit(1);
+
+        if (!importJob) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Import job not found.",
+          });
+        }
+        if (importJob.status !== "ready") {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Import job is not ready.",
+          });
+        }
+      }
 
       let movedKeys: string[] = [];
 
@@ -854,29 +904,63 @@ export const recipeRouter = router({
           ownerId: ctx.user.id,
         });
         movedKeys = preparedImages.movedKeys;
+        const {
+          importJobId: _importJobId,
+          imageUploadIds: _imageUploadIds,
+          ...recipeInput
+        } = input;
 
-        const recipe = await createRecipe(ctx.db, ctx.user.id, {
-          ...input,
-          images: preparedImages.images,
-          instructionSections: preparedImages.instructionSections,
-          nutrition: subscriptionStatus.isPro
-            ? (input.nutrition as any)
-            : undefined,
-        });
+        const { recipe, activityEvent } = await ctx.db.transaction(
+          async (tx) => {
+            if (importJobId) {
+              const [consumedJob] = await tx
+                .delete(recipeImportJobs)
+                .where(
+                  and(
+                    eq(recipeImportJobs.id, importJobId),
+                    eq(recipeImportJobs.userId, ctx.user.id),
+                    eq(recipeImportJobs.status, "ready"),
+                  ),
+                )
+                .returning({ id: recipeImportJobs.id });
+
+              if (!consumedJob) {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Import job is no longer available.",
+                });
+              }
+            }
+
+            const recipe = await createRecipeInTransaction(tx, ctx.user.id, {
+              ...recipeInput,
+              images: preparedImages.images,
+              instructionSections: preparedImages.instructionSections,
+              nutrition: subscriptionStatus.isPro
+                ? (input.nutrition as any)
+                : undefined,
+            });
+            const [activityEvent] = await tx
+              .insert(activityEvents)
+              .values({
+                userId: ctx.user.id,
+                type: "recipe_import",
+                recipeId: recipe.id,
+                createdAt: new Date(),
+              })
+              .returning();
+
+            return { recipe, activityEvent };
+          },
+        );
         movedKeys = [];
 
-        // Create activity event for the import
-        const activityEventResult = await ctx.db
-          .insert(activityEvents)
-          .values({
-            userId: ctx.user.id,
-            type: "recipe_import",
-            recipeId: recipe.id,
-            createdAt: new Date(),
-          })
-          .returning();
-
-        const activityEvent = activityEventResult[0];
+        if (importJobId) {
+          await cleanupRecipeImportImagesBestEffort(
+            ctx.env.IMAGE_SERVICE,
+            importJobId,
+          );
+        }
 
         // Schedule propagation without blocking the response.
         if (activityEvent) {

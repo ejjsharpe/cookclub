@@ -98,7 +98,11 @@ async function parseWithEnv(
     }
 
     return finalizeParseDiagnostics(
-      await rehostParsedRecipeImagesForResponse(env, result),
+      await rehostParsedRecipeImagesForResponse(
+        env,
+        result,
+        input.imageStagingId,
+      ),
       parseInputSource(input),
       parseStart,
     );

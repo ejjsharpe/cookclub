@@ -191,10 +191,13 @@ function createFakeDb(initialJob: FakeJob | null) {
   return db;
 }
 
-function createEnv(parse = vi.fn()) {
+function createEnv(parse = vi.fn(), deleteImportImages = vi.fn()) {
   return {
     RECIPE_AI: {
       parse,
+    },
+    IMAGE_SERVICE: {
+      deleteImportImages,
     },
   };
 }
@@ -241,6 +244,11 @@ describe("recipe import job service", () => {
 
     expect(result).toBe("processed");
     expect(parse).toHaveBeenCalledTimes(1);
+    expect(parse).toHaveBeenCalledWith({
+      type: "url",
+      data: "https://example.com/recipe",
+      imageStagingId: "job-1",
+    });
     expect(db._state.job?.status).toBe("ready");
     expect(db._state.job?.title).toBe("Tomato Pasta");
     expect(db._state.job?.inputData).toBe("");
@@ -358,10 +366,15 @@ describe("recipe import job service", () => {
       success: false,
       error: { code: "NO_RECIPE", message: "No recipe found" },
     });
+    const deleteImportImages = vi.fn();
     const reportFailure = vi.fn();
 
     const result = await processRecipeImportJob(
-      { db: db as any, env: createEnv(parse) as any, reportFailure },
+      {
+        db: db as any,
+        env: createEnv(parse, deleteImportImages) as any,
+        reportFailure,
+      },
       { jobId: "job-1", userId: "user-1" },
     );
 
@@ -388,6 +401,38 @@ describe("recipe import job service", () => {
       usagePeriodStart,
       new Date("2026-06-02T10:00:00.000Z"),
     );
+    expect(deleteImportImages).toHaveBeenCalledWith("job-1");
+  });
+
+  it("cleans up staged images when the job disappears during parsing", async () => {
+    const db = createFakeDb(createJob());
+    const parse = vi.fn().mockImplementation(async () => {
+      db._state.job = null;
+      return {
+        success: true,
+        data: {
+          name: "Tomato Pasta",
+          ingredientSections: [],
+          instructionSections: [],
+        },
+        metadata: {
+          source: "url",
+          confidence: "high",
+        },
+      };
+    });
+    const deleteImportImages = vi.fn();
+
+    const result = await processRecipeImportJob(
+      {
+        db: db as any,
+        env: createEnv(parse, deleteImportImages) as any,
+      },
+      { jobId: "job-1", userId: "user-1" },
+    );
+
+    expect(result).toBe("skipped");
+    expect(deleteImportImages).toHaveBeenCalledWith("job-1");
   });
 
   it("does not refund smart jobs that never consumed free quota", async () => {
@@ -464,7 +509,7 @@ describe("recipe import job service", () => {
         {
           id: "job-1",
           status: "pending",
-          updatedAt: new Date("2026-06-02T09:58:59.000Z"),
+          updatedAt: new Date("2026-06-02T09:49:59.000Z"),
           processingStartedAt: null,
         },
         now,
@@ -474,9 +519,20 @@ describe("recipe import job service", () => {
       isRecipeImportJobStale(
         {
           id: "job-1",
+          status: "pending",
+          updatedAt: new Date("2026-06-02T09:50:00.000Z"),
+          processingStartedAt: null,
+        },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      isRecipeImportJobStale(
+        {
+          id: "job-1",
           status: "processing",
           updatedAt: new Date("2026-06-02T09:59:00.000Z"),
-          processingStartedAt: new Date("2026-06-02T09:58:59.000Z"),
+          processingStartedAt: new Date("2026-06-02T09:53:59.000Z"),
         },
         now,
       ),
@@ -487,7 +543,7 @@ describe("recipe import job service", () => {
           id: "job-1",
           status: "processing",
           updatedAt: new Date("2026-06-02T09:59:00.000Z"),
-          processingStartedAt: new Date("2026-06-02T09:59:00.000Z"),
+          processingStartedAt: new Date("2026-06-02T09:54:00.000Z"),
         },
         now,
       ),
@@ -508,7 +564,7 @@ describe("recipe import job service", () => {
   it("marks stale active jobs failed", async () => {
     const db = createFakeDb(
       createJob({
-        updatedAt: new Date("2026-06-02T09:58:00.000Z"),
+        updatedAt: new Date("2026-06-02T09:49:00.000Z"),
       }),
     );
 
@@ -519,7 +575,7 @@ describe("recipe import job service", () => {
         {
           id: "job-1",
           status: "pending",
-          updatedAt: new Date("2026-06-02T09:58:00.000Z"),
+          updatedAt: new Date("2026-06-02T09:49:00.000Z"),
           processingStartedAt: null,
         },
       ],
@@ -530,6 +586,35 @@ describe("recipe import job service", () => {
     expect(db._state.job?.error).toBe(RECIPE_IMPORT_JOB_STALE_ERROR);
     expect(db._state.job?.errorCode).toBe("IMPORT_TIMED_OUT");
     expect(db._state.job?.inputData).toBe("");
+  });
+
+  it("does not fail a stale candidate after its processing lease is renewed", async () => {
+    const db = createFakeDb(
+      createJob({
+        status: "processing",
+        updatedAt: new Date("2026-06-02T09:53:00.000Z"),
+        processingStartedAt: new Date("2026-06-02T09:59:00.000Z"),
+      }),
+    );
+
+    const failedJobIds = await failStaleRecipeImportJobs(
+      { db: db as any, env: createEnv() as any },
+      "user-1",
+      [
+        {
+          id: "job-1",
+          status: "processing",
+          updatedAt: new Date("2026-06-02T09:53:00.000Z"),
+          processingStartedAt: new Date("2026-06-02T09:53:00.000Z"),
+        },
+      ],
+    );
+
+    expect(failedJobIds).toEqual(new Set());
+    expect(db._state.job?.status).toBe("processing");
+    expect(db._state.job?.processingStartedAt).toEqual(
+      new Date("2026-06-02T09:59:00.000Z"),
+    );
   });
 
   it.each([

@@ -4,9 +4,19 @@
   "main": "src/index.ts",
   "account_id": "46fa47bc2bba51d75383b4dfe6e3deb1",
   "compatibility_flags": ["nodejs_compat"],
-  "compatibility_date": "2025-02-20",
+  "compatibility_date": "2026-07-24",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1,
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01,
+    },
+  },
   "dev": {
-    "port": 8789
+    "port": 8789,
   },
   "workers_dev": false,
   "r2_buckets": [
@@ -14,25 +24,23 @@
       "binding": "IMAGES",
       "bucket_name": "cook-club-images-development",
       "preview_bucket_name": "cook-club-images-development",
-      "remote": true
-    }
+      "remote": true,
+    },
   ],
   "images": {
-    "binding": "IMAGE_TRANSFORMER"
+    "binding": "IMAGE_TRANSFORMER",
   },
   "vars": {
     "R2_ACCOUNT_ID": "46fa47bc2bba51d75383b4dfe6e3deb1",
     "R2_S3_API_URL": "https://46fa47bc2bba51d75383b4dfe6e3deb1.r2.cloudflarestorage.com/cook-club-images-development",
     // Public URL for serving images through the transform Worker
     "PUBLIC_URL": "http://localhost:8789",
-    // Public origin URL used for image transformations
-    "R2_ORIGIN_URL": "http://localhost:8789",
     // R2 bucket name for presigned URLs (must match preview_bucket_name in dev, bucket_name in prod)
-    "R2_BUCKET_NAME": "cook-club-images-development"
+    "R2_BUCKET_NAME": "cook-club-images-development",
   },
   // Scheduled cleanup for orphaned temp images
   "triggers": {
-    "crons": ["0 3 * * *"]
+    "crons": ["0 3 * * *"],
   },
   // Production environment overrides
   "env": {
@@ -42,22 +50,19 @@
         {
           "binding": "IMAGES",
           "bucket_name": "cook-club-images-production",
-          "remote": true
-        }
+          "remote": true,
+        },
       ],
       "images": {
-        "binding": "IMAGE_TRANSFORMER"
+        "binding": "IMAGE_TRANSFORMER",
       },
-      "routes": [
-        { "pattern": "images.cookclub.app", "custom_domain": true }
-      ],
+      "routes": [{ "pattern": "images.cookclub.app", "custom_domain": true }],
       "vars": {
         "R2_ACCOUNT_ID": "46fa47bc2bba51d75383b4dfe6e3deb1",
         "R2_S3_API_URL": "https://46fa47bc2bba51d75383b4dfe6e3deb1.r2.cloudflarestorage.com/cook-club-images-production",
         "PUBLIC_URL": "https://images.cookclub.app",
-        "R2_ORIGIN_URL": "https://images.cookclub.app",
-        "R2_BUCKET_NAME": "cook-club-images-production"
-      }
-    }
-  }
+        "R2_BUCKET_NAME": "cook-club-images-production",
+      },
+    },
+  },
 }

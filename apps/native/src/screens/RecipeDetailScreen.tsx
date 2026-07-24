@@ -1335,7 +1335,10 @@ export const RecipeDetailScreen = () => {
         setServings(draft.servings);
         setIsEditing(false);
       } else {
-        const { id } = await saveRecipeMutation.mutateAsync(recipeData);
+        const { id } = await saveRecipeMutation.mutateAsync({
+          ...recipeData,
+          ...(importJobId ? { importJobId } : {}),
+        });
         if (importJobId) {
           dismissImport(importJobId);
         }

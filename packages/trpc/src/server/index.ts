@@ -21,6 +21,7 @@ export {
   publicErrorForResponse,
 } from "./public-errors";
 export {
+  cleanupOrphanedRecipeImportImages,
   failRecipeImportJob,
   processPushNotificationReceipts,
   processRecipeImportJob,

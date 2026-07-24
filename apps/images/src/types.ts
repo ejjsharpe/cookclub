@@ -13,10 +13,6 @@ export interface Env {
   // Public URL base for the image service (e.g., https://images.cookclub.app)
   // This is used for generating public URLs returned to clients
   PUBLIC_URL: string;
-  // Public origin URL used for image transformations.
-  // This may be the images hostname; origin subrequests include an
-  // internal header so they return the original image without transforming again.
-  R2_ORIGIN_URL: string;
 }
 
 // Re-export service types for convenience

@@ -2,6 +2,12 @@ export type ImageContentType = "image/jpeg" | "image/png" | "image/webp";
 
 export type ImageUploadKind = "recipe_photo" | "review_photo" | "avatar";
 
+export const IMPORT_IMAGE_STAGING_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
+
+export function isValidImportImageStagingId(value: string): boolean {
+  return IMPORT_IMAGE_STAGING_ID_PATTERN.test(value);
+}
+
 export interface PublicImageAsset {
   url: string;
   storageKey: string;
@@ -240,6 +246,9 @@ export interface ImageService {
     ownerId?: string,
   ): Promise<MoveResponse>;
   delete(keys: string[]): Promise<void>;
+  deleteImportImages(imageStagingId: string): Promise<void>;
+  deleteImportImageStagingIds(imageStagingIds: string[]): Promise<void>;
+  listImportImageStagingIds(): Promise<string[]>;
   uploadFromUrl(
     sourceUrl: string,
     destinationKey: string,

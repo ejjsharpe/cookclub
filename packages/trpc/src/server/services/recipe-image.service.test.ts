@@ -10,6 +10,9 @@ const createImageService = () => ({
   verify: vi.fn(),
   move: vi.fn(),
   delete: vi.fn(),
+  deleteImportImages: vi.fn(),
+  deleteImportImageStagingIds: vi.fn(),
+  listImportImageStagingIds: vi.fn(),
   uploadFromUrl: vi.fn(),
   uploadImage: vi.fn(),
   normalizeImage: vi.fn(),
@@ -267,6 +270,73 @@ describe("recipe image service", () => {
     ]);
   });
 
+  it("copies legacy generated temp covers so saving can be retried", async () => {
+    const imageService = createImageService();
+    imageService.uploadFromUrl.mockImplementation(
+      async (_url: string, key: string) => ({
+        success: true,
+        key,
+        publicUrl: `https://images.example.com/${key}`,
+        asset: createAsset(key),
+      }),
+    );
+
+    const result = await prepareRecipeImages(
+      {
+        images: [
+          {
+            url: "https://images.example.com/temp/generated/cover.jpg",
+          },
+        ],
+      },
+      {
+        imageService,
+        imagePublicUrl: "https://images.example.com",
+        ownerId: "user-id",
+      },
+    );
+
+    expect(imageService.uploadFromUrl).toHaveBeenCalledWith(
+      "https://images.example.com/temp/generated/cover.jpg",
+      expect.stringMatching(/^recipes\/covers\/.+\/.+\.jpg$/),
+    );
+    expect(imageService.move).not.toHaveBeenCalled();
+    expect(result.images).toHaveLength(1);
+  });
+
+  it("copies staged import assets into permanent recipe keys", async () => {
+    const imageService = createImageService();
+    imageService.uploadFromUrl.mockImplementation(
+      async (_url: string, key: string) => ({
+        success: true,
+        key,
+        publicUrl: `https://images.example.com/${key}`,
+        asset: createAsset(key),
+      }),
+    );
+    const stagedAsset = createAsset("imports/job-1/cover.jpg");
+
+    const result = await prepareRecipeImages(
+      { images: [stagedAsset] },
+      {
+        imageService,
+        imagePublicUrl: "https://images.example.com",
+        ownerId: "user-id",
+      },
+    );
+
+    expect(imageService.uploadFromUrl).toHaveBeenCalledWith(
+      stagedAsset.url,
+      expect.stringMatching(/^recipes\/covers\/.+\/.+\.jpg$/),
+    );
+    expect(result.images[0]?.storageKey).toMatch(
+      /^recipes\/covers\/.+\/.+\.jpg$/,
+    );
+    expect(result.movedKeys).toEqual([
+      expect.stringMatching(/^recipes\/covers\/.+\/.+\.jpg$/),
+    ]);
+  });
+
   it("cleans up rehosted images when metadata is missing", async () => {
     const imageService = createImageService();
     imageService.uploadFromUrl.mockResolvedValue({
@@ -291,16 +361,14 @@ describe("recipe image service", () => {
     ]);
   });
 
-  it("moves hosted temp instruction images into recipe-owned step keys", async () => {
+  it("copies legacy generated instruction images into recipe-owned step keys", async () => {
     const imageService = createImageService();
-    imageService.move.mockImplementation(
-      async (moves: { from: string; to: string }[]) => ({
+    imageService.uploadFromUrl.mockImplementation(
+      async (_url: string, key: string) => ({
         success: true,
-        results: moves.map((move) => ({
-          ...move,
-          success: true,
-          asset: createAsset(move.to),
-        })),
+        key,
+        publicUrl: `https://images.example.com/${key}`,
+        asset: createAsset(key),
       }),
     );
 
@@ -328,17 +396,11 @@ describe("recipe image service", () => {
       },
     );
 
-    expect(imageService.move).toHaveBeenCalledWith(
-      [
-        {
-          from: "temp/generated/step-image.jpg",
-          to: expect.stringMatching(
-            /^recipes\/instructions\/.+\/0\/.+\.jpg$/,
-          ),
-        },
-      ],
-      "user-id",
+    expect(imageService.uploadFromUrl).toHaveBeenCalledWith(
+      "https://images.example.com/temp/generated/step-image.jpg",
+      expect.stringMatching(/^recipes\/instructions\/.+\/0\/.+\.jpg$/),
     );
+    expect(imageService.move).not.toHaveBeenCalled();
     expect(result.instructionSections[0]?.instructions[0]?.imageUrl).toMatch(
       /^https:\/\/images\.example\.com\/recipes\/instructions\/.+\/0\/.+\.jpg$/,
     );

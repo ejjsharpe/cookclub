@@ -538,11 +538,7 @@ async function insertRecipeTagsForRecipe(
  * Create a new recipe with ingredients, instructions, and images.
  * Supports both direct image URLs and uploaded image keys that need to be moved.
  */
-export async function createRecipe(
-  db: DbClient,
-  userId: string,
-  input: CreateRecipeInput,
-) {
+function validateCreateRecipeInput(input: CreateRecipeInput) {
   const hasDirectImages = input.images && input.images.length > 0;
 
   if (!hasDirectImages) {
@@ -558,87 +554,100 @@ export async function createRecipe(
       "At least one ingredient is required",
     );
   }
+}
 
-  // Use transaction to ensure all inserts succeed or all fail
-  return await db.transaction(async (tx) => {
-    // Insert recipe
-    const recipe = await tx
-      .insert(recipes)
-      .values({
-        name: input.name,
-        description: input.description || null,
-        sourceUrl: input.sourceUrl || null,
-        sourceType: input.sourceType || "manual",
-        prepTime: input.prepTime || null,
-        cookTime: input.cookTime || null,
-        totalTime: input.totalTime || null,
-        servings: input.servings,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        ownerId: userId,
-      })
-      .returning()
-      .then((rows) => rows[0]);
+export async function createRecipeInTransaction(
+  tx: TransactionClient,
+  userId: string,
+  input: CreateRecipeInput,
+) {
+  validateCreateRecipeInput(input);
 
-    if (!recipe) {
-      throw new ServiceError("INTERNAL_ERROR", "Failed to create recipe");
-    }
-
-    const insertedIngredientSections = await insertIngredientSectionsForRecipe(
-      tx,
-      recipe.id,
-      input.ingredientSections,
-    );
-
-    const insertedInstructionSections =
-      await insertInstructionSectionsForRecipe(
-        tx,
-        recipe.id,
-        input.instructionSections,
-      );
-
-    // Insert images
-    const images = await tx
-      .insert(recipeImages)
-      .values(
-        input.images!.map((image) => recipeImageInsertValues(recipe.id, image)),
-      )
-      .returning({
-        id: recipeImages.id,
-        url: recipeImages.url,
-        storageKey: recipeImages.storageKey,
-        width: recipeImages.width,
-        height: recipeImages.height,
-        contentType: recipeImages.contentType,
-        byteSize: recipeImages.byteSize,
-        thumbhash: recipeImages.thumbhash,
-      });
-
-    await insertRecipeTagsForRecipe(tx, userId, recipe.id, input.tagNames);
-
-    if (hasNutritionValue(input.nutrition)) {
-      await tx
-        .insert(recipeNutrition)
-        .values(nutritionInsertValues(recipe.id, input.nutrition!));
-    }
-
-    // Auto-add to "Want to cook" collection
-    const defaultCollections = await getOrCreateDefaultCollections(tx, userId);
-    await tx.insert(recipeCollections).values({
-      recipeId: recipe.id,
-      collectionId: defaultCollections.wantToCook.id,
+  const recipe = await tx
+    .insert(recipes)
+    .values({
+      name: input.name,
+      description: input.description || null,
+      sourceUrl: input.sourceUrl || null,
+      sourceType: input.sourceType || "manual",
+      prepTime: input.prepTime || null,
+      cookTime: input.cookTime || null,
+      totalTime: input.totalTime || null,
+      servings: input.servings,
       createdAt: new Date(),
+      updatedAt: new Date(),
+      ownerId: userId,
+    })
+    .returning()
+    .then((rows) => rows[0]);
+
+  if (!recipe) {
+    throw new ServiceError("INTERNAL_ERROR", "Failed to create recipe");
+  }
+
+  const insertedIngredientSections = await insertIngredientSectionsForRecipe(
+    tx,
+    recipe.id,
+    input.ingredientSections,
+  );
+
+  const insertedInstructionSections = await insertInstructionSectionsForRecipe(
+    tx,
+    recipe.id,
+    input.instructionSections,
+  );
+
+  const images = await tx
+    .insert(recipeImages)
+    .values(
+      input.images!.map((image) => recipeImageInsertValues(recipe.id, image)),
+    )
+    .returning({
+      id: recipeImages.id,
+      url: recipeImages.url,
+      storageKey: recipeImages.storageKey,
+      width: recipeImages.width,
+      height: recipeImages.height,
+      contentType: recipeImages.contentType,
+      byteSize: recipeImages.byteSize,
+      thumbhash: recipeImages.thumbhash,
     });
 
-    await syncRecipeSearchDocument(tx, recipe.id);
+  await insertRecipeTagsForRecipe(tx, userId, recipe.id, input.tagNames);
 
-    return {
-      ...recipe,
-      ingredientSections: insertedIngredientSections,
-      instructionSections: insertedInstructionSections,
-      images,
-    };
+  if (hasNutritionValue(input.nutrition)) {
+    await tx
+      .insert(recipeNutrition)
+      .values(nutritionInsertValues(recipe.id, input.nutrition!));
+  }
+
+  const defaultCollections = await getOrCreateDefaultCollections(tx, userId);
+  await tx.insert(recipeCollections).values({
+    recipeId: recipe.id,
+    collectionId: defaultCollections.wantToCook.id,
+    createdAt: new Date(),
   });
+
+  await syncRecipeSearchDocument(tx, recipe.id);
+
+  return {
+    ...recipe,
+    ingredientSections: insertedIngredientSections,
+    instructionSections: insertedInstructionSections,
+    images,
+  };
+}
+
+export async function createRecipe(
+  db: DbClient,
+  userId: string,
+  input: CreateRecipeInput,
+) {
+  validateCreateRecipeInput(input);
+
+  return await db.transaction((tx) =>
+    createRecipeInTransaction(tx, userId, input),
+  );
 }
 
 // ─── Recipe Update ─────────────────────────────────────────────────────────
