@@ -32,13 +32,13 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260525.1",
-    "@dotenvx/dotenvx": "1.68.1",
+    "@dotenvx/dotenvx": "2.19.0",
     "@repo/tsconfig": "workspace:*",
     "@types/pg": "8.20.0",
     "drizzle-kit": "0.31.10",
-    "eslint-config-universe": "15.2.0",
-    "typescript": "6.0.3",
-    "vitest": "4.1.7"
+    "eslint-config-universe": "16.0.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   },
   "eslintConfig": {
     "extends": "universe/node"
