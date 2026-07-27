@@ -23,8 +23,8 @@
     "react-dom": "19.2.6"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.39.0",
-    "@cloudflare/workers-types": "4.20260525.1",
+    "@cloudflare/vite-plugin": "1.47.0",
+    "@cloudflare/workers-types": "5.20260727.1",
     "@repo/tsconfig": "workspace:*",
     "@tanstack/router-plugin": "1.168.13",
     "@types/react": "19.2.15",
@@ -33,7 +33,7 @@
     "eslint-config-universe": "15.2.0",
     "typescript": "6.0.3",
     "vite": "8.0.14",
-    "wrangler": "4.112.0"
+    "wrangler": "4.114.0"
   },
   "eslintConfig": {
     "extends": "universe/web"
