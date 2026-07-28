@@ -19,7 +19,7 @@
     "port": 8787,
   },
   "triggers": {
-    "crons": ["*/5 * * * *"],
+    "crons": ["0 * * * *"],
   },
   "queues": {
     "producers": [
