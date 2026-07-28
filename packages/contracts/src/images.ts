@@ -1,6 +1,10 @@
 export type ImageContentType = "image/jpeg" | "image/png" | "image/webp";
 
-export type ImageUploadKind = "recipe_photo" | "review_photo" | "avatar";
+export type ImageUploadKind =
+  | "recipe_photo"
+  | "review_photo"
+  | "avatar"
+  | "recipe_import_source";
 
 export const IMPORT_IMAGE_STAGING_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
 
@@ -262,4 +266,10 @@ export interface ImageService {
     imageData: ArrayBuffer,
     contentType: ImageContentType,
   ): Promise<NormalizeImageResponse>;
+  stageImportSource(
+    tempKey: string,
+    ownerId: string,
+    jobId: string,
+  ): Promise<StoredImageAsset>;
+  getImportSource(jobId: string): Promise<Response>;
 }

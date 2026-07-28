@@ -14,11 +14,11 @@ export type Recipe = Outputs["recipe"]["getRecipeDetail"];
 export type RecipeListItem =
   Outputs["recipe"]["getUserRecipes"]["items"][number];
 export type ParsedRecipe = Extract<
-  NonNullable<Outputs["recipe"]["listImportJobs"][number]["recipe"]>,
+  NonNullable<Outputs["recipeImport"]["get"]["recipe"]>,
   { success: true }
 >;
 export type PersonalizationGoal =
-  Inputs["recipe"]["personalizeRecipe"]["goals"][number];
+  Inputs["recipeAi"]["personalizeRecipe"]["goals"][number];
 
 type RecipeTRPC = ReturnType<typeof useTRPC>;
 type RecipeQueryClient = ReturnType<typeof useQueryClient>;
@@ -200,6 +200,29 @@ export const useSaveRecipe = () => {
   });
 };
 
+export const useCompleteRecipeImport = () => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    ...trpc.recipeImport.complete.mutationOptions(),
+    onSuccess: () => {
+      invalidateUserRecipeLists(queryClient, trpc);
+      queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.collection.getUserCollections.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.collection.getCollectionDetail.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.recipeImport.list.pathFilter());
+      queryClient.invalidateQueries(trpc.recipeImport.get.pathFilter());
+    },
+  });
+};
+
 // Update an existing recipe owned by the current user
 export const useUpdateRecipe = () => {
   const trpc = useTRPC();
@@ -227,7 +250,7 @@ export const usePersonalizeRecipe = () => {
   const trpc = useTRPC();
 
   return useMutation(
-    trpc.recipe.personalizeRecipe.mutationOptions({
+    trpc.recipeAi.personalizeRecipe.mutationOptions({
       retry: false,
     }),
   );
@@ -237,7 +260,7 @@ export const useGenerateRecipeImage = () => {
   const trpc = useTRPC();
 
   return useMutation(
-    trpc.recipe.generateRecipeImage.mutationOptions({
+    trpc.recipeAi.generateRecipeImage.mutationOptions({
       retry: false,
     }),
   );
@@ -248,7 +271,7 @@ export const useGetRecipeNutrition = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    ...trpc.recipe.getNutrition.mutationOptions({
+    ...trpc.recipeAi.getNutrition.mutationOptions({
       retry: false,
     }),
     onSuccess: (_data, variables) => {

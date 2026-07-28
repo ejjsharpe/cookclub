@@ -39,16 +39,15 @@ import { Text } from "@/components/Text";
 import { BackButton } from "@/components/buttons/BackButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
-import { alertApiError } from "@/lib/apiErrorAlert";
 import {
-  createBackgroundImportId,
-  useBackgroundImportQueue,
-} from "@/lib/backgroundImportQueue";
+  createRecipeImportId,
+  useRecipeImport,
+} from "@/features/recipe-import/RecipeImportProvider";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
 import type { AppParamList } from "@/navigation/navigationRef";
 import { selectFeedImagePreset } from "@/utils/imageUrl";
-import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 type UserProfileScreenRoute = RouteProp<AppParamList, "UserProfile">;
 
@@ -70,7 +69,7 @@ export const UserProfileScreen = () => {
   );
   const { userId } = route.params;
   const importRecipeMutation = useImportRecipe();
-  const { startImport } = useBackgroundImportQueue();
+  const { submitImport } = useRecipeImport();
   const session = useSessionContext();
   const { requireSmartImport } = useSubscription();
 
@@ -140,24 +139,35 @@ export const UserProfileScreen = () => {
     navigation.navigate("Tabs", { screen: "Add recipe" } as never);
   }, [navigation]);
 
+  const sourceImportIdsRef = useRef(new Map<string, string>());
+
   const handleImportRecipe = useCallback(
     async (sourceUrl: string) => {
-      const allowed = await requireSmartImport();
-      if (!allowed) {
-        navigateToAddRecipeTab();
-        return;
-      }
+      try {
+        const allowed = await requireSmartImport();
+        if (!allowed) {
+          navigateToAddRecipeTab();
+          return;
+        }
 
-      startImport({
-        id: createBackgroundImportId("url"),
-        importType: "smart",
-        mode: "url",
-        title: getRecipeImportSourceTitle(sourceUrl),
-        data: sourceUrl,
-      });
-      navigateToAddRecipeTab();
+        const id =
+          sourceImportIdsRef.current.get(sourceUrl) ?? createRecipeImportId();
+        sourceImportIdsRef.current.set(sourceUrl, id);
+        await submitImport({
+          id,
+          importType: "smart",
+          source: { type: "url", value: sourceUrl },
+        });
+        sourceImportIdsRef.current.delete(sourceUrl);
+        navigateToAddRecipeTab();
+      } catch (error) {
+        alertApiError("Import Failed", error, {
+          operation: "recipeImport.create",
+          fallback: "Unable to start this import. Please try again.",
+        });
+      }
     },
-    [navigateToAddRecipeTab, requireSmartImport, startImport],
+    [navigateToAddRecipeTab, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(

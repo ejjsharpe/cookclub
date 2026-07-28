@@ -1,16 +1,21 @@
+import { publicImageUrlForKey } from "@repo/contracts/images";
+import type { RecipeImportParseResponse } from "@repo/contracts/recipe-ai";
+import {
+  RECIPE_IMPORT_LIMITS,
+  type RecipeImportErrorCode,
+} from "@repo/contracts/recipe-import";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
+import { parseImage, parseText, parseUrl } from "./import";
 import { createCerebrasClient } from "./services/cerebras-client";
 import { createFallbackAiClient } from "./services/fallback-ai-client";
 import { createGroqClient } from "./services/groq-client";
 import { rehostParsedRecipeImagesForResponse } from "./services/hosted-images";
-import { parseImage } from "./services/image-parser";
 import { generateNutrition } from "./services/nutrition-generator";
+import { readBoundedBody } from "./services/provider-response";
 import { processChat } from "./services/recipe-generator";
 import { generateRecipeImage } from "./services/recipe-image-generator";
 import { personalizeRecipe } from "./services/recipe-personalizer";
-import { parseText } from "./services/text-parser";
-import { parseUrl } from "./services/url-parser";
 import type {
   Env,
   ParseInput,
@@ -58,19 +63,82 @@ function parseInputSource(input: ParseInput): "url" | "text" | "image" {
   return input.type === "text" || input.type === "image" ? input.type : "url";
 }
 
+function normalizeImportFailure(
+  result: Extract<ParseResponse, { success: false }>,
+): Extract<RecipeImportParseResponse, { success: false }> {
+  const message = result.error.message;
+  const timedOut = /timed? ?out|timeout|aborterror/i.test(message);
+  let code: RecipeImportErrorCode;
+  let disposition: "terminal" | "retry";
+
+  switch (result.error.code) {
+    case "INVALID_URL":
+      code = "IMPORT_INVALID_URL";
+      disposition = "terminal";
+      break;
+    case "UNSUPPORTED_URL":
+    case "YOUTUBE_UNSUPPORTED_URL":
+    case "INVALID_INPUT_TYPE":
+      code = "IMPORT_UNSUPPORTED_SOURCE";
+      disposition = "terminal";
+      break;
+    case "NO_STRUCTURED_DATA":
+    case "NO_CONTENT":
+    case "NO_RECIPE":
+    case "VALIDATION_FAILED":
+    case "YOUTUBE_NO_RECIPE_EVIDENCE":
+    case "INVALID_INPUT":
+      code = "IMPORT_RECIPE_NOT_FOUND";
+      disposition = "terminal";
+      break;
+    case "INVALID_MIME_TYPE":
+    case "INVALID_BASE64":
+      code = "IMPORT_IMAGE_INVALID";
+      disposition = "terminal";
+      break;
+    case "INPUT_TOO_LONG":
+    case "IMAGE_TOO_LARGE":
+      code = "PAYLOAD_TOO_LARGE";
+      disposition = "terminal";
+      break;
+    case "FETCH_FAILED":
+    case "YOUTUBE_METADATA_FAILED":
+      code = timedOut ? "IMPORT_TIMED_OUT" : "IMPORT_SOURCE_UNAVAILABLE";
+      disposition = result.error.disposition ?? "retry";
+      break;
+    default:
+      code = timedOut ? "IMPORT_TIMED_OUT" : "SERVICE_UNAVAILABLE";
+      disposition = result.error.disposition ?? "retry";
+      break;
+  }
+
+  return {
+    ...result,
+    error: {
+      code,
+      message,
+      disposition,
+      ...(result.error.retryAfterSeconds !== undefined
+        ? { retryAfterSeconds: result.error.retryAfterSeconds }
+        : {}),
+    },
+  };
+}
+
 async function parseWithEnv(
   env: Env,
   input: ParseInput,
   aiClient: AiClient,
-): Promise<ParseResponse> {
+): Promise<RecipeImportParseResponse> {
   const parseStart = Date.now();
+  const strategy = input.strategy ?? "ai-assisted";
   try {
     let result: ParseResponse;
 
     switch (input.type) {
       case "url":
         result = await parseUrl(env, input.data, {
-          structuredOnly: input.structuredOnly,
+          strategy,
           aiClient,
         });
         break;
@@ -80,24 +148,58 @@ async function parseWithEnv(
         break;
 
       case "image":
-        result = await parseImage(env, input.data, input.mimeType, aiClient);
+        {
+          const sourceResponse = await env.IMAGE_SERVICE.getImportSource(
+            input.jobId,
+          );
+          if (!sourceResponse.ok) {
+            result = {
+              success: false,
+              error: {
+                code: "FETCH_FAILED",
+                message: `Import source image was unavailable (${sourceResponse.status}).`,
+                disposition:
+                  sourceResponse.status >= 500 ? "retry" : "terminal",
+              },
+              metadata: { source: "image", confidence: "low" },
+            };
+            break;
+          }
+          const imageData = await readBoundedBody(
+            sourceResponse,
+            RECIPE_IMPORT_LIMITS.sourceImageBytes,
+            "Image service",
+          );
+          result = await parseImage(
+            env,
+            imageData,
+            "image/jpeg",
+            publicImageUrlForKey(
+              env.IMAGE_PUBLIC_URL,
+              `imports/${input.jobId}/source.jpg`,
+            ),
+            aiClient,
+          );
+        }
         break;
 
       default:
-        return finalizeParseDiagnostics(
-          {
-            success: false,
-            error: {
-              code: "INVALID_INPUT_TYPE",
-              message: "Input type must be 'url', 'text', or 'image'",
+        return normalizeImportFailure(
+          finalizeParseDiagnostics(
+            {
+              success: false,
+              error: {
+                code: "INVALID_INPUT_TYPE",
+                message: "Input type must be 'url', 'text', or 'image'",
+              },
             },
-          },
-          "url",
-          parseStart,
+            "url",
+            parseStart,
+          ) as Extract<ParseResponse, { success: false }>,
         );
     }
 
-    return finalizeParseDiagnostics(
+    const finalized = finalizeParseDiagnostics(
       await rehostParsedRecipeImagesForResponse(
         env,
         result,
@@ -106,21 +208,56 @@ async function parseWithEnv(
       parseInputSource(input),
       parseStart,
     );
+    if (!finalized.success) return normalizeImportFailure(finalized);
+    return {
+      ...finalized,
+      metadata: {
+        ...finalized.metadata,
+        strategy,
+        provenance:
+          finalized.metadata.provenance ??
+          (finalized.metadata.parseMethod?.startsWith("ai")
+            ? "ai-assisted"
+            : "deterministic"),
+      },
+    };
   } catch (error) {
     console.error(error);
-    return finalizeParseDiagnostics(
-      {
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message:
-            error instanceof Error
-              ? error.message
-              : "An unexpected error occurred",
+    if (
+      input.type === "image" &&
+      error instanceof Error &&
+      error.message.startsWith("Image service response exceeded")
+    ) {
+      return normalizeImportFailure(
+        finalizeParseDiagnostics(
+          {
+            success: false,
+            error: {
+              code: "IMAGE_TOO_LARGE",
+              message: error.message,
+              disposition: "terminal",
+            },
+          },
+          "image",
+          parseStart,
+        ) as Extract<ParseResponse, { success: false }>,
+      );
+    }
+    return normalizeImportFailure(
+      finalizeParseDiagnostics(
+        {
+          success: false,
+          error: {
+            code: "INTERNAL_ERROR",
+            message:
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred",
+          },
         },
-      },
-      parseInputSource(input),
-      parseStart,
+        parseInputSource(input),
+        parseStart,
+      ) as Extract<ParseResponse, { success: false }>,
     );
   }
 }
@@ -152,21 +289,29 @@ export class RecipeAI extends WorkerEntrypoint<Env> {
    *
    * @example
    * // Parse from URL
-   * const result = await env.RECIPE_AI.parse({ type: "url", data: "https://example.com/recipe" });
+   * const result = await env.RECIPE_AI.parse({
+   *   type: "url",
+   *   data: "https://example.com/recipe",
+   *   strategy: "ai-assisted"
+   * });
    *
    * @example
    * // Parse from text
-   * const result = await env.RECIPE_AI.parse({ type: "text", data: "Recipe: Pasta..." });
+   * const result = await env.RECIPE_AI.parse({
+   *   type: "text",
+   *   data: "Recipe: Pasta...",
+   *   strategy: "ai-assisted"
+   * });
    *
    * @example
    * // Parse from image
    * const result = await env.RECIPE_AI.parse({
    *   type: "image",
-   *   data: "base64ImageData...",
-   *   mimeType: "image/jpeg"
+   *   jobId: "0d7de7c2-b3fc-4644-87ca-cf00e1cbf1b2",
+   *   strategy: "ai-assisted"
    * });
    */
-  async parse(input: ParseInput): Promise<ParseResponse> {
+  async parse(input: ParseInput): Promise<RecipeImportParseResponse> {
     return parseWithEnv(this.env, input, this[RECIPE_AI_INFERENCE_CLIENT]());
   }
 

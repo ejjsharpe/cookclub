@@ -2,6 +2,7 @@ import { getDb } from "@repo/db";
 import {
   cleanupOrphanedRecipeImportImages,
   processPushNotificationReceipts,
+  recoverStaleRecipeImportJobs,
 } from "@repo/trpc/server";
 
 import type { Env } from "./types";
@@ -122,10 +123,12 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (
   _ctx,
 ) => {
   const db = getDb(env);
-  const [receiptOutcome, importImageOutcome] = await Promise.allSettled([
-    processPushNotificationReceipts(db, env),
-    cleanupOrphanedRecipeImportImages(db, env.IMAGE_SERVICE),
-  ]);
+  const [receiptOutcome, importImageOutcome, staleImportOutcome] =
+    await Promise.allSettled([
+      processPushNotificationReceipts(db, env),
+      cleanupOrphanedRecipeImportImages(db, env.IMAGE_SERVICE),
+      recoverStaleRecipeImportJobs({ db, env }),
+    ]);
   const unexpectedErrors: unknown[] = [];
 
   if (receiptOutcome.status === "fulfilled") {
@@ -161,6 +164,23 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (
     )
   ) {
     unexpectedErrors.push(importImageOutcome.reason);
+  }
+
+  if (staleImportOutcome.status === "fulfilled") {
+    console.log(
+      JSON.stringify({
+        task: "recipe-import-stale-recovery",
+        checked: staleImportOutcome.value.checked,
+        recovered: staleImportOutcome.value.recovered,
+      }),
+    );
+  } else if (
+    !deferTransientScheduledTaskFailure(
+      "recipe-import-stale-recovery",
+      staleImportOutcome.reason,
+    )
+  ) {
+    unexpectedErrors.push(staleImportOutcome.reason);
   }
 
   if (unexpectedErrors.length > 0) {

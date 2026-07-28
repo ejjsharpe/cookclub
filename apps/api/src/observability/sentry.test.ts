@@ -63,6 +63,7 @@ describe("Sentry observability", () => {
         importType: "smart",
         mode: "url",
         errorCode,
+        event: "recipe_import_terminal_failure",
       }),
     ).toBe(expected);
   });

@@ -50,7 +50,7 @@ describe("createFallbackAiClient", () => {
         messages: [],
       }),
     ).rejects.toThrow(
-      "Cerebras failed (primary failed); Groq fallback failed (secondary failed)",
+      "Cerebras failed (Cerebras network request failed.); Groq fallback failed (Groq network request failed.).",
     );
   });
 });

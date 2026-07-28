@@ -5,6 +5,7 @@
     "./client": "./src/client.ts",
     "./server": "./src/server/index.ts",
     "./server/env": "./src/server/env.ts",
+    "./server/features/recipe-import/errors": "./src/server/features/recipe-import/errors.ts",
     "./server/types/feed": "./src/server/types/feed.ts"
   },
   "scripts": {

@@ -1,6 +1,6 @@
+import { getSocialPlatform, type SocialPlatform } from "../import/social";
+import { resolveFinalFetchUrl, validateFetchUrl } from "../import/url/fetch";
 import type { ParseMetadata } from "../types";
-import { getSocialPlatform, type SocialPlatform } from "./social-url-parser";
-import { resolveFinalFetchUrl, validateFetchUrl } from "../utils/html-fetcher";
 import { normalizeRecipeUrl } from "../utils/recipe-quality";
 
 const SHORT_LINK_HOSTS = new Set([

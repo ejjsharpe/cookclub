@@ -1,5 +1,4 @@
 import { useNavigation } from "@react-navigation/native";
-import { Image } from "expo-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -28,10 +27,6 @@ import {
   type ParsedRecipe,
   type PersonalizationGoal,
 } from "@/api/recipe";
-import {
-  BasicImportSheet,
-  type BasicImportSheetRef,
-} from "@/components/BasicImportSheet";
 import { Ionicons } from "@/components/Ionicons";
 import {
   PersonaliseRecipeSheet,
@@ -41,20 +36,22 @@ import {
   RecipeBrowserSheet,
   type RecipeBrowserSheetRef,
 } from "@/components/RecipeBrowserSheet";
-import {
-  SmartImportSheet,
-  type SmartImportTask,
-  type SmartImportSheetRef,
-} from "@/components/SmartImportSheet";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import { alertApiError } from "@/lib/apiErrorAlert";
 import {
-  useBackgroundImportQueue,
-  type BackgroundImport,
-} from "@/lib/backgroundImportQueue";
+  BasicImportSheet,
+  type BasicImportSheetRef,
+} from "@/features/recipe-import/BasicImportSheet";
+import {
+  useRecipeImport,
+  type RecipeImportItem,
+} from "@/features/recipe-import/RecipeImportProvider";
+import {
+  SmartImportSheet,
+  type SmartImportSheetRef,
+} from "@/features/recipe-import/SmartImportSheet";
+import { alertApiError } from "@/lib/apiErrorAlert";
 import { useSubscription } from "@/lib/subscription";
-import { getImageUrl } from "@/utils/imageUrl";
 import {
   getRecipeImportSocialPlatform,
   getRecipeImportSocialPlatformInfo,
@@ -146,7 +143,7 @@ const ActionRow = ({
 };
 
 const getImportIcon = (
-  mode: SmartImportTask["mode"],
+  mode: RecipeImportItem["mode"],
 ): keyof typeof Ionicons.glyphMap => {
   switch (mode) {
     case "url":
@@ -158,7 +155,7 @@ const getImportIcon = (
   }
 };
 
-const getImportStatusCopy = (importItem: BackgroundImport) => {
+const getImportStatusCopy = (importItem: RecipeImportItem) => {
   if (importItem.status === "ready") return "Recipe ready";
   if (importItem.status === "failed")
     return importItem.error || "Import failed";
@@ -286,7 +283,7 @@ const BackgroundImportCard = ({
   onReview,
   onDismiss,
 }: {
-  importItem: BackgroundImport;
+  importItem: RecipeImportItem;
   showSeparator: boolean;
   onReview: (id: string) => void;
   onDismiss: (id: string) => void;
@@ -296,9 +293,6 @@ const BackgroundImportCard = ({
   const isFailed = importItem.status === "failed";
   const isPending =
     importItem.status === "pending" || importItem.status === "processing";
-  const thumbnailUrl = isReady
-    ? getImageUrl(importItem.recipe?.data.images?.[0], "recipe-thumb")
-    : undefined;
   const shouldEmphasizeTitle = isPending || isReady || isFailed;
   const socialPlatform =
     importItem.mode === "url" && !isReady
@@ -331,21 +325,12 @@ const BackgroundImportCard = ({
           isFailed && styles.importIconContainerFailed,
           isReady && styles.importIconContainerReady,
           socialPlatformInfo &&
-            !isFailed &&
-            !thumbnailUrl && {
+            !isFailed && {
               backgroundColor: `${socialPlatformInfo.color}18`,
             },
-          thumbnailUrl && styles.importThumbnailContainer,
         ]}
       >
-        {thumbnailUrl ? (
-          <Image
-            source={{ uri: thumbnailUrl }}
-            style={styles.importThumbnailImage}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-          />
-        ) : socialPlatformInfo && !isFailed ? (
+        {socialPlatformInfo && !isFailed ? (
           <Ionicons
             name={socialPlatformInfo.icon}
             size={23}
@@ -424,9 +409,8 @@ export const AddRecipeScreen = () => {
     imports: backgroundImports,
     pendingCount: pendingImportCount,
     readyCount: readyImportCount,
-    startImport,
     dismissImport,
-  } = useBackgroundImportQueue();
+  } = useRecipeImport();
   const personalizeRecipeMutation = usePersonalizeRecipe();
   const {
     isPro,
@@ -456,22 +440,14 @@ export const AddRecipeScreen = () => {
     [titleOpacity],
   );
 
-  const handleSmartImportStarted = useCallback(
-    (task: SmartImportTask) => {
-      startImport(task);
-    },
-    [startImport],
-  );
-
   const handleReviewImport = useCallback(
     (id: string) => {
       const importItem = backgroundImports.find((item) => item.id === id);
-      if (!importItem?.recipe) return;
+      if (importItem?.status !== "ready") return;
 
       navigate("RecipeDetail", {
-        parsedRecipe: importItem.recipe,
-        mode: "edit",
         importJobId: importItem.id,
+        mode: "edit",
       });
     },
     [backgroundImports, navigate],
@@ -479,7 +455,7 @@ export const AddRecipeScreen = () => {
 
   const handleDismissImport = useCallback(
     (id: string) => {
-      dismissImport(id);
+      dismissImport(id).catch(() => {});
     },
     [dismissImport],
   );
@@ -659,14 +635,8 @@ export const AddRecipeScreen = () => {
       </View>
 
       {/* Sheets */}
-      <SmartImportSheet
-        ref={smartImportSheetRef}
-        onImportStarted={handleSmartImportStarted}
-      />
-      <BasicImportSheet
-        ref={basicImportSheetRef}
-        onImportStarted={handleSmartImportStarted}
-      />
+      <SmartImportSheet ref={smartImportSheetRef} />
+      <BasicImportSheet ref={basicImportSheetRef} />
       <RecipeBrowserSheet
         ref={recipeBrowserSheetRef}
         title="Choose Recipe"

@@ -1,4 +1,5 @@
 import type { ParsedRecipe, ParsedRecipeNutrition } from "./recipe";
+import type { ParseFailure, RecipeImportStrategy } from "./recipe-import";
 
 interface ParseImageStagingOptions {
   /**
@@ -12,13 +13,17 @@ export type ParseInput =
   | ({
       type: "url";
       data: string;
-      structuredOnly?: boolean;
+      strategy: RecipeImportStrategy;
     } & ParseImageStagingOptions)
-  | ({ type: "text"; data: string } & ParseImageStagingOptions)
+  | ({
+      type: "text";
+      data: string;
+      strategy: "ai-assisted";
+    } & ParseImageStagingOptions)
   | {
       type: "image";
-      data: string;
-      mimeType: "image/jpeg" | "image/png" | "image/webp";
+      jobId: string;
+      strategy: "ai-assisted";
       imageStagingId?: string;
     };
 
@@ -37,6 +42,7 @@ export type PersonalizationGoal =
 
 export interface ParseMetadata {
   source: "url" | "text" | "image";
+  strategy?: RecipeImportStrategy;
   parseMethod?:
     | "structured_data"
     | "schema_org"
@@ -48,6 +54,7 @@ export interface ParseMetadata {
     | "ai_enhanced"
     | "media_enriched"
     | "ai_only";
+  provenance?: "deterministic" | "ai-assisted";
   confidence: "high" | "medium" | "low";
   cached?: boolean;
   canonicalUrl?: string;
@@ -102,7 +109,17 @@ export type ParseResponse =
       error: {
         code: string;
         message: string;
+        disposition?: "terminal" | "retry";
+        retryAfterSeconds?: number;
       };
+      metadata?: ParseMetadata;
+    };
+
+export type RecipeImportParseResponse =
+  | Extract<ParseResponse, { success: true }>
+  | {
+      success: false;
+      error: ParseFailure & { message: string };
       metadata?: ParseMetadata;
     };
 
@@ -189,7 +206,7 @@ export type ChatResponse =
     };
 
 export interface RecipeAIService {
-  parse(input: ParseInput): Promise<ParseResponse>;
+  parse(input: ParseInput): Promise<RecipeImportParseResponse>;
   chat(input: ChatInput): Promise<ChatResponse>;
   personalize(input: PersonalizeRecipeInput): Promise<ParseResponse>;
   generateImage(

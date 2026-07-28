@@ -55,7 +55,7 @@ describe("recipe import queue", () => {
 
   it("acknowledges processed jobs", async () => {
     const message = createMessage();
-    mocks.processRecipeImportJob.mockResolvedValue("processed");
+    mocks.processRecipeImportJob.mockResolvedValue({ outcome: "ready" });
 
     await queue(createBatch(message) as any, {} as any, {} as any);
 
@@ -79,12 +79,12 @@ describe("recipe import queue", () => {
       importType: "smart" as const,
       mode: "url" as const,
       errorCode: "IMPORT_SOURCE_UNAVAILABLE" as const,
-      upstreamCode: "FETCH_FAILED",
+      event: "recipe_import_terminal_failure" as const,
       sourceHost: "instagram.com",
     };
     mocks.processRecipeImportJob.mockImplementation(async (context) => {
       context.reportFailure(failure);
-      return "processed";
+      return { outcome: "ready" };
     });
 
     await queue(createBatch(message) as any, {} as any, {} as any);
@@ -97,7 +97,7 @@ describe("recipe import queue", () => {
 
   it("retries busy jobs without acknowledging them", async () => {
     const message = createMessage(2);
-    mocks.processRecipeImportJob.mockResolvedValue("busy");
+    mocks.processRecipeImportJob.mockResolvedValue({ outcome: "busy" });
 
     await queue(createBatch(message) as any, {} as any, {} as any);
 
@@ -109,35 +109,49 @@ describe("recipe import queue", () => {
 
   it("retries retryable errors before the final attempt", async () => {
     const message = createMessage(2);
-    mocks.processRecipeImportJob.mockRejectedValue(new Error("temporary"));
+    mocks.processRecipeImportJob.mockResolvedValue({
+      outcome: "retry",
+      errorCode: "IMPORT_SOURCE_UNAVAILABLE",
+    });
 
     await queue(createBatch(message) as any, {} as any, {} as any);
 
-    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 10 });
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 15 });
     expect(message.ack).not.toHaveBeenCalled();
     expect(mocks.failRecipeImportJob).not.toHaveBeenCalled();
-    expect(mocks.captureQueueException).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ attempts: 2, terminal: false }),
-    );
+    expect(mocks.captureQueueException).not.toHaveBeenCalled();
   });
 
-  it("marks the job failed and acknowledges after repeated errors", async () => {
-    const message = createMessage(3);
-    mocks.processRecipeImportJob.mockRejectedValue(new Error("temporary"));
+  it("fails once and routes the fourth retryable attempt to the DLQ", async () => {
+    const message = createMessage(4);
+    mocks.processRecipeImportJob.mockResolvedValue({
+      outcome: "retry",
+      errorCode: "IMPORT_SOURCE_UNAVAILABLE",
+    });
 
     await queue(createBatch(message) as any, {} as any, {} as any);
 
     expect(mocks.failRecipeImportJob).toHaveBeenCalledWith(
       { db: mocks.db, env: {} },
       message.body,
-      "IMPORT_FAILED",
+      "SERVICE_UNAVAILABLE",
+      { expectedStatus: "pending" },
     );
-    expect(message.ack).toHaveBeenCalledTimes(1);
-    expect(message.retry).not.toHaveBeenCalled();
-    expect(mocks.captureQueueException).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ attempts: 3, terminal: true }),
-    );
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).toHaveBeenCalledWith();
+    expect(mocks.captureQueueException).not.toHaveBeenCalled();
+  });
+
+  it("honours provider Retry-After delays", async () => {
+    const message = createMessage(1);
+    mocks.processRecipeImportJob.mockResolvedValue({
+      outcome: "retry",
+      errorCode: "SERVICE_UNAVAILABLE",
+      retryAfterSeconds: 120,
+    });
+
+    await queue(createBatch(message) as any, {} as any, {} as any);
+
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 120 });
   });
 });

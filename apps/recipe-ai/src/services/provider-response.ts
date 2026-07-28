@@ -1,5 +1,91 @@
 const MAX_ERROR_BYTES = 16 * 1024;
 
+export class ProviderRequestError extends Error {
+  readonly provider: string;
+  readonly status?: number;
+  readonly retryAfterSeconds?: number;
+  readonly requestId?: string;
+  readonly retryable: boolean;
+  readonly timedOut: boolean;
+
+  constructor(
+    message: string,
+    options: {
+      provider: string;
+      status?: number;
+      retryAfterSeconds?: number;
+      requestId?: string;
+      retryable: boolean;
+      timedOut?: boolean;
+      cause?: unknown;
+    },
+  ) {
+    super(message, { cause: options.cause });
+    this.name = "ProviderRequestError";
+    this.provider = options.provider;
+    this.status = options.status;
+    this.retryAfterSeconds = options.retryAfterSeconds;
+    this.requestId = options.requestId;
+    this.retryable = options.retryable;
+    this.timedOut = options.timedOut ?? false;
+  }
+}
+
+function retryAfterSeconds(response: Response): number | undefined {
+  const value = response.headers.get("retry-after");
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 1_000));
+}
+
+function requestId(response: Response): string | undefined {
+  return (
+    response.headers.get("x-request-id") ??
+    response.headers.get("request-id") ??
+    undefined
+  );
+}
+
+export function providerTransportError(
+  error: unknown,
+  providerName: string,
+): ProviderRequestError {
+  if (error instanceof ProviderRequestError) return error;
+  const timedOut =
+    error instanceof Error &&
+    (error.name === "AbortError" || /timed? ?out|timeout/i.test(error.message));
+  return new ProviderRequestError(
+    timedOut
+      ? `${providerName} request timed out.`
+      : `${providerName} network request failed.`,
+    {
+      provider: providerName,
+      retryable: true,
+      timedOut,
+      cause: error,
+    },
+  );
+}
+
+export function providerFailureFields(error: unknown): {
+  disposition: "terminal" | "retry";
+  retryAfterSeconds?: number;
+} {
+  if (error instanceof ProviderRequestError && !error.retryable) {
+    return { disposition: "terminal" };
+  }
+  return {
+    disposition: "retry",
+    ...(error instanceof ProviderRequestError &&
+    error.retryAfterSeconds !== undefined
+      ? { retryAfterSeconds: error.retryAfterSeconds }
+      : {}),
+  };
+}
+
 export async function readBoundedBody(
   response: Response,
   maxBytes: number,
@@ -87,7 +173,7 @@ function errorDetail(payload: unknown): string | null {
 export async function providerResponseError(
   response: Response,
   providerName: string,
-): Promise<Error> {
+): Promise<ProviderRequestError> {
   let detail: string | null = null;
   try {
     const text = await readBoundedText(response, MAX_ERROR_BYTES, providerName);
@@ -100,15 +186,21 @@ export async function providerResponseError(
     // Status and request ID still provide bounded diagnostics.
   }
 
-  const requestId =
-    response.headers.get("x-request-id") ?? response.headers.get("request-id");
-  return new Error(
+  const id = requestId(response);
+  return new ProviderRequestError(
     [
       `${providerName} request failed with status ${response.status}`,
       detail,
-      requestId ? `request ${requestId}` : null,
+      id ? `request ${id}` : null,
     ]
       .filter(Boolean)
       .join(": "),
+    {
+      provider: providerName,
+      status: response.status,
+      retryAfterSeconds: retryAfterSeconds(response),
+      requestId: id,
+      retryable: response.status === 429 || response.status >= 500,
+    },
   );
 }

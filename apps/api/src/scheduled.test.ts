@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   processPushNotificationReceipts: vi.fn(),
   cleanupOrphanedRecipeImportImages: vi.fn(),
+  recoverStaleRecipeImportJobs: vi.fn(),
 }));
 
 vi.mock("@repo/db", () => ({
@@ -14,6 +15,7 @@ vi.mock("@repo/db", () => ({
 vi.mock("@repo/trpc/server", () => ({
   processPushNotificationReceipts: mocks.processPushNotificationReceipts,
   cleanupOrphanedRecipeImportImages: mocks.cleanupOrphanedRecipeImportImages,
+  recoverStaleRecipeImportJobs: mocks.recoverStaleRecipeImportJobs,
 }));
 
 // eslint-disable-next-line import/first
@@ -34,6 +36,10 @@ describe("scheduled tasks", () => {
       checked: 3,
       deletedJobs: 2,
       expiredJobs: 1,
+    });
+    mocks.recoverStaleRecipeImportJobs.mockResolvedValue({
+      checked: 2,
+      recovered: 1,
     });
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -58,12 +64,23 @@ describe("scheduled tasks", () => {
       mocks.db,
       imageService,
     );
+    expect(mocks.recoverStaleRecipeImportJobs).toHaveBeenCalledWith({
+      db: mocks.db,
+      env,
+    });
     expect(consoleLogSpy).toHaveBeenCalledWith(
       JSON.stringify({
         task: "recipe-import-image-cleanup",
         checked: 3,
         deletedJobs: 2,
         expiredJobs: 1,
+      }),
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      JSON.stringify({
+        task: "recipe-import-stale-recovery",
+        checked: 2,
+        recovered: 1,
       }),
     );
   });

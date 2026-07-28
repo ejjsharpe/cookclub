@@ -1,13 +1,6 @@
-import { readAsStringAsync, EncodingType } from "expo-file-system/legacy";
-import {
-  manipulateAsync,
-  SaveFormat,
-  ImageResult,
-} from "expo-image-manipulator";
-
-const MAX_IMAGE_DIMENSION = 480;
-const MIN_IMAGE_DIMENSION = 224; // Minimum size for vision models
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
+const IMPORT_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
 const AVATAR_MAX_BYTES = 512 * 1024;
 const PHOTO_NORMALIZATION_ATTEMPTS = [
   { maxLongEdge: 2560, compress: 0.84 },
@@ -18,12 +11,11 @@ const AVATAR_NORMALIZATION_ATTEMPTS = [
   { size: 512, compress: 0.78 },
 ] as const;
 
-export interface ResizedImage {
-  base64: string;
-  mimeType: "image/jpeg";
-}
-
-export type UploadImageKind = "recipe_photo" | "review_photo" | "avatar";
+export type UploadImageKind =
+  | "recipe_photo"
+  | "review_photo"
+  | "avatar"
+  | "recipe_import_source";
 
 export interface NormalizedUploadImage {
   uri: string;
@@ -59,6 +51,7 @@ function resizeToLongEdge(width: number, height: number, maxLongEdge: number) {
 
 async function normalizePhotoImage(
   uri: string,
+  maxBytes = PHOTO_MAX_BYTES,
 ): Promise<NormalizedUploadImage> {
   const original = await manipulateAsync(uri, []);
 
@@ -78,7 +71,7 @@ async function normalizePhotoImage(
     });
     const byteSize = await getBlobSize(normalized.uri);
 
-    if (byteSize <= PHOTO_MAX_BYTES) {
+    if (byteSize <= maxBytes) {
       return {
         uri: normalized.uri,
         contentType: "image/jpeg",
@@ -133,57 +126,9 @@ export async function normalizeImageForUpload(
   uri: string,
   kind: UploadImageKind,
 ): Promise<NormalizedUploadImage> {
-  return kind === "avatar"
-    ? normalizeAvatarImage(uri)
-    : normalizePhotoImage(uri);
-}
-
-/**
- * Resizes an image and converts it to base64.
- * Always outputs JPEG for optimal size/quality for vision models.
- */
-export async function imageToBase64(
-  uri: string,
-  options?: { maxDimension?: number },
-): Promise<ResizedImage> {
-  const maxDimension = options?.maxDimension ?? MAX_IMAGE_DIMENSION;
-
-  // First get image dimensions to resize proportionally
-  const original = await manipulateAsync(uri, []);
-  const { width, height } = original;
-
-  // Calculate new dimensions maintaining aspect ratio
-  let newWidth: number;
-  let newHeight: number;
-
-  if (width > height) {
-    newWidth = Math.min(width, maxDimension);
-    newHeight = Math.round((newWidth / width) * height);
-    // Ensure minimum height
-    if (newHeight < MIN_IMAGE_DIMENSION) {
-      newHeight = MIN_IMAGE_DIMENSION;
-      newWidth = Math.round((newHeight / height) * width);
-    }
-  } else {
-    newHeight = Math.min(height, maxDimension);
-    newWidth = Math.round((newHeight / height) * width);
-    // Ensure minimum width
-    if (newWidth < MIN_IMAGE_DIMENSION) {
-      newWidth = MIN_IMAGE_DIMENSION;
-      newHeight = Math.round((newWidth / width) * height);
-    }
-  }
-
-  // Resize the image
-  const resized: ImageResult = await manipulateAsync(
+  if (kind === "avatar") return normalizeAvatarImage(uri);
+  return normalizePhotoImage(
     uri,
-    [{ resize: { width: newWidth, height: newHeight } }],
-    { compress: 0.5, format: SaveFormat.JPEG },
+    kind === "recipe_import_source" ? IMPORT_SOURCE_MAX_BYTES : PHOTO_MAX_BYTES,
   );
-
-  const base64 = await readAsStringAsync(resized.uri, {
-    encoding: EncodingType.Base64,
-  });
-
-  return { base64, mimeType: "image/jpeg" };
 }

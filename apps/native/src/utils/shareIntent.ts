@@ -1,17 +1,19 @@
 import type { ShareIntent } from "expo-share-intent";
 
-import type { PendingShareIntent } from "@/lib/pendingShareIntent";
-
 const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`[\]]+/i;
 const MIN_RECIPE_TEXT_LENGTH = 50;
 
+export type DetectedShareIntent = {
+  type: "url" | "text" | "image";
+  content: string;
+  mimeType?: string;
+};
+
 export function detectPendingShareIntent(
   intent: ShareIntent | null,
-): PendingShareIntent | null {
-  const timestamp = Date.now();
-
+): DetectedShareIntent | null {
   if (intent?.webUrl) {
-    return { type: "url", content: intent.webUrl, timestamp };
+    return { type: "url", content: intent.webUrl };
   }
 
   const file = intent?.files?.[0];
@@ -20,7 +22,6 @@ export function detectPendingShareIntent(
       type: "image",
       content: file.path,
       mimeType: file.mimeType,
-      timestamp,
     };
   }
 
@@ -28,11 +29,11 @@ export function detectPendingShareIntent(
 
   const urlMatch = intent.text.match(URL_PATTERN);
   if (urlMatch) {
-    return { type: "url", content: urlMatch[0], timestamp };
+    return { type: "url", content: urlMatch[0] };
   }
 
   if (intent.text.length >= MIN_RECIPE_TEXT_LENGTH) {
-    return { type: "text", content: intent.text, timestamp };
+    return { type: "text", content: intent.text };
   }
 
   return null;

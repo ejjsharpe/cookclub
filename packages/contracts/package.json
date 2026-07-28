@@ -8,6 +8,7 @@
     "./feed": "./src/feed.ts",
     "./images": "./src/images.ts",
     "./recipe-ai": "./src/recipe-ai.ts",
+    "./recipe-import": "./src/recipe-import.ts",
     "./recipe": "./src/recipe.ts"
   },
   "scripts": {

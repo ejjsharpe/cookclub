@@ -28,12 +28,12 @@ export interface AppParamList extends ParamListBase {
     | {
         parsedRecipe: ParsedRecipe;
         mode?: "view" | "edit";
-        importJobId?: string;
         generatedImage?: {
           publicUrl: string;
           imageUploadId: string;
         };
       }
+    | { importJobId: string; mode?: "view" | "edit" }
     | { draft: true; mode: "edit" };
   CollectionDetail: { collectionId: number };
   Account: undefined;

@@ -1,4 +1,9 @@
-import { readBoundedText } from "./provider-response";
+import {
+  ProviderRequestError,
+  providerResponseError,
+  providerTransportError,
+  readBoundedText,
+} from "./provider-response";
 import type { AiClient, AiWorkload } from "../utils/ai-response-parser";
 
 const UNSUPPORTED_STRICT_SCHEMA_KEYS = new Set(["minItems", "maxItems"]);
@@ -83,16 +88,6 @@ function positiveInteger(value: unknown): number | undefined {
     : undefined;
 }
 
-function errorMessage(payload: unknown): string | null {
-  const response = asRecord(payload);
-  if (!response) return null;
-
-  const error = asRecord(response.error);
-  if (typeof error?.message === "string") return error.message;
-  if (typeof response.message === "string") return response.message;
-  return null;
-}
-
 function extractCompletion(payload: unknown, providerName: string): string {
   const response = asRecord(payload);
   const choices = response?.choices;
@@ -163,16 +158,25 @@ export function createOpenAiCompatibleClient(
       }
 
       const body = toRequest(config, workload, request);
-      const response = await fetch(config.chatCompletionsUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Content-Type": "application/json",
-          ...config.extraHeaders,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+      let response: Response;
+      try {
+        response = await fetch(config.chatCompletionsUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+            "Content-Type": "application/json",
+            ...config.extraHeaders,
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+      } catch (error) {
+        throw providerTransportError(error, config.providerName);
+      }
+
+      if (!response.ok) {
+        throw await providerResponseError(response, config.providerName);
+      }
 
       let payload: unknown = null;
       try {
@@ -192,21 +196,22 @@ export function createOpenAiCompatibleClient(
         // Status and request ID still provide bounded diagnostics.
       }
 
-      const id = requestId(response);
-      if (!response.ok) {
-        const detail = errorMessage(payload);
-        throw new Error(
-          [
-            `${config.providerName} request failed with status ${response.status}`,
-            detail,
-            id ? `request ${id}` : null,
-          ]
-            .filter(Boolean)
-            .join(": "),
+      try {
+        return extractCompletion(payload, config.providerName);
+      } catch (error) {
+        throw new ProviderRequestError(
+          error instanceof Error
+            ? error.message
+            : `${config.providerName} returned an invalid response.`,
+          {
+            provider: config.providerName,
+            status: response.status,
+            requestId: requestId(response),
+            retryable: true,
+            cause: error,
+          },
         );
       }
-
-      return extractCompletion(payload, config.providerName);
     },
   };
 }

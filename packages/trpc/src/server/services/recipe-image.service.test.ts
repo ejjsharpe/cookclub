@@ -16,6 +16,8 @@ const createImageService = () => ({
   uploadFromUrl: vi.fn(),
   uploadImage: vi.fn(),
   normalizeImage: vi.fn(),
+  stageImportSource: vi.fn(),
+  getImportSource: vi.fn(),
 });
 
 function createAsset(key: string) {

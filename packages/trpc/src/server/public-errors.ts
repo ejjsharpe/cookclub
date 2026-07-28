@@ -12,6 +12,8 @@ const PUBLIC_ERROR_MESSAGES: Record<PublicErrorCode, string> = {
   PRO_REQUIRED: "This feature requires Cook Club Pro.",
   SMART_IMPORT_LIMIT_REACHED:
     "You have used your free Smart Imports for this month.",
+  IMPORT_ACTIVE_LIMIT_REACHED:
+    "You can have up to five imports in progress at once.",
   EXTERNAL_RECIPE_SOURCE:
     "This recipe can only be viewed on the original source website.",
   IMPORT_INVALID_URL: "Enter a valid recipe URL and try again.",

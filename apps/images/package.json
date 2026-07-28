@@ -9,7 +9,9 @@
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify",
     "deploy:prod": "wrangler deploy --env production --minify",
-    "check-types": "tsc --noEmit",
+    "generate:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false",
+    "check:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false --check",
+    "check-types": "bun run check:worker-types && tsc --noEmit",
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix",
     "test": "vitest run",
@@ -23,7 +25,7 @@
     "thumbhash": "0.1.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20260525.1",
+    "@cloudflare/workers-types": "5.20260724.1",
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
     "vitest": "4.1.7",

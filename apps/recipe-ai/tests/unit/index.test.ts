@@ -3,11 +3,36 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RecipeAI } from "../../src/index";
 import { RECIPE_AI_INFERENCE_CLIENT } from "../../src/utils/ai-response-parser";
 
+type TestRecipeAI = Omit<RecipeAI, "parse"> & {
+  parse(
+    input:
+      | {
+          type: "url";
+          data: string;
+          strategy?: "deterministic" | "ai-assisted";
+          imageStagingId?: string;
+        }
+      | {
+          type: "text";
+          data: string;
+          strategy?: "ai-assisted";
+          imageStagingId?: string;
+        }
+      | {
+          type: "image";
+          jobId: string;
+          strategy: "ai-assisted";
+          imageStagingId?: string;
+        }
+      | { type: unknown; data: string },
+  ): ReturnType<RecipeAI["parse"]>;
+};
+
 const browserFetcherMocks = vi.hoisted(() => ({
   fetchHtmlWithBrowser: vi.fn(),
 }));
 
-vi.mock("../../src/utils/browser-fetcher", () => {
+vi.mock("../../src/import/url/browser", () => {
   const browserRequiredDomains = [
     "instagram.com",
     "tiktok.com",
@@ -151,6 +176,15 @@ function createMockEnv() {
     REPLICATE_API_TOKEN: "test-replicate-token",
     YOUTUBE_API_KEY: "test-youtube-key",
     IMAGE_SERVICE: {
+      getImportSource: vi.fn(
+        async () =>
+          new Response(
+            new TextEncoder().encode(
+              "fake staged jpeg image data that is long enough",
+            ),
+            { headers: { "content-type": "image/jpeg" } },
+          ),
+      ),
       uploadFromUrl: vi.fn(async (_sourceUrl: string, key: string) => ({
         success: true,
         publicUrl: `https://images.example.com/${key}`,
@@ -175,12 +209,26 @@ function createParser(env: ReturnType<typeof createMockEnv>) {
   const parser = new (RecipeAI as any)();
   parser.env = env;
   parser[RECIPE_AI_INFERENCE_CLIENT] = () => env.aiClient;
-  return parser;
+  return parser as TestRecipeAI;
+}
+
+function cacheEntry(
+  recipe: Record<string, unknown>,
+  strategy: "deterministic" | "ai-assisted" = "ai-assisted",
+) {
+  return {
+    schemaVersion: 2,
+    parseMethod: strategy === "deterministic" ? "structured_data" : "ai_only",
+    strategy,
+    provenance: strategy,
+    createdAt: new Date().toISOString(),
+    recipe,
+  };
 }
 
 describe("RecipeAI.parse()", () => {
   let mockEnv: ReturnType<typeof createMockEnv>;
-  let parser: RecipeAI;
+  let parser: TestRecipeAI;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -219,7 +267,9 @@ describe("RecipeAI.parse()", () => {
         ],
       };
 
-      mockEnv.RECIPE_CACHE.get = vi.fn().mockResolvedValue(cachedRecipe);
+      mockEnv.RECIPE_CACHE.get = vi
+        .fn()
+        .mockResolvedValue(cacheEntry(cachedRecipe));
 
       const result = await parser.parse({
         type: "url",
@@ -316,7 +366,7 @@ describe("RecipeAI.parse()", () => {
       const result = await parser.parse({
         type: "url",
         data: "https://example.com/recipe",
-        structuredOnly: true,
+        strategy: "deterministic",
       });
 
       expect(result.success).toBe(true);
@@ -345,10 +395,12 @@ describe("RecipeAI.parse()", () => {
       const cachedRecipe = JSON.parse(
         mockEnv.RECIPE_CACHE.put.mock.calls[0]?.[1] as string,
       );
-      expect(cachedRecipe.images).toEqual(["https://example.com/cover.jpg"]);
-      expect(cachedRecipe.instructionSections[0].instructions[0].imageUrl).toBe(
-        "https://example.com/step.jpg",
-      );
+      expect(cachedRecipe.recipe.images).toEqual([
+        "https://example.com/cover.jpg",
+      ]);
+      expect(
+        cachedRecipe.recipe.instructionSections[0].instructions[0].imageUrl,
+      ).toBe("https://example.com/step.jpg");
     });
 
     it("keeps background import images in job-scoped staging", async () => {
@@ -390,7 +442,7 @@ describe("RecipeAI.parse()", () => {
       const result = await parser.parse({
         type: "url",
         data: "https://example.com/recipe",
-        structuredOnly: true,
+        strategy: "deterministic",
         imageStagingId: "url-123",
       });
 
@@ -434,7 +486,9 @@ describe("RecipeAI.parse()", () => {
           },
         ],
       };
-      mockEnv.RECIPE_CACHE.get = vi.fn().mockResolvedValue(cachedRecipe);
+      mockEnv.RECIPE_CACHE.get = vi
+        .fn()
+        .mockResolvedValue(cacheEntry(cachedRecipe));
       mockEnv.IMAGE_SERVICE.uploadFromUrl = vi
         .fn()
         .mockResolvedValueOnce({
@@ -477,7 +531,9 @@ describe("RecipeAI.parse()", () => {
           },
         ],
       };
-      mockEnv.RECIPE_CACHE.get = vi.fn().mockResolvedValue(cachedRecipe);
+      mockEnv.RECIPE_CACHE.get = vi
+        .fn()
+        .mockResolvedValue(cacheEntry(cachedRecipe));
       mockEnv.IMAGE_SERVICE.uploadFromUrl = vi.fn().mockResolvedValue({
         success: false,
         error: "Cover unavailable",
@@ -490,7 +546,7 @@ describe("RecipeAI.parse()", () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("IMAGE_REHOST_FAILED");
+        expect(result.error.code).toBe("SERVICE_UNAVAILABLE");
         expect(
           result.metadata?.diagnostics?.stageTimings?.some(
             (stage) =>
@@ -524,7 +580,7 @@ describe("RecipeAI.parse()", () => {
       const result = await parser.parse({
         type: "url",
         data: "https://example.com/recipe",
-        structuredOnly: true,
+        strategy: "deterministic",
       });
 
       expect(result.success).toBe(true);
@@ -533,6 +589,45 @@ describe("RecipeAI.parse()", () => {
         expect(result.metadata.parseMethod).toBe("visible_card");
       }
       expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
+    });
+
+    it("never lets Basic consume an AI-assisted cache entry", async () => {
+      const assistedRecipe = {
+        name: "AI Cached Recipe",
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: [
+              { index: 0, name: "cached ingredient" },
+              { index: 1, name: "second cached ingredient" },
+            ],
+          },
+        ],
+        instructionSections: [
+          { name: null, instructions: [{ index: 0, instruction: "Cook." }] },
+        ],
+      };
+      mockEnv.RECIPE_CACHE.get = vi.fn((key: string) =>
+        Promise.resolve(
+          key.includes(":ai-assisted:")
+            ? cacheEntry(assistedRecipe, "ai-assisted")
+            : null,
+        ),
+      );
+
+      const result = await parser.parse({
+        type: "url",
+        data: "https://example.com/recipe",
+        strategy: "deterministic",
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe("Recipe Title");
+        expect(result.metadata.provenance).toBe("deterministic");
+      }
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
+      expect(mockEnv.RECIPE_CACHE.get).toHaveBeenCalledTimes(1);
     });
 
     it("falls back to AI when deterministic extractors cannot produce a recipe", async () => {
@@ -551,6 +646,10 @@ describe("RecipeAI.parse()", () => {
       });
 
       expect(result.success).toBe(true);
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://r.jina.ai/https://example.com/recipe",
+        expect.anything(),
+      );
       if (result.success) {
         expect(result.data.name).toBe("Test Recipe");
         expect(result.metadata.parseMethod).toBe("ai_only");
@@ -2247,7 +2346,7 @@ Instructions:
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("YOUTUBE_NO_RECIPE_EVIDENCE");
+        expect(result.error.code).toBe("IMPORT_RECIPE_NOT_FOUND");
       }
       expect(uploadFromUrl).not.toHaveBeenCalled();
       expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
@@ -2563,7 +2662,7 @@ Instructions:
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("YOUTUBE_NO_RECIPE_EVIDENCE");
+        expect(result.error.code).toBe("IMPORT_RECIPE_NOT_FOUND");
       }
       expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
@@ -2706,7 +2805,7 @@ Instructions:
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("YOUTUBE_METADATA_FAILED");
+        expect(result.error.code).toBe("IMPORT_SOURCE_UNAVAILABLE");
         expect(result.error.message).toContain("not available");
       }
       expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
@@ -2716,12 +2815,12 @@ Instructions:
       const result = await parser.parse({
         type: "url",
         data: "https://www.youtube.com/watch?v=abc123",
-        structuredOnly: true,
+        strategy: "deterministic",
       });
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("UNSUPPORTED_URL");
+        expect(result.error.code).toBe("IMPORT_UNSUPPORTED_SOURCE");
       }
       expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -2733,7 +2832,9 @@ Instructions:
         instructionSections: [],
       };
 
-      mockEnv.RECIPE_CACHE.get = vi.fn().mockResolvedValue(cachedRecipe);
+      mockEnv.RECIPE_CACHE.get = vi
+        .fn()
+        .mockResolvedValue(cacheEntry(cachedRecipe));
       (mockEnv.RECIPE_CACHE as any).delete = vi
         .fn()
         .mockResolvedValue(undefined);
@@ -2920,7 +3021,7 @@ Bake the brownies for 40 minutes.
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("FETCH_FAILED");
+        expect(result.error.code).toBe("IMPORT_SOURCE_UNAVAILABLE");
       }
     });
 
@@ -2936,7 +3037,7 @@ Bake the brownies for 40 minutes.
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("FETCH_FAILED");
+        expect(result.error.code).toBe("IMPORT_SOURCE_UNAVAILABLE");
       }
     });
 
@@ -3010,7 +3111,7 @@ Serves 4
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("NO_CONTENT");
+        expect(result.error.code).toBe("IMPORT_RECIPE_NOT_FOUND");
       }
     });
   });
@@ -3041,7 +3142,7 @@ Serves 4
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INVALID_INPUT");
+        expect(result.error.code).toBe("IMPORT_RECIPE_NOT_FOUND");
         expect(result.metadata?.source).toBe("text");
         expect(result.metadata?.diagnostics?.totalElapsedMs).toEqual(
           expect.any(Number),
@@ -3064,156 +3165,72 @@ Serves 4
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INPUT_TOO_LONG");
+        expect(result.error.code).toBe("PAYLOAD_TOO_LARGE");
       }
     });
   });
 
   describe("image parsing flow", () => {
-    it("parses recipe from image using AI", async () => {
-      const base64Image = btoa("fake image data that is long enough");
-
+    it("streams a staged JPEG from the image service and parses it with AI", async () => {
       const result = await parser.parse({
         type: "image",
-        data: base64Image,
-        mimeType: "image/jpeg",
+        jobId: "8fa066b7-e4b2-496b-a134-66f9b94dc652",
+        strategy: "ai-assisted",
       });
 
       expect(result.success).toBe(true);
+      expect(mockEnv.IMAGE_SERVICE.getImportSource).toHaveBeenCalledWith(
+        "8fa066b7-e4b2-496b-a134-66f9b94dc652",
+      );
       if (result.success) {
         expect(result.data.name).toBe("Test Recipe");
+        expect(result.data.images).toEqual([
+          "https://images.example.com/imports/8fa066b7-e4b2-496b-a134-66f9b94dc652/source.jpg",
+        ]);
         expect(result.metadata.source).toBe("image");
+        expect(result.metadata.strategy).toBe("ai-assisted");
         expect(
           result.metadata.diagnostics?.stageTimings?.map((stage) => stage.name),
         ).toEqual(expect.arrayContaining(["ai", "image_rehosting"]));
       }
     });
 
-    it("copies uploaded source images into background import staging", async () => {
-      const result = await parser.parse({
-        type: "image",
-        data: btoa("fake image data that is long enough"),
-        mimeType: "image/jpeg",
-        imageStagingId: "image-123",
-      });
-
-      expect(result.success).toBe(true);
-      expect(mockEnv.IMAGE_SERVICE.uploadFromUrl).toHaveBeenCalledWith(
-        "https://images.example.com/temp/generated/source.jpg",
-        expect.stringMatching(/^imports\/image-123\/[a-zA-Z0-9-]+\.jpg$/),
+    it("returns a retryable failure when staged bytes are temporarily unavailable", async () => {
+      mockEnv.IMAGE_SERVICE.getImportSource.mockResolvedValueOnce(
+        new Response(null, { status: 503 }),
       );
-      if (result.success) {
-        expect(result.data.images).toEqual([
-          expect.stringMatching(
-            /^https:\/\/images\.example\.com\/imports\/image-123\/[a-zA-Z0-9-]+\.jpg$/,
-          ),
-        ]);
-      }
-    });
-
-    it("counts the uploaded source image before image recipe quality scoring", async () => {
-      (mockEnv as any).IMAGE_SERVICE = {
-        uploadImage: vi.fn().mockResolvedValue({
-          success: true,
-          publicUrl: "https://images.example.com/source.jpg",
-        }),
-      };
-      mockEnv.aiClient.complete = vi.fn().mockResolvedValue(
-        JSON.stringify({
-          name: "Toast Plate",
-          description: null,
-          prepTime: null,
-          cookTime: null,
-          totalTime: null,
-          servings: null,
-          ingredientSections: [
-            {
-              name: null,
-              ingredients: [
-                { index: 0, quantity: 2, unit: "slices", name: "bread" },
-                { index: 1, quantity: 1, unit: "tbsp", name: "butter" },
-                { index: 2, quantity: 1, unit: "pinch", name: "salt" },
-              ],
-            },
-          ],
-          instructionSections: [
-            {
-              name: null,
-              instructions: [
-                { index: 0, instruction: "Toast the bread." },
-                { index: 1, instruction: "Butter and season it." },
-              ],
-            },
-          ],
-        }),
-      );
-
       const result = await parser.parse({
         type: "image",
-        data: btoa("fake image data that is long enough"),
-        mimeType: "image/jpeg",
-      });
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.images).toEqual([
-          "https://images.example.com/source.jpg",
-        ]);
-      }
-    });
-
-    it("returns error for invalid mime type", async () => {
-      const result = await parser.parse({
-        type: "image",
-        data: btoa("image"),
-        mimeType: "image/gif" as any,
+        jobId: "a832deed-0818-4a8e-89cc-dd33246508bd",
+        strategy: "ai-assisted",
       });
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INVALID_MIME_TYPE");
+        expect(result.error).toMatchObject({
+          code: "IMPORT_SOURCE_UNAVAILABLE",
+          disposition: "retry",
+        });
       }
     });
 
-    it("returns error for invalid base64", async () => {
+    it("rejects an oversized streamed source before invoking AI", async () => {
+      mockEnv.IMAGE_SERVICE.getImportSource.mockResolvedValueOnce(
+        new Response(new Uint8Array(10 * 1024 * 1024 + 1), {
+          headers: { "content-type": "image/jpeg" },
+        }),
+      );
       const result = await parser.parse({
         type: "image",
-        data: "not-valid-base64!!!",
-        mimeType: "image/jpeg",
+        jobId: "197415af-17c8-4461-813b-12934f0e1bf8",
+        strategy: "ai-assisted",
       });
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INVALID_BASE64");
+        expect(result.error.code).toBe("PAYLOAD_TOO_LARGE");
       }
-    });
-
-    it("accepts PNG images", async () => {
-      const result = await parser.parse({
-        type: "image",
-        data: btoa("fake png data"),
-        mimeType: "image/png",
-      });
-
-      expect(result.success).toBe(true);
-    });
-
-    it("accepts WebP images", async () => {
-      const webpData = btoa("fake webp data");
-      const result = await parser.parse({
-        type: "image",
-        data: webpData,
-        mimeType: "image/webp",
-      });
-
-      expect(result.success).toBe(true);
-      expect(mockEnv.IMAGE_SERVICE.normalizeImage).toHaveBeenCalledWith(
-        expect.any(ArrayBuffer),
-        "image/webp",
-      );
-      expect(
-        JSON.stringify(mockEnv.aiClient.complete.mock.calls[0]?.[1]),
-      ).toContain("data:image/jpeg;base64");
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
     });
   });
 
@@ -3226,7 +3243,7 @@ Serves 4
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INVALID_INPUT_TYPE");
+        expect(result.error.code).toBe("IMPORT_UNSUPPORTED_SOURCE");
       }
     });
 
@@ -3252,7 +3269,7 @@ Serves 4
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("AI_PARSE_FAILED");
+        expect(result.error.code).toBe("SERVICE_UNAVAILABLE");
       }
     });
   });
@@ -3301,8 +3318,8 @@ Serves 4
 
       const imageResult = await parser.parse({
         type: "image",
-        data: btoa("image data"),
-        mimeType: "image/jpeg",
+        jobId: "bc90fe85-e338-403a-8298-ae1f43990c52",
+        strategy: "ai-assisted",
       });
       expect(imageResult.success).toBe(true);
       if (imageResult.success) {
@@ -3314,7 +3331,7 @@ Serves 4
 
 describe("RecipeAI.nutrition()", () => {
   let mockEnv: ReturnType<typeof createMockEnv>;
-  let parser: RecipeAI;
+  let parser: TestRecipeAI;
 
   beforeEach(() => {
     vi.restoreAllMocks();

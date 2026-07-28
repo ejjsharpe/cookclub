@@ -4,22 +4,22 @@
   "main": "src/index.ts",
   "account_id": "46fa47bc2bba51d75383b4dfe6e3deb1",
   "compatibility_flags": ["nodejs_compat"],
-  "compatibility_date": "2026-07-18",
+  "compatibility_date": "2026-07-24",
   "observability": {
     "enabled": true,
     "logs": {
-      "head_sampling_rate": 1
+      "head_sampling_rate": 1,
     },
     "traces": {
       "enabled": true,
-      "head_sampling_rate": 0.01
-    }
+      "head_sampling_rate": 0.01,
+    },
   },
   "dev": {
     "port": 8787,
   },
   "triggers": {
-    "crons": ["*/15 * * * *"],
+    "crons": ["*/5 * * * *"],
   },
   "queues": {
     "producers": [
@@ -46,6 +46,7 @@
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 3,
+        "dead_letter_queue": "cookclub-recipe-import-dlq-development",
         "max_concurrency": 50,
       },
       {
@@ -53,6 +54,7 @@
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 3,
+        "dead_letter_queue": "cookclub-recipe-import-dlq-development",
         "max_concurrency": 30,
       },
       {
@@ -60,6 +62,7 @@
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 3,
+        "dead_letter_queue": "cookclub-recipe-import-dlq-development",
         "max_concurrency": 20,
       },
       {
@@ -67,6 +70,7 @@
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 3,
+        "dead_letter_queue": "cookclub-recipe-import-dlq-development",
         "max_concurrency": 8,
       },
     ],
@@ -173,6 +177,7 @@
             "max_batch_size": 1,
             "max_batch_timeout": 1,
             "max_retries": 3,
+            "dead_letter_queue": "cookclub-recipe-import-dlq-production",
             "max_concurrency": 50,
           },
           {
@@ -180,6 +185,7 @@
             "max_batch_size": 1,
             "max_batch_timeout": 1,
             "max_retries": 3,
+            "dead_letter_queue": "cookclub-recipe-import-dlq-production",
             "max_concurrency": 30,
           },
           {
@@ -187,6 +193,7 @@
             "max_batch_size": 1,
             "max_batch_timeout": 1,
             "max_retries": 3,
+            "dead_letter_queue": "cookclub-recipe-import-dlq-production",
             "max_concurrency": 20,
           },
           {
@@ -194,6 +201,7 @@
             "max_batch_size": 1,
             "max_batch_timeout": 1,
             "max_retries": 3,
+            "dead_letter_queue": "cookclub-recipe-import-dlq-production",
             "max_concurrency": 8,
           },
         ],

@@ -60,16 +60,15 @@ import { HomeFeedSkeleton, SkeletonContainer } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
+import {
+  createRecipeImportId,
+  useRecipeImport,
+} from "@/features/recipe-import/RecipeImportProvider";
 import { useDebounce } from "@/hooks/useDebounce";
 import { alertApiError } from "@/lib/apiErrorAlert";
-import {
-  createBackgroundImportId,
-  useBackgroundImportQueue,
-} from "@/lib/backgroundImportQueue";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
 import { selectFeedImagePreset } from "@/utils/imageUrl";
-import { getRecipeImportSourceTitle } from "@/utils/socialPlatforms";
 
 // ─── Header Component ─────────────────────────────────────────────────────────
 
@@ -259,7 +258,7 @@ export const HomeScreen = () => {
   );
   const listBottomPadding = TAB_BAR_LIST_CLEARANCE;
   const importRecipeMutation = useImportRecipe();
-  const { startImport } = useBackgroundImportQueue();
+  const { submitImport } = useRecipeImport();
   const session = useSessionContext();
   const { isPro, requireSmartImport } = useSubscription();
 
@@ -526,24 +525,35 @@ export const HomeScreen = () => {
     });
   }, [searchBarY]);
 
+  const sourceImportIdsRef = useRef(new Map<string, string>());
+
   const handleImportRecipe = useCallback(
     async (sourceUrl: string) => {
-      const allowed = await requireSmartImport();
-      if (!allowed) {
-        navigation.navigate("Add recipe");
-        return;
-      }
+      try {
+        const allowed = await requireSmartImport();
+        if (!allowed) {
+          navigation.navigate("Add recipe");
+          return;
+        }
 
-      startImport({
-        id: createBackgroundImportId("url"),
-        importType: "smart",
-        mode: "url",
-        title: getRecipeImportSourceTitle(sourceUrl),
-        data: sourceUrl,
-      });
-      navigation.navigate("Add recipe");
+        const id =
+          sourceImportIdsRef.current.get(sourceUrl) ?? createRecipeImportId();
+        sourceImportIdsRef.current.set(sourceUrl, id);
+        await submitImport({
+          id,
+          importType: "smart",
+          source: { type: "url", value: sourceUrl },
+        });
+        sourceImportIdsRef.current.delete(sourceUrl);
+        navigation.navigate("Add recipe");
+      } catch (error) {
+        alertApiError("Import Failed", error, {
+          operation: "recipeImport.create",
+          fallback: "Unable to start this import. Please try again.",
+        });
+      }
     },
-    [navigation, requireSmartImport, startImport],
+    [navigation, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(

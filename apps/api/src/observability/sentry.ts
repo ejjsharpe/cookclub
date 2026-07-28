@@ -100,6 +100,7 @@ export function captureQueueException(
 
 export function shouldCaptureImportFailure(failure: RecipeImportFailureEvent) {
   return (
+    failure.event === "recipe_import_retry_exhausted" ||
     failure.errorCode === "IMPORT_SOURCE_UNAVAILABLE" ||
     failure.errorCode === "IMPORT_RECIPE_NOT_FOUND" ||
     failure.errorCode === "IMPORT_FAILED"
@@ -113,26 +114,32 @@ export function captureImportFailure(
   if (!shouldCaptureImportFailure(failure)) return;
 
   Sentry.withScope((scope) => {
-    scope.setLevel(failure.errorCode === "IMPORT_FAILED" ? "error" : "warning");
+    scope.setLevel(
+      failure.event === "recipe_import_retry_exhausted" ||
+        failure.errorCode === "IMPORT_FAILED"
+        ? "error"
+        : "warning",
+    );
     scope.setFingerprint([
       "recipe-import",
-      failure.errorCode,
-      failure.mode,
+      failure.errorCode ?? "unknown",
+      failure.mode ?? "unknown",
       failure.sourceHost ?? "no-source-host",
     ]);
     scope.setTags({
       operation: "recipe-import",
       queue,
-      import_type: failure.importType,
-      import_mode: failure.mode,
+      import_type: failure.importType ?? "unknown",
+      import_mode: failure.mode ?? "unknown",
       import_error_code: failure.errorCode,
-      upstream_error_code: failure.upstreamCode ?? "unknown",
+      import_event: failure.event,
       source_host: failure.sourceHost ?? "none",
     });
     scope.setUser({ id: failure.userId });
     scope.setContext("recipe_import", {
       jobId: failure.jobId,
-      upstreamCode: failure.upstreamCode,
+      event: failure.event,
+      retryAfterSeconds: failure.retryAfterSeconds,
       sourceHost: failure.sourceHost,
     });
     Sentry.captureMessage("Recipe import failed");

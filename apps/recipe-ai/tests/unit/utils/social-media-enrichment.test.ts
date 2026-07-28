@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildEnrichedSocialRecipeText } from "../../../src/utils/social-media-enrichment";
+import { buildEnrichedSocialRecipeText } from "../../../src/import/social/enrichment";
 
 describe("social-media-enrichment", () => {
   it("builds combined caption, transcript, and frame text", () => {

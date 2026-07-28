@@ -5,6 +5,8 @@ import {
   type RouteProp,
 } from "@react-navigation/native";
 import type { PublicImageAsset } from "@repo/contracts/images";
+import { useTRPC } from "@repo/trpc/client";
+import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -46,6 +48,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useCreateCookingReview } from "@/api/activity";
 import {
   useRecipeDetail,
+  useCompleteRecipeImport,
   useImportRecipe,
   useDeleteRecipe,
   useGenerateRecipeImage,
@@ -89,9 +92,9 @@ import {
   AddToMealPlanSheet,
   type AddToMealPlanSheetRef,
 } from "@/components/mealPlan/AddToMealPlanSheet";
+import { useRecipeImport } from "@/features/recipe-import/RecipeImportProvider";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { alertApiError } from "@/lib/apiErrorAlert";
-import { useBackgroundImportQueue } from "@/lib/backgroundImportQueue";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { publicErrorDetails, resolvePublicError } from "@/lib/publicError";
 import { useSubscription } from "@/lib/subscription";
@@ -199,13 +202,18 @@ interface RecipeDraft {
 function isPreviewParams(params: AppParamList["RecipeDetail"]): params is {
   parsedRecipe: ParsedRecipe;
   mode?: RecipeDetailMode;
-  importJobId?: string;
   generatedImage?: {
     publicUrl: string;
     imageUploadId: string;
   };
 } {
   return "parsedRecipe" in params;
+}
+
+function isImportReviewParams(
+  params: AppParamList["RecipeDetail"],
+): params is { importJobId: string; mode?: RecipeDetailMode } {
+  return "importJobId" in params;
 }
 
 function isBlankDraftParams(
@@ -455,23 +463,57 @@ export const RecipeDetailScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const params = route.params;
+  const trpc = useTRPC();
 
-  const isPreviewMode = isPreviewParams(params);
+  const isParsedPreviewMode = isPreviewParams(params);
+  const isImportReviewMode = isImportReviewParams(params);
+  const isPreviewMode = isParsedPreviewMode || isImportReviewMode;
   const isBlankDraftMode = isBlankDraftParams(params);
-  const parsedRecipe = isPreviewMode ? params.parsedRecipe : null;
-  const importJobId = isPreviewMode ? params.importJobId : undefined;
-  const generatedImage = isPreviewMode ? params.generatedImage : undefined;
+  const importJobId = isImportReviewMode ? params.importJobId : undefined;
+  const generatedImage = isParsedPreviewMode
+    ? params.generatedImage
+    : undefined;
   const recipeId = "recipeId" in params ? params.recipeId : null;
-  const isImportReviewMode = Boolean(importJobId);
   const shouldStartEditing =
     params.mode === "edit" || isBlankDraftMode || isPreviewMode;
   const isCreateMode = isPreviewMode || isBlankDraftMode;
 
   const {
     data: fetchedRecipe,
-    isPending,
-    error,
+    isPending: isRecipePending,
+    error: recipeError,
   } = useRecipeDetail({ recipeId });
+  const importDetailQuery = useQuery({
+    ...trpc.recipeImport.get.queryOptions({
+      id: importJobId ?? "00000000-0000-4000-8000-000000000000",
+    }),
+    enabled: isImportReviewMode,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "pending" || status === "processing" ? 2500 : false;
+    },
+  });
+  const parsedRecipe = isParsedPreviewMode
+    ? params.parsedRecipe
+    : importDetailQuery.data?.recipe?.success
+      ? importDetailQuery.data.recipe
+      : null;
+  const importFailure =
+    importDetailQuery.data?.status === "failed"
+      ? {
+          data: {
+            appCode:
+              importDetailQuery.data.errorCode ?? "IMPORT_RECIPE_NOT_FOUND",
+          },
+        }
+      : null;
+  const error = recipeError ?? importDetailQuery.error ?? importFailure;
+  const isPending =
+    (recipeId !== null && isRecipePending) ||
+    (isImportReviewMode &&
+      (importDetailQuery.isPending ||
+        importDetailQuery.data?.status === "pending" ||
+        importDetailQuery.data?.status === "processing"));
 
   const previewRecipe = useMemo(() => {
     if (isPreviewMode && parsedRecipe) {
@@ -485,6 +527,7 @@ export const RecipeDetailScreen = () => {
   const { data: userData } = useUser();
 
   const saveRecipeMutation = useSaveRecipe();
+  const completeImportMutation = useCompleteRecipeImport();
   const updateRecipeMutation = useUpdateRecipe();
   const importMutation = useImportRecipe();
   const deleteMutation = useDeleteRecipe();
@@ -493,7 +536,7 @@ export const RecipeDetailScreen = () => {
   const nutritionMutation = useGetRecipeNutrition();
   const createCookingReviewMutation = useCreateCookingReview();
   const { isPro, requireProFeature, presentPaywall } = useSubscription();
-  const { dismissImport } = useBackgroundImportQueue();
+  const { dismissImport } = useRecipeImport();
 
   const [servings, setServings] = useState(1);
   const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>(
@@ -713,6 +756,7 @@ export const RecipeDetailScreen = () => {
   );
   const isSaving =
     saveRecipeMutation.isPending ||
+    completeImportMutation.isPending ||
     updateRecipeMutation.isPending ||
     isUploadingImages ||
     generateRecipeImageMutation.isPending;
@@ -1297,8 +1341,14 @@ export const RecipeDetailScreen = () => {
 
   const handleDismissImportReview = useCallback(() => {
     if (!importJobId) return;
-    dismissImport(importJobId);
-    navigation.goBack();
+    dismissImport(importJobId)
+      .then(() => navigation.goBack())
+      .catch((dismissError) => {
+        alertApiError("Dismiss Failed", dismissError, {
+          operation: "recipeImport.dismiss",
+          fallback: "Unable to dismiss this import.",
+        });
+      });
   }, [dismissImport, importJobId, navigation]);
 
   const handleSaveDraft = useCallback(async () => {
@@ -1335,13 +1385,12 @@ export const RecipeDetailScreen = () => {
         setServings(draft.servings);
         setIsEditing(false);
       } else {
-        const { id } = await saveRecipeMutation.mutateAsync({
-          ...recipeData,
-          ...(importJobId ? { importJobId } : {}),
-        });
-        if (importJobId) {
-          dismissImport(importJobId);
-        }
+        const { id } = importJobId
+          ? await completeImportMutation.mutateAsync({
+              id: importJobId,
+              recipe: recipeData,
+            })
+          : await saveRecipeMutation.mutateAsync(recipeData);
         navigation.dispatch(
           StackActions.replace("RecipeDetail", { recipeId: id }),
         );
@@ -1354,7 +1403,7 @@ export const RecipeDetailScreen = () => {
     }
   }, [
     draft,
-    dismissImport,
+    completeImportMutation,
     importJobId,
     isCreateMode,
     isUploadingImages,
@@ -1455,7 +1504,7 @@ export const RecipeDetailScreen = () => {
     recipeId,
   ]);
 
-  if (!isPreviewMode && !isBlankDraftMode && !isPending && (error || !recipe)) {
+  if (!isBlankDraftMode && !isPending && (error || !recipe)) {
     const resolvedError = resolvePublicError(error, "Recipe not found.");
     const isExternalRecipe = resolvedError.code === "EXTERNAL_RECIPE_SOURCE";
     const { sourceUrl } = publicErrorDetails(error);
@@ -1469,6 +1518,15 @@ export const RecipeDetailScreen = () => {
             : "Recipe not found"}
         </Text>
         <VSpace size={16} />
+        {isImportReviewMode ? (
+          <PrimaryButton
+            onPress={() => {
+              importDetailQuery.refetch().catch(() => {});
+            }}
+          >
+            Retry
+          </PrimaryButton>
+        ) : null}
         {isExternalRecipe && sourceUrl ? (
           <>
             <PrimaryButton

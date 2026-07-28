@@ -14,6 +14,10 @@ import { cors } from "hono/cors";
 import { arrayBufferToStream, readBoundedResponseBody } from "./image-data";
 import { putAndInspectImage } from "./image-storage";
 import {
+  getImportSource as getStagedImportSource,
+  stageImportSource as stageImportSourceObject,
+} from "./import-source";
+import {
   deleteImportImageStagingIds,
   deleteImportImages,
   listImportImageStagingIds,
@@ -103,7 +107,9 @@ function validateRemoteImageUrl(sourceUrl: string): URL {
 }
 
 function getMaxFileSizeForKind(kind: ImageUploadKind): number {
-  return kind === "avatar" ? AVATAR_MAX_FILE_SIZE : PHOTO_MAX_FILE_SIZE;
+  if (kind === "avatar") return AVATAR_MAX_FILE_SIZE;
+  if (kind === "recipe_import_source") return TRUSTED_SOURCE_MAX_FILE_SIZE;
+  return PHOTO_MAX_FILE_SIZE;
 }
 
 function getMaxFileSizeForDestinationKey(key: string): number {
@@ -400,12 +406,14 @@ export class ImageService extends WorkerEntrypoint<Env> {
     }
 
     const maxFileSize = getMaxFileSizeForKind(kind);
-    const extension = extensionFromContentType(NORMALIZED_IMAGE_TYPE);
+    const uploadContentType =
+      kind === "recipe_import_source" ? contentType : NORMALIZED_IMAGE_TYPE;
+    const extension = extensionFromContentType(uploadContentType);
     const key = generateUserTempKey(ownerId, extension);
 
     const response = await generatePresignedUploadUrl(this.env, {
       key,
-      contentType: NORMALIZED_IMAGE_TYPE,
+      contentType: uploadContentType,
       maxFileSize,
     });
 
@@ -528,14 +536,38 @@ export class ImageService extends WorkerEntrypoint<Env> {
     await deleteImportImages(this.env.IMAGES, imageStagingId);
   }
 
-  async deleteImportImageStagingIds(
-    imageStagingIds: string[],
-  ): Promise<void> {
+  async deleteImportImageStagingIds(imageStagingIds: string[]): Promise<void> {
     await deleteImportImageStagingIds(this.env.IMAGES, imageStagingIds);
   }
 
   async listImportImageStagingIds(): Promise<string[]> {
     return await listImportImageStagingIds(this.env.IMAGES);
+  }
+
+  async stageImportSource(
+    tempKey: string,
+    ownerId: string,
+    jobId: string,
+  ): Promise<StoredImageAsset> {
+    return await stageImportSourceObject(
+      {
+        bucket: this.env.IMAGES,
+        normalize: (bytes) =>
+          normalizeImageBytesToJpeg(
+            this.env,
+            bytes,
+            TRUSTED_SOURCE_MAX_FILE_SIZE,
+          ),
+        inspect: (key) => buildStoredImageAsset(this.env, key),
+      },
+      tempKey,
+      ownerId,
+      jobId,
+    );
+  }
+
+  async getImportSource(jobId: string): Promise<Response> {
+    return await getStagedImportSource(this.env.IMAGES, jobId);
   }
 
   /**

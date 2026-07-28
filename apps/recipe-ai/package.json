@@ -6,11 +6,12 @@
   },
   "scripts": {
     "dev": "wrangler dev --inspector-port 9230",
-    "generate-types": "wrangler types --env-file .dev.vars.example",
+    "generate:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false",
+    "check:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false --check",
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify",
     "deploy:prod": "wrangler deploy --env production --minify",
-    "check-types": "tsc --noEmit",
+    "check-types": "bun run check:worker-types && tsc --noEmit",
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix",
     "test": "vitest run",
@@ -26,7 +27,8 @@
     "cheerio": "1.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.16.9",
+    "@cloudflare/vitest-pool-workers": "0.18.8",
+    "@cloudflare/workers-types": "5.20260724.1",
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
     "vitest": "4.1.7",

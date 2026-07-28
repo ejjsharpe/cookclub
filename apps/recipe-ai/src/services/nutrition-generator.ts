@@ -1,14 +1,14 @@
 import type { NutritionInput, NutritionResponse } from "@repo/contracts";
 
+import { fetchHtml } from "../import/url/fetch";
+import { extractStructuredRecipeCandidates } from "../import/url/structured-data";
 import type { Nutrition } from "../schema";
 import {
   DEFAULT_MAX_TOKENS,
   parseAiJsonResponse,
   type AiClient,
 } from "../utils/ai-response-parser";
-import { fetchHtml } from "../utils/html-fetcher";
 import { normalizeNutrition } from "../utils/nutrition-normalizer";
-import { extractStructuredRecipeCandidates } from "../utils/structured-data";
 
 function hasNutritionValues(nutrition: Nutrition | null | undefined) {
   if (!nutrition) return false;

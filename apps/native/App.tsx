@@ -25,10 +25,10 @@ import startImage6 from "@/assets/images/start-food-6.jpg";
 import startImage7 from "@/assets/images/start-food-7.jpg";
 import startImage8 from "@/assets/images/start-food-8.jpg";
 import startImage9 from "@/assets/images/start-food-9.jpg";
-import { ShareIntentStorageHandler } from "@/components/ShareIntentStorageHandler";
 import { WelcomeOverlayProvider } from "@/components/WelcomeOverlay";
+import { RecipeImportProvider } from "@/features/recipe-import/RecipeImportProvider";
+import { ShareIntentImportHandler } from "@/features/recipe-import/ShareIntentImportHandler";
 import { activateAdaptyAtStartup } from "@/lib/adapty";
-import { BackgroundImportQueueProvider } from "@/lib/backgroundImportQueue";
 import { CookTimerOverlay, CookTimerProvider } from "@/lib/cook-timer";
 import { PushNotificationsProvider } from "@/lib/pushNotifications";
 import { ReactQueryProvider } from "@/lib/reactQuery";
@@ -161,9 +161,9 @@ function App() {
                 <SignedInProvider>
                   <SubscriptionProvider>
                     <PushNotificationsProvider>
-                      <ShareIntentStorageHandler />
-                      <GestureHandlerRootView style={styles.rootView}>
-                        <BackgroundImportQueueProvider>
+                      <RecipeImportProvider>
+                        <ShareIntentImportHandler />
+                        <GestureHandlerRootView style={styles.rootView}>
                           <CookTimerProvider>
                             <WelcomeOverlayProvider>
                               <Navigation
@@ -180,8 +180,8 @@ function App() {
                             </WelcomeOverlayProvider>
                             <CookTimerOverlay />
                           </CookTimerProvider>
-                        </BackgroundImportQueueProvider>
-                      </GestureHandlerRootView>
+                        </GestureHandlerRootView>
+                      </RecipeImportProvider>
                     </PushNotificationsProvider>
                   </SubscriptionProvider>
                 </SignedInProvider>

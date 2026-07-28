@@ -1,3 +1,7 @@
+import {
+  ProviderRequestError,
+  providerTransportError,
+} from "./provider-response";
 import type { AiClient } from "../utils/ai-response-parser";
 
 function errorMessage(error: unknown): string {
@@ -30,8 +34,27 @@ export function createFallbackAiClient(
         try {
           return await secondary.complete(workload, request);
         } catch (secondaryError) {
-          throw new Error(
-            `Cerebras failed (${errorMessage(primaryError)}); Groq fallback failed (${errorMessage(secondaryError)}).`,
+          const primaryFailure = providerTransportError(
+            primaryError,
+            "Cerebras",
+          );
+          const secondaryFailure = providerTransportError(
+            secondaryError,
+            "Groq",
+          );
+          throw new ProviderRequestError(
+            `Cerebras failed (${errorMessage(primaryFailure)}); Groq fallback failed (${errorMessage(secondaryFailure)}).`,
+            {
+              provider: "Cerebras+Groq",
+              status: secondaryFailure.status ?? primaryFailure.status,
+              retryAfterSeconds:
+                secondaryFailure.retryAfterSeconds ??
+                primaryFailure.retryAfterSeconds,
+              requestId: secondaryFailure.requestId ?? primaryFailure.requestId,
+              retryable: primaryFailure.retryable || secondaryFailure.retryable,
+              timedOut: primaryFailure.timedOut || secondaryFailure.timedOut,
+              cause: { primary: primaryFailure, secondary: secondaryFailure },
+            },
           );
         }
       }

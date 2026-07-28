@@ -6,7 +6,7 @@ import {
   fetchInstagramReelAudio,
   normalizeInstagramUrl,
   extractShortcode,
-} from "../../../src/utils/instagram-fetcher";
+} from "../../../src/import/social/instagram";
 
 describe("instagram-fetcher", () => {
   describe("normalizeInstagramUrl", () => {

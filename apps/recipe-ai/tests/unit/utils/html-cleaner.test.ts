@@ -4,7 +4,7 @@ import {
   cleanHtml,
   extractImageUrls,
   focusRecipeContent,
-} from "../../../src/utils/html-cleaner";
+} from "../../../src/import/url/html-cleaner";
 
 describe("cleanHtml", () => {
   describe("noise removal", () => {

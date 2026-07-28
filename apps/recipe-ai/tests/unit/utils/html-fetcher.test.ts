@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   fetchHtml,
   isLikelyBotBlockedError,
-} from "../../../src/utils/html-fetcher";
+} from "../../../src/import/url/fetch";
 
 describe("fetchHtml", () => {
   beforeEach(() => {

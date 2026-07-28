@@ -1,6 +1,6 @@
+import { isBasicImportUnsupportedUrl } from "@repo/contracts/recipe-import";
 import { describe, expect, it } from "vitest";
 
-import { isBasicImportUnsupportedUrl } from "./basicImport";
 import {
   getRecipeImportSocialPlatform,
   getRecipeImportSocialPlatformInfo,

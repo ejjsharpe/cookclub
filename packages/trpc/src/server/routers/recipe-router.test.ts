@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { recipeRouter } from "./recipe-router";
+import { recipeAiRouter, recipeRouter } from "./recipe-router";
 import { createMockEnv } from "../__mocks__/env";
 
 const mocks = vi.hoisted(() => ({
@@ -91,18 +91,20 @@ vi.mock("@repo/db/schemas", () => ({
     importType: "recipe_import_jobs.import_type",
     mode: "recipe_import_jobs.mode",
     title: "recipe_import_jobs.title",
-    inputData: "recipe_import_jobs.input_data",
-    mimeType: "recipe_import_jobs.mime_type",
+    sourceData: "recipe_import_jobs.source_data",
+    requestFingerprint: "recipe_import_jobs.request_fingerprint",
     status: "recipe_import_jobs.status",
     recipe: "recipe_import_jobs.recipe",
     error: "recipe_import_jobs.error",
+    errorCode: "recipe_import_jobs.error_code",
+    completionFingerprint: "recipe_import_jobs.completion_fingerprint",
+    recipeId: "recipe_import_jobs.recipe_id",
+    consumedAt: "recipe_import_jobs.consumed_at",
     createdAt: "recipe_import_jobs.created_at",
     updatedAt: "recipe_import_jobs.updated_at",
     completedAt: "recipe_import_jobs.completed_at",
-    dismissedAt: "recipe_import_jobs.dismissed_at",
     processingStartedAt: "recipe_import_jobs.processing_started_at",
     usagePeriodStart: "recipe_import_jobs.usage_period_start",
-    usageConsumedAt: "recipe_import_jobs.usage_consumed_at",
     refundedAt: "recipe_import_jobs.refunded_at",
   },
   recipeNutrition: { _name: "recipe_nutrition" },
@@ -355,152 +357,6 @@ describe("recipeRouter - activity integration", () => {
     consoleErrorSpy.mockRestore();
   });
 
-  describe("import jobs", () => {
-    const readyImportJob = {
-      id: "job-1",
-      importType: "smart",
-      mode: "url",
-      title: "Tomato Pasta",
-      status: "ready",
-      recipe: {
-        success: true,
-        data: {
-          name: "Tomato Pasta",
-          nutrition: { calories: 500 },
-        },
-        metadata: {
-          source: "url",
-          parseMethod: "ai_only",
-          confidence: "high",
-        },
-      },
-      error: null,
-      createdAt: new Date("2026-06-02T10:00:00.000Z"),
-      updatedAt: new Date("2026-06-02T10:00:00.000Z"),
-      completedAt: new Date("2026-06-02T10:00:00.000Z"),
-    };
-
-    it("redacts completed import nutrition for non-Pro users at read time", async () => {
-      mockDb._setSelectResult([readyImportJob]);
-      mockGetSubscriptionStatus.mockResolvedValue({
-        isPro: false,
-        accessLevelId: null,
-        expiresAt: null,
-        willRenew: null,
-        smartImports: {
-          used: 1,
-          limit: 5,
-          remaining: 4,
-          periodStart: new Date("2026-06-01T00:00:00.000Z"),
-        },
-      });
-
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      const [job] = await caller.listImportJobs();
-
-      expect(job?.recipe).toEqual(
-        expect.objectContaining({
-          data: expect.objectContaining({ nutrition: null }),
-        }),
-      );
-    });
-
-    it("returns stored completed import nutrition for Pro users", async () => {
-      mockDb._setSelectResult([readyImportJob]);
-
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      const [job] = await caller.listImportJobs();
-
-      expect(job?.recipe).toEqual(
-        expect.objectContaining({
-          data: expect.objectContaining({ nutrition: { calories: 500 } }),
-        }),
-      );
-    });
-
-    it("rejects URL import jobs with invalid URLs before queueing", async () => {
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await expect(
-        caller.createImportJob({
-          id: "job-1",
-          importType: "smart",
-          mode: "url",
-          title: "not a url",
-          data: "not a url",
-        }),
-      ).rejects.toMatchObject({
-        code: "BAD_REQUEST",
-        appCode: "IMPORT_INVALID_URL",
-      });
-
-      expect(mockDb.insert).not.toHaveBeenCalled();
-      expect(mockEnv.RECIPE_IMPORT_URL_QUEUE.send).not.toHaveBeenCalled();
-    });
-
-    it("hard-deletes dismissed import jobs", async () => {
-      mockDb._setDeleteReturning([{ id: "job-1" }]);
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await expect(caller.dismissImportJob({ id: "job-1" })).resolves.toEqual({
-        success: true,
-      });
-
-      expect(mockDb.delete).toHaveBeenCalledWith(expect.anything());
-      expect(mockDb.where).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "and" }),
-      );
-    });
-
-    it("deletes the complete job staging prefix after deleting the job", async () => {
-      mockDb._setDeleteReturning([{ id: "job-1" }]);
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await caller.dismissImportJob({ id: "job-1" });
-
-      expect(mockEnv.IMAGE_SERVICE.deleteImportImages).toHaveBeenCalledWith(
-        "job-1",
-      );
-      expect(mockDb.delete.mock.invocationCallOrder[0]).toBeLessThan(
-        mockEnv.IMAGE_SERVICE.deleteImportImages.mock.invocationCallOrder[0]!,
-      );
-    });
-
-    it("keeps dismissal successful when staging cleanup fails", async () => {
-      mockDb._setDeleteReturning([{ id: "job-1" }]);
-      mockEnv.IMAGE_SERVICE.deleteImportImages.mockRejectedValueOnce(
-        new Error("R2 unavailable"),
-      );
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await expect(caller.dismissImportJob({ id: "job-1" })).resolves.toEqual({
-        success: true,
-      });
-
-      expect(mockDb.delete).toHaveBeenCalled();
-    });
-
-    it("does not delete staging without an owned import job", async () => {
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await expect(caller.dismissImportJob({ id: "job-1" })).resolves.toEqual({
-        success: true,
-      });
-
-      expect(mockEnv.IMAGE_SERVICE.deleteImportImages).not.toHaveBeenCalled();
-      expect(mockDb.delete).toHaveBeenCalled();
-    });
-  });
-
   describe("importRecipe", () => {
     it("checks recipe detail visibility before importing", async () => {
       mockGetRecipeDetail.mockRejectedValueOnce(
@@ -562,7 +418,7 @@ describe("recipeRouter - activity integration", () => {
   describe("direct AI payload limits", () => {
     it("rejects oversized chat messages before calling the parser", async () => {
       const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
+      const caller = recipeAiRouter.createCaller(ctx as any);
 
       await expect(
         caller.generateRecipeChat({
@@ -643,86 +499,6 @@ describe("recipeRouter - activity integration", () => {
 
       expect(result.id).toBe(1);
       expect(result.name).toBe("Test Recipe");
-    });
-
-    it("atomically consumes a ready import job when saving its recipe", async () => {
-      mockDb._setSelectResult([{ id: "job-1", status: "ready" }]);
-      mockDb._setDeleteReturning([{ id: "job-1" }]);
-      mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);
-
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await expect(
-        caller.postRecipe({
-          ...validRecipeInput,
-          importJobId: "job-1",
-        }),
-      ).resolves.toMatchObject({ id: 1 });
-
-      expect(mockDb.transaction).toHaveBeenCalledOnce();
-      expect(mockDb.delete).toHaveBeenCalledWith(expect.anything());
-      expect(mockCreateRecipeInTransaction).toHaveBeenCalledWith(
-        mockDb,
-        "test-user-id",
-        expect.not.objectContaining({
-          importJobId: expect.anything(),
-          imageUploadIds: expect.anything(),
-        }),
-      );
-      expect(mockEnv.IMAGE_SERVICE.deleteImportImages).toHaveBeenCalledWith(
-        "job-1",
-      );
-    });
-
-    it("rejects saving an import job that is not ready", async () => {
-      mockDb._setSelectResult([{ id: "job-1", status: "processing" }]);
-
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-
-      await expect(
-        caller.postRecipe({
-          ...validRecipeInput,
-          importJobId: "job-1",
-        }),
-      ).rejects.toHaveProperty("code", "CONFLICT");
-
-      expect(mockEnv.IMAGE_SERVICE.uploadFromUrl).not.toHaveBeenCalled();
-      expect(mockCreateRecipeInTransaction).not.toHaveBeenCalled();
-    });
-
-    it("cleans up promoted images when another request consumes the import job", async () => {
-      mockDb._setSelectResult([{ id: "job-1", status: "ready" }]);
-      mockEnv.IMAGE_SERVICE.move.mockResolvedValue({
-        success: true,
-        results: [
-          {
-            from: "temp/abc.jpg",
-            to: "recipes/covers/group/img.jpg",
-            success: true,
-            asset: createAsset("recipes/covers/group/img.jpg"),
-          },
-        ],
-      });
-
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
-      const { images: _images, ...uploadRecipeInput } = validRecipeInput;
-
-      await expect(
-        caller.postRecipe({
-          ...uploadRecipeInput,
-          imageUploadIds: ["temp/abc.jpg"],
-          importJobId: "job-1",
-        }),
-      ).rejects.toHaveProperty("code", "CONFLICT");
-
-      expect(mockCreateRecipeInTransaction).not.toHaveBeenCalled();
-      expect(mockEnv.IMAGE_SERVICE.delete).toHaveBeenCalledWith([
-        expect.stringMatching(/^recipes\/covers\/.+\/.+\.jpg$/),
-      ]);
-      expect(mockEnv.IMAGE_SERVICE.deleteImportImages).not.toHaveBeenCalled();
     });
 
     it("creates recipes with ingredients and no method steps", async () => {
@@ -1169,7 +945,7 @@ describe("recipeRouter - activity integration", () => {
       });
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
+      const caller = recipeAiRouter.createCaller(ctx as any);
 
       const result = await caller.personalizeRecipe({
         recipeId: 1,
@@ -1207,7 +983,7 @@ describe("recipeRouter - activity integration", () => {
       });
 
       const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
+      const caller = recipeAiRouter.createCaller(ctx as any);
 
       await expect(
         caller.personalizeRecipe({

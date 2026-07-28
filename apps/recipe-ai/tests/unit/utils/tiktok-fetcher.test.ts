@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { extractTikTokContent } from "../../../src/utils/tiktok-fetcher";
+import { extractTikTokContent } from "../../../src/import/social/tiktok";
 
 describe("extractTikTokContent", () => {
   it("extracts hydration subtitles for transcript-enriched parsing", async () => {

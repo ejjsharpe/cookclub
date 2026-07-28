@@ -5,7 +5,7 @@ import { authedProcedure, router } from "../trpc";
 
 const RequestUploadUrlValidator = type({
   contentType: "'image/jpeg' | 'image/png' | 'image/webp'",
-  kind: "'recipe_photo' | 'review_photo' | 'avatar'",
+  kind: "'recipe_photo' | 'review_photo' | 'avatar' | 'recipe_import_source'",
 });
 
 export const uploadRouter = router({

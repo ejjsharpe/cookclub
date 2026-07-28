@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractStructuredRecipeCandidates } from "../../../src/utils/structured-data";
+import { extractStructuredRecipeCandidates } from "../../../src/import/url/structured-data";
 
 function firstStructuredRecipe(html: string, sourceUrl: string) {
   return extractStructuredRecipeCandidates(html, sourceUrl)[0] ?? null;

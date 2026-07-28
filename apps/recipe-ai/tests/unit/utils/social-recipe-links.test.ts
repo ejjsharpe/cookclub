@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractSocialRecipeLinks } from "../../../src/utils/social-recipe-links";
+import { extractSocialRecipeLinks } from "../../../src/import/social/links";
 
 describe("extractSocialRecipeLinks", () => {
   const sourceUrl = "https://www.instagram.com/reel/ABC123/";

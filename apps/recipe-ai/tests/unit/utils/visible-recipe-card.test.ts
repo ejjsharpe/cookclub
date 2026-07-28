@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractMarkdownRecipeCard,
   extractVisibleRecipeCard,
-} from "../../../src/utils/visible-recipe-card";
+} from "../../../src/import/url/visible-card";
 
 describe("extractVisibleRecipeCard", () => {
   it("extracts The Kitchn-style visible recipe cards", () => {

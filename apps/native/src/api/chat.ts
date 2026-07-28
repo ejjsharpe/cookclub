@@ -8,7 +8,7 @@ export const useGenerateRecipeChat = () => {
   const trpc = useTRPC();
 
   return useMutation(
-    trpc.recipe.generateRecipeChat.mutationOptions({
+    trpc.recipeAi.generateRecipeChat.mutationOptions({
       retry: false,
     }),
   );

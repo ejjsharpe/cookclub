@@ -8,6 +8,25 @@ import {
   type AiClient,
 } from "../../src/utils/ai-response-parser";
 
+type TestRecipeAI = Omit<RecipeAI, "parse"> & {
+  parse(
+    input:
+      | {
+          type: "url";
+          data: string;
+          strategy?: "deterministic" | "ai-assisted";
+          imageStagingId?: string;
+        }
+      | {
+          type: "text";
+          data: string;
+          strategy?: "ai-assisted";
+          imageStagingId?: string;
+        }
+      | { type: unknown; data: string },
+  ): ReturnType<RecipeAI["parse"]>;
+};
+
 // Valid AI response for mocking (uses section structure)
 const validAiResponse = JSON.stringify({
   name: "Classic Chocolate Chip Cookies",
@@ -86,7 +105,7 @@ function htmlResponse() {
 }
 
 describe("RecipeAI Integration Tests", () => {
-  let parser: RecipeAI;
+  let parser: TestRecipeAI;
   let mockEnv: Env;
   let mockAi: AiClient & { complete: ReturnType<typeof vi.fn> };
 
@@ -95,7 +114,7 @@ describe("RecipeAI Integration Tests", () => {
     mockAi = {
       complete: vi.fn().mockResolvedValue(validAiResponse),
     };
-    parser = new RecipeAI(createExecutionContext(), mockEnv);
+    parser = new RecipeAI(createExecutionContext(), mockEnv) as TestRecipeAI;
     (
       parser as unknown as {
         [RECIPE_AI_INFERENCE_CLIENT]: () => AiClient;
@@ -166,7 +185,10 @@ describe("RecipeAI Integration Tests", () => {
       }
 
       // Create new parser with same env to test cache persistence
-      const parser2 = new RecipeAI(createExecutionContext(), mockEnv);
+      const parser2 = new RecipeAI(
+        createExecutionContext(),
+        mockEnv,
+      ) as TestRecipeAI;
 
       // Second request - should hit cache
       const result2 = await parser2.parse({ type: "url", data: url });
@@ -186,7 +208,10 @@ describe("RecipeAI Integration Tests", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
       // Create new parser with same env to test cache persistence
-      const parser2 = new RecipeAI(createExecutionContext(), mockEnv);
+      const parser2 = new RecipeAI(
+        createExecutionContext(),
+        mockEnv,
+      ) as TestRecipeAI;
 
       // Second request - should not fetch again
       await parser2.parse({ type: "url", data: url });
@@ -218,7 +243,7 @@ describe("RecipeAI Integration Tests", () => {
       expect(mockAi.complete).toHaveBeenCalled();
     });
 
-    it("rejects text that is too short", async () => {
+    it("returns no-recipe for text without recipe evidence", async () => {
       const result = await parser.parse({
         type: "text",
         data: "Too short",
@@ -226,7 +251,7 @@ describe("RecipeAI Integration Tests", () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INVALID_INPUT");
+        expect(result.error.code).toBe("IMPORT_RECIPE_NOT_FOUND");
       }
     });
 
@@ -238,7 +263,7 @@ describe("RecipeAI Integration Tests", () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INPUT_TOO_LONG");
+        expect(result.error.code).toBe("PAYLOAD_TOO_LARGE");
       }
     });
   });
@@ -261,7 +286,8 @@ describe("RecipeAI Integration Tests", () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("FETCH_FAILED");
+        expect(result.error.code).toBe("IMPORT_SOURCE_UNAVAILABLE");
+        expect(result.error.disposition).toBe("terminal");
       }
     });
 
@@ -277,45 +303,20 @@ describe("RecipeAI Integration Tests", () => {
       });
 
       expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.disposition).toBe("retry");
+      }
     });
 
     it("returns error for invalid input type", async () => {
       const result = await parser.parse({
-        type: "invalid" as any,
+        type: "invalid" as never,
         data: "test",
       });
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe("INVALID_INPUT_TYPE");
-      }
-    });
-  });
-
-  describe("image parsing", () => {
-    it("rejects invalid mime types", async () => {
-      const result = await parser.parse({
-        type: "image",
-        data: btoa("fake image"),
-        mimeType: "image/gif" as any,
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("INVALID_MIME_TYPE");
-      }
-    });
-
-    it("rejects invalid base64 data", async () => {
-      const result = await parser.parse({
-        type: "image",
-        data: "not-valid-base64!!!",
-        mimeType: "image/jpeg",
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe("INVALID_BASE64");
+        expect(result.error.code).toBe("IMPORT_UNSUPPORTED_SOURCE");
       }
     });
   });

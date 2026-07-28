@@ -5,7 +5,7 @@ import {
   fetchYouTubeComments,
   fetchYouTubeTranscript,
   normalizeYouTubeUrl,
-} from "../../../src/utils/youtube-fetcher";
+} from "../../../src/import/social/youtube";
 
 describe("youtube-fetcher", () => {
   it("normalizes supported YouTube video URL formats", () => {

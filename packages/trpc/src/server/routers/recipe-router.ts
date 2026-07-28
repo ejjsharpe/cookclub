@@ -3,13 +3,9 @@ import type {
   ParsedRecipe,
   PersonalizationGoal,
 } from "@repo/contracts";
-import {
-  isValidImportImageStagingId,
-  type PublicImageAsset,
-} from "@repo/contracts/images";
+import type { PublicImageAsset } from "@repo/contracts/images";
 import {
   recipes,
-  recipeImportJobs,
   recipeCollections,
   collections,
   tags,
@@ -31,7 +27,7 @@ import {
 import { parseIngredients } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, desc, and, count, isNull } from "drizzle-orm";
+import { eq, desc, and, count } from "drizzle-orm";
 
 import { PublicTRPCError } from "../public-errors";
 import { enforceRateLimit } from "../rate-limit";
@@ -40,21 +36,11 @@ import {
   cleanupMovedRecipeImages,
   prepareRecipeImages,
 } from "../services/recipe-image.service";
-import { cleanupRecipeImportImagesBestEffort } from "../services/recipe-import-image-cleanup.service";
 import {
-  enqueueRecipeImportJob,
-  failStaleRecipeImportJobs,
-  RECIPE_IMPORT_JOB_STALE_ERROR,
-  failRecipeImportJob,
-  type ImportJobMode,
-  type ImportJobRecord,
-} from "../services/recipe-import-job.service";
-import {
-  consumeSmartImportAllowance,
   getCurrentSubscriptionStatus,
   requirePro,
 } from "../services/subscription.service";
-import { router, authedProcedure } from "../trpc";
+import { router, authedProcedure, mergeRouters } from "../trpc";
 import { mapServiceError } from "../utils";
 
 const ImageUrlRecord = type({
@@ -119,7 +105,6 @@ const PersonalizationGoalValidator = type(
 );
 
 const RecipePostValidator = type({
-  "importJobId?": "string",
   name: "string",
   ingredientSections: IngredientSectionRecord.array().atLeastLength(1),
   instructionSections: InstructionSectionRecord.array(),
@@ -159,30 +144,6 @@ const RecipeUpdateValidator = type({
   servings: "number > 0",
   "nutrition?": "object | null",
 });
-
-const MimeTypeValidator = type("'image/jpeg' | 'image/png' | 'image/webp'");
-
-const ImportJobModeValidator = type("'url' | 'text' | 'image'");
-
-const ImportJobTypeValidator = type("'basic' | 'smart'");
-
-const CreateImportJobValidator = type({
-  id: "string",
-  importType: ImportJobTypeValidator,
-  mode: ImportJobModeValidator,
-  title: "string",
-  data: "string",
-  "mimeType?": MimeTypeValidator,
-});
-
-const ImportJobIdValidator = type({
-  id: "string",
-});
-const MAX_IMPORT_DATA_LENGTH: Record<ImportJobMode, number> = {
-  url: 4096,
-  text: 100_000,
-  image: 2_500_000,
-};
 
 const MAX_CHAT_MESSAGES = 30;
 const MAX_CHAT_MESSAGE_LENGTH = 4_000;
@@ -232,7 +193,6 @@ const GetNutritionValidator = type({
 });
 
 interface RecipePayloadInput {
-  importJobId?: string;
   name: string;
   images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
@@ -327,33 +287,6 @@ function hasCompleteNutritionCore(
     nutrition.carbohydrates,
     nutrition.fat,
   ].every((value) => typeof value === "number" && Number.isFinite(value));
-}
-
-function parseResponseForEntitlement<T extends { success: boolean }>(
-  result: T,
-  isPro: boolean,
-): T {
-  if (!("data" in result) || !result.success || isPro) return result;
-
-  const response = result as T & { data?: ParsedRecipe };
-  if (!response.data) return result;
-
-  return {
-    ...result,
-    data: {
-      ...response.data,
-      nutrition: null,
-    },
-  } as T;
-}
-
-function isHttpUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function assertMaxLength(value: string, label: string, maxLength: number) {
@@ -504,334 +437,60 @@ function validateRecipePayload(input: RecipePayloadInput) {
   }
 }
 
-function getImportRateLimitKey(mode: ImportJobMode) {
-  switch (mode) {
-    case "url":
-      return "recipe_parse_url";
-    case "text":
-      return "recipe_parse_text";
-    case "image":
-      return "recipe_parse_image";
-  }
-}
-
-export const recipeRouter = router({
-  listImportJobs: authedProcedure.query(async ({ ctx }) => {
-    const [jobs, subscriptionStatus] = await Promise.all([
-      ctx.db
-        .select({
-          id: recipeImportJobs.id,
-          importType: recipeImportJobs.importType,
-          mode: recipeImportJobs.mode,
-          title: recipeImportJobs.title,
-          status: recipeImportJobs.status,
-          recipe: recipeImportJobs.recipe,
-          error: recipeImportJobs.error,
-          errorCode: recipeImportJobs.errorCode,
-          createdAt: recipeImportJobs.createdAt,
-          updatedAt: recipeImportJobs.updatedAt,
-          completedAt: recipeImportJobs.completedAt,
-          processingStartedAt: recipeImportJobs.processingStartedAt,
-        })
-        .from(recipeImportJobs)
-        .where(
-          and(
-            eq(recipeImportJobs.userId, ctx.user.id),
-            isNull(recipeImportJobs.dismissedAt),
-          ),
-        )
-        .orderBy(desc(recipeImportJobs.createdAt))
-        .limit(20),
-      getCurrentSubscriptionStatus(ctx),
-    ]);
-
-    const failedStaleJobIds = await failStaleRecipeImportJobs(
-      { db: ctx.db, env: ctx.env },
-      ctx.user.id,
-      jobs,
-    );
-
-    return jobs.map(({ processingStartedAt: _processingStartedAt, ...job }) => {
-      const didFailStaleJob = failedStaleJobIds.has(job.id);
-
-      return {
-        ...job,
-        status: didFailStaleJob ? "failed" : job.status,
-        error: didFailStaleJob ? RECIPE_IMPORT_JOB_STALE_ERROR : job.error,
-        errorCode: didFailStaleJob ? "IMPORT_TIMED_OUT" : job.errorCode,
-        completedAt: didFailStaleJob ? new Date() : job.completedAt,
-        recipe:
-          !didFailStaleJob && job.recipe
-            ? parseResponseForEntitlement(job.recipe, subscriptionStatus.isPro)
-            : null,
-      };
+// AI procedures live on their own root router even though they share the
+// recipe validation and transformation helpers in this module.
+const generateRecipeChat = authedProcedure
+  .input(ChatInputValidator)
+  .mutation(async ({ ctx, input }) => {
+    validateChatInput(input);
+    await requirePro(ctx);
+    await enforceRateLimit(ctx, "recipe_chat");
+    const result = await ctx.env.RECIPE_AI.chat({
+      messages: input.messages,
+      conversationState: input.conversationState,
     });
-  }),
 
-  createImportJob: authedProcedure
-    .input(CreateImportJobValidator)
-    .mutation(async ({ ctx, input }) => {
-      if (!isValidImportImageStagingId(input.id)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Import job id is required.",
-        });
-      }
-      if (input.title.trim().length === 0 || input.data.trim().length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Import source is required.",
-        });
-      }
-      if (input.importType === "basic" && input.mode !== "url") {
-        throw new PublicTRPCError({
-          code: "BAD_REQUEST",
-          appCode: "IMPORT_INVALID_URL",
-        });
-      }
-      if (input.mode === "image" && !input.mimeType) {
-        throw new PublicTRPCError({
-          code: "BAD_REQUEST",
-          appCode: "IMPORT_IMAGE_INVALID",
-        });
-      }
-
-      const inputData = input.data.trim();
-      if (inputData.length > MAX_IMPORT_DATA_LENGTH[input.mode]) {
-        throw new PublicTRPCError({
-          code: "PAYLOAD_TOO_LARGE",
-          appCode: "PAYLOAD_TOO_LARGE",
-        });
-      }
-      if (input.mode === "url" && !isHttpUrl(inputData)) {
-        throw new PublicTRPCError({
-          code: "BAD_REQUEST",
-          appCode: "IMPORT_INVALID_URL",
-        });
-      }
-
-      if (input.importType === "basic") {
-        await enforceRateLimit(ctx, "recipe_parse_url_basic");
-      } else {
-        await enforceRateLimit(ctx, getImportRateLimitKey(input.mode));
-      }
-
-      const now = new Date();
-      const job: ImportJobRecord = {
-        id: input.id,
-        userId: ctx.user.id,
-        importType: input.importType,
-        mode: input.mode,
-        title: input.title.trim(),
-        inputData,
-        mimeType: input.mimeType ?? null,
-        status: "pending",
-        processingStartedAt: null,
-        usagePeriodStart: null,
-        usageConsumedAt: null,
-        refundedAt: null,
-      };
-
-      await ctx.db.transaction(async (tx) => {
-        const [insertedJob] = await tx
-          .insert(recipeImportJobs)
-          .values({
-            id: job.id,
-            userId: job.userId,
-            importType: job.importType,
-            mode: job.mode,
-            title: job.title,
-            inputData: job.inputData,
-            mimeType: job.mimeType,
-            status: "pending",
-            createdAt: now,
-            updatedAt: now,
-          })
-          .onConflictDoNothing()
-          .returning({ id: recipeImportJobs.id });
-
-        if (!insertedJob) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "Import job already exists.",
-          });
-        }
-
-        if (input.importType !== "smart") return;
-
-        const subscriptionStatus = await consumeSmartImportAllowance({
-          db: tx,
-          env: ctx.env,
-          user: { id: ctx.user.id },
-        });
-
-        if (subscriptionStatus.isPro || !subscriptionStatus.consumedSmartImport)
-          return;
-
-        job.usagePeriodStart = subscriptionStatus.smartImports.periodStart;
-        job.usageConsumedAt = now;
-
-        await tx
-          .update(recipeImportJobs)
-          .set({
-            usagePeriodStart: job.usagePeriodStart,
-            usageConsumedAt: job.usageConsumedAt,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(recipeImportJobs.id, job.id),
-              eq(recipeImportJobs.userId, job.userId),
-            ),
-          );
+    if (result.type === "error") {
+      throw new PublicTRPCError({
+        code: "BAD_GATEWAY",
+        appCode: "SERVICE_UNAVAILABLE",
       });
+    }
 
-      try {
-        await enqueueRecipeImportJob(ctx.env, job);
-      } catch (error) {
-        await failRecipeImportJob(
-          { db: ctx.db, env: ctx.env },
-          { jobId: job.id, userId: job.userId },
-          "SERVICE_UNAVAILABLE",
-        );
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          cause: error,
-        });
-      }
+    return result;
+  });
 
-      return {
-        id: job.id,
-        importType: job.importType,
-        mode: job.mode,
-        title: job.title,
-        status: "pending" as const,
-        recipe: null,
-        error: null,
-        errorCode: null,
-        createdAt: now,
-        updatedAt: now,
-        completedAt: null,
-      };
-    }),
-
-  dismissImportJob: authedProcedure
-    .input(ImportJobIdValidator)
-    .mutation(async ({ ctx, input }) => {
-      const [deletedJob] = await ctx.db
-        .delete(recipeImportJobs)
-        .where(
-          and(
-            eq(recipeImportJobs.id, input.id),
-            eq(recipeImportJobs.userId, ctx.user.id),
-          ),
-        )
-        .returning({ id: recipeImportJobs.id });
-
-      if (deletedJob) {
-        await cleanupRecipeImportImagesBestEffort(
-          ctx.env.IMAGE_SERVICE,
-          input.id,
-        );
-      }
-
-      return { success: true };
-    }),
-
-  // Generate recipe via AI chat conversation
-  generateRecipeChat: authedProcedure
-    .input(ChatInputValidator)
-    .mutation(async ({ ctx, input }) => {
-      validateChatInput(input);
-      await requirePro(ctx);
-      await enforceRateLimit(ctx, "recipe_chat");
-      const result = await ctx.env.RECIPE_AI.chat({
-        messages: input.messages,
-        conversationState: input.conversationState,
+const personalizeRecipe = authedProcedure
+  .input(PersonalizeRecipeValidator)
+  .mutation(async ({ ctx, input }) => {
+    if (input instanceof type.errors) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: input.summary,
       });
+    }
+    validatePersonalizeRecipeInput(input);
 
-      if (result.type === "error") {
-        throw new PublicTRPCError({
-          code: "BAD_GATEWAY",
-          appCode: "SERVICE_UNAVAILABLE",
-        });
-      }
+    const hasGoal = input.goals.length > 0;
+    const hasNotes =
+      Boolean(input.allergyNotes?.trim()) || Boolean(input.customNotes?.trim());
 
-      return result;
-    }),
+    if (!hasGoal && !hasNotes) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Choose at least one personalisation option or add notes.",
+      });
+    }
 
-  personalizeRecipe: authedProcedure
-    .input(PersonalizeRecipeValidator)
-    .mutation(async ({ ctx, input }) => {
-      if (input instanceof type.errors) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: input.summary,
-        });
-      }
-      validatePersonalizeRecipeInput(input);
-
-      const hasGoal = input.goals.length > 0;
-      const hasNotes =
-        Boolean(input.allergyNotes?.trim()) ||
-        Boolean(input.customNotes?.trim());
-
-      if (!hasGoal && !hasNotes) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Choose at least one personalisation option or add notes.",
-        });
-      }
-
-      try {
-        await requirePro(ctx);
-        await enforceRateLimit(ctx, "recipe_personalize");
-        const recipe = await getRecipeDetail(
-          ctx.db,
-          input.recipeId,
-          ctx.user.id,
-        );
-        const result = await ctx.env.RECIPE_AI.personalize({
-          recipe: recipeDetailToParsedRecipe(recipe),
-          goals: input.goals as PersonalizationGoal[],
-          allergyNotes: input.allergyNotes ?? null,
-          customNotes: input.customNotes ?? null,
-        });
-
-        if (!result.success) {
-          throw new PublicTRPCError({
-            code: "BAD_GATEWAY",
-            appCode: "SERVICE_UNAVAILABLE",
-          });
-        }
-
-        return result;
-      } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        console.error("Error personalising recipe:", err);
-        throw mapServiceError(err);
-      }
-    }),
-
-  generateRecipeImage: authedProcedure
-    .input(GenerateRecipeImageValidator)
-    .mutation(async ({ ctx, input }) => {
-      if (input instanceof type.errors) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: input.summary,
-        });
-      }
-      validateGenerateRecipeImageInput(input);
-
+    try {
       await requirePro(ctx);
-      await enforceRateLimit(ctx, "recipe_generate_image");
-      const result = await ctx.env.RECIPE_AI.generateImage({
-        name: input.name,
-        description: input.description ?? null,
-        ingredients: input.ingredients ?? [],
-        instructions: input.instructions ?? [],
-        ownerId: ctx.user.id,
+      await enforceRateLimit(ctx, "recipe_personalize");
+      const recipe = await getRecipeDetail(ctx.db, input.recipeId, ctx.user.id);
+      const result = await ctx.env.RECIPE_AI.personalize({
+        recipe: recipeDetailToParsedRecipe(recipe),
+        goals: input.goals as PersonalizationGoal[],
+        allergyNotes: input.allergyNotes ?? null,
+        customNotes: input.customNotes ?? null,
       });
 
       if (!result.success) {
@@ -842,8 +501,45 @@ export const recipeRouter = router({
       }
 
       return result;
-    }),
+    } catch (err) {
+      if (err instanceof TRPCError) throw err;
+      console.error("Error personalising recipe:", err);
+      throw mapServiceError(err);
+    }
+  });
 
+const generateRecipeImage = authedProcedure
+  .input(GenerateRecipeImageValidator)
+  .mutation(async ({ ctx, input }) => {
+    if (input instanceof type.errors) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: input.summary,
+      });
+    }
+    validateGenerateRecipeImageInput(input);
+
+    await requirePro(ctx);
+    await enforceRateLimit(ctx, "recipe_generate_image");
+    const result = await ctx.env.RECIPE_AI.generateImage({
+      name: input.name,
+      description: input.description ?? null,
+      ingredients: input.ingredients ?? [],
+      instructions: input.instructions ?? [],
+      ownerId: ctx.user.id,
+    });
+
+    if (!result.success) {
+      throw new PublicTRPCError({
+        code: "BAD_GATEWAY",
+        appCode: "SERVICE_UNAVAILABLE",
+      });
+    }
+
+    return result;
+  });
+
+const recipeHeadRouter = router({
   postRecipe: authedProcedure
     .input(RecipePostValidator)
     .mutation(async ({ input, ctx }) => {
@@ -857,43 +553,6 @@ export const recipeRouter = router({
       validateRecipePayload(input);
 
       const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
-      const importJobId = input.importJobId;
-
-      if (importJobId) {
-        if (!isValidImportImageStagingId(importJobId)) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Invalid import job id.",
-          });
-        }
-
-        const [importJob] = await ctx.db
-          .select({
-            id: recipeImportJobs.id,
-            status: recipeImportJobs.status,
-          })
-          .from(recipeImportJobs)
-          .where(
-            and(
-              eq(recipeImportJobs.id, importJobId),
-              eq(recipeImportJobs.userId, ctx.user.id),
-            ),
-          )
-          .limit(1);
-
-        if (!importJob) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Import job not found.",
-          });
-        }
-        if (importJob.status !== "ready") {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "Import job is not ready.",
-          });
-        }
-      }
 
       let movedKeys: string[] = [];
 
@@ -904,34 +563,10 @@ export const recipeRouter = router({
           ownerId: ctx.user.id,
         });
         movedKeys = preparedImages.movedKeys;
-        const {
-          importJobId: _importJobId,
-          imageUploadIds: _imageUploadIds,
-          ...recipeInput
-        } = input;
+        const { imageUploadIds: _imageUploadIds, ...recipeInput } = input;
 
         const { recipe, activityEvent } = await ctx.db.transaction(
           async (tx) => {
-            if (importJobId) {
-              const [consumedJob] = await tx
-                .delete(recipeImportJobs)
-                .where(
-                  and(
-                    eq(recipeImportJobs.id, importJobId),
-                    eq(recipeImportJobs.userId, ctx.user.id),
-                    eq(recipeImportJobs.status, "ready"),
-                  ),
-                )
-                .returning({ id: recipeImportJobs.id });
-
-              if (!consumedJob) {
-                throw new TRPCError({
-                  code: "CONFLICT",
-                  message: "Import job is no longer available.",
-                });
-              }
-            }
-
             const recipe = await createRecipeInTransaction(tx, ctx.user.id, {
               ...recipeInput,
               images: preparedImages.images,
@@ -954,13 +589,6 @@ export const recipeRouter = router({
           },
         );
         movedKeys = [];
-
-        if (importJobId) {
-          await cleanupRecipeImportImagesBestEffort(
-            ctx.env.IMAGE_SERVICE,
-            importJobId,
-          );
-        }
 
         // Schedule propagation without blocking the response.
         if (activityEvent) {
@@ -1115,93 +743,91 @@ export const recipeRouter = router({
         throw mapServiceError(error);
       }
     }),
+});
 
-  getNutrition: authedProcedure
-    .input(GetNutritionValidator)
-    .mutation(async ({ ctx, input }) => {
-      if (input instanceof type.errors) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: input.summary,
+const getNutrition = authedProcedure
+  .input(GetNutritionValidator)
+  .mutation(async ({ ctx, input }) => {
+    if (input instanceof type.errors) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: input.summary,
+      });
+    }
+
+    try {
+      await requirePro(ctx);
+      await enforceRateLimit(ctx, "recipe_nutrition");
+
+      const recipe = await getRecipeDetail(ctx.db, input.recipeId, ctx.user.id);
+      const stored = await getStoredRecipeNutrition(ctx.db, input.recipeId);
+      if (hasCompleteNutritionCore(stored)) return stored;
+
+      let result: NutritionResponse;
+      try {
+        result = await ctx.env.RECIPE_AI.nutrition({
+          recipe: recipeDetailToParsedRecipe(recipe),
+          sourceUrl: recipe.sourceUrl,
+        });
+      } catch (nutritionError) {
+        console.error("Nutrition service call failed:", nutritionError);
+        throw new PublicTRPCError({
+          code: "BAD_GATEWAY",
+          appCode: "SERVICE_UNAVAILABLE",
+          cause: nutritionError,
         });
       }
 
-      try {
-        await requirePro(ctx);
-        await enforceRateLimit(ctx, "recipe_nutrition");
-
-        const recipe = await getRecipeDetail(
-          ctx.db,
-          input.recipeId,
-          ctx.user.id,
-        );
-        const stored = await getStoredRecipeNutrition(ctx.db, input.recipeId);
-        if (hasCompleteNutritionCore(stored)) return stored;
-
-        let result: NutritionResponse;
-        try {
-          result = await ctx.env.RECIPE_AI.nutrition({
-            recipe: recipeDetailToParsedRecipe(recipe),
-            sourceUrl: recipe.sourceUrl,
-          });
-        } catch (nutritionError) {
-          console.error("Nutrition service call failed:", nutritionError);
-          throw new PublicTRPCError({
-            code: "BAD_GATEWAY",
-            appCode: "SERVICE_UNAVAILABLE",
-            cause: nutritionError,
-          });
-        }
-
-        if (!result.success) {
-          throw new PublicTRPCError({
-            code: "BAD_GATEWAY",
-            appCode: "SERVICE_UNAVAILABLE",
-          });
-        }
-
-        const generatedNutrition = result.data;
-        const hasNutritionValues = [
-          generatedNutrition.calories,
-          generatedNutrition.protein,
-          generatedNutrition.carbohydrates,
-          generatedNutrition.fat,
-          generatedNutrition.saturatedFat,
-          generatedNutrition.fiber,
-          generatedNutrition.sugar,
-          generatedNutrition.sodium,
-          generatedNutrition.cholesterol,
-          generatedNutrition.potassium,
-          generatedNutrition.vitaminA,
-          generatedNutrition.vitaminC,
-          generatedNutrition.calcium,
-          generatedNutrition.iron,
-        ].some((value) => typeof value === "number" && Number.isFinite(value));
-
-        if (!hasNutritionValues) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Could not generate nutrition for this recipe.",
-          });
-        }
-
-        const generatedAt = new Date();
-        try {
-          return await upsertRecipeNutrition(ctx.db, input.recipeId, {
-            ...generatedNutrition,
-            generatedAt,
-          });
-        } catch (storageError) {
-          console.error("Failed to store recipe nutrition:", storageError);
-          return { ...generatedNutrition, generatedAt };
-        }
-      } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        console.error("Error fetching recipe nutrition:", err);
-        throw mapServiceError(err);
+      if (!result.success) {
+        throw new PublicTRPCError({
+          code: "BAD_GATEWAY",
+          appCode: "SERVICE_UNAVAILABLE",
+        });
       }
-    }),
 
+      const generatedNutrition = result.data;
+      const hasNutritionValues = [
+        generatedNutrition.calories,
+        generatedNutrition.protein,
+        generatedNutrition.carbohydrates,
+        generatedNutrition.fat,
+        generatedNutrition.saturatedFat,
+        generatedNutrition.fiber,
+        generatedNutrition.sugar,
+        generatedNutrition.sodium,
+        generatedNutrition.cholesterol,
+        generatedNutrition.potassium,
+        generatedNutrition.vitaminA,
+        generatedNutrition.vitaminC,
+        generatedNutrition.calcium,
+        generatedNutrition.iron,
+      ].some((value) => typeof value === "number" && Number.isFinite(value));
+
+      if (!hasNutritionValues) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Could not generate nutrition for this recipe.",
+        });
+      }
+
+      const generatedAt = new Date();
+      try {
+        return await upsertRecipeNutrition(ctx.db, input.recipeId, {
+          ...generatedNutrition,
+          generatedAt,
+        });
+      } catch (storageError) {
+        console.error("Failed to store recipe nutrition:", storageError);
+        return { ...generatedNutrition, generatedAt };
+      }
+    } catch (err) {
+      if (err instanceof TRPCError) throw err;
+      console.error("Error fetching recipe nutrition:", err);
+      throw mapServiceError(err);
+    }
+  });
+
+const recipeTailRouter = router({
   getRecipeDetail: authedProcedure
     .input(
       type({
@@ -1416,4 +1042,13 @@ export const recipeRouter = router({
         });
       }
     }),
+});
+
+export const recipeRouter = mergeRouters(recipeHeadRouter, recipeTailRouter);
+
+export const recipeAiRouter = router({
+  generateRecipeChat,
+  personalizeRecipe,
+  generateRecipeImage,
+  getNutrition,
 });

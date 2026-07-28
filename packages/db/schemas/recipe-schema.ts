@@ -1,4 +1,4 @@
-import type { ParseResponse } from "@repo/contracts";
+import type { RecipeImportParseResponse } from "@repo/contracts";
 import { sql } from "drizzle-orm";
 import {
   pgTable,
@@ -122,19 +122,22 @@ export const recipeImportJobs = pgTable(
     importType: text("import_type").notNull().default("smart"),
     mode: text("mode").notNull(),
     title: text("title").notNull(),
-    inputData: text("input_data").notNull(),
-    mimeType: text("mime_type"),
+    sourceData: text("source_data"),
+    requestFingerprint: text("request_fingerprint").notNull(),
     status: text("status").notNull().default("pending"),
-    recipe: jsonb("recipe").$type<ParseResponse | null>(),
+    recipe: jsonb("recipe").$type<RecipeImportParseResponse | null>(),
     error: text("error"),
     errorCode: text("error_code"),
+    completionFingerprint: text("completion_fingerprint"),
+    recipeId: integer("recipe_id").references(() => recipes.id, {
+      onDelete: "set null",
+    }),
+    consumedAt: timestamp("consumed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     completedAt: timestamp("completed_at"),
-    dismissedAt: timestamp("dismissed_at"),
     processingStartedAt: timestamp("processing_started_at"),
     usagePeriodStart: timestamp("usage_period_start"),
-    usageConsumedAt: timestamp("usage_consumed_at"),
     refundedAt: timestamp("refunded_at"),
   },
   (table) => [
@@ -143,6 +146,9 @@ export const recipeImportJobs = pgTable(
       table.userId,
       table.createdAt.desc(),
     ),
+    uniqueIndex("recipe_import_jobs_recipe_id_unique_idx")
+      .on(table.recipeId)
+      .where(sql`${table.recipeId} IS NOT NULL`),
     check(
       "recipe_import_jobs_import_type_check",
       sql`${table.importType} IN ('basic', 'smart')`,
@@ -153,11 +159,11 @@ export const recipeImportJobs = pgTable(
     ),
     check(
       "recipe_import_jobs_status_check",
-      sql`${table.status} IN ('pending', 'processing', 'ready', 'failed')`,
+      sql`${table.status} IN ('pending', 'processing', 'ready', 'failed', 'consumed')`,
     ),
     check(
       "recipe_import_jobs_error_code_check",
-      sql`${table.errorCode} IS NULL OR ${table.errorCode} IN ('IMPORT_INVALID_URL', 'IMPORT_UNSUPPORTED_SOURCE', 'IMPORT_SOURCE_UNAVAILABLE', 'IMPORT_RECIPE_NOT_FOUND', 'IMPORT_IMAGE_INVALID', 'PAYLOAD_TOO_LARGE', 'IMPORT_TIMED_OUT', 'IMPORT_FAILED', 'SERVICE_UNAVAILABLE')`,
+      sql`${table.errorCode} IS NULL OR ${table.errorCode} IN ('IMPORT_ACTIVE_LIMIT_REACHED', 'IMPORT_INVALID_URL', 'IMPORT_UNSUPPORTED_SOURCE', 'IMPORT_SOURCE_UNAVAILABLE', 'IMPORT_RECIPE_NOT_FOUND', 'IMPORT_IMAGE_INVALID', 'PAYLOAD_TOO_LARGE', 'IMPORT_TIMED_OUT', 'IMPORT_FAILED', 'SERVICE_UNAVAILABLE')`,
     ),
   ],
 );

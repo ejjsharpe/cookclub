@@ -6,7 +6,7 @@ export default defineConfig({
     cloudflareTest({
       main: "./src/index.ts",
       miniflare: {
-        compatibilityDate: "2025-02-20",
+        compatibilityDate: "2026-07-24",
         compatibilityFlags: ["nodejs_compat"],
         // Add KV namespace for testing (in-memory)
         kvNamespaces: ["RECIPE_CACHE"],
