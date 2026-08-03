@@ -28,8 +28,8 @@
   ],
   "devDependencies": {
     "eas-cli": "21.4.0",
-    "eslint": "9.39.5",
-    "eslint-config-universe": "15.2.0",
+    "eslint": "10.8.0",
+    "eslint-config-universe": "16.0.0",
     "nx": "23.1.1",
     "prettier": "3.9.6"
   },
