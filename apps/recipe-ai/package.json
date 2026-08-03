@@ -19,18 +19,18 @@
     "test:all": "vitest run && vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@cloudflare/puppeteer": "1.1.0",
+    "@cloudflare/puppeteer": "1.2.0",
     "@repo/contracts": "workspace:*",
     "@repo/shared": "workspace:*",
     "arktype": "2.2.0",
     "cheerio": "1.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.16.9",
+    "@cloudflare/vitest-pool-workers": "0.19.1",
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
-    "wrangler": "4.112.0"
+    "wrangler": "4.116.0"
   },
   "eslintConfig": {
     "extends": "universe/node"

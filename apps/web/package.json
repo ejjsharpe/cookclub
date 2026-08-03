@@ -24,7 +24,7 @@
     "@types/react-dom": "19.2.3",
     "eslint-config-universe": "15.2.0",
     "typescript": "6.0.3",
-    "wrangler": "4.112.0"
+    "wrangler": "4.116.0"
   },
   "eslintConfig": {
     "extends": "universe/web"
