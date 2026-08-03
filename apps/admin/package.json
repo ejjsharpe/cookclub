@@ -23,7 +23,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.39.0",
+    "@cloudflare/vite-plugin": "1.50.0",
     "@cloudflare/workers-types": "5.20260801.1",
     "@repo/tsconfig": "workspace:*",
     "@tanstack/router-plugin": "1.168.23",
