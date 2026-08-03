@@ -26,13 +26,13 @@
     "@cloudflare/vite-plugin": "1.39.0",
     "@cloudflare/workers-types": "4.20260525.1",
     "@repo/tsconfig": "workspace:*",
-    "@tanstack/router-plugin": "1.168.13",
+    "@tanstack/router-plugin": "1.168.23",
     "@types/react": "19.2.15",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.2",
-    "eslint-config-universe": "15.2.0",
-    "typescript": "6.0.3",
-    "vite": "8.0.14",
+    "@vitejs/plugin-react": "6.0.5",
+    "eslint-config-universe": "16.0.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.0",
     "wrangler": "4.112.0"
   },
   "eslintConfig": {

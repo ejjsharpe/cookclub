@@ -17,9 +17,9 @@
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "@types/node": "25.9.1",
-    "eslint-config-universe": "15.2.0",
-    "typescript": "6.0.3"
+    "@types/node": "26.1.2",
+    "eslint-config-universe": "16.0.0",
+    "typescript": "7.0.2"
   },
   "eslintConfig": {
     "extends": "universe/node"
