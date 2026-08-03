@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -8,7 +9,7 @@ import {
   uniqueIndex,
   check,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+
 import { user } from "./auth-schema";
 import { recipes } from "./recipe-schema";
 
@@ -27,6 +28,7 @@ export const activityEvents = pgTable(
     // Denormalized engagement counts
     likeCount: integer("like_count").notNull().default(0),
     commentCount: integer("comment_count").notNull().default(0),
+    moderationState: text("moderation_state").notNull().default("visible"),
     createdAt: timestamp("created_at").notNull(),
   },
   (table) => [
@@ -39,6 +41,10 @@ export const activityEvents = pgTable(
     check(
       "activity_events_type_check",
       sql`${table.type} IN ('recipe_import', 'cooking_review')`,
+    ),
+    check(
+      "activity_events_moderation_state_check",
+      sql`${table.moderationState} IN ('visible', 'hidden')`,
     ),
   ],
 );
@@ -60,6 +66,7 @@ export const cookingReviews = pgTable(
     ),
     rating: integer("rating").notNull(), // 1-5 stars
     reviewText: text("review_text"),
+    moderationState: text("moderation_state").notNull().default("visible"),
     createdAt: timestamp("created_at").notNull(),
     updatedAt: timestamp("updated_at").notNull(),
   },
@@ -71,6 +78,10 @@ export const cookingReviews = pgTable(
       table.recipeId,
     ),
     check("cooking_reviews_rating_check", sql`${table.rating} BETWEEN 1 AND 5`),
+    check(
+      "cooking_reviews_moderation_state_check",
+      sql`${table.moderationState} IN ('visible', 'hidden')`,
+    ),
   ],
 );
 

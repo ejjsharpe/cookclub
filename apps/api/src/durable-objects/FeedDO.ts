@@ -94,7 +94,7 @@ export class FeedDO implements DurableObject {
    */
   async getFeedIds(
     cursor?: string,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<GetFeedIdsResponse> {
     const allItems = await this.state.storage.list<number>({
       prefix: ITEMS_PREFIX,

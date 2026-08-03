@@ -3,6 +3,11 @@ import {
   subscriptionAdminOverrides,
   subscriptionEntitlements,
   user,
+  activityEvents,
+  comments,
+  contentReports,
+  cookingReviews,
+  recipes,
 } from "@repo/db/schemas";
 import {
   clearSubscriptionAdminOverride,
@@ -23,6 +28,7 @@ import {
   or,
   sql,
   type SQL,
+  gte,
 } from "drizzle-orm";
 
 import { deleteUserAccountData } from "./user-router";
@@ -83,6 +89,26 @@ const UserIdValidator = type({
 const DeleteUserValidator = type({
   userId: "string",
   confirmationEmail: "string",
+});
+
+const ReportTargetTypeValidator = type(
+  "'user' | 'comment' | 'activity' | 'recipe'",
+);
+const ReportReasonValidator = type(
+  "'spam_scam' | 'harassment_hate' | 'sexual_content' | 'violence_danger' | 'child_safety' | 'intellectual_property' | 'other'",
+);
+const ListReportsValidator = type({
+  "status?": "'open' | 'dismissed' | 'resolved'",
+  "targetType?": ReportTargetTypeValidator,
+  "reason?": ReportReasonValidator,
+  "createdSince?": "Date",
+  "limit?": "number",
+  "offset?": "number",
+});
+const ResolveReportValidator = type({
+  reportId: "number",
+  action: "'dismiss' | 'hide' | 'restore' | 'ban' | 'unban'",
+  "notes?": "string",
 });
 
 type ListUsersInput = typeof ListUsersValidator.infer;
@@ -252,6 +278,211 @@ function getSubscriptionSource(
 }
 
 export const adminRouter = router({
+  listReports: adminProcedure
+    .input(ListReportsValidator)
+    .query(async ({ ctx, input }) => {
+      const limit = normalizeLimit(input.limit);
+      const offset = normalizeOffset(input.offset);
+      const filters: SQL[] = [];
+      if (input.status) filters.push(eq(contentReports.status, input.status));
+      if (input.targetType) {
+        filters.push(eq(contentReports.targetType, input.targetType));
+      }
+      if (input.reason) filters.push(eq(contentReports.reason, input.reason));
+      if (input.createdSince) {
+        filters.push(gte(contentReports.createdAt, input.createdSince));
+      }
+      const where = filters.length > 0 ? and(...filters) : undefined;
+
+      const [reports, totalRows] = await Promise.all([
+        ctx.db
+          .select({
+            id: contentReports.id,
+            reporterUserId: contentReports.reporterUserId,
+            targetType: contentReports.targetType,
+            targetId: contentReports.targetId,
+            targetOwnerUserId: contentReports.targetOwnerUserId,
+            reason: contentReports.reason,
+            details: contentReports.details,
+            targetSnapshot: contentReports.targetSnapshot,
+            status: contentReports.status,
+            resolutionAction: contentReports.resolutionAction,
+            resolutionNotes: contentReports.resolutionNotes,
+            resolvedByUserId: contentReports.resolvedByUserId,
+            resolvedAt: contentReports.resolvedAt,
+            createdAt: contentReports.createdAt,
+            updatedAt: contentReports.updatedAt,
+          })
+          .from(contentReports)
+          .where(where)
+          .orderBy(desc(contentReports.createdAt))
+          .limit(limit)
+          .offset(offset),
+        ctx.db.select({ total: count() }).from(contentReports).where(where),
+      ]);
+
+      return {
+        reports,
+        total: totalRows[0]?.total ?? 0,
+        limit,
+        offset,
+      };
+    }),
+
+  resolveReport: adminProcedure
+    .input(ResolveReportValidator)
+    .mutation(async ({ ctx, input }) => {
+      const notes = input.notes?.trim() || null;
+      if (notes && notes.length > 2_000) {
+        throw publicAdminInputError("Resolution notes are too long.");
+      }
+      if (input.action === "ban" || input.action === "unban") {
+        await requireAdminPermission(ctx, "ban");
+      }
+
+      const updatedReport = await ctx.db.transaction(async (tx) => {
+        const [report] = await tx
+          .select()
+          .from(contentReports)
+          .where(eq(contentReports.id, input.reportId))
+          .for("update")
+          .limit(1);
+        if (!report) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Report not found.",
+          });
+        }
+        if (report.status !== "open") {
+          throw new PublicTRPCError({
+            code: "CONFLICT",
+            appCode: "CONFLICT",
+            message: "This report has already been resolved.",
+          });
+        }
+
+        const numericTargetId = Number(report.targetId);
+        const isContentTarget = report.targetType !== "user";
+        if (
+          (input.action === "hide" || input.action === "restore") &&
+          (!isContentTarget || !Number.isInteger(numericTargetId))
+        ) {
+          throw publicAdminInputError(
+            "Hide and restore actions require a content report.",
+          );
+        }
+
+        const targetUserId =
+          report.targetType === "user"
+            ? report.targetId
+            : report.targetOwnerUserId;
+        if (
+          (input.action === "ban" || input.action === "unban") &&
+          !targetUserId
+        ) {
+          throw publicAdminInputError("This report has no user to moderate.");
+        }
+
+        if (input.action === "ban" && targetUserId) {
+          if (targetUserId === ctx.user.id) {
+            throw publicAdminInputError(
+              "You cannot ban your own admin account.",
+            );
+          }
+          try {
+            await getAuth(ctx.env).api.banUser({
+              body: {
+                userId: targetUserId,
+                banReason: notes ?? `Moderation report #${report.id}`,
+              },
+              headers: ctx.req.headers,
+            });
+          } catch (error) {
+            throw mapAuthError(error, "Could not ban the reported user.");
+          }
+        } else if (input.action === "unban" && targetUserId) {
+          try {
+            await getAuth(ctx.env).api.unbanUser({
+              body: { userId: targetUserId },
+              headers: ctx.req.headers,
+            });
+          } catch (error) {
+            throw mapAuthError(error, "Could not unban the reported user.");
+          }
+        }
+
+        const moderationState = input.action === "hide" ? "hidden" : "visible";
+        if (input.action === "hide" || input.action === "restore") {
+          if (report.targetType === "comment") {
+            await tx
+              .update(comments)
+              .set({ moderationState })
+              .where(eq(comments.id, numericTargetId));
+          } else if (report.targetType === "activity") {
+            await tx
+              .update(activityEvents)
+              .set({ moderationState })
+              .where(eq(activityEvents.id, numericTargetId));
+            await tx
+              .update(cookingReviews)
+              .set({ moderationState })
+              .where(eq(cookingReviews.activityEventId, numericTargetId));
+          } else if (report.targetType === "recipe") {
+            await tx
+              .update(recipes)
+              .set({ moderationState })
+              .where(eq(recipes.id, numericTargetId));
+            await tx
+              .update(activityEvents)
+              .set({ moderationState })
+              .where(eq(activityEvents.recipeId, numericTargetId));
+          }
+        }
+
+        const now = new Date();
+        const [resolved] = await tx
+          .update(contentReports)
+          .set({
+            status: input.action === "dismiss" ? "dismissed" : "resolved",
+            resolutionAction: input.action,
+            resolutionNotes: notes,
+            resolvedByUserId: ctx.user.id,
+            resolvedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(contentReports.id, input.reportId),
+              eq(contentReports.status, "open"),
+            ),
+          )
+          .returning();
+        if (!resolved) {
+          throw new PublicTRPCError({
+            code: "CONFLICT",
+            appCode: "CONFLICT",
+            message: "This report has already been resolved.",
+          });
+        }
+
+        await recordAdminAuditEvent(tx, {
+          eventType: "moderation.report.resolve",
+          actorUserId: ctx.user.id,
+          targetUserId: targetUserId ?? null,
+          reason: notes,
+          metadata: {
+            reportId: report.id,
+            action: input.action,
+            targetType: report.targetType,
+            targetId: report.targetId,
+          },
+        });
+        return resolved;
+      });
+
+      return { report: updatedReport };
+    }),
+
   listUsers: adminProcedure
     .input(ListUsersValidator)
     .query(async ({ ctx, input }) => {

@@ -24,10 +24,7 @@ function retryDelay(attempts: number, retryAfterSeconds?: number) {
     FAST_RETRY_DELAYS_SECONDS[
       Math.min(attempts - 1, FAST_RETRY_DELAYS_SECONDS.length - 1)
     ] ?? 40;
-  if (
-    retryAfterSeconds === undefined ||
-    !Number.isFinite(retryAfterSeconds)
-  ) {
+  if (retryAfterSeconds === undefined || !Number.isFinite(retryAfterSeconds)) {
     return configured;
   }
   return Math.min(

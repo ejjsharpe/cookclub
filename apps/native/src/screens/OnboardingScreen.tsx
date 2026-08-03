@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, ScrollView, Dimensions } from "react-native";
+import { View, ScrollView, useWindowDimensions } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Animated, {
   useSharedValue,
@@ -15,6 +15,10 @@ import { OnboardingStepFollowCooks } from "./onboarding-steps/OnboardingStepFoll
 import { OnboardingStepMeasurements } from "./onboarding-steps/OnboardingStepMeasurements";
 import { OnboardingStepProfile } from "./onboarding-steps/OnboardingStepProfile";
 
+import {
+  currentTermsAcceptanceInput,
+  useAcceptCurrentTerms,
+} from "@/api/legal";
 import { useCheckUsername, useCompleteOnboarding, useUser } from "@/api/user";
 import { OnboardingProgress } from "@/components/OnboardingProgress";
 import { SafeAreaView } from "@/components/SafeAreaView";
@@ -28,18 +32,19 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const TOTAL_STEPS = 3;
 const SPRING_CONFIG = { damping: 20, stiffness: 170, mass: 0.8 };
 const TIMING_CONFIG = { duration: 250, easing: Easing.out(Easing.cubic) };
 const BACK_BUTTON_WIDTH = 88;
 
 export default function OnboardingScreen() {
+  const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { data: userData } = useUser();
   const user = userData?.user;
   const { triggerWelcome } = useWelcomeOverlay();
   const completeOnboarding = useCompleteOnboarding();
+  const acceptTerms = useAcceptCurrentTerms();
   const { upload: uploadAvatar, isUploading: isUploadingAvatar } =
     useAvatarUpload();
 
@@ -85,10 +90,10 @@ export default function OnboardingScreen() {
   const navigateToStep = useCallback(
     (step: number) => {
       setCurrentStep(step);
-      translateX.set(withSpring(-(step - 1) * SCREEN_WIDTH, SPRING_CONFIG));
+      translateX.set(withSpring(-(step - 1) * screenWidth, SPRING_CONFIG));
       backButtonProgress.set(withTiming(step > 1 ? 1 : 0, TIMING_CONFIG));
     },
-    [translateX, backButtonProgress],
+    [translateX, backButtonProgress, screenWidth],
   );
 
   const handleNext = async () => {
@@ -102,6 +107,8 @@ export default function OnboardingScreen() {
     } else {
       setIsSubmitting(true);
       try {
+        await acceptTerms.mutateAsync(currentTermsAcceptanceInput);
+
         if (profileImage) {
           await uploadAvatar(profileImage);
         }
@@ -158,9 +165,15 @@ export default function OnboardingScreen() {
         <VSpace size={24} />
 
         <View style={styles.pagerContainer}>
-          <Animated.View style={[styles.pagerRow, animatedPagerStyle]}>
+          <Animated.View
+            style={[
+              styles.pagerRow,
+              { width: screenWidth * TOTAL_STEPS },
+              animatedPagerStyle,
+            ]}
+          >
             <KeyboardAwareScrollView
-              style={styles.stepContainer}
+              style={[styles.stepContainer, { width: screenWidth }]}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -185,7 +198,13 @@ export default function OnboardingScreen() {
               />
             </KeyboardAwareScrollView>
 
-            <View style={[styles.stepContainer, styles.stepContent]}>
+            <View
+              style={[
+                styles.stepContainer,
+                styles.stepContent,
+                { width: screenWidth },
+              ]}
+            >
               <OnboardingStepMeasurements
                 selected={measurementSystem}
                 onSelect={setMeasurementSystem}
@@ -193,7 +212,7 @@ export default function OnboardingScreen() {
             </View>
 
             <ScrollView
-              style={styles.stepContainer}
+              style={[styles.stepContainer, { width: screenWidth }]}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -261,12 +280,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   pagerRow: {
     flexDirection: "row",
-    width: SCREEN_WIDTH * TOTAL_STEPS,
     flex: 1,
   },
-  stepContainer: {
-    width: SCREEN_WIDTH,
-  },
+  stepContainer: {},
   stepContent: {
     paddingHorizontal: 20,
   },

@@ -41,6 +41,7 @@ import {
   useSuggestedUsers,
   type SearchUser,
 } from "@/api/follows";
+import { useBlockUser } from "@/api/moderation";
 import { useUnreadNotificationCount } from "@/api/notification";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser, User } from "@/api/user";
@@ -54,6 +55,10 @@ import { FollowUserRow } from "@/components/FollowUserRow";
 import { ImportActivityCard } from "@/components/ImportActivityCard";
 import { Ionicons } from "@/components/Ionicons";
 import { NotificationBadge } from "@/components/NotificationBadge";
+import {
+  ReportContentSheet,
+  type ReportContentSheetRef,
+} from "@/components/ReportContentSheet";
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { SearchBar, SEARCH_BAR_HEIGHT } from "@/components/SearchBar";
 import { HomeFeedSkeleton, SkeletonContainer } from "@/components/Skeleton";
@@ -243,6 +248,7 @@ export const HomeScreen = () => {
   const searchListRef = useRef<FlatList>(null);
   const searchBarRef = useRef<View>(null);
   const commentsSheetRef = useRef<CommentsSheetRef>(null);
+  const reportSheetRef = useRef<ReportContentSheetRef>(null);
   const loadLatestTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -258,6 +264,7 @@ export const HomeScreen = () => {
   );
   const listBottomPadding = TAB_BAR_LIST_CLEARANCE;
   const importRecipeMutation = useImportRecipe();
+  const blockUserMutation = useBlockUser();
   const { submitImport } = useRecipeImport();
   const session = useSessionContext();
   const { isPro, requireSmartImport } = useSubscription();
@@ -583,6 +590,41 @@ export const HomeScreen = () => {
     commentsSheetRef.current?.present();
   }, []);
 
+  const handleReportActivity = useCallback((activityEventId: number) => {
+    reportSheetRef.current?.present({
+      targetType: "activity",
+      targetId: String(activityEventId),
+    });
+  }, []);
+
+  const handleBlockUser = useCallback(
+    (userId: string) => {
+      Alert.alert(
+        "Block this cook?",
+        "You will no longer see each other's profiles or content. Previous follows will be removed.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Block",
+            style: "destructive",
+            onPress: () =>
+              blockUserMutation.mutate(
+                { userId },
+                {
+                  onError: (error) =>
+                    alertApiError("Block Failed", error, {
+                      operation: "moderation.blockUser",
+                      fallback: "Could not block this user. Please try again.",
+                    }),
+                },
+              ),
+          },
+        ],
+      );
+    },
+    [blockUserMutation],
+  );
+
   // ─── Scroll Handler with Header Fade ────────────────────────────────────────────
   const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -672,6 +714,8 @@ export const HomeScreen = () => {
             onUserPress={handleUserPress}
             onLikePress={handleLikePress}
             onCommentPress={handleCommentPress}
+            onReportPress={handleReportActivity}
+            onBlockPress={handleBlockUser}
             onImportPress={handleImportRecipe}
             onImportRecipePress={handleImportExistingRecipe}
             currentUserId={currentUserId}
@@ -689,6 +733,8 @@ export const HomeScreen = () => {
           onUserPress={handleUserPress}
           onLikePress={handleLikePress}
           onCommentPress={handleCommentPress}
+          onReportPress={handleReportActivity}
+          onBlockPress={handleBlockUser}
           onImportPress={handleImportRecipe}
           onImportRecipePress={handleImportExistingRecipe}
           currentUserId={currentUserId}
@@ -703,6 +749,8 @@ export const HomeScreen = () => {
       handleUserPress,
       handleLikePress,
       handleCommentPress,
+      handleReportActivity,
+      handleBlockUser,
       handleImportRecipe,
       handleImportExistingRecipe,
       currentUserId,
@@ -1068,6 +1116,7 @@ export const HomeScreen = () => {
         ref={commentsSheetRef}
         activityEventId={commentActivityId}
       />
+      <ReportContentSheet ref={reportSheetRef} />
     </View>
   );
 };

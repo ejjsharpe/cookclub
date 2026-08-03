@@ -39,12 +39,10 @@ const ImageGrid = memo(function ImageGrid({
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
   const imageSources = useMemo(
     () =>
-      images
-        .slice(0, 4)
-        .flatMap((image) => {
-          const uri = getImageUrl(image, "recipe-thumb");
-          return uri ? [{ uri }] : [];
-        }),
+      images.slice(0, 4).flatMap((image) => {
+        const uri = getImageUrl(image, "recipe-thumb");
+        return uri ? [{ uri }] : [];
+      }),
     [images],
   );
   const count = Math.min(imageSources.length, 4);

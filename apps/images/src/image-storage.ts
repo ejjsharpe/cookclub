@@ -1,10 +1,5 @@
 type R2ObjectBodyInput =
-  | ReadableStream
-  | ArrayBuffer
-  | ArrayBufferView
-  | string
-  | null
-  | Blob;
+  ReadableStream | ArrayBuffer | ArrayBufferView | string | null | Blob;
 
 export async function putAndInspectImage<T>(
   bucket: R2Bucket,

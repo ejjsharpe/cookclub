@@ -8,35 +8,31 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "check-types": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern",
+    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern --max-warnings=0",
     "deploy": "vite build && wrangler deploy",
     "deploy:prod": "CLOUDFLARE_ENV=production vite build && wrangler deploy --env production"
   },
   "dependencies": {
     "@repo/trpc": "workspace:*",
-    "@tanstack/react-query": "5.100.14",
-    "@tanstack/react-router": "1.170.10",
-    "@tanstack/react-start": "1.168.18",
-    "better-auth": "1.6.11",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-router": "1.170.18",
+    "@tanstack/react-start": "1.168.34",
+    "better-auth": "1.6.25",
     "lucide-react": "1.17.0",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.39.0",
-    "@cloudflare/workers-types": "5.20260724.1",
+    "@cloudflare/workers-types": "5.20260801.1",
     "@repo/tsconfig": "workspace:*",
-    "@tanstack/router-plugin": "1.168.13",
-    "@types/react": "19.2.15",
+    "@tanstack/router-plugin": "1.168.23",
+    "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.2",
-    "eslint-config-universe": "15.2.0",
+    "@vitejs/plugin-react": "6.0.5",
     "typescript": "6.0.3",
-    "vite": "8.0.14",
-    "wrangler": "4.112.0"
-  },
-  "eslintConfig": {
-    "extends": "universe/web"
+    "vite": "8.2.0",
+    "wrangler": "4.118.0"
   },
   "nx": {
     "tags": [

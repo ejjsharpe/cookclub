@@ -17,14 +17,10 @@ export function isAdaptyConfigured() {
 export function activateAdaptyAtStartup() {
   if (!ADAPTY_SDK_KEY || activationPromise) return activationPromise;
 
-  activationPromise = adapty
-    .activate(ADAPTY_SDK_KEY, {
-      __ignoreActivationOnFastRefresh: true,
-    })
-    .catch((error) => {
-      activationPromise = null;
-      throw error;
-    });
+  activationPromise = adapty.activate(ADAPTY_SDK_KEY).catch((error) => {
+    activationPromise = null;
+    throw error;
+  });
 
   return activationPromise;
 }

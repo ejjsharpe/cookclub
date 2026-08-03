@@ -1,12 +1,7 @@
 import type { PublicImageAsset } from "./images";
 
 export type FeedSourceType =
-  | "url"
-  | "image"
-  | "text"
-  | "ai"
-  | "manual"
-  | "user";
+  "url" | "image" | "text" | "ai" | "manual" | "user";
 
 export type PublicSubscriptionTier = "free" | "pro";
 

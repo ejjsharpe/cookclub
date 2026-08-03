@@ -40,6 +40,7 @@ function createSelectLimitBuilder(result: unknown[]) {
   const builder = {
     from: vi.fn(() => builder),
     where: vi.fn(() => builder),
+    for: vi.fn(() => builder),
     limit: vi.fn().mockResolvedValue(result),
   };
 
@@ -114,6 +115,29 @@ describe("adminRouter", () => {
       "code",
       "FORBIDDEN",
     );
+  });
+
+  it("rejects attempts to resolve a closed moderation report", async () => {
+    const ctx = createContext({
+      db: createDb([
+        [
+          {
+            id: 42,
+            targetType: "comment",
+            targetId: "12",
+            targetOwnerUserId: "user-1",
+            status: "resolved",
+          },
+        ],
+      ]),
+    });
+    const caller = adminRouter.createCaller(ctx as any);
+
+    await expect(
+      caller.resolveReport({ reportId: 42, action: "dismiss" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(mocks.recordAdminAuditEvent).not.toHaveBeenCalled();
   });
 
   it("requires set-role permission for subscription overrides", async () => {

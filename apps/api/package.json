@@ -11,7 +11,8 @@
     "generate:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false",
     "check:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false --check",
     "check-types": "bun run check:worker-types && tsc --noEmit",
-    "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
+    "lint": "eslint \"**/*.{js,jsx,ts,tsx}\" --max-warnings=0",
+    "dry-run:prod": "wrangler deploy --env production --minify --dry-run",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -21,22 +22,18 @@
     "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/trpc": "workspace:*",
-    "@sentry/cloudflare": "10.66.0",
-    "@sentry/hono": "10.66.0",
-    "hono": "4.12.23"
+    "@sentry/cloudflare": "10.69.0",
+    "@sentry/hono": "10.69.0",
+    "hono": "4.12.33"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260724.1",
+    "@cloudflare/workers-types": "5.20260801.1",
     "@repo/tsconfig": "workspace:*",
-    "@types/node": "25.9.1",
-    "eslint-config-universe": "15.2.0",
+    "@types/node": "22.20.1",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
     "wait-on": "9.0.10",
-    "wrangler": "4.112.0"
-  },
-  "eslintConfig": {
-    "extends": "universe/node"
+    "wrangler": "4.118.0"
   },
   "nx": {
     "tags": [

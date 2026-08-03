@@ -1,10 +1,7 @@
-import {
-  notifications,
-  user,
-  type NotificationType,
-} from "../../schemas";
 import { eq, and, desc, lt, sql, inArray } from "drizzle-orm";
 
+import { notifications, user, type NotificationType } from "../../schemas";
+import { areUsersBlocked } from "../moderation";
 import type { DbClient } from "../types";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -42,7 +39,7 @@ export type CreateNotificationParams = {
  */
 export async function createNotification(
   db: DbClient,
-  params: CreateNotificationParams
+  params: CreateNotificationParams,
 ): Promise<NotificationItem | null> {
   const {
     recipientId,
@@ -56,6 +53,10 @@ export async function createNotification(
 
   // Skip self-notifications
   if (recipientId === actorId) {
+    return null;
+  }
+
+  if (await areUsersBlocked(db, recipientId, actorId)) {
     return null;
   }
 
@@ -117,7 +118,7 @@ export async function getNotifications(
     userId: string;
     cursor?: number;
     limit?: number;
-  }
+  },
 ): Promise<{
   items: NotificationItem[];
   nextCursor: number | null;
@@ -164,13 +165,16 @@ export async function getNotifications(
  */
 export async function getUnreadCount(
   db: DbClient,
-  userId: string
+  userId: string,
 ): Promise<number> {
   const result = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(notifications)
     .where(
-      and(eq(notifications.recipientId, userId), eq(notifications.isRead, false))
+      and(
+        eq(notifications.recipientId, userId),
+        eq(notifications.isRead, false),
+      ),
     )
     .then((rows) => rows[0]);
 
@@ -186,7 +190,7 @@ export async function markAsRead(
   params: {
     userId: string;
     notificationIds?: number[];
-  }
+  },
 ): Promise<{ success: boolean; updatedCount: number }> {
   const { userId, notificationIds } = params;
 
@@ -201,8 +205,8 @@ export async function markAsRead(
         and(
           eq(notifications.recipientId, userId),
           inArray(notifications.id, notificationIds),
-          eq(notifications.isRead, false)
-        )
+          eq(notifications.isRead, false),
+        ),
       )
       .returning({ id: notifications.id });
 
@@ -215,8 +219,8 @@ export async function markAsRead(
       .where(
         and(
           eq(notifications.recipientId, userId),
-          eq(notifications.isRead, false)
-        )
+          eq(notifications.isRead, false),
+        ),
       )
       .returning({ id: notifications.id });
 

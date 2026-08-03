@@ -33,6 +33,7 @@ export const recipes = pgTable(
     servings: integer("servings"),
     createdAt: timestamp("created_at").notNull(),
     updatedAt: timestamp("updated_at").notNull(),
+    moderationState: text("moderation_state").notNull().default("visible"),
 
     // properties for scraped recipes
     sourceUrl: text("source_url"),
@@ -60,6 +61,10 @@ export const recipes = pgTable(
     check(
       "recipes_source_type_check",
       sql`${table.sourceType} IN ('url', 'image', 'text', 'ai', 'manual', 'user')`,
+    ),
+    check(
+      "recipes_moderation_state_check",
+      sql`${table.moderationState} IN ('visible', 'hidden')`,
     ),
   ],
 );

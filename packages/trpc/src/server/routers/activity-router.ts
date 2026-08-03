@@ -1,3 +1,4 @@
+import type { PublicImageAsset } from "@repo/contracts/images";
 import {
   activityEvents,
   activityLikes,
@@ -9,20 +10,22 @@ import {
 import {
   hydrateActivityIds,
   moveRecipeToCookedCollection,
+  getBlockedUserIds,
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, desc, lt, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, lt, and, sql, inArray, notInArray } from "drizzle-orm";
 
+import { assertInteractionAllowed } from "./moderation-router";
+import { filterOptionalPublicText } from "../moderation/text-filter";
 import {
   propagateActivityToFollowers,
   hydrateFeed,
 } from "../services/activity";
 import { createAndSendNotificationInBackground } from "../services/push-notification.service";
 import { cleanupMovedRecipeImages } from "../services/recipe-image.service";
-import { router, authedProcedure } from "../trpc";
+import { router, authedProcedure, publicUgcProcedure } from "../trpc";
 import { mapServiceError } from "../utils";
-import type { PublicImageAsset } from "@repo/contracts/images";
 
 interface GetFeedIdsResponse {
   activityIds: number[];
@@ -114,7 +117,7 @@ export const activityRouter = router({
     }),
 
   // Create a cooking review (also creates activity event and fans out)
-  createCookingReview: authedProcedure
+  createCookingReview: publicUgcProcedure
     .input(
       type({
         recipeId: "number",
@@ -124,23 +127,30 @@ export const activityRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { recipeId, rating, reviewText, imageUploadIds } = input;
+      const { recipeId, rating, imageUploadIds } = input;
+      const reviewText = filterOptionalPublicText(input.reviewText, "Review");
       let movedReviewImageKeys: string[] = [];
       let didPersistReview = false;
 
       try {
         const recipe = await ctx.db
-          .select({ id: recipes.id, name: recipes.name })
+          .select({
+            id: recipes.id,
+            name: recipes.name,
+            ownerId: recipes.ownerId,
+            moderationState: recipes.moderationState,
+          })
           .from(recipes)
           .where(eq(recipes.id, recipeId))
           .then((rows) => rows[0]);
 
-        if (!recipe) {
+        if (!recipe || recipe.moderationState === "hidden") {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Recipe not found",
           });
         }
+        await assertInteractionAllowed(ctx.db, ctx.user.id, recipe.ownerId);
 
         const reviewImages: PublicImageAsset[] = [];
         if (imageUploadIds && imageUploadIds.length > 0) {
@@ -291,13 +301,41 @@ export const activityRouter = router({
       const { recipeId, cursor, limit } = input;
 
       try {
+        const recipe = await ctx.db
+          .select({
+            ownerId: recipes.ownerId,
+            moderationState: recipes.moderationState,
+          })
+          .from(recipes)
+          .where(eq(recipes.id, recipeId))
+          .then((rows) => rows[0]);
+        if (
+          !recipe ||
+          (recipe.moderationState !== "visible" &&
+            recipe.ownerId !== ctx.user.id)
+        ) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await assertInteractionAllowed(ctx.db, ctx.user.id, recipe.ownerId);
+
         // Build query with proper SQL cursor pagination
+        const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
         const conditions = cursor
           ? and(
               eq(cookingReviews.recipeId, recipeId),
               lt(cookingReviews.id, cursor),
+              eq(cookingReviews.moderationState, "visible"),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(cookingReviews.userId, blockedUserIds)]
+                : []),
             )
-          : eq(cookingReviews.recipeId, recipeId);
+          : and(
+              eq(cookingReviews.recipeId, recipeId),
+              eq(cookingReviews.moderationState, "visible"),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(cookingReviews.userId, blockedUserIds)]
+                : []),
+            );
 
         const results = await ctx.db
           .select({
@@ -372,7 +410,8 @@ export const activityRouter = router({
           items: reviewsWithImages,
           nextCursor: hasMore && lastItem ? lastItem.review.id : null,
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch recipe reviews",
@@ -391,10 +430,35 @@ export const activityRouter = router({
       const { recipeId } = input;
 
       try {
+        const recipe = await ctx.db
+          .select({
+            ownerId: recipes.ownerId,
+            moderationState: recipes.moderationState,
+          })
+          .from(recipes)
+          .where(eq(recipes.id, recipeId))
+          .then((rows) => rows[0]);
+        if (
+          !recipe ||
+          (recipe.moderationState !== "visible" &&
+            recipe.ownerId !== ctx.user.id)
+        ) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await assertInteractionAllowed(ctx.db, ctx.user.id, recipe.ownerId);
+        const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
         const reviews = await ctx.db
           .select({ rating: cookingReviews.rating })
           .from(cookingReviews)
-          .where(eq(cookingReviews.recipeId, recipeId));
+          .where(
+            and(
+              eq(cookingReviews.recipeId, recipeId),
+              eq(cookingReviews.moderationState, "visible"),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(cookingReviews.userId, blockedUserIds)]
+                : []),
+            ),
+          );
 
         if (reviews.length === 0) {
           return { averageRating: null, reviewCount: 0 };
@@ -407,7 +471,8 @@ export const activityRouter = router({
           averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
           reviewCount: reviews.length,
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch recipe rating",
@@ -441,13 +506,18 @@ export const activityRouter = router({
       const { userId, cursor, limit } = input;
 
       try {
+        await assertInteractionAllowed(ctx.db, ctx.user.id, userId);
         // Build query conditions
         const conditions = cursor
           ? and(
               eq(activityEvents.userId, userId),
               lt(activityEvents.id, cursor),
+              eq(activityEvents.moderationState, "visible"),
             )
-          : eq(activityEvents.userId, userId);
+          : and(
+              eq(activityEvents.userId, userId),
+              eq(activityEvents.moderationState, "visible"),
+            );
 
         // Fetch activity events for the user
         const activities = await ctx.db
@@ -477,7 +547,8 @@ export const activityRouter = router({
           items,
           nextCursor,
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch user activities",
@@ -502,17 +573,19 @@ export const activityRouter = router({
             id: activityEvents.id,
             userId: activityEvents.userId,
             likeCount: activityEvents.likeCount,
+            moderationState: activityEvents.moderationState,
           })
           .from(activityEvents)
           .where(eq(activityEvents.id, activityEventId))
           .then((rows) => rows[0]);
 
-        if (!activity) {
+        if (!activity || activity.moderationState !== "visible") {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Activity not found",
           });
         }
+        await assertInteractionAllowed(ctx.db, ctx.user.id, activity.userId);
 
         // Check if user already liked
         const existingLike = await ctx.db

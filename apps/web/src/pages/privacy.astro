@@ -26,8 +26,10 @@ import { site, supportMailto } from "../data/site";
       <li>Authentication information from Apple or Google when you choose those sign-in methods, such as the account identifier and profile information they share with Cook Club.</li>
       <li>User content such as recipes, recipe images, review text and images, comments, collections, follows, meal plans, and shopping lists.</li>
       <li>Subscription status, entitlement information, and related purchase identifiers from Apple, Google, and Adapty. Cook Club does not receive your full payment card details.</li>
+      <li>Legal acceptance records, including the Terms version and acceptance time.</li>
+      <li>Safety records including user blocks, reports, report evidence snapshots, moderation decisions, and audit history.</li>
       <li>Device push tokens used to send notifications you enable.</li>
-      <li>Diagnostics, server logs, request metadata, and app or device information used to operate, secure, debug, and improve Cook Club.</li>
+      <li>Diagnostics, crash and performance data, server logs, request metadata, and app or device information used to operate, secure, debug, and improve Cook Club. Default user-identifying information is not sent with Sentry diagnostics.</li>
     </ul>
 
     <h2>How We Use Information</h2>
@@ -51,8 +53,8 @@ import { site, supportMailto } from "../data/site";
       <li>Expo for app services, push notifications, and app delivery tooling.</li>
       <li>Apple and Google for authentication, app distribution, and subscription platform services.</li>
       <li>Adapty for subscription status and entitlement management.</li>
+      <li>Sentry for crash and performance diagnostics.</li>
       <li>Resend for transactional email such as verification and support-related email.</li>
-      <li>Analytics or crash reporting tools, if added later, will be disclosed in this policy before production use.</li>
     </ul>
 
     <h2>Sharing</h2>
@@ -85,6 +87,14 @@ import { site, supportMailto } from "../data/site";
       prevention, dispute, backup, tax, accounting, or payment/subscription
       record reasons. Deleting your Cook Club account does not cancel Apple or
       Google subscriptions.
+    </p>
+    <p>
+      Reports and their immutable evidence snapshots may be retained after the
+      source content is hidden or deleted so Cook Club can investigate abuse,
+      enforce its rules, prevent repeat harm, and maintain an audit trail. When
+      an account is deleted, reporter identity is deleted or de-identified
+      unless a limited retention exception above applies. Block records are
+      deleted with the blocking account.
     </p>
 
     <h2>Children</h2>

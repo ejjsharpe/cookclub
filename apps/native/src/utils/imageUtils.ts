@@ -12,10 +12,7 @@ const AVATAR_NORMALIZATION_ATTEMPTS = [
 ] as const;
 
 export type UploadImageKind =
-  | "recipe_photo"
-  | "review_photo"
-  | "avatar"
-  | "recipe_import_source";
+  "recipe_photo" | "review_photo" | "avatar" | "recipe_import_source";
 
 export interface NormalizedUploadImage {
   uri: string;

@@ -5,6 +5,7 @@ export * from "./shopping-schema";
 export * from "./activity-schema";
 export * from "./comments-schema";
 export * from "./meal-plan-schema";
+export * from "./moderation-schema";
 export * from "./notification-schema";
 export * from "./subscription-schema";
 export * from "./admin-schema";

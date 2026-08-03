@@ -162,6 +162,7 @@ export async function queryUserRecipes(
     .where(
       and(
         eq(recipes.ownerId, options.ownerId),
+        eq(recipes.moderationState, "visible"),
         options.cursor !== undefined
           ? lt(recipes.createdAt, new Date(options.cursor))
           : undefined,
@@ -208,6 +209,7 @@ export async function queryUserRecipesByOwner(
     .where(
       and(
         eq(recipes.ownerId, options.ownerId),
+        eq(recipes.moderationState, "visible"),
         options.cursor !== undefined
           ? lt(recipes.createdAt, new Date(options.cursor))
           : undefined,

@@ -24,6 +24,8 @@ const fixedMessages: Partial<Record<PublicErrorCode, string>> = {
   ACCESS_DENIED: "You do not have access to do that.",
   PAYLOAD_TOO_LARGE: "That content is too large.",
   RATE_LIMITED: "Too many requests. Please try again later.",
+  TERMS_ACCEPTANCE_REQUIRED:
+    "Review and accept the current Terms of Service in Settings to continue.",
   PRO_REQUIRED: "This feature requires Cook Club Pro.",
   SMART_IMPORT_LIMIT_REACHED:
     "You have used your free Smart Imports for this month. Upgrade to Cook Club Pro for unlimited Smart Imports.",

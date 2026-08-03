@@ -45,7 +45,7 @@ const navigationIntegration = Sentry.reactNavigationIntegration({
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
   environment: __DEV__ ? "development" : "production",
-  sendDefaultPii: true,
+  sendDefaultPii: false,
   tracesSampleRate: __DEV__ ? 0 : 0.1,
   profilesSampleRate: __DEV__ ? 0 : 0.1,
   enableLogs: true,
@@ -70,15 +70,15 @@ const linking = {
 };
 
 function cacheImages(images: any[]) {
-  return Promise.all([
+  return Promise.all(
     images.map((image) => {
       if (typeof image === "string") {
-        Image.prefetch(image);
+        return Image.prefetch(image);
       } else {
         return Asset.fromModule(image).downloadAsync();
       }
     }),
-  ]);
+  );
 }
 
 function App() {

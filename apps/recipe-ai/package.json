@@ -12,7 +12,8 @@
     "deploy": "wrangler deploy --minify",
     "deploy:prod": "wrangler deploy --env production --minify",
     "check-types": "bun run check:worker-types && tsc --noEmit",
-    "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
+    "lint": "eslint \"**/*.{js,jsx,ts,tsx}\" --max-warnings=0",
+    "dry-run:prod": "wrangler deploy --env production --minify --dry-run",
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -28,14 +29,11 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.18.8",
-    "@cloudflare/workers-types": "5.20260724.1",
+    "@cloudflare/workers-types": "5.20260801.1",
     "@repo/tsconfig": "workspace:*",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
-    "wrangler": "4.112.0"
-  },
-  "eslintConfig": {
-    "extends": "universe/node"
+    "wrangler": "4.118.0"
   },
   "nx": {
     "tags": [

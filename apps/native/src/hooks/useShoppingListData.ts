@@ -72,7 +72,6 @@ export const useShoppingListData = ({ items }: UseShoppingListDataProps) => {
     const result: ShoppingListFlashItem[] = [];
 
     const sortedAisles = Array.from(groups.entries()).sort(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (a, b) => getAisleOrder(a[0] as any) - getAisleOrder(b[0] as any),
     );
 

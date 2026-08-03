@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Sun,
   Trash2,
@@ -506,6 +507,10 @@ function AdminDashboard({
             <Users size={18} />
             Users
           </span>
+          <a href="/moderation">
+            <ShieldAlert size={18} />
+            Moderation
+          </a>
         </nav>
         <div className="side-footer">
           <span>Console</span>

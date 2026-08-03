@@ -532,8 +532,7 @@ export const MyRecipesScreen = () => {
   const collectionsWithCreate = useMemo(
     () =>
       [{ id: "create", type: "create" } as const, ...collections] as (
-        | CollectionWithMetadata
-        | { id: "create"; type: "create" }
+        CollectionWithMetadata | { id: "create"; type: "create" }
       )[],
     [collections],
   );

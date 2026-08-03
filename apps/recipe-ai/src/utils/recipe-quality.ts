@@ -5,12 +5,7 @@ import type {
 } from "../schema";
 
 export type RecipeQualitySource =
-  | "cached"
-  | "structured"
-  | "visible"
-  | "reader"
-  | "ai"
-  | "social_ai";
+  "cached" | "structured" | "visible" | "reader" | "ai" | "social_ai";
 
 export interface RecipeQuality {
   score: number;

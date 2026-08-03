@@ -11,7 +11,8 @@ export const socialRecipes: SocialRecipeData[] = [
   {
     ownerId: "user_013",
     name: "Viral Baked Feta Pasta",
-    description: "The famous TikTok-turned-Instagram pasta with roasted cherry tomatoes and creamy feta cheese.",
+    description:
+      "The famous TikTok-turned-Instagram pasta with roasted cherry tomatoes and creamy feta cheese.",
     prepTime: 10,
     cookTime: 35,
     totalTime: 45,
@@ -26,7 +27,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "1/2 tsp red pepper flakes",
       "1 lb pasta (penne or rigatoni)",
       "Fresh basil leaves",
-      "Salt and pepper to taste"
+      "Salt and pepper to taste",
     ],
     instructions: [
       "Preheat oven to 400°F",
@@ -36,15 +37,16 @@ export const socialRecipes: SocialRecipeData[] = [
       "Bake for 35 minutes until tomatoes burst and feta is golden",
       "Meanwhile, cook pasta according to package directions",
       "Mash feta and tomatoes together, mix in hot pasta",
-      "Top with fresh basil and serve"
+      "Top with fresh basil and serve",
     ],
     imageUrl: "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9",
-    sourceUrl: "https://www.instagram.com/p/CxYz123456/"
+    sourceUrl: "https://www.instagram.com/p/CxYz123456/",
   },
   {
     ownerId: "user_013",
     name: "Cloud Bread",
-    description: "Light and fluffy low-carb bread that looks like a cloud. Perfect for sandwiches!",
+    description:
+      "Light and fluffy low-carb bread that looks like a cloud. Perfect for sandwiches!",
     prepTime: 10,
     cookTime: 25,
     totalTime: 35,
@@ -56,7 +58,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "3 tbsp cream cheese, softened",
       "1/4 tsp cream of tartar",
       "1 tbsp honey (optional)",
-      "Pinch of salt"
+      "Pinch of salt",
     ],
     instructions: [
       "Preheat oven to 300°F and line baking sheet with parchment",
@@ -65,17 +67,18 @@ export const socialRecipes: SocialRecipeData[] = [
       "Gently fold egg yolk mixture into whites",
       "Spoon onto baking sheet in cloud shapes",
       "Bake for 25 minutes until golden",
-      "Let cool completely before serving"
+      "Let cool completely before serving",
     ],
     imageUrl: "https://images.unsplash.com/photo-1509440159596-0249088772ff",
-    sourceUrl: "https://www.instagram.com/p/CwAb789012/"
+    sourceUrl: "https://www.instagram.com/p/CwAb789012/",
   },
 
   // ─── Chloe Harper's TikTok Recipes ──────────────────────────────────────────
   {
     ownerId: "user_013",
     name: "Crispy Smashed Potatoes",
-    description: "Ultra crispy smashed potatoes with garlic butter and herbs. A TikTok sensation!",
+    description:
+      "Ultra crispy smashed potatoes with garlic butter and herbs. A TikTok sensation!",
     prepTime: 15,
     cookTime: 45,
     totalTime: 60,
@@ -90,7 +93,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "Fresh rosemary and thyme",
       "1/2 cup grated Parmesan",
       "Salt and pepper",
-      "Sour cream for serving"
+      "Sour cream for serving",
     ],
     instructions: [
       "Boil potatoes until fork-tender, about 20 minutes",
@@ -100,15 +103,16 @@ export const socialRecipes: SocialRecipeData[] = [
       "Brush potatoes generously with garlic butter",
       "Bake for 25 minutes until crispy",
       "Sprinkle with Parmesan in last 5 minutes",
-      "Serve hot with sour cream"
+      "Serve hot with sour cream",
     ],
     imageUrl: "https://images.unsplash.com/photo-1596560548464-f010549b84d7",
-    sourceUrl: "https://www.tiktok.com/@chloeharper/video/7123456789012345678"
+    sourceUrl: "https://www.tiktok.com/@chloeharper/video/7123456789012345678",
   },
   {
     ownerId: "user_013",
     name: "Birria Tacos",
-    description: "Tender braised beef tacos dipped in consommé. The ultimate comfort food from TikTok.",
+    description:
+      "Tender braised beef tacos dipped in consommé. The ultimate comfort food from TikTok.",
     prepTime: 30,
     cookTime: 180,
     totalTime: 210,
@@ -127,7 +131,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "4 cups beef broth",
       "Corn tortillas",
       "Shredded cheese for dipping",
-      "Cilantro and onion for topping"
+      "Cilantro and onion for topping",
     ],
     instructions: [
       "Toast dried chiles in a dry pan until fragrant",
@@ -138,17 +142,18 @@ export const socialRecipes: SocialRecipeData[] = [
       "Braise covered at 325°F for 3 hours",
       "Shred beef and strain the consommé",
       "Dip tortillas in fat from consommé and fill with beef",
-      "Griddle until crispy and serve with consommé for dipping"
+      "Griddle until crispy and serve with consommé for dipping",
     ],
     imageUrl: "https://images.unsplash.com/photo-1613514785940-daed07799d9b",
-    sourceUrl: "https://www.tiktok.com/@chloeharper/video/7234567890123456789"
+    sourceUrl: "https://www.tiktok.com/@chloeharper/video/7234567890123456789",
   },
 
   // ─── Daniel Park's Instagram Recipes ────────────────────────────────────────
   {
     ownerId: "user_014",
     name: "Japanese Fluffy Pancakes",
-    description: "Ultra-thick, jiggly soufflé pancakes that are light as air. A Japanese café classic!",
+    description:
+      "Ultra-thick, jiggly soufflé pancakes that are light as air. A Japanese café classic!",
     prepTime: 20,
     cookTime: 20,
     totalTime: 40,
@@ -165,7 +170,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "2 tbsp sugar",
       "1/4 tsp cream of tartar",
       "Butter for cooking",
-      "Maple syrup and whipped cream for serving"
+      "Maple syrup and whipped cream for serving",
     ],
     instructions: [
       "Mix egg yolks, milk, and vanilla",
@@ -176,15 +181,16 @@ export const socialRecipes: SocialRecipeData[] = [
       "Heat pan on lowest setting with butter",
       "Use ring molds, fill halfway and cook covered 10 minutes",
       "Flip carefully and cook 5 more minutes",
-      "Serve stacked with butter, syrup, and cream"
+      "Serve stacked with butter, syrup, and cream",
     ],
     imageUrl: "https://images.unsplash.com/photo-1575853121743-60c24f0a7502",
-    sourceUrl: "https://www.instagram.com/p/CyZa456789/"
+    sourceUrl: "https://www.instagram.com/p/CyZa456789/",
   },
   {
     ownerId: "user_014",
     name: "Salmon Poke Bowl",
-    description: "Fresh Hawaiian-style poke bowl with marinated salmon, rice, and vibrant toppings.",
+    description:
+      "Fresh Hawaiian-style poke bowl with marinated salmon, rice, and vibrant toppings.",
     prepTime: 25,
     cookTime: 20,
     totalTime: 45,
@@ -203,7 +209,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "2 green onions, sliced",
       "Sesame seeds",
       "Sriracha mayo",
-      "Pickled ginger"
+      "Pickled ginger",
     ],
     instructions: [
       "Marinate salmon cubes in soy sauce, sesame oil, and vinegar",
@@ -213,17 +219,18 @@ export const socialRecipes: SocialRecipeData[] = [
       "Arrange salmon, avocado, cucumber, and edamame on top",
       "Garnish with green onions and sesame seeds",
       "Drizzle with sriracha mayo",
-      "Serve with pickled ginger on the side"
+      "Serve with pickled ginger on the side",
     ],
     imageUrl: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
-    sourceUrl: "https://www.instagram.com/p/CzBc567890/"
+    sourceUrl: "https://www.instagram.com/p/CzBc567890/",
   },
 
   // ─── Daniel Park's TikTok Recipes ───────────────────────────────────────────
   {
     ownerId: "user_014",
     name: "Korean Corn Cheese",
-    description: "Sweet corn mixed with gooey melted cheese - the ultimate Korean side dish from TikTok!",
+    description:
+      "Sweet corn mixed with gooey melted cheese - the ultimate Korean side dish from TikTok!",
     prepTime: 5,
     cookTime: 10,
     totalTime: 15,
@@ -237,7 +244,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "1 cup shredded mozzarella cheese",
       "2 tbsp butter",
       "1 green onion, sliced",
-      "Pinch of salt"
+      "Pinch of salt",
     ],
     instructions: [
       "Melt butter in a skillet over medium heat",
@@ -246,15 +253,16 @@ export const socialRecipes: SocialRecipeData[] = [
       "Top with shredded mozzarella cheese",
       "Cover and cook until cheese melts",
       "Garnish with sliced green onions",
-      "Serve hot straight from the skillet"
+      "Serve hot straight from the skillet",
     ],
     imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307",
-    sourceUrl: "https://www.tiktok.com/@danielpark/video/7345678901234567890"
+    sourceUrl: "https://www.tiktok.com/@danielpark/video/7345678901234567890",
   },
   {
     ownerId: "user_014",
     name: "Dalgona Coffee",
-    description: "Whipped coffee that took TikTok by storm. Creamy, frothy, and absolutely delicious!",
+    description:
+      "Whipped coffee that took TikTok by storm. Creamy, frothy, and absolutely delicious!",
     prepTime: 5,
     cookTime: 0,
     totalTime: 5,
@@ -266,7 +274,7 @@ export const socialRecipes: SocialRecipeData[] = [
       "2 tbsp sugar",
       "2 tbsp hot water",
       "1 cup milk (any kind)",
-      "Ice cubes"
+      "Ice cubes",
     ],
     instructions: [
       "Combine instant coffee, sugar, and hot water in a bowl",
@@ -275,9 +283,9 @@ export const socialRecipes: SocialRecipeData[] = [
       "Fill a glass with ice and milk",
       "Spoon whipped coffee on top",
       "Mix before drinking or enjoy layered",
-      "Adjust sweetness to taste"
+      "Adjust sweetness to taste",
     ],
     imageUrl: "https://images.unsplash.com/photo-1592318951566-70f6f0ac3c87",
-    sourceUrl: "https://www.tiktok.com/@danielpark/video/7456789012345678901"
-  }
+    sourceUrl: "https://www.tiktok.com/@danielpark/video/7456789012345678901",
+  },
 ];

@@ -17,40 +17,34 @@
           "launchMode": "most-recent"
         }
       ],
-          [
-      "@sentry/react-native/expo",
-      {
-        "url": "https://sentry.io/",
-        "project": "cook-club-native",
-        "organization": "shaky-hand"
-      }
-    ],
       [
-        "expo-font"
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "cook-club-native",
+          "organization": "shaky-hand"
+        }
       ],
+      ["expo-font"],
       "expo-web-browser",
       "react-native-edge-to-edge",
       [
-        "expo-share-intent",
+        "./plugins/withShareExtensionReleaseSettings",
         {
           "iosActivationRules": {
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
             "NSExtensionActivationSupportsText": true,
             "NSExtensionActivationSupportsImageWithMaxCount": 1
           },
-          "androidIntentFilters": [
-            "text/*",
-            "image/*"
-          ],
+          "androidIntentFilters": ["text/*", "image/*"],
           "androidMultiIntentFilters": []
         }
       ],
       [
         "expo-build-properties",
         {
-          "reactNativeReleaseLevel": "experimental",
           "ios": {
-            "deploymentTarget": "16.4"
+            "useFrameworks": "dynamic"
           }
         }
       ],
@@ -58,7 +52,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow cookclub to access your photos so you can add images to your recipes and profile."
+          "photosPermission": "Allow cookclub to access your photos so you can add images to your recipes and profile.",
+          "microphonePermission": false
         }
       ],
       "expo-notifications",
@@ -74,13 +69,11 @@
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
+      "deploymentTarget": "16.4",
       "bundleIdentifier": "com.shakyhand.cookclub",
-      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Allow cookclub to access your photos so you can choose a profile picture."

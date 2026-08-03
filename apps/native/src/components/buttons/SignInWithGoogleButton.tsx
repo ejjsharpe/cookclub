@@ -7,13 +7,19 @@ import { GoogleLogo } from "../svg/GoogleLogo";
 
 interface SignInWithGoogleButtonProps {
   onPress: PressableProps["onPress"];
+  disabled?: boolean;
 }
 
 export function SignInWithGoogleButton({
   onPress,
+  disabled,
 }: SignInWithGoogleButtonProps) {
   return (
-    <BaseButton onPress={onPress} style={styles.container}>
+    <BaseButton
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.container, disabled && styles.disabled]}
+    >
       <View style={styles.content}>
         <GoogleLogo size={20} />
         <Text style={styles.text}>Sign in with Google</Text>
@@ -31,6 +37,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     alignItems: "center",
   },
+  disabled: { opacity: 0.5 },
   content: {
     flexDirection: "row",
     alignItems: "center",

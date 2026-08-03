@@ -22,6 +22,7 @@ import {
 } from "../../schemas";
 import { getOrCreateDefaultCollections } from "../collection/collection.service";
 import { ServiceError } from "../errors";
+import { areUsersBlocked } from "../moderation";
 import type { DbClient, TransactionClient } from "../types";
 import { syncRecipeSearchDocument } from "./recipe-search-document.service";
 
@@ -55,10 +56,7 @@ export interface CreateInstructionSection {
 export type CreateRecipeImage = PublicImageAsset;
 
 export type RecipeNutritionSource =
-  | "extracted"
-  | "ai_estimated"
-  | "manual"
-  | "imported";
+  "extracted" | "ai_estimated" | "manual" | "imported";
 
 export type RecipeNutritionConfidence = "high" | "medium" | "low";
 
@@ -844,6 +842,14 @@ export async function getRecipeDetail(
     .then((rows) => rows[0]);
 
   if (!recipeData) {
+    throw new ServiceError("NOT_FOUND", "Recipe not found");
+  }
+
+  if (
+    recipeData.recipe.ownerId !== userId &&
+    (recipeData.recipe.moderationState === "hidden" ||
+      (await areUsersBlocked(db, userId, recipeData.recipe.ownerId)))
+  ) {
     throw new ServiceError("NOT_FOUND", "Recipe not found");
   }
 

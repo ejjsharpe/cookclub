@@ -87,14 +87,14 @@ function parseStoredCookTimer(): CookTimer | null {
       typeof parsed.notificationId === "string" ? parsed.notificationId : null;
 
     if (!recipeName || durationSeconds <= 0) {
-      storage.delete(COOK_TIMER_STORAGE_KEY);
+      storage.remove(COOK_TIMER_STORAGE_KEY);
       return null;
     }
 
     if (!isPaused && endsAt) {
       const activeRemainingSeconds = getRemainingSeconds(endsAt);
       if (activeRemainingSeconds <= 0) {
-        storage.delete(COOK_TIMER_STORAGE_KEY);
+        storage.remove(COOK_TIMER_STORAGE_KEY);
         return null;
       }
 
@@ -122,13 +122,13 @@ function parseStoredCookTimer(): CookTimer | null {
     console.warn("Failed to read stored cook timer", error);
   }
 
-  storage.delete(COOK_TIMER_STORAGE_KEY);
+  storage.remove(COOK_TIMER_STORAGE_KEY);
   return null;
 }
 
 function persistCookTimer(timer: CookTimer | null) {
   if (!timer) {
-    storage.delete(COOK_TIMER_STORAGE_KEY);
+    storage.remove(COOK_TIMER_STORAGE_KEY);
     return;
   }
 

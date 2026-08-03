@@ -65,7 +65,7 @@ export function getPendingShareIntent(): PendingShareIntent | null {
   try {
     const value: unknown = JSON.parse(serialized);
     if (!isPendingShareIntent(value)) {
-      storage.delete(STORAGE_KEY);
+      storage.remove(STORAGE_KEY);
       return null;
     }
     if (
@@ -73,12 +73,12 @@ export function getPendingShareIntent(): PendingShareIntent | null {
       RECIPE_IMPORT_LIMITS.pendingIntentRetentionMs
     ) {
       deleteLocalImage(value);
-      storage.delete(STORAGE_KEY);
+      storage.remove(STORAGE_KEY);
       return null;
     }
     return value;
   } catch {
-    storage.delete(STORAGE_KEY);
+    storage.remove(STORAGE_KEY);
     return null;
   }
 }
@@ -113,7 +113,7 @@ export function clearPendingShareIntent(id?: string) {
   const current = getPendingShareIntent();
   if (!current || (id && current.id !== id)) return;
   deleteLocalImage(current);
-  storage.delete(STORAGE_KEY);
+  storage.remove(STORAGE_KEY);
 }
 
 export async function persistDetectedShareIntent(

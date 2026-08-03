@@ -9,6 +9,8 @@ const PUBLIC_ERROR_MESSAGES: Record<PublicErrorCode, string> = {
   CONFLICT: "That change conflicts with the current state.",
   PAYLOAD_TOO_LARGE: "That content is too large.",
   RATE_LIMITED: "Too many requests. Please try again later.",
+  TERMS_ACCEPTANCE_REQUIRED:
+    "Accept the current Terms of Service before sharing publicly.",
   PRO_REQUIRED: "This feature requires Cook Club Pro.",
   SMART_IMPORT_LIMIT_REACHED:
     "You have used your free Smart Imports for this month.",

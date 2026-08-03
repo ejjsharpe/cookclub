@@ -15,7 +15,10 @@ function createMockStorage() {
   return {
     get: vi.fn(async (key: string) => storage.get(key)),
     put: vi.fn(
-      async (keyOrEntries: string | Record<string, unknown>, value?: unknown) => {
+      async (
+        keyOrEntries: string | Record<string, unknown>,
+        value?: unknown,
+      ) => {
         if (typeof keyOrEntries === "string") {
           storage.set(keyOrEntries, value);
           return;
@@ -166,7 +169,9 @@ describe("FeedDO", () => {
     });
 
     it("returns 404 for unknown routes", async () => {
-      const response = await feedDO.fetch(new Request("http://do/unknownRoute"));
+      const response = await feedDO.fetch(
+        new Request("http://do/unknownRoute"),
+      );
 
       expect(response.status).toBe(404);
       expect(await response.text()).toBe("Not Found");

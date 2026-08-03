@@ -23,6 +23,7 @@ import type {
 } from "@/api/activity";
 import { useToggleActivityLike, useUserActivities } from "@/api/activity";
 import { useUserProfile, useFollowUser, useUnfollowUser } from "@/api/follows";
+import { useBlockUser } from "@/api/moderation";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser } from "@/api/user";
 import {
@@ -32,6 +33,10 @@ import {
 import { ImportActivityCard } from "@/components/ImportActivityCard";
 import { Ionicons } from "@/components/Ionicons";
 import { ProBadge } from "@/components/ProBadge";
+import {
+  ReportContentSheet,
+  type ReportContentSheetRef,
+} from "@/components/ReportContentSheet";
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { SkeletonContainer, UserProfileSkeleton } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
@@ -74,6 +79,7 @@ export const UserProfileScreen = () => {
   const { requireSmartImport } = useSubscription();
 
   const commentsSheetRef = useRef<CommentsSheetRef>(null);
+  const reportSheetRef = useRef<ReportContentSheetRef>(null);
 
   const [imageError, setImageError] = useState(false);
   const [commentActivityId, setCommentActivityId] = useState<number>(0);
@@ -82,6 +88,7 @@ export const UserProfileScreen = () => {
   const { data: profile, isLoading, error } = useUserProfile({ userId });
   const followMutation = useFollowUser();
   const unfollowMutation = useUnfollowUser();
+  const blockMutation = useBlockUser();
   const toggleLike = useToggleActivityLike();
   const currentUserId = currentUser?.user?.id ?? session?.user.id;
 
@@ -128,6 +135,38 @@ export const UserProfileScreen = () => {
       // User cancelled or share failed - silent failure
     }
   };
+
+  const handleReportUser = () => {
+    reportSheetRef.current?.present({ targetType: "user", targetId: userId });
+  };
+
+  const handleBlockUser = useCallback(
+    (targetUserId = userId) => {
+      Alert.alert(
+        `Block ${profile?.user.name ?? "this user"}?`,
+        "You will no longer see each other's profiles or content. Any follows in either direction will be removed.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Block",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await blockMutation.mutateAsync({ userId: targetUserId });
+                navigation.goBack();
+              } catch (error) {
+                alertApiError("Block Failed", error, {
+                  operation: "moderation.blockUser",
+                  fallback: "Could not block this user. Please try again.",
+                });
+              }
+            },
+          },
+        ],
+      );
+    },
+    [blockMutation, navigation, profile?.user.name, userId],
+  );
 
   const handleLoadMoreActivities = useCallback(() => {
     if (hasMoreActivities && !isFetchingNextActivities) {
@@ -211,6 +250,13 @@ export const UserProfileScreen = () => {
     commentsSheetRef.current?.present();
   }, []);
 
+  const handleReportActivity = useCallback((activityEventId: number) => {
+    reportSheetRef.current?.present({
+      targetType: "activity",
+      targetId: String(activityEventId),
+    });
+  }, []);
+
   const renderActivityItem = useCallback(
     ({ item }: ListRenderItemInfo<ActivityFeedListItem>) => {
       if (item.type === "cooking_review") {
@@ -221,6 +267,8 @@ export const UserProfileScreen = () => {
             onUserPress={handleUserPress}
             onLikePress={handleLikePress}
             onCommentPress={handleCommentPress}
+            onReportPress={handleReportActivity}
+            onBlockPress={handleBlockUser}
             onImportPress={handleImportRecipe}
             onImportRecipePress={handleImportExistingRecipe}
             currentUserId={currentUserId}
@@ -237,6 +285,8 @@ export const UserProfileScreen = () => {
           onUserPress={handleUserPress}
           onLikePress={handleLikePress}
           onCommentPress={handleCommentPress}
+          onReportPress={handleReportActivity}
+          onBlockPress={handleBlockUser}
           onImportPress={handleImportRecipe}
           onImportRecipePress={handleImportExistingRecipe}
           currentUserId={currentUserId}
@@ -253,6 +303,8 @@ export const UserProfileScreen = () => {
       handleImportRecipe,
       handleImportExistingRecipe,
       handleCommentPress,
+      handleReportActivity,
+      handleBlockUser,
       currentUserId,
       feedImagePreset,
       feedImageWidth,
@@ -433,44 +485,75 @@ export const UserProfileScreen = () => {
 
         {/* Action Buttons */}
         {!isOwnProfile && (
-          <View style={styles.actionButtons}>
-            {profile.isFollowing ? (
+          <>
+            <View style={styles.actionButtons}>
+              {profile.isFollowing ? (
+                <TouchableOpacity
+                  style={[styles.pillButton, styles.followingButton]}
+                  onPress={handleUnfollow}
+                  disabled={isMutationLoading}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="checkmark"
+                    size={18}
+                    style={styles.followingIcon}
+                  />
+                  <Text style={styles.followingButtonText}>Following</Text>
+                </TouchableOpacity>
+              ) : (
+                <PrimaryButton
+                  onPress={handleFollow}
+                  disabled={isMutationLoading}
+                  style={styles.followButton}
+                >
+                  Follow
+                </PrimaryButton>
+              )}
+              <View style={styles.buttonSpacer} />
               <TouchableOpacity
-                style={[styles.pillButton, styles.followingButton]}
-                onPress={handleUnfollow}
-                disabled={isMutationLoading}
+                style={styles.pillButton}
+                onPress={handleShareProfile}
                 activeOpacity={0.7}
               >
                 <Ionicons
-                  name="checkmark"
+                  name="share-outline"
                   size={18}
-                  style={styles.followingIcon}
+                  style={styles.pillButtonIcon}
                 />
-                <Text style={styles.followingButtonText}>Following</Text>
+                <Text style={styles.pillButtonText}>Share</Text>
               </TouchableOpacity>
-            ) : (
-              <PrimaryButton
-                onPress={handleFollow}
-                disabled={isMutationLoading}
-                style={styles.followButton}
+            </View>
+            <VSpace size={12} />
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={styles.pillButton}
+                onPress={handleReportUser}
+                activeOpacity={0.7}
               >
-                Follow
-              </PrimaryButton>
-            )}
-            <View style={styles.buttonSpacer} />
-            <TouchableOpacity
-              style={styles.pillButton}
-              onPress={handleShareProfile}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="share-outline"
-                size={18}
-                style={styles.pillButtonIcon}
-              />
-              <Text style={styles.pillButtonText}>Share</Text>
-            </TouchableOpacity>
-          </View>
+                <Ionicons
+                  name="flag-outline"
+                  size={18}
+                  style={styles.pillButtonIcon}
+                />
+                <Text style={styles.pillButtonText}>Report</Text>
+              </TouchableOpacity>
+              <View style={styles.buttonSpacer} />
+              <TouchableOpacity
+                style={[styles.pillButton, styles.blockButton]}
+                onPress={() => handleBlockUser()}
+                disabled={blockMutation.isPending}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="ban-outline"
+                  size={18}
+                  style={styles.blockButtonText}
+                />
+                <Text style={styles.blockButtonText}>Block</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
 
         {profile.followsMe && !isOwnProfile && (
@@ -548,6 +631,7 @@ export const UserProfileScreen = () => {
         ref={commentsSheetRef}
         activityEventId={commentActivityId}
       />
+      <ReportContentSheet ref={reportSheetRef} />
     </View>
   );
 };
@@ -709,6 +793,8 @@ const styles = StyleSheet.create((theme, rt) => ({
   pillButtonIcon: {
     color: theme.colors.text,
   },
+  blockButton: { backgroundColor: theme.colors.destructive + "12" },
+  blockButtonText: { color: theme.colors.destructive },
   buttonSpacer: {
     width: 12,
   },

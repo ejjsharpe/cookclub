@@ -14,6 +14,8 @@ interface Props {
   isOwnComment: boolean;
   onReply: (comment: Comment) => void;
   onDelete: (commentId: number) => void;
+  onReport: (commentId: number) => void;
+  onBlock: (userId: string, name: string) => void;
 }
 
 const getInitials = (name: string): string => {
@@ -32,7 +34,15 @@ const getInitials = (name: string): string => {
 };
 
 export const CommentCard = memo(
-  ({ comment, isReply = false, isOwnComment, onReply, onDelete }: Props) => {
+  ({
+    comment,
+    isReply = false,
+    isOwnComment,
+    onReply,
+    onDelete,
+    onReport,
+    onBlock,
+  }: Props) => {
     const timeAgo = useMemo(
       () =>
         formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }),
@@ -122,6 +132,30 @@ export const CommentCard = memo(
                   Delete
                 </Text>
               </TouchableOpacity>
+            )}
+            {!isOwnComment && (
+              <>
+                <TouchableOpacity
+                  accessibilityLabel="Report comment"
+                  style={styles.actionButton}
+                  onPress={() => onReport(comment.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text type="footnote" style={styles.actionText}>
+                    Report
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityLabel="Block comment author"
+                  style={styles.actionButton}
+                  onPress={() => onBlock(comment.user.id, comment.user.name)}
+                  activeOpacity={0.7}
+                >
+                  <Text type="footnote" style={styles.deleteText}>
+                    Block
+                  </Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </View>

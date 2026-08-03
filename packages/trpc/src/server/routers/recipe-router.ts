@@ -23,12 +23,17 @@ import {
   queryUserRecipesByOwner,
   searchUserRecipes,
   upsertRecipeNutrition,
+  areUsersBlocked,
 } from "@repo/db/services";
 import { parseIngredients } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
 import { eq, desc, and, count } from "drizzle-orm";
 
+import {
+  filterOptionalPublicText,
+  filterPublicText,
+} from "../moderation/text-filter";
 import { PublicTRPCError } from "../public-errors";
 import { enforceRateLimit } from "../rate-limit";
 import { propagateActivityToFollowersInBackground } from "../services/activity";
@@ -40,7 +45,12 @@ import {
   getCurrentSubscriptionStatus,
   requirePro,
 } from "../services/subscription.service";
-import { router, authedProcedure, mergeRouters } from "../trpc";
+import {
+  router,
+  authedProcedure,
+  publicUgcProcedure,
+  mergeRouters,
+} from "../trpc";
 import { mapServiceError } from "../utils";
 
 const ImageUrlRecord = type({
@@ -197,18 +207,72 @@ interface RecipePayloadInput {
   images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
   ingredientSections: {
+    name?: string | null;
     ingredients: (
       | { ingredient: string; index: number }
-      | { name: string; index: number }
+      | {
+          name: string;
+          index: number;
+          preparation?: string | null;
+          quantity?: string | null;
+          unit?: string | null;
+        }
     )[];
   }[];
   instructionSections: {
+    name?: string | null;
     instructions: {
       instruction: string;
       index: number;
       imageUrl?: string | null;
     }[];
   }[];
+}
+
+type RecipePublicationInput = RecipePayloadInput & {
+  description?: string;
+  tagNames?: string[];
+};
+
+function normalizeRecipePublicationInput<T extends RecipePublicationInput>(
+  input: T,
+): T {
+  return {
+    ...input,
+    name: filterPublicText(input.name, "Recipe name"),
+    description: filterOptionalPublicText(
+      input.description,
+      "Recipe description",
+    ),
+    tagNames: input.tagNames?.map((tag) => filterPublicText(tag, "Tag")),
+    ingredientSections: input.ingredientSections.map((section) => ({
+      ...section,
+      name: filterOptionalPublicText(section.name, "Ingredient section"),
+      ingredients: section.ingredients.map((ingredient) =>
+        "ingredient" in ingredient
+          ? {
+              ...ingredient,
+              ingredient: filterPublicText(ingredient.ingredient, "Ingredient"),
+            }
+          : {
+              ...ingredient,
+              name: filterPublicText(ingredient.name, "Ingredient"),
+              preparation: filterOptionalPublicText(
+                ingredient.preparation,
+                "Ingredient preparation",
+              ),
+            },
+      ),
+    })),
+    instructionSections: input.instructionSections.map((section) => ({
+      ...section,
+      name: filterOptionalPublicText(section.name, "Instruction section"),
+      instructions: section.instructions.map((instruction) => ({
+        ...instruction,
+        instruction: filterPublicText(instruction.instruction, "Instruction"),
+      })),
+    })),
+  } as T;
 }
 
 function toParserSourceType(
@@ -540,7 +604,7 @@ const generateRecipeImage = authedProcedure
   });
 
 const recipeHeadRouter = router({
-  postRecipe: authedProcedure
+  postRecipe: publicUgcProcedure
     .input(RecipePostValidator)
     .mutation(async ({ input, ctx }) => {
       if (input instanceof type.errors) {
@@ -551,19 +615,21 @@ const recipeHeadRouter = router({
       }
 
       validateRecipePayload(input);
+      const normalizedInput = normalizeRecipePublicationInput(input);
 
       const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
 
       let movedKeys: string[] = [];
 
       try {
-        const preparedImages = await prepareRecipeImages(input, {
+        const preparedImages = await prepareRecipeImages(normalizedInput, {
           imageService: ctx.env.IMAGE_SERVICE,
           imagePublicUrl: ctx.env.IMAGE_PUBLIC_URL,
           ownerId: ctx.user.id,
         });
         movedKeys = preparedImages.movedKeys;
-        const { imageUploadIds: _imageUploadIds, ...recipeInput } = input;
+        const { imageUploadIds: _imageUploadIds, ...recipeInput } =
+          normalizedInput;
 
         const { recipe, activityEvent } = await ctx.db.transaction(
           async (tx) => {
@@ -572,7 +638,7 @@ const recipeHeadRouter = router({
               images: preparedImages.images,
               instructionSections: preparedImages.instructionSections,
               nutrition: subscriptionStatus.isPro
-                ? (input.nutrition as any)
+                ? (normalizedInput.nutrition as any)
                 : undefined,
             });
             const [activityEvent] = await tx
@@ -609,7 +675,7 @@ const recipeHeadRouter = router({
       }
     }),
 
-  updateRecipe: authedProcedure
+  updateRecipe: publicUgcProcedure
     .input(RecipeUpdateValidator)
     .mutation(async ({ input, ctx }) => {
       if (input instanceof type.errors) {
@@ -620,12 +686,13 @@ const recipeHeadRouter = router({
       }
 
       validateRecipePayload(input);
+      const normalizedInput = normalizeRecipePublicationInput(input);
       const subscriptionStatus = await getCurrentSubscriptionStatus(ctx);
 
       let movedKeys: string[] = [];
 
       try {
-        const preparedImages = await prepareRecipeImages(input, {
+        const preparedImages = await prepareRecipeImages(normalizedInput, {
           imageService: ctx.env.IMAGE_SERVICE,
           imagePublicUrl: ctx.env.IMAGE_PUBLIC_URL,
           ownerId: ctx.user.id,
@@ -633,11 +700,11 @@ const recipeHeadRouter = router({
         movedKeys = preparedImages.movedKeys;
 
         const recipe = await updateRecipe(ctx.db, ctx.user.id, {
-          ...input,
+          ...normalizedInput,
           images: preparedImages.images,
           instructionSections: preparedImages.instructionSections,
           nutrition: subscriptionStatus.isPro
-            ? (input.nutrition as any)
+            ? (normalizedInput.nutrition as any)
             : undefined,
         });
         movedKeys = [];
@@ -733,6 +800,9 @@ const recipeHeadRouter = router({
     )
     .query(async ({ ctx, input }) => {
       try {
+        if (await areUsersBlocked(ctx.db, ctx.user.id, input.userId)) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
         return await queryUserRecipesByOwner(ctx.db, {
           ownerId: input.userId,
           limit: input.limit,
@@ -849,7 +919,7 @@ const recipeTailRouter = router({
       }
     }),
 
-  importRecipe: authedProcedure
+  importRecipe: publicUgcProcedure
     .input(
       type({
         recipeId: "number",

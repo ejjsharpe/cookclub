@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 
 import type { Context } from "./context";
+import { requireCurrentTerms } from "./legal";
 import { getPublicErrorMessage, publicErrorForResponse } from "./public-errors";
 
 const t = initTRPC.context<Context>().create({
@@ -41,3 +42,11 @@ export const authedProcedure = t.procedure.use(async function isAuthed(opts) {
 
   return opts.next({ ...opts, ctx: { ...ctx, user: ctx.user } });
 });
+
+export const publicUgcProcedure = authedProcedure.use(
+  async function requiresCurrentTerms(opts) {
+    await requireCurrentTerms(opts.ctx.db, opts.ctx.user.id);
+
+    return opts.next({ ctx: opts.ctx });
+  },
+);

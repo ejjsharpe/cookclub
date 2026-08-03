@@ -96,9 +96,9 @@ describe("import image staging", () => {
         truncated: false,
       });
 
-    const result = await listImportImageStagingIds(
-      { list } as unknown as R2Bucket,
-    );
+    const result = await listImportImageStagingIds({
+      list,
+    } as unknown as R2Bucket);
 
     expect(list).toHaveBeenNthCalledWith(1, {
       prefix: "imports/",

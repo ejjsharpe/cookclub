@@ -12,6 +12,9 @@ interface Props {
   onLikePress?: (activityEventId: number) => void;
   onCommentPress?: (activityEventId: number) => void;
   onImportPress?: () => void;
+  onReportPress?: (activityEventId: number) => void;
+  blockUserId?: string;
+  onBlockPress?: (userId: string) => void;
   primaryActionLabel?: string;
   primaryActionIcon?: keyof typeof Ionicons.glyphMap;
 }
@@ -24,6 +27,9 @@ export const ActivityActionRow = memo(
     onLikePress,
     onCommentPress,
     onImportPress,
+    onReportPress,
+    blockUserId,
+    onBlockPress,
     primaryActionLabel = "Import",
     primaryActionIcon = "add",
   }: Props) => {
@@ -34,6 +40,14 @@ export const ActivityActionRow = memo(
     const handleComment = useCallback(() => {
       onCommentPress?.(activityId);
     }, [activityId, onCommentPress]);
+
+    const handleReport = useCallback(() => {
+      onReportPress?.(activityId);
+    }, [activityId, onReportPress]);
+
+    const handleBlock = useCallback(() => {
+      if (blockUserId) onBlockPress?.(blockUserId);
+    }, [blockUserId, onBlockPress]);
 
     return (
       <View style={styles.actionRow}>
@@ -51,6 +65,32 @@ export const ActivityActionRow = memo(
             {likeCount || "Like"}
           </Text>
         </TouchableOpacity>
+        {onReportPress ? (
+          <TouchableOpacity
+            accessibilityLabel="Report activity"
+            style={styles.actionPill}
+            activeOpacity={0.7}
+            onPress={handleReport}
+          >
+            <Ionicons name="flag-outline" size={14} style={styles.actionIcon} />
+            <Text type="subheadline" style={styles.actionText}>
+              Report
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+        {blockUserId && onBlockPress ? (
+          <TouchableOpacity
+            accessibilityLabel="Block activity author"
+            style={styles.actionPill}
+            activeOpacity={0.7}
+            onPress={handleBlock}
+          >
+            <Ionicons name="ban-outline" size={14} style={styles.actionIcon} />
+            <Text type="subheadline" style={styles.actionText}>
+              Block
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           style={styles.actionPill}
           activeOpacity={0.7}

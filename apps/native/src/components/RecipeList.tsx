@@ -41,7 +41,6 @@ export const RecipeList = forwardRef<RecipeListRef, RecipeListProps>(
     },
     ref,
   ) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const listRef = useRef<any>(null);
 
     useImperativeHandle(ref, () => ({

@@ -23,6 +23,16 @@ export interface QueueBinding<Message> {
   send(message: Message): Promise<unknown>;
 }
 
+export interface ModerationEmailBinding {
+  send(message: {
+    to?: string;
+    from: string | { email: string; name?: string };
+    subject: string;
+    html: string;
+    text: string;
+  }): Promise<unknown>;
+}
+
 // Re-export service types for convenience
 export type { ImageService, RecipeAIService } from "@repo/contracts";
 export type {
@@ -47,6 +57,8 @@ export interface TRPCEnv extends AuthEnv {
   AI_RATE_LIMITER?: RateLimitBinding;
   IMAGE_AI_RATE_LIMITER?: RateLimitBinding;
   UPLOAD_RATE_LIMITER?: RateLimitBinding;
+  MODERATION_RATE_LIMITER?: RateLimitBinding;
+  EMAIL?: ModerationEmailBinding;
   RECIPE_IMPORT_BASIC_QUEUE: QueueBinding<RecipeImportJobMessage>;
   RECIPE_IMPORT_URL_QUEUE: QueueBinding<RecipeImportJobMessage>;
   RECIPE_IMPORT_TEXT_QUEUE: QueueBinding<RecipeImportJobMessage>;

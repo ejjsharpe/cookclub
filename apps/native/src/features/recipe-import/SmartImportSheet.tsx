@@ -282,8 +282,7 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
 
         const attempt = getImportAttempt(`image:${submittedImageUri}`);
         const uploadKey =
-          attempt.uploadKey ??
-          (await uploadImportSource(submittedImageUri));
+          attempt.uploadKey ?? (await uploadImportSource(submittedImageUri));
         attempt.uploadKey = uploadKey;
         await submitImport({
           id: attempt.id,

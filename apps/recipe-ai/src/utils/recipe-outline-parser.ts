@@ -309,12 +309,10 @@ function parseIngredientSections(
       name: section.name,
       ingredients: section.items
         .flatMap(splitIngredientLine)
-        .map(
-          (item, index): Ingredient => ({
-            index,
-            ...parseIngredientText(item),
-          }),
-        )
+        .map((item, index): Ingredient => ({
+          index,
+          ...parseIngredientText(item),
+        }))
         .filter((ingredient) => ingredient.name.length > 0),
     }))
     .filter((section) => section.ingredients.length > 0);
@@ -328,13 +326,11 @@ function parseInstructionSections(
       name: section.name,
       instructions: section.items
         .flatMap(splitInstructionLine)
-        .map(
-          (instruction, index): Instruction => ({
-            index,
-            instruction,
-            imageUrl: null,
-          }),
-        )
+        .map((instruction, index): Instruction => ({
+          index,
+          instruction,
+          imageUrl: null,
+        }))
         .filter((instruction) => instruction.instruction.length > 0),
     }))
     .filter((section) => section.instructions.length > 0);

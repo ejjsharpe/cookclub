@@ -34,7 +34,8 @@ export const adminAuditEvents = pgTable(
         'user.unban',
         'user.delete',
         'subscription.override.set',
-        'subscription.override.clear'
+        'subscription.override.clear',
+        'moderation.report.resolve'
       )`,
     ),
   ],

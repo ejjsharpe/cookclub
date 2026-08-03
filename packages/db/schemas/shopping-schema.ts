@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -10,7 +11,7 @@ import {
   numeric,
   check,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+
 import { user } from "./auth-schema";
 import { recipes } from "./recipe-schema";
 
@@ -32,7 +33,7 @@ export const shoppingLists = pgTable(
     uniqueIndex("shopping_lists_one_default_per_user_idx")
       .on(table.userId)
       .where(sql`${table.isDefault} = true`),
-  ]
+  ],
 );
 
 // ─── Shopping List Items: individual recipe-ingredient rows ──────────────
@@ -70,13 +71,13 @@ export const shoppingListItems = pgTable(
     index("shopping_list_items_is_checked_idx").on(table.isChecked),
     index("shopping_list_items_shopping_list_ingredient_idx").on(
       table.shoppingListId,
-      table.ingredientName
+      table.ingredientName,
     ),
     // Index for finding items by recipe for efficient removal
     index("shopping_list_items_source_recipe_idx").on(table.sourceRecipeId),
     // Index for grouping by aisle
     index("shopping_list_items_aisle_idx").on(table.aisle),
-  ]
+  ],
 );
 
 // ─── Shopping List Recipes: tracks which recipes are in shopping list ─────
@@ -98,14 +99,14 @@ export const shoppingListRecipes = pgTable(
   },
   (table) => [
     index("shopping_list_recipes_shopping_list_id_idx").on(
-      table.shoppingListId
+      table.shoppingListId,
     ),
     index("shopping_list_recipes_recipe_id_idx").on(table.recipeId),
     uniqueIndex("shopping_list_recipes_shopping_list_recipe_idx").on(
       table.shoppingListId,
-      table.recipeId
+      table.recipeId,
     ),
-  ]
+  ],
 );
 
 // ─── Shopping List Invitations: invitation-based sharing with friends ─────────
@@ -142,16 +143,16 @@ export const shoppingListInvitations = pgTable(
     // Composite index for access control checks
     index("shopping_list_invitations_user_status_idx").on(
       table.invitedUserId,
-      table.status
+      table.status,
     ),
     // Unique: prevent duplicate invitations
     uniqueIndex("shopping_list_invitations_unique_idx").on(
       table.shoppingListId,
-      table.invitedUserId
+      table.invitedUserId,
     ),
     check(
       "shopping_list_invitations_status_check",
       sql`${table.status} IN ('pending', 'accepted', 'declined')`,
     ),
-  ]
+  ],
 );

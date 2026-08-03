@@ -1,5 +1,5 @@
 import type { PublicImageAsset } from "@repo/contracts/images";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, notInArray } from "drizzle-orm";
 
 import {
   recipes,
@@ -9,6 +9,7 @@ import {
   follows,
   user,
 } from "../../schemas";
+import { getBlockedUserIds } from "../moderation";
 import type { DbClient } from "../types";
 import {
   loadRecipeListRelations,
@@ -65,6 +66,7 @@ export async function queryPopularRecipesThisWeek(
   const normalizedLimit = normalizeRecipeListLimit(limit);
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const blockedUserIds = await getBlockedUserIds(db, userId);
 
   // Count recent engagement (saves within past 7 days)
   const recentEngagementExpr = sql<number>`
@@ -91,6 +93,14 @@ export async function queryPopularRecipesThisWeek(
       and(
         eq(follows.followingId, recipes.ownerId),
         eq(follows.followerId, userId),
+      ),
+    )
+    .where(
+      and(
+        eq(recipes.moderationState, "visible"),
+        ...(blockedUserIds.length > 0
+          ? [notInArray(recipes.ownerId, blockedUserIds)]
+          : []),
       ),
     )
     .groupBy(

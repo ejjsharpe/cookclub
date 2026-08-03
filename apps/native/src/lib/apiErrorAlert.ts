@@ -1,7 +1,10 @@
+import { LEGAL_URLS } from "@repo/contracts";
 import * as Sentry from "@sentry/react-native";
-import { Alert } from "react-native";
+import { Alert, Linking } from "react-native";
 
 import { resolvePublicError } from "./publicError";
+
+import { navigationRef } from "@/navigation/navigationRef";
 
 export function reportApiError(
   error: unknown,
@@ -33,6 +36,24 @@ export function alertApiError(
   options: { operation: string; fallback: string },
 ) {
   const resolved = reportApiError(error, options);
+  if (resolved.code === "TERMS_ACCEPTANCE_REQUIRED") {
+    Alert.alert("Terms acceptance required", resolved.message, [
+      { text: "Not Now", style: "cancel" },
+      {
+        text: "Read Terms",
+        onPress: () => {
+          return Linking.openURL(LEGAL_URLS.terms).catch(() => undefined);
+        },
+      },
+      {
+        text: "Open Settings",
+        onPress: () => {
+          if (navigationRef.isReady()) navigationRef.navigate("Settings");
+        },
+      },
+    ]);
+    return resolved;
+  }
   Alert.alert(title, resolved.message);
   return resolved;
 }

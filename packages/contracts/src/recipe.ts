@@ -24,10 +24,7 @@ export interface ParsedInstructionSection {
 export type ParsedRecipeSourceType = "url" | "image" | "text" | "ai" | "manual";
 
 export type ParsedRecipeNutritionSource =
-  | "extracted"
-  | "ai_estimated"
-  | "manual"
-  | "imported";
+  "extracted" | "ai_estimated" | "manual" | "imported";
 
 export type ParsedRecipeNutritionConfidence = "high" | "medium" | "low";
 

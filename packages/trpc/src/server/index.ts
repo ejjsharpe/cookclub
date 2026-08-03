@@ -5,7 +5,9 @@ import { adminRouter } from "./routers/admin-router";
 import { collectionRouter } from "./routers/collection-router";
 import { commentRouter } from "./routers/comment-router";
 import { followsRouter } from "./routers/follows-router";
+import { legalRouter } from "./routers/legal-router";
 import { mealPlanRouter } from "./routers/meal-plan-router";
+import { moderationRouter } from "./routers/moderation-router";
 import { notificationRouter } from "./routers/notification-router";
 import { recipeAiRouter, recipeRouter } from "./routers/recipe-router";
 import { shoppingRouter } from "./routers/shopping-router";
@@ -50,6 +52,8 @@ export const appRouter = router({
   upload: uploadRouter,
   comment: commentRouter,
   mealPlan: mealPlanRouter,
+  legal: legalRouter,
+  moderation: moderationRouter,
   notification: notificationRouter,
   subscription: subscriptionRouter,
   admin: adminRouter,

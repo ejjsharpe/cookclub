@@ -4,11 +4,7 @@
  * and convert to the appropriate transport-level error (e.g., TRPCError).
  */
 export type ServiceErrorCode =
-  | "NOT_FOUND"
-  | "FORBIDDEN"
-  | "BAD_REQUEST"
-  | "CONFLICT"
-  | "INTERNAL_ERROR";
+  "NOT_FOUND" | "FORBIDDEN" | "BAD_REQUEST" | "CONFLICT" | "INTERNAL_ERROR";
 
 /**
  * Generic service error that can be thrown from business logic.

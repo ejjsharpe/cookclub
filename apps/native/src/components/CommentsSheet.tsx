@@ -28,6 +28,10 @@ import {
 
 import { AppSheet } from "./AppSheet";
 import { CommentCard } from "./CommentCard";
+import {
+  ReportContentSheet,
+  type ReportContentSheetRef,
+} from "./ReportContentSheet";
 import { SEARCH_BAR_HEIGHT } from "./SearchBar";
 import { Text } from "./Text";
 
@@ -37,8 +41,10 @@ import {
   useDeleteComment,
   type Comment,
 } from "@/api/comment";
+import { useBlockUser } from "@/api/moderation";
 import { useUser } from "@/api/user";
 import { Ionicons } from "@/components/Ionicons";
+import { alertApiError } from "@/lib/apiErrorAlert";
 
 const KEYBOARD_OPEN_BOTTOM_PADDING = 12;
 const COMMENT_INPUT_LINE_HEIGHT = 22;
@@ -57,6 +63,8 @@ export interface CommentsSheetRef {
 export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
   ({ activityEventId }, ref) => {
     const sheetRef = useRef<TrueSheet>(null);
+    const reportSheetRef = useRef<ReportContentSheetRef>(null);
+    const blockUserMutation = useBlockUser();
     const { theme } = useUnistyles();
     const insets = UnistylesRuntime.insets;
     const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
@@ -88,8 +96,11 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
         });
         setCommentText("");
         setReplyingTo(null);
-      } catch {
-        Alert.alert("Error", "Failed to post comment. Please try again.");
+      } catch (error) {
+        alertApiError("Couldn’t Post Comment", error, {
+          operation: "comment.create",
+          fallback: "Failed to post comment. Please try again.",
+        });
       }
     }, [commentText, activityEventId, replyingTo, createCommentMutation]);
 
@@ -110,6 +121,42 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
         }
       },
       [deleteCommentMutation],
+    );
+
+    const handleReport = useCallback((commentId: number) => {
+      reportSheetRef.current?.present({
+        targetType: "comment",
+        targetId: String(commentId),
+      });
+    }, []);
+
+    const handleBlock = useCallback(
+      (userId: string, name: string) => {
+        Alert.alert(
+          `Block ${name}?`,
+          "You will no longer see each other's profiles or content. Previous follows will be removed.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Block",
+              style: "destructive",
+              onPress: () =>
+                blockUserMutation.mutate(
+                  { userId },
+                  {
+                    onError: (error) =>
+                      alertApiError("Block Failed", error, {
+                        operation: "moderation.blockUser",
+                        fallback:
+                          "Could not block this user. Please try again.",
+                      }),
+                  },
+                ),
+            },
+          ],
+        );
+      },
+      [blockUserMutation],
     );
 
     const canSubmit =
@@ -162,65 +209,72 @@ export const CommentsSheet = forwardRef<CommentsSheetRef, CommentsSheetProps>(
     );
 
     return (
-      <AppSheet
-        ref={sheetRef}
-        title="Comments"
-        detents={[1]}
-        footer={FooterComponent}
-        scrollable
-        backgroundColor={theme.colors.background}
-      >
-        {/* Comments List */}
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator />
-          </View>
-        ) : (
-          <FlatList
-            data={comments}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <View>
-                <CommentCard
-                  comment={item}
-                  isOwnComment={item.user.id === currentUserId}
-                  onReply={handleReply}
-                  onDelete={handleDelete}
-                />
-                {/* Render replies */}
-                {item.replies?.map((reply) => (
+      <>
+        <AppSheet
+          ref={sheetRef}
+          title="Comments"
+          detents={[1]}
+          footer={FooterComponent}
+          scrollable
+          backgroundColor={theme.colors.background}
+        >
+          {/* Comments List */}
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator />
+            </View>
+          ) : (
+            <FlatList
+              data={comments}
+              keyExtractor={(item) => item.id.toString()}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <View>
                   <CommentCard
-                    key={reply.id}
-                    comment={reply}
-                    isReply
-                    isOwnComment={reply.user.id === currentUserId}
+                    comment={item}
+                    isOwnComment={item.user.id === currentUserId}
                     onReply={handleReply}
                     onDelete={handleDelete}
+                    onReport={handleReport}
+                    onBlock={handleBlock}
                   />
-                ))}
-              </View>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons
-                  name="chatbubble-outline"
-                  size={48}
-                  style={styles.emptyIcon}
-                />
-                <Text type="body" style={styles.emptyText}>
-                  No comments yet
-                </Text>
-                <Text type="footnote" style={styles.emptySubtext}>
-                  Be the first to comment!
-                </Text>
-              </View>
-            }
-          />
-        )}
-      </AppSheet>
+                  {/* Render replies */}
+                  {item.replies?.map((reply) => (
+                    <CommentCard
+                      key={reply.id}
+                      comment={reply}
+                      isReply
+                      isOwnComment={reply.user.id === currentUserId}
+                      onReply={handleReply}
+                      onDelete={handleDelete}
+                      onReport={handleReport}
+                      onBlock={handleBlock}
+                    />
+                  ))}
+                </View>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons
+                    name="chatbubble-outline"
+                    size={48}
+                    style={styles.emptyIcon}
+                  />
+                  <Text type="body" style={styles.emptyText}>
+                    No comments yet
+                  </Text>
+                  <Text type="footnote" style={styles.emptySubtext}>
+                    Be the first to comment!
+                  </Text>
+                </View>
+              }
+            />
+          )}
+        </AppSheet>
+        <ReportContentSheet ref={reportSheetRef} />
+      </>
     );
   },
 );

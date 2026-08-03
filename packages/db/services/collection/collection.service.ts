@@ -1,11 +1,4 @@
 import {
-  collections,
-  recipeCollections,
-  recipes,
-  recipeImages,
-  user,
-} from "../../schemas";
-import {
   eq,
   and,
   desc,
@@ -17,6 +10,13 @@ import {
   ne,
 } from "drizzle-orm";
 
+import {
+  collections,
+  recipeCollections,
+  recipes,
+  recipeImages,
+  user,
+} from "../../schemas";
 import { ServiceError } from "../errors";
 import type { DbClient } from "../types";
 
@@ -59,13 +59,13 @@ export async function getOrCreateDefaultCollections(
 
   // Build list of missing defaults to insert
   const now = new Date();
-  const toInsert: Array<{
+  const toInsert: {
     userId: string;
     name: string;
     defaultType: string;
     createdAt: Date;
     updatedAt: Date;
-  }> = [];
+  }[] = [];
 
   if (!wantToCook) {
     toInsert.push({
@@ -171,7 +171,7 @@ export async function getUserCollectionsWithMetadata(
   const collectionIds = results.map((r) => r.id);
 
   // Fetch preview images for all collections (up to 4 per collection)
-  let previewImagesMap: Map<number, string[]> = new Map();
+  const previewImagesMap: Map<number, string[]> = new Map();
 
   if (collectionIds.length > 0) {
     // Get the first image for each recipe in each collection (up to 4 recipes per collection)

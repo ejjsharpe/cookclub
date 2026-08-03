@@ -1,5 +1,5 @@
-import { inArray, and, eq } from "drizzle-orm";
 import type { PublicImageAsset } from "@repo/contracts/images";
+import { inArray, and, eq } from "drizzle-orm";
 
 import type { FeedItem, RecipeMetadata, SourceType } from "./feed-types";
 import type { DbType } from "../../index";
@@ -12,6 +12,7 @@ import {
   recipes,
   recipeImages,
 } from "../../schemas";
+import { getBlockedUserIds } from "../moderation";
 import { publicSubscriptionTierSqlForUserTable } from "../subscription";
 
 /**
@@ -60,6 +61,10 @@ export async function hydrateActivityIds(
 ): Promise<FeedItem[]> {
   if (activityIds.length === 0) return [];
 
+  const blockedUserIds = new Set(
+    currentUserId ? await getBlockedUserIds(db, currentUserId) : [],
+  );
+
   // Batch fetch all activity events
   const activities = await db
     .select({
@@ -72,7 +77,12 @@ export async function hydrateActivityIds(
       createdAt: activityEvents.createdAt,
     })
     .from(activityEvents)
-    .where(inArray(activityEvents.id, activityIds));
+    .where(
+      and(
+        inArray(activityEvents.id, activityIds),
+        eq(activityEvents.moderationState, "visible"),
+      ),
+    );
 
   if (activities.length === 0) return [];
 
@@ -84,6 +94,7 @@ export async function hydrateActivityIds(
       name: user.name,
       username: user.username,
       image: user.image,
+      banned: user.banned,
       subscriptionTier: publicSubscriptionTierSqlForUserTable(),
     })
     .from(user)
@@ -108,7 +119,12 @@ export async function hydrateActivityIds(
             sourceType: recipes.sourceType,
           })
           .from(recipes)
-          .where(inArray(recipes.id, recipeIds))
+          .where(
+            and(
+              inArray(recipes.id, recipeIds),
+              eq(recipes.moderationState, "visible"),
+            ),
+          )
       : [];
   const recipeMap = new Map(recipesData.map((r) => [r.id, r]));
 
@@ -152,7 +168,12 @@ export async function hydrateActivityIds(
             reviewText: cookingReviews.reviewText,
           })
           .from(cookingReviews)
-          .where(inArray(cookingReviews.activityEventId, reviewActivityIds))
+          .where(
+            and(
+              inArray(cookingReviews.activityEventId, reviewActivityIds),
+              eq(cookingReviews.moderationState, "visible"),
+            ),
+          )
       : [];
 
   const reviewMap = new Map(
@@ -205,7 +226,7 @@ export async function hydrateActivityIds(
 
   for (const activity of activities) {
     const actor = userMap.get(activity.userId);
-    if (!actor) continue;
+    if (!actor || actor.banned || blockedUserIds.has(actor.id)) continue;
 
     if (!activity.recipeId) continue;
     const recipe = recipeMap.get(activity.recipeId);
@@ -285,7 +306,8 @@ export async function hydrateActivityIds(
   const idOrder = new Map(activityIds.map((id, idx) => [id, idx]));
   feedItems.sort(
     (a, b) =>
-      (idOrder.get(parseInt(a.id)) ?? 0) - (idOrder.get(parseInt(b.id)) ?? 0),
+      (idOrder.get(parseInt(a.id, 10)) ?? 0) -
+      (idOrder.get(parseInt(b.id, 10)) ?? 0),
   );
 
   return feedItems;

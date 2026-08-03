@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { userRouter } from "./user-router";
 import { createMockEnv } from "../__mocks__/env";
 
+vi.mock("../legal", () => ({
+  requireCurrentTerms: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@repo/db/schemas", () => ({
   cookingReviewImages: {
     reviewId: "cooking_review_images.review_id",

@@ -140,8 +140,7 @@ const GenerateRecipeScreen = () => {
               ),
           );
           let generatedImage:
-            | { publicUrl: string; imageUploadId: string }
-            | undefined;
+            { publicUrl: string; imageUploadId: string } | undefined;
 
           try {
             generatedImage = await imageMutation.mutateAsync({

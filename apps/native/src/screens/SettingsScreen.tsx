@@ -1,9 +1,16 @@
 import { useNavigation } from "@react-navigation/native";
+import { LEGAL_URLS } from "@repo/contracts";
+import * as Linking from "expo-linking";
 import { useState } from "react";
 import { View, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 
 import { useSignOut } from "@/api/auth";
+import {
+  currentTermsAcceptanceInput,
+  useAcceptCurrentTerms,
+  useLegalStatus,
+} from "@/api/legal";
 import { useDeleteAccount, useUpdateProfile, useUser } from "@/api/user";
 import { Ionicons } from "@/components/Ionicons";
 import { NavigationHeader } from "@/components/NavigationHeader";
@@ -122,6 +129,8 @@ export const SettingsScreen = () => {
   const navigation = useNavigation();
   const signOutMutation = useSignOut();
   const deleteAccountMutation = useDeleteAccount();
+  const legalStatus = useLegalStatus();
+  const acceptTerms = useAcceptCurrentTerms();
   const updateProfileMutation = useUpdateProfile();
   const [currentTheme, setCurrentTheme] =
     useState<ThemePreference>(getThemePreference);
@@ -132,6 +141,20 @@ export const SettingsScreen = () => {
     useState<MeasurementSystem>(
       (userData?.user?.measurementPreference as MeasurementSystem) ?? "auto",
     );
+
+  const subscriptionManagementUrl =
+    process.env.EXPO_OS === "ios"
+      ? "https://apps.apple.com/account/subscriptions"
+      : "https://play.google.com/store/account/subscriptions?package=com.shakyhand.cookclub";
+
+  const openUrl = (url: string) => {
+    Linking.openURL(url).catch((error) =>
+      alertApiError("Could Not Open Link", error, {
+        operation: "settings.openLink",
+        fallback: "Please try again.",
+      }),
+    );
+  };
 
   const handleThemeChange = (theme: ThemePreference) => {
     setCurrentTheme(theme);
@@ -189,6 +212,34 @@ export const SettingsScreen = () => {
               ],
             );
           },
+        },
+      ],
+    );
+  };
+
+  const handleTermsAcceptance = () => {
+    if (legalStatus.data?.hasAcceptedCurrentTerms) {
+      openUrl(LEGAL_URLS.terms);
+      return;
+    }
+
+    Alert.alert(
+      "Accept current Terms?",
+      "Read the Terms of Service before accepting. Acceptance is required before publishing public content.",
+      [
+        { text: "Read Terms", onPress: () => openUrl(LEGAL_URLS.terms) },
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Accept",
+          onPress: () =>
+            acceptTerms.mutate(currentTermsAcceptanceInput, {
+              onError: (error) =>
+                alertApiError("Acceptance Failed", error, {
+                  operation: "legal.acceptTerms",
+                  fallback:
+                    "Could not record your acceptance. Please try again.",
+                }),
+            }),
         },
       ],
     );
@@ -276,9 +327,50 @@ export const SettingsScreen = () => {
           />
           <View style={styles.separator} />
           <SettingsRow
+            icon="card-outline"
+            label="Manage Subscription"
+            onPress={() => openUrl(subscriptionManagementUrl)}
+          />
+          <View style={styles.separator} />
+          <SettingsRow
             icon="refresh-outline"
             label="Restore Purchases"
             onPress={restorePurchases}
+          />
+        </View>
+
+        {/* Safety and Legal Section */}
+        <VSpace size={32} />
+        <Text type="heading" style={styles.sectionTitle}>
+          Safety & Legal
+        </Text>
+        <VSpace size={12} />
+        <View style={styles.section}>
+          <SettingsRow
+            icon="ban-outline"
+            label="Blocked Users"
+            onPress={() => navigation.navigate("BlockedUsers")}
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="shield-checkmark-outline"
+            label="Privacy Policy"
+            onPress={() => openUrl(LEGAL_URLS.privacy)}
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="document-text-outline"
+            label="Terms of Service"
+            value={
+              legalStatus.data?.hasAcceptedCurrentTerms ? "Accepted" : "Review"
+            }
+            onPress={handleTermsAcceptance}
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="help-circle-outline"
+            label="Support"
+            onPress={() => openUrl(LEGAL_URLS.support)}
           />
         </View>
 

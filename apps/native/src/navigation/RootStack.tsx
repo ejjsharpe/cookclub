@@ -10,8 +10,8 @@ import {
   useNeedsOnboarding,
 } from "@/lib/signedInContext";
 import type { AppParamList } from "@/navigation/navigationRef";
-export { navigationRef } from "@/navigation/navigationRef";
 import { AccountScreen } from "@/screens/AccountScreen";
+import { BlockedUsersScreen } from "@/screens/BlockedUsersScreen";
 import { CollectionDetailScreen } from "@/screens/CollectionDetailScreen";
 import { CookModeScreen } from "@/screens/CookModeScreen";
 import { EmailVerificationScreen } from "@/screens/EmailVerificationScreen";
@@ -22,6 +22,7 @@ import OnboardingScreen from "@/screens/OnboardingScreen";
 import { RecipeDetailScreen } from "@/screens/RecipeDetailScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { UserProfileScreen } from "@/screens/UserProfileScreen";
+export { navigationRef } from "@/navigation/navigationRef";
 
 const StartScreen = lazy(() => import("@/screens/StartScreen"));
 
@@ -57,6 +58,7 @@ const RootStack = createNativeStackNavigator({
         Tabs: TabNavigator,
         GenerateRecipe: { screen: GenerateRecipeScreen },
         Settings: { screen: SettingsScreen },
+        BlockedUsers: { screen: BlockedUsersScreen },
         Notifications: { screen: NotificationsScreen },
         UserProfile: { screen: UserProfileScreen },
         FollowsList: { screen: FollowsScreen },

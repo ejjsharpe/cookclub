@@ -9,6 +9,8 @@ const mockActivityServices = vi.hoisted(() => ({
 }));
 
 const mockDbServices = vi.hoisted(() => ({
+  areUsersBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue([]),
   hydrateActivityIds: vi.fn().mockResolvedValue([]),
   moveRecipeToCookedCollection: vi.fn().mockResolvedValue({
     recipeId: 1,
@@ -44,6 +46,10 @@ vi.mock("../services/activity", () => mockActivityServices);
 vi.mock("@repo/db/services", () => mockDbServices);
 
 vi.mock("../services/push-notification.service", () => mockPushServices);
+
+vi.mock("../legal", () => ({
+  requireCurrentTerms: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Mock @repo/db/schemas to provide table objects
 vi.mock("@repo/db/schemas", () => ({
@@ -150,7 +156,7 @@ function createMockContext(
 }
 
 // Import after mocks
-// eslint-disable-next-line import/first, import/order
+// eslint-disable-next-line import/first
 import { activityRouter } from "./activity-router";
 
 describe("activityRouter", () => {
@@ -507,6 +513,12 @@ describe("activityRouter", () => {
   });
 
   describe("getRecipeReviews", () => {
+    beforeEach(() => {
+      mockDb._setResults("recipes", [
+        { ownerId: "recipe-owner", moderationState: "visible" },
+      ]);
+    });
+
     it("returns reviews with user info", async () => {
       const createdAt = new Date();
       mockDb._setResults("cooking_reviews", [
@@ -604,6 +616,12 @@ describe("activityRouter", () => {
   });
 
   describe("getRecipeRating", () => {
+    beforeEach(() => {
+      mockDb._setResults("recipes", [
+        { ownerId: "recipe-owner", moderationState: "visible" },
+      ]);
+    });
+
     it("returns average rating and count", async () => {
       mockDb._setResults("cooking_reviews", [
         { rating: 5 },

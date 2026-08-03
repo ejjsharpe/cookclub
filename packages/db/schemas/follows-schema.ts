@@ -6,6 +6,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
 import { user } from "./auth-schema";
 
 // ─── Follower system ─────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ export const follows = pgTable(
     index("follows_following_id_idx").on(table.followingId),
     uniqueIndex("follows_follower_following_unique_idx").on(
       table.followerId,
-      table.followingId
+      table.followingId,
     ),
-  ]
+  ],
 );

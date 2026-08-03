@@ -6,6 +6,7 @@ export * from "./shopping";
 export * from "./follows";
 export * from "./collection";
 export * from "./meal-plan";
+export * from "./moderation";
 export * from "./notification";
 export * from "./subscription";
 export * from "./admin";

@@ -80,6 +80,7 @@ export function transformParsedRecipeForPreview(
     servings: data.servings ?? 4,
     sourceUrl: data.sourceUrl ?? null,
     sourceType: data.sourceType ?? parsedRecipe.metadata.source,
+    moderationState: "visible",
     originalRecipeId: null,
     originalOwnerId: null,
     createdAt: new Date().toISOString(),
@@ -195,11 +196,7 @@ export function transformParsedRecipeForSave(parsedRecipe: ParsedRecipe) {
     images: (data.images ?? []).map((url) => ({ url })),
     sourceUrl: data.sourceUrl || undefined,
     sourceType: (data.sourceType ?? parsedRecipe.metadata.source) as
-      | "url"
-      | "text"
-      | "image"
-      | "ai"
-      | "manual",
+      "url" | "text" | "image" | "ai" | "manual",
     tagNames: data.suggestedTags ?? [],
     nutrition: data.nutrition ?? undefined,
   };

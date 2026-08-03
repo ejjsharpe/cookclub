@@ -1,10 +1,13 @@
 import { activityEvents, comments, user } from "@repo/db/schemas";
+import { getBlockedUserIds } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, asc, sql } from "drizzle-orm";
+import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 
+import { assertInteractionAllowed } from "./moderation-router";
+import { filterPublicText } from "../moderation/text-filter";
 import { createAndSendNotificationInBackground } from "../services/push-notification.service";
-import { router, authedProcedure } from "../trpc";
+import { router, authedProcedure, publicUgcProcedure } from "../trpc";
 
 const MAX_COMMENTS_PER_ACTIVITY = 500;
 const MAX_COMMENT_LENGTH = 2_000;
@@ -21,7 +24,21 @@ export const commentRouter = router({
       const { activityEventId } = input;
 
       try {
+        const activity = await ctx.db
+          .select({
+            userId: activityEvents.userId,
+            moderationState: activityEvents.moderationState,
+          })
+          .from(activityEvents)
+          .where(eq(activityEvents.id, activityEventId))
+          .then((rows) => rows[0]);
+        if (!activity || activity.moderationState !== "visible") {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await assertInteractionAllowed(ctx.db, ctx.user.id, activity.userId);
+
         // Fetch all comments with user info
+        const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
         const allComments = await ctx.db
           .select({
             id: comments.id,
@@ -36,7 +53,15 @@ export const commentRouter = router({
           })
           .from(comments)
           .innerJoin(user, eq(comments.userId, user.id))
-          .where(eq(comments.activityEventId, activityEventId))
+          .where(
+            and(
+              eq(comments.activityEventId, activityEventId),
+              eq(comments.moderationState, "visible"),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(comments.userId, blockedUserIds)]
+                : []),
+            ),
+          )
           .orderBy(asc(comments.createdAt))
           .limit(MAX_COMMENTS_PER_ACTIVITY);
 
@@ -53,7 +78,8 @@ export const commentRouter = router({
         }));
 
         return commentsWithReplies;
-      } catch {
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch comments",
@@ -62,7 +88,7 @@ export const commentRouter = router({
     }),
 
   // Create a new comment
-  createComment: authedProcedure
+  createComment: publicUgcProcedure
     .input(
       type({
         activityEventId: "number",
@@ -71,7 +97,8 @@ export const commentRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { activityEventId, parentCommentId, content } = input;
+      const { activityEventId, parentCommentId } = input;
+      const content = filterPublicText(input.content, "Comment");
 
       if (content.trim().length === 0) {
         throw new TRPCError({
@@ -91,20 +118,44 @@ export const commentRouter = router({
 
         // Fetch activity owner for notifications
         const activity = await ctx.db
-          .select({ userId: activityEvents.userId })
+          .select({
+            userId: activityEvents.userId,
+            moderationState: activityEvents.moderationState,
+          })
           .from(activityEvents)
           .where(eq(activityEvents.id, activityEventId))
           .then((rows) => rows[0]);
+
+        if (!activity || activity.moderationState !== "visible") {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await assertInteractionAllowed(ctx.db, ctx.user.id, activity.userId);
 
         // Fetch parent comment author if this is a reply
         let parentCommentAuthorId: string | null = null;
         if (parentCommentId) {
           const parentComment = await ctx.db
-            .select({ userId: comments.userId })
+            .select({
+              userId: comments.userId,
+              activityEventId: comments.activityEventId,
+              moderationState: comments.moderationState,
+            })
             .from(comments)
             .where(eq(comments.id, parentCommentId))
             .then((rows) => rows[0]);
-          parentCommentAuthorId = parentComment?.userId ?? null;
+          if (
+            !parentComment ||
+            parentComment.activityEventId !== activityEventId ||
+            parentComment.moderationState !== "visible"
+          ) {
+            throw new TRPCError({ code: "NOT_FOUND" });
+          }
+          parentCommentAuthorId = parentComment.userId;
+          await assertInteractionAllowed(
+            ctx.db,
+            ctx.user.id,
+            parentCommentAuthorId,
+          );
         }
 
         const [newComment] = await ctx.db
@@ -166,7 +217,8 @@ export const commentRouter = router({
             image: ctx.user.image,
           },
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to create comment",

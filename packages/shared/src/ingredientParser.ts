@@ -87,7 +87,8 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
     if (quantityStr) {
       if (quantityStr.includes("/")) {
         const [numerator, denominator] = quantityStr.split("/");
-        quantity = parseFloat(numerator ?? "0") / parseFloat(denominator ?? "1");
+        quantity =
+          parseFloat(numerator ?? "0") / parseFloat(denominator ?? "1");
       } else {
         quantity = parseFloat(quantityStr);
       }

@@ -1,3 +1,5 @@
+import { eq, and, or, between, inArray, gt } from "drizzle-orm";
+
 import {
   mealPlans,
   mealPlanEntries,
@@ -7,8 +9,6 @@ import {
   follows,
   user,
 } from "../../schemas";
-import { eq, and, or, between, inArray, gt } from "drizzle-orm";
-
 import { ServiceError } from "../errors";
 import type { DbClient } from "../types";
 
@@ -83,7 +83,7 @@ export async function getOrCreateDefaultMealPlan(db: DbClient, userId: string) {
  */
 export async function getMealPlans(
   db: DbClient,
-  userId: string
+  userId: string,
 ): Promise<MealPlanWithMeta[]> {
   // Get user's own plans
   const ownPlans = await db
@@ -116,8 +116,8 @@ export async function getMealPlans(
     .where(
       and(
         eq(mealPlanInvitations.invitedUserId, userId),
-        eq(mealPlanInvitations.status, "accepted")
-      )
+        eq(mealPlanInvitations.status, "accepted"),
+      ),
     );
 
   // Combine and format
@@ -163,7 +163,7 @@ export async function getMealPlans(
  */
 export async function createMealPlan(
   db: DbClient,
-  params: { userId: string; name: string }
+  params: { userId: string; name: string },
 ): Promise<typeof mealPlans.$inferSelect> {
   const { userId, name } = params;
 
@@ -187,7 +187,7 @@ export async function createMealPlan(
  */
 export async function deleteMealPlan(
   db: DbClient,
-  params: { userId: string; mealPlanId: number }
+  params: { userId: string; mealPlanId: number },
 ): Promise<{ success: boolean }> {
   const { userId, mealPlanId } = params;
 
@@ -203,7 +203,10 @@ export async function deleteMealPlan(
   }
 
   if (plan.isDefault) {
-    throw new ServiceError("BAD_REQUEST", "Cannot delete your default meal plan");
+    throw new ServiceError(
+      "BAD_REQUEST",
+      "Cannot delete your default meal plan",
+    );
   }
 
   await db.delete(mealPlans).where(eq(mealPlans.id, mealPlanId));
@@ -219,7 +222,7 @@ export async function deleteMealPlan(
 export async function canUserAccessMealPlan(
   db: DbClient,
   userId: string,
-  mealPlanId: number
+  mealPlanId: number,
 ): Promise<boolean> {
   // Check if owner
   const ownPlan = await db
@@ -238,8 +241,8 @@ export async function canUserAccessMealPlan(
       and(
         eq(mealPlanInvitations.mealPlanId, mealPlanId),
         eq(mealPlanInvitations.invitedUserId, userId),
-        eq(mealPlanInvitations.status, "accepted")
-      )
+        eq(mealPlanInvitations.status, "accepted"),
+      ),
     )
     .then((rows) => rows[0]);
 
@@ -252,7 +255,7 @@ export async function canUserAccessMealPlan(
 export async function canUserEditMealPlan(
   db: DbClient,
   userId: string,
-  mealPlanId: number
+  mealPlanId: number,
 ): Promise<boolean> {
   return canUserAccessMealPlan(db, userId, mealPlanId);
 }
@@ -269,14 +272,17 @@ export async function getMealPlanEntries(
     mealPlanId: number;
     startDate: string;
     endDate: string;
-  }
+  },
 ): Promise<MealPlanEntry[]> {
   const { userId, mealPlanId, startDate, endDate } = params;
 
   // Verify access
   const hasAccess = await canUserAccessMealPlan(db, userId, mealPlanId);
   if (!hasAccess) {
-    throw new ServiceError("FORBIDDEN", "You do not have access to this meal plan");
+    throw new ServiceError(
+      "FORBIDDEN",
+      "You do not have access to this meal plan",
+    );
   }
 
   const entries = await db
@@ -292,8 +298,8 @@ export async function getMealPlanEntries(
     .where(
       and(
         eq(mealPlanEntries.mealPlanId, mealPlanId),
-        between(mealPlanEntries.date, startDate, endDate)
-      )
+        between(mealPlanEntries.date, startDate, endDate),
+      ),
     );
 
   return entries.map((entry) => ({
@@ -313,7 +319,7 @@ export async function addRecipeToMealPlan(
     recipeId: number;
     date: string;
     mealType: MealType;
-  }
+  },
 ) {
   const { userId, mealPlanId, recipeId, date, mealType } = params;
 
@@ -322,7 +328,7 @@ export async function addRecipeToMealPlan(
   if (!canEdit) {
     throw new ServiceError(
       "FORBIDDEN",
-      "You do not have permission to edit this meal plan"
+      "You do not have permission to edit this meal plan",
     );
   }
 
@@ -344,7 +350,7 @@ export async function addRecipeToMealPlan(
   if (recipe.ownerId !== userId) {
     throw new ServiceError(
       "FORBIDDEN",
-      "You can only add recipes from your own library"
+      "You can only add recipes from your own library",
     );
   }
 
@@ -363,8 +369,8 @@ export async function addRecipeToMealPlan(
       and(
         eq(mealPlanEntries.mealPlanId, mealPlanId),
         eq(mealPlanEntries.date, date),
-        eq(mealPlanEntries.mealType, mealType)
-      )
+        eq(mealPlanEntries.mealType, mealType),
+      ),
     );
 
   // Insert new entry
@@ -391,7 +397,7 @@ export async function addRecipeToMealPlan(
  */
 export async function removeFromMealPlan(
   db: DbClient,
-  params: { userId: string; entryId: number }
+  params: { userId: string; entryId: number },
 ): Promise<{ success: boolean }> {
   const { userId, entryId } = params;
 
@@ -413,7 +419,7 @@ export async function removeFromMealPlan(
   if (!canEdit) {
     throw new ServiceError(
       "FORBIDDEN",
-      "You do not have permission to edit this meal plan"
+      "You do not have permission to edit this meal plan",
     );
   }
 
@@ -432,7 +438,7 @@ export async function moveEntry(
     entryId: number;
     newDate: string;
     newMealType: MealType;
-  }
+  },
 ): Promise<typeof mealPlanEntries.$inferSelect> {
   const { userId, entryId, newDate, newMealType } = params;
 
@@ -451,7 +457,7 @@ export async function moveEntry(
   if (!canEdit) {
     throw new ServiceError(
       "FORBIDDEN",
-      "You do not have permission to edit this meal plan"
+      "You do not have permission to edit this meal plan",
     );
   }
 
@@ -462,8 +468,8 @@ export async function moveEntry(
       and(
         eq(mealPlanEntries.mealPlanId, entry.mealPlanId),
         eq(mealPlanEntries.date, newDate),
-        eq(mealPlanEntries.mealType, newMealType)
-      )
+        eq(mealPlanEntries.mealType, newMealType),
+      ),
     );
 
   // Update the entry
@@ -502,7 +508,7 @@ export async function getShareableUsers(db: DbClient, userId: string) {
           userId: follows.followerId,
         })
         .from(follows)
-        .where(eq(follows.followingId, userId))
+        .where(eq(follows.followingId, userId)),
     );
 
   const uniqueFriendIds = Array.from(new Set(friendIds.map((f) => f.userId)));
@@ -533,23 +539,33 @@ export async function inviteToMealPlan(
     userId: string;
     mealPlanId: number;
     invitedUserId: string;
-  }
+  },
 ) {
   const { userId, mealPlanId, invitedUserId } = params;
 
   // Verify ownership
   const plan = await db
-    .select({ id: mealPlans.id, name: mealPlans.name, isDefault: mealPlans.isDefault })
+    .select({
+      id: mealPlans.id,
+      name: mealPlans.name,
+      isDefault: mealPlans.isDefault,
+    })
     .from(mealPlans)
     .where(and(eq(mealPlans.id, mealPlanId), eq(mealPlans.userId, userId)))
     .then((rows) => rows[0]);
 
   if (!plan) {
-    throw new ServiceError("NOT_FOUND", "Meal plan not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Meal plan not found or you are not the owner",
+    );
   }
 
   if (plan.isDefault) {
-    throw new ServiceError("BAD_REQUEST", "Cannot share your default meal plan");
+    throw new ServiceError(
+      "BAD_REQUEST",
+      "Cannot share your default meal plan",
+    );
   }
 
   if (invitedUserId === userId) {
@@ -562,9 +578,15 @@ export async function inviteToMealPlan(
     .from(follows)
     .where(
       or(
-        and(eq(follows.followerId, userId), eq(follows.followingId, invitedUserId)),
-        and(eq(follows.followerId, invitedUserId), eq(follows.followingId, userId))
-      )
+        and(
+          eq(follows.followerId, userId),
+          eq(follows.followingId, invitedUserId),
+        ),
+        and(
+          eq(follows.followerId, invitedUserId),
+          eq(follows.followingId, userId),
+        ),
+      ),
     )
     .then((rows) => rows[0]);
 
@@ -579,14 +601,17 @@ export async function inviteToMealPlan(
     .where(
       and(
         eq(mealPlanInvitations.mealPlanId, mealPlanId),
-        eq(mealPlanInvitations.invitedUserId, invitedUserId)
-      )
+        eq(mealPlanInvitations.invitedUserId, invitedUserId),
+      ),
     )
     .then((rows) => rows[0]);
 
   if (existing) {
     if (existing.status === "accepted") {
-      throw new ServiceError("CONFLICT", "User already has access to this meal plan");
+      throw new ServiceError(
+        "CONFLICT",
+        "User already has access to this meal plan",
+      );
     }
     // Existing pending — check if expired
     const expiresAt = new Date(existing.createdAt);
@@ -595,7 +620,9 @@ export async function inviteToMealPlan(
       throw new ServiceError("CONFLICT", "An invitation is already pending");
     }
     // Expired — delete to allow re-invite
-    await db.delete(mealPlanInvitations).where(eq(mealPlanInvitations.id, existing.id));
+    await db
+      .delete(mealPlanInvitations)
+      .where(eq(mealPlanInvitations.id, existing.id));
   }
 
   // Get inviter info for denormalization
@@ -632,7 +659,7 @@ export async function cancelMealPlanInvitation(
     userId: string;
     mealPlanId: number;
     invitedUserId: string;
-  }
+  },
 ): Promise<{ success: boolean }> {
   const { userId, mealPlanId, invitedUserId } = params;
 
@@ -644,7 +671,10 @@ export async function cancelMealPlanInvitation(
     .then((rows) => rows[0]);
 
   if (!plan) {
-    throw new ServiceError("NOT_FOUND", "Meal plan not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Meal plan not found or you are not the owner",
+    );
   }
 
   await db
@@ -653,8 +683,8 @@ export async function cancelMealPlanInvitation(
       and(
         eq(mealPlanInvitations.mealPlanId, mealPlanId),
         eq(mealPlanInvitations.invitedUserId, invitedUserId),
-        eq(mealPlanInvitations.status, "pending")
-      )
+        eq(mealPlanInvitations.status, "pending"),
+      ),
     );
 
   return { success: true };
@@ -665,7 +695,7 @@ export async function cancelMealPlanInvitation(
  */
 export async function acceptMealPlanInvitation(
   db: DbClient,
-  params: { userId: string; invitationId: number }
+  params: { userId: string; invitationId: number },
 ): Promise<{ success: boolean }> {
   const { userId, invitationId } = params;
 
@@ -676,8 +706,8 @@ export async function acceptMealPlanInvitation(
       and(
         eq(mealPlanInvitations.id, invitationId),
         eq(mealPlanInvitations.invitedUserId, userId),
-        eq(mealPlanInvitations.status, "pending")
-      )
+        eq(mealPlanInvitations.status, "pending"),
+      ),
     )
     .then((rows) => rows[0]);
 
@@ -689,7 +719,9 @@ export async function acceptMealPlanInvitation(
   const expiresAt = new Date(invitation.createdAt);
   expiresAt.setDate(expiresAt.getDate() + INVITATION_EXPIRY_DAYS);
   if (expiresAt <= new Date()) {
-    await db.delete(mealPlanInvitations).where(eq(mealPlanInvitations.id, invitationId));
+    await db
+      .delete(mealPlanInvitations)
+      .where(eq(mealPlanInvitations.id, invitationId));
     throw new ServiceError("BAD_REQUEST", "This invitation has expired");
   }
 
@@ -706,7 +738,7 @@ export async function acceptMealPlanInvitation(
  */
 export async function declineMealPlanInvitation(
   db: DbClient,
-  params: { userId: string; invitationId: number }
+  params: { userId: string; invitationId: number },
 ): Promise<{ success: boolean }> {
   const { userId, invitationId } = params;
 
@@ -716,8 +748,8 @@ export async function declineMealPlanInvitation(
       and(
         eq(mealPlanInvitations.id, invitationId),
         eq(mealPlanInvitations.invitedUserId, userId),
-        eq(mealPlanInvitations.status, "pending")
-      )
+        eq(mealPlanInvitations.status, "pending"),
+      ),
     );
 
   return { success: true };
@@ -732,7 +764,7 @@ export async function removeMealPlanMember(
     userId: string;
     mealPlanId: number;
     memberId: string;
-  }
+  },
 ): Promise<{ success: boolean }> {
   const { userId, mealPlanId, memberId } = params;
 
@@ -744,7 +776,10 @@ export async function removeMealPlanMember(
     .then((rows) => rows[0]);
 
   if (!plan) {
-    throw new ServiceError("NOT_FOUND", "Meal plan not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Meal plan not found or you are not the owner",
+    );
   }
 
   await db
@@ -752,8 +787,8 @@ export async function removeMealPlanMember(
     .where(
       and(
         eq(mealPlanInvitations.mealPlanId, mealPlanId),
-        eq(mealPlanInvitations.invitedUserId, memberId)
-      )
+        eq(mealPlanInvitations.invitedUserId, memberId),
+      ),
     );
 
   return { success: true };
@@ -764,7 +799,7 @@ export async function removeMealPlanMember(
  */
 export async function getPendingMealPlanInvitations(
   db: DbClient,
-  userId: string
+  userId: string,
 ) {
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() - INVITATION_EXPIRY_DAYS);
@@ -783,8 +818,8 @@ export async function getPendingMealPlanInvitations(
       and(
         eq(mealPlanInvitations.invitedUserId, userId),
         eq(mealPlanInvitations.status, "pending"),
-        gt(mealPlanInvitations.createdAt, expiryDate)
-      )
+        gt(mealPlanInvitations.createdAt, expiryDate),
+      ),
     );
 
   return invitations;
@@ -795,7 +830,7 @@ export async function getPendingMealPlanInvitations(
  */
 export async function getMealPlanInvitationStatus(
   db: DbClient,
-  params: { userId: string; mealPlanId: number }
+  params: { userId: string; mealPlanId: number },
 ) {
   const { userId, mealPlanId } = params;
 
@@ -807,7 +842,10 @@ export async function getMealPlanInvitationStatus(
     .then((rows) => rows[0]);
 
   if (!plan) {
-    throw new ServiceError("NOT_FOUND", "Meal plan not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Meal plan not found or you are not the owner",
+    );
   }
 
   const expiryDate = new Date();
@@ -828,8 +866,8 @@ export async function getMealPlanInvitationStatus(
       and(
         eq(mealPlanInvitations.mealPlanId, mealPlanId),
         eq(mealPlanInvitations.status, "pending"),
-        gt(mealPlanInvitations.createdAt, expiryDate)
-      )
+        gt(mealPlanInvitations.createdAt, expiryDate),
+      ),
     );
 
   return pendingInvitations;
@@ -840,7 +878,7 @@ export async function getMealPlanInvitationStatus(
  */
 export async function getShareStatus(
   db: DbClient,
-  params: { userId: string; mealPlanId: number }
+  params: { userId: string; mealPlanId: number },
 ) {
   const { userId, mealPlanId } = params;
 
@@ -852,7 +890,10 @@ export async function getShareStatus(
     .then((rows) => rows[0]);
 
   if (!plan) {
-    throw new ServiceError("NOT_FOUND", "Meal plan not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Meal plan not found or you are not the owner",
+    );
   }
 
   // Get accepted members
@@ -869,8 +910,8 @@ export async function getShareStatus(
     .where(
       and(
         eq(mealPlanInvitations.mealPlanId, mealPlanId),
-        eq(mealPlanInvitations.status, "accepted")
-      )
+        eq(mealPlanInvitations.status, "accepted"),
+      ),
     );
 
   return members;

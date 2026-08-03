@@ -1,11 +1,4 @@
 import {
-  shoppingLists,
-  shoppingListItems,
-  shoppingListInvitations,
-  follows,
-  user,
-} from "../../schemas";
-import {
   classifyIngredientAisle,
   normalizeIngredientName,
   normalizeUnit,
@@ -13,8 +6,15 @@ import {
   parseIngredients,
 } from "@repo/shared";
 import { eq, and, or, gt, inArray } from "drizzle-orm";
-import { ServiceError } from "../errors";
 
+import {
+  shoppingLists,
+  shoppingListItems,
+  shoppingListInvitations,
+  follows,
+  user,
+} from "../../schemas";
+import { ServiceError } from "../errors";
 import type { DbClient, TransactionClient } from "../types";
 
 // Re-export for convenience
@@ -155,7 +155,12 @@ export async function canUserAccessShoppingList(
   const ownList = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, shoppingListId), eq(shoppingLists.userId, userId)))
+    .where(
+      and(
+        eq(shoppingLists.id, shoppingListId),
+        eq(shoppingLists.userId, userId),
+      ),
+    )
     .then((rows) => rows[0]);
 
   if (ownList) return true;
@@ -221,7 +226,10 @@ export async function getShoppingLists(db: DbClient, userId: string) {
       createdAt: shoppingLists.createdAt,
     })
     .from(shoppingListInvitations)
-    .innerJoin(shoppingLists, eq(shoppingListInvitations.shoppingListId, shoppingLists.id))
+    .innerJoin(
+      shoppingLists,
+      eq(shoppingListInvitations.shoppingListId, shoppingLists.id),
+    )
     .where(
       and(
         eq(shoppingListInvitations.invitedUserId, userId),
@@ -254,7 +262,10 @@ export async function getShoppingLists(db: DbClient, userId: string) {
 /**
  * Get users the current user can invite (friends only)
  */
-export async function getShoppingListShareableUsers(db: DbClient, userId: string) {
+export async function getShoppingListShareableUsers(
+  db: DbClient,
+  userId: string,
+) {
   const friendIds = await db
     .select({ userId: follows.followingId })
     .from(follows)
@@ -290,17 +301,32 @@ export async function inviteToShoppingList(
 
   // Verify ownership
   const list = await db
-    .select({ id: shoppingLists.id, name: shoppingLists.name, isDefault: shoppingLists.isDefault })
+    .select({
+      id: shoppingLists.id,
+      name: shoppingLists.name,
+      isDefault: shoppingLists.isDefault,
+    })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, shoppingListId), eq(shoppingLists.userId, userId)))
+    .where(
+      and(
+        eq(shoppingLists.id, shoppingListId),
+        eq(shoppingLists.userId, userId),
+      ),
+    )
     .then((rows) => rows[0]);
 
   if (!list) {
-    throw new ServiceError("NOT_FOUND", "Shopping list not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Shopping list not found or you are not the owner",
+    );
   }
 
   if (list.isDefault) {
-    throw new ServiceError("BAD_REQUEST", "Cannot share your default shopping list");
+    throw new ServiceError(
+      "BAD_REQUEST",
+      "Cannot share your default shopping list",
+    );
   }
 
   if (invitedUserId === userId) {
@@ -313,8 +339,14 @@ export async function inviteToShoppingList(
     .from(follows)
     .where(
       or(
-        and(eq(follows.followerId, userId), eq(follows.followingId, invitedUserId)),
-        and(eq(follows.followerId, invitedUserId), eq(follows.followingId, userId)),
+        and(
+          eq(follows.followerId, userId),
+          eq(follows.followingId, invitedUserId),
+        ),
+        and(
+          eq(follows.followerId, invitedUserId),
+          eq(follows.followingId, userId),
+        ),
       ),
     )
     .then((rows) => rows[0]);
@@ -337,7 +369,10 @@ export async function inviteToShoppingList(
 
   if (existing) {
     if (existing.status === "accepted") {
-      throw new ServiceError("CONFLICT", "User already has access to this shopping list");
+      throw new ServiceError(
+        "CONFLICT",
+        "User already has access to this shopping list",
+      );
     }
     const expiresAt = new Date(existing.createdAt);
     expiresAt.setDate(expiresAt.getDate() + INVITATION_EXPIRY_DAYS);
@@ -345,7 +380,9 @@ export async function inviteToShoppingList(
       throw new ServiceError("CONFLICT", "An invitation is already pending");
     }
     // Expired — delete to allow re-invite
-    await db.delete(shoppingListInvitations).where(eq(shoppingListInvitations.id, existing.id));
+    await db
+      .delete(shoppingListInvitations)
+      .where(eq(shoppingListInvitations.id, existing.id));
   }
 
   // Get inviter info
@@ -385,11 +422,19 @@ export async function cancelShoppingListInvitation(
   const list = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, shoppingListId), eq(shoppingLists.userId, userId)))
+    .where(
+      and(
+        eq(shoppingLists.id, shoppingListId),
+        eq(shoppingLists.userId, userId),
+      ),
+    )
     .then((rows) => rows[0]);
 
   if (!list) {
-    throw new ServiceError("NOT_FOUND", "Shopping list not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Shopping list not found or you are not the owner",
+    );
   }
 
   await db
@@ -433,7 +478,9 @@ export async function acceptShoppingListInvitation(
   const expiresAt = new Date(invitation.createdAt);
   expiresAt.setDate(expiresAt.getDate() + INVITATION_EXPIRY_DAYS);
   if (expiresAt <= new Date()) {
-    await db.delete(shoppingListInvitations).where(eq(shoppingListInvitations.id, invitationId));
+    await db
+      .delete(shoppingListInvitations)
+      .where(eq(shoppingListInvitations.id, invitationId));
     throw new ServiceError("BAD_REQUEST", "This invitation has expired");
   }
 
@@ -479,11 +526,19 @@ export async function removeShoppingListMember(
   const list = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, shoppingListId), eq(shoppingLists.userId, userId)))
+    .where(
+      and(
+        eq(shoppingLists.id, shoppingListId),
+        eq(shoppingLists.userId, userId),
+      ),
+    )
     .then((rows) => rows[0]);
 
   if (!list) {
-    throw new ServiceError("NOT_FOUND", "Shopping list not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Shopping list not found or you are not the owner",
+    );
   }
 
   await db
@@ -539,11 +594,19 @@ export async function getShoppingListInvitationStatus(
   const list = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, shoppingListId), eq(shoppingLists.userId, userId)))
+    .where(
+      and(
+        eq(shoppingLists.id, shoppingListId),
+        eq(shoppingLists.userId, userId),
+      ),
+    )
     .then((rows) => rows[0]);
 
   if (!list) {
-    throw new ServiceError("NOT_FOUND", "Shopping list not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Shopping list not found or you are not the owner",
+    );
   }
 
   const expiryDate = new Date();
@@ -580,11 +643,19 @@ export async function getShoppingListShareStatus(
   const list = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, shoppingListId), eq(shoppingLists.userId, userId)))
+    .where(
+      and(
+        eq(shoppingLists.id, shoppingListId),
+        eq(shoppingLists.userId, userId),
+      ),
+    )
     .then((rows) => rows[0]);
 
   if (!list) {
-    throw new ServiceError("NOT_FOUND", "Shopping list not found or you are not the owner");
+    throw new ServiceError(
+      "NOT_FOUND",
+      "Shopping list not found or you are not the owner",
+    );
   }
 
   return db

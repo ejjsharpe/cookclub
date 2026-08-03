@@ -18,6 +18,10 @@ import {
   getRecipeImportJob,
   listRecipeImportJobs,
 } from "./service";
+import {
+  filterOptionalPublicText,
+  filterPublicText,
+} from "../../moderation/text-filter";
 import { PublicTRPCError } from "../../public-errors";
 import { enforceRateLimit } from "../../rate-limit";
 import { propagateActivityToFollowersInBackground } from "../../services/activity";
@@ -26,7 +30,7 @@ import {
   prepareRecipeImages,
 } from "../../services/recipe-image.service";
 import { getCurrentSubscriptionStatus } from "../../services/subscription.service";
-import { authedProcedure, router } from "../../trpc";
+import { authedProcedure, publicUgcProcedure, router } from "../../trpc";
 import { mapServiceError } from "../../utils";
 
 const UrlSource = type({ type: "'url'", value: "string" });
@@ -197,14 +201,72 @@ export const recipeImportRouter = router({
     };
   }),
 
-  complete: authedProcedure
+  complete: publicUgcProcedure
     .input(CompleteImport)
     .mutation(async ({ ctx, input }) => {
       assertValid(input);
       validateRecipeDraft(input.recipe);
+      const normalizedRecipe = {
+        ...input.recipe,
+        name: filterPublicText(input.recipe.name, "Recipe name"),
+        ...(input.recipe.description !== undefined
+          ? {
+              description: filterPublicText(
+                input.recipe.description,
+                "Recipe description",
+              ),
+            }
+          : {}),
+        ...(input.recipe.tagNames !== undefined
+          ? {
+              tagNames: input.recipe.tagNames.map((tag) =>
+                filterPublicText(tag, "Tag"),
+              ),
+            }
+          : {}),
+        ingredientSections: input.recipe.ingredientSections.map((section) => ({
+          ...section,
+          name: filterOptionalPublicText(section.name, "Ingredient section"),
+          ingredients: section.ingredients.map((ingredient) =>
+            "ingredient" in ingredient
+              ? {
+                  ...ingredient,
+                  ingredient: filterPublicText(
+                    ingredient.ingredient,
+                    "Ingredient",
+                  ),
+                }
+              : {
+                  ...ingredient,
+                  name: filterPublicText(ingredient.name, "Ingredient"),
+                  ...(ingredient.preparation !== undefined
+                    ? {
+                        preparation: filterOptionalPublicText(
+                          ingredient.preparation,
+                          "Ingredient preparation",
+                        ),
+                      }
+                    : {}),
+                },
+          ),
+        })),
+        instructionSections: input.recipe.instructionSections.map(
+          (section) => ({
+            ...section,
+            name: filterOptionalPublicText(section.name, "Instruction section"),
+            instructions: section.instructions.map((instruction) => ({
+              ...instruction,
+              instruction: filterPublicText(
+                instruction.instruction,
+                "Instruction",
+              ),
+            })),
+          }),
+        ),
+      };
       const completionFingerprint = await fingerprintRecipeImportRequest({
         version: 2,
-        recipe: input.recipe,
+        recipe: normalizedRecipe,
       });
       const existing = await ctx.db
         .select({
@@ -240,7 +302,7 @@ export const recipeImportRouter = router({
       const subscription = await getCurrentSubscriptionStatus(ctx);
       let movedKeys: string[] = [];
       try {
-        const prepared = await prepareRecipeImages(input.recipe, {
+        const prepared = await prepareRecipeImages(normalizedRecipe, {
           imageService: ctx.env.IMAGE_SERVICE,
           imagePublicUrl: ctx.env.IMAGE_PUBLIC_URL,
           ownerId: ctx.user.id,
@@ -251,7 +313,7 @@ export const recipeImportRouter = router({
           imageUploadIds: _imageUploadIds,
           nutrition,
           ...draft
-        } = input.recipe;
+        } = normalizedRecipe;
 
         const transactionResult = await ctx.db.transaction(async (tx) => {
           const locked = await tx

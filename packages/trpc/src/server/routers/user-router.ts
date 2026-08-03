@@ -18,7 +18,9 @@ import { type } from "arktype";
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 
 import type { Context } from "../context";
-import { router, authedProcedure } from "../trpc";
+import { requireCurrentTerms } from "../legal";
+import { filterOptionalPublicText } from "../moderation/text-filter";
+import { router, authedProcedure, publicUgcProcedure } from "../trpc";
 
 const RESERVED_USERNAMES = [
   "admin",
@@ -331,6 +333,15 @@ export const userRouter = router({
   updateProfile: authedProcedure
     .input(UpdateProfileValidator)
     .mutation(async ({ ctx, input }) => {
+      const name = filterOptionalPublicText(input.name, "Name");
+      const bio = filterOptionalPublicText(input.bio, "Bio");
+      if (
+        input.name !== undefined ||
+        input.username !== undefined ||
+        input.bio !== undefined
+      ) {
+        await requireCurrentTerms(ctx.db, ctx.user.id);
+      }
       // Validate username if provided
       if (input.username !== undefined) {
         const validation = validateUsername(input.username);
@@ -360,9 +371,9 @@ export const userRouter = router({
       const [updatedUser] = await ctx.db
         .update(user)
         .set({
-          ...(input.name !== undefined && { name: input.name }),
+          ...(name !== undefined && { name }),
           ...(input.username !== undefined && { username: input.username }),
-          ...(input.bio !== undefined && { bio: input.bio }),
+          ...(bio !== undefined && { bio }),
           ...(input.measurementPreference !== undefined && {
             measurementPreference: input.measurementPreference,
           }),
@@ -374,9 +385,11 @@ export const userRouter = router({
       return { user: updatedUser };
     }),
 
-  completeOnboarding: authedProcedure
+  completeOnboarding: publicUgcProcedure
     .input(CompleteOnboardingValidator)
     .mutation(async ({ ctx, input }) => {
+      const name = filterOptionalPublicText(input.name, "Name");
+      const bio = filterOptionalPublicText(input.bio, "Bio");
       // Validate username
       const validation = validateUsername(input.username);
       if (!validation.valid) {
@@ -404,8 +417,8 @@ export const userRouter = router({
         .update(user)
         .set({
           username: input.username,
-          ...(input.name !== undefined && { name: input.name }),
-          ...(input.bio !== undefined && { bio: input.bio }),
+          ...(name !== undefined && { name }),
+          ...(bio !== undefined && { bio }),
           ...(input.measurementPreference !== undefined && {
             measurementPreference: input.measurementPreference,
           }),
@@ -422,7 +435,7 @@ export const userRouter = router({
    * Upload a new avatar image.
    * Moves the image from temp storage to permanent avatar location.
    */
-  uploadAvatar: authedProcedure
+  uploadAvatar: publicUgcProcedure
     .input(UploadAvatarValidator)
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;

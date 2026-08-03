@@ -40,6 +40,19 @@ describe("resolvePublicError", () => {
     ).toBe("The email or password is incorrect.");
   });
 
+  it("maps terms acceptance errors to actionable guidance", () => {
+    expect(
+      resolvePublicError(
+        { data: { appCode: "TERMS_ACCEPTANCE_REQUIRED" } },
+        "Could not publish this content.",
+      ),
+    ).toEqual({
+      code: "TERMS_ACCEPTANCE_REQUIRED",
+      message:
+        "Review and accept the current Terms of Service in Settings to continue.",
+    });
+  });
+
   it.each([
     [401, "AUTH_REQUIRED"],
     [403, "ACCESS_DENIED"],

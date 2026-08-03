@@ -20,7 +20,8 @@ export const recipes: RecipeData[] = [
   // ITALIAN CUISINE
   {
     name: "Classic Margherita Pizza",
-    description: "Traditional Italian pizza with fresh mozzarella, basil, and tomato sauce on a crispy crust.",
+    description:
+      "Traditional Italian pizza with fresh mozzarella, basil, and tomato sauce on a crispy crust.",
     prepTime: 20,
     cookTime: 15,
     totalTime: 35,
@@ -36,7 +37,7 @@ export const recipes: RecipeData[] = [
       "1 cup tomato sauce",
       "8 oz fresh mozzarella",
       "Fresh basil leaves",
-      "Salt to taste"
+      "Salt to taste",
     ],
     instructions: [
       "Mix flour, yeast, sugar, and salt in a bowl",
@@ -44,14 +45,15 @@ export const recipes: RecipeData[] = [
       "Let dough rise for 1 hour until doubled",
       "Roll out dough and spread tomato sauce",
       "Add sliced mozzarella and bake at 475°F for 12-15 minutes",
-      "Top with fresh basil before serving"
+      "Top with fresh basil before serving",
     ],
     imageUrl: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002",
-    sourceUrl: "https://www.example.com/margherita-pizza"
+    sourceUrl: "https://www.example.com/margherita-pizza",
   },
   {
     name: "Creamy Carbonara",
-    description: "Rich and creamy pasta with pancetta, eggs, and Parmesan cheese.",
+    description:
+      "Rich and creamy pasta with pancetta, eggs, and Parmesan cheese.",
     prepTime: 10,
     cookTime: 15,
     totalTime: 25,
@@ -64,7 +66,7 @@ export const recipes: RecipeData[] = [
       "4 large eggs",
       "1 cup grated Parmesan cheese",
       "Black pepper to taste",
-      "Salt for pasta water"
+      "Salt for pasta water",
     ],
     instructions: [
       "Cook spaghetti in salted boiling water until al dente",
@@ -73,13 +75,14 @@ export const recipes: RecipeData[] = [
       "Drain pasta, reserving 1 cup pasta water",
       "Toss hot pasta with pancetta and egg mixture",
       "Add pasta water to create creamy sauce",
-      "Season with black pepper and serve immediately"
+      "Season with black pepper and serve immediately",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1612874742237-6526221588e3"
+    imageUrl: "https://images.unsplash.com/photo-1612874742237-6526221588e3",
   },
   {
     name: "Tiramisu",
-    description: "Classic Italian dessert with layers of coffee-soaked ladyfingers and mascarpone cream.",
+    description:
+      "Classic Italian dessert with layers of coffee-soaked ladyfingers and mascarpone cream.",
     prepTime: 30,
     cookTime: 0,
     totalTime: 270,
@@ -94,7 +97,7 @@ export const recipes: RecipeData[] = [
       "2 cups strong espresso, cooled",
       "3 tbsp coffee liqueur",
       "24 ladyfinger cookies",
-      "Cocoa powder for dusting"
+      "Cocoa powder for dusting",
     ],
     instructions: [
       "Whisk egg yolks and sugar until thick and pale",
@@ -104,15 +107,16 @@ export const recipes: RecipeData[] = [
       "Dip ladyfingers in espresso and layer in dish",
       "Spread half the mascarpone mixture over ladyfingers",
       "Repeat layers and dust with cocoa powder",
-      "Refrigerate for at least 4 hours before serving"
+      "Refrigerate for at least 4 hours before serving",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9"
+    imageUrl: "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9",
   },
 
   // MEXICAN CUISINE
   {
     name: "Chicken Tacos al Pastor",
-    description: "Marinated chicken with pineapple, served in warm tortillas with fresh toppings.",
+    description:
+      "Marinated chicken with pineapple, served in warm tortillas with fresh toppings.",
     prepTime: 20,
     cookTime: 15,
     totalTime: 35,
@@ -128,7 +132,7 @@ export const recipes: RecipeData[] = [
       "1 tsp oregano",
       "1/2 cup diced pineapple",
       "12 corn tortillas",
-      "Cilantro and onion for topping"
+      "Cilantro and onion for topping",
     ],
     instructions: [
       "Rehydrate chiles in hot water for 15 minutes",
@@ -136,9 +140,9 @@ export const recipes: RecipeData[] = [
       "Marinate chicken for at least 1 hour",
       "Cook chicken over high heat until charred",
       "Warm tortillas on a griddle",
-      "Assemble tacos with chicken, pineapple, cilantro, and onion"
+      "Assemble tacos with chicken, pineapple, cilantro, and onion",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47"
+    imageUrl: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47",
   },
   {
     name: "Fresh Guacamole",
@@ -156,22 +160,23 @@ export const recipes: RecipeData[] = [
       "1 jalapeño, minced",
       "1/4 cup cilantro, chopped",
       "1 tomato, diced",
-      "Salt to taste"
+      "Salt to taste",
     ],
     instructions: [
       "Halve avocados and remove pits",
       "Scoop flesh into a bowl and mash",
       "Add lime juice immediately to prevent browning",
       "Fold in onion, jalapeño, cilantro, and tomato",
-      "Season with salt and serve with tortilla chips"
+      "Season with salt and serve with tortilla chips",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1603894584373-5ac82b2fb076"
+    imageUrl: "https://images.unsplash.com/photo-1603894584373-5ac82b2fb076",
   },
 
   // CHINESE CUISINE
   {
     name: "Kung Pao Chicken",
-    description: "Spicy stir-fried chicken with peanuts and vegetables in a savory sauce.",
+    description:
+      "Spicy stir-fried chicken with peanuts and vegetables in a savory sauce.",
     prepTime: 15,
     cookTime: 10,
     totalTime: 25,
@@ -189,7 +194,7 @@ export const recipes: RecipeData[] = [
       "1 bell pepper, diced",
       "3 green onions, sliced",
       "3 cloves garlic, minced",
-      "1 tsp Sichuan peppercorns"
+      "1 tsp Sichuan peppercorns",
     ],
     instructions: [
       "Marinate chicken with soy sauce and cornstarch for 15 minutes",
@@ -199,9 +204,9 @@ export const recipes: RecipeData[] = [
       "Add bell pepper and stir-fry for 2 minutes",
       "Return chicken to wok with sauce mixture",
       "Toss in peanuts and green onions",
-      "Serve hot over rice"
+      "Serve hot over rice",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1585032226651-759b368d7246"
+    imageUrl: "https://images.unsplash.com/photo-1585032226651-759b368d7246",
   },
   {
     name: "Pork Dumplings",
@@ -220,7 +225,7 @@ export const recipes: RecipeData[] = [
       "1 tbsp sesame oil",
       "1 tbsp ginger, minced",
       "40 dumpling wrappers",
-      "Soy sauce and vinegar for dipping"
+      "Soy sauce and vinegar for dipping",
     ],
     instructions: [
       "Mix pork, cabbage, green onions, soy sauce, sesame oil, and ginger",
@@ -228,9 +233,9 @@ export const recipes: RecipeData[] = [
       "Wet edges with water and fold into pleats",
       "Steam dumplings for 8-10 minutes until cooked through",
       "Alternatively, pan-fry for crispy bottoms",
-      "Serve with dipping sauce"
+      "Serve with dipping sauce",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1496116218417-1a781b1c416c"
+    imageUrl: "https://images.unsplash.com/photo-1496116218417-1a781b1c416c",
   },
 
   // JAPANESE CUISINE
@@ -251,7 +256,7 @@ export const recipes: RecipeData[] = [
       "1 tbsp sake",
       "2 cups cooked rice",
       "1 cup broccoli florets",
-      "Sesame seeds for garnish"
+      "Sesame seeds for garnish",
     ],
     instructions: [
       "Mix soy sauce, mirin, sugar, and sake for teriyaki sauce",
@@ -259,13 +264,14 @@ export const recipes: RecipeData[] = [
       "Pour sauce over chicken and simmer until glazed",
       "Steam broccoli until tender-crisp",
       "Slice chicken and serve over rice with broccoli",
-      "Drizzle with remaining sauce and garnish with sesame seeds"
+      "Drizzle with remaining sauce and garnish with sesame seeds",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c"
+    imageUrl: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
   },
   {
     name: "Miso Soup",
-    description: "Traditional Japanese soup with tofu, seaweed, and miso paste.",
+    description:
+      "Traditional Japanese soup with tofu, seaweed, and miso paste.",
     prepTime: 5,
     cookTime: 10,
     totalTime: 15,
@@ -277,7 +283,7 @@ export const recipes: RecipeData[] = [
       "3 tbsp miso paste",
       "1/2 block silken tofu, cubed",
       "2 tbsp wakame seaweed",
-      "2 green onions, sliced"
+      "2 green onions, sliced",
     ],
     instructions: [
       "Heat dashi stock in a pot until simmering",
@@ -285,15 +291,16 @@ export const recipes: RecipeData[] = [
       "Add tofu cubes to the stock",
       "Remove from heat and dissolve miso paste in the stock",
       "Add wakame and green onions",
-      "Serve immediately (do not boil after adding miso)"
+      "Serve immediately (do not boil after adding miso)",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1588566565463-180a5f3d3a5e"
+    imageUrl: "https://images.unsplash.com/photo-1588566565463-180a5f3d3a5e",
   },
 
   // THAI CUISINE
   {
     name: "Pad Thai",
-    description: "Classic Thai stir-fried noodles with shrimp, peanuts, and tamarind sauce.",
+    description:
+      "Classic Thai stir-fried noodles with shrimp, peanuts, and tamarind sauce.",
     prepTime: 20,
     cookTime: 10,
     totalTime: 30,
@@ -310,7 +317,7 @@ export const recipes: RecipeData[] = [
       "1 cup bean sprouts",
       "1/4 cup roasted peanuts",
       "3 green onions",
-      "Lime wedges for serving"
+      "Lime wedges for serving",
     ],
     instructions: [
       "Soak rice noodles in warm water for 30 minutes",
@@ -319,13 +326,14 @@ export const recipes: RecipeData[] = [
       "Stir-fry shrimp until pink",
       "Add drained noodles and sauce, toss well",
       "Add bean sprouts, peanuts, and green onions",
-      "Serve with lime wedges"
+      "Serve with lime wedges",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1559314809-0d155014e29e"
+    imageUrl: "https://images.unsplash.com/photo-1559314809-0d155014e29e",
   },
   {
     name: "Green Curry",
-    description: "Fragrant Thai curry with chicken, vegetables, and coconut milk.",
+    description:
+      "Fragrant Thai curry with chicken, vegetables, and coconut milk.",
     prepTime: 15,
     cookTime: 25,
     totalTime: 40,
@@ -341,7 +349,7 @@ export const recipes: RecipeData[] = [
       "2 tbsp fish sauce",
       "1 tbsp palm sugar",
       "Thai basil leaves",
-      "2 kaffir lime leaves"
+      "2 kaffir lime leaves",
     ],
     instructions: [
       "Heat curry paste in a pot until fragrant",
@@ -351,15 +359,16 @@ export const recipes: RecipeData[] = [
       "Add vegetables, fish sauce, and palm sugar",
       "Simmer for 15 minutes",
       "Tear in lime leaves and basil before serving",
-      "Serve with jasmine rice"
+      "Serve with jasmine rice",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd"
+    imageUrl: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd",
   },
 
   // INDIAN CUISINE
   {
     name: "Butter Chicken",
-    description: "Creamy tomato-based curry with tender chicken in a rich sauce.",
+    description:
+      "Creamy tomato-based curry with tender chicken in a rich sauce.",
     prepTime: 20,
     cookTime: 30,
     totalTime: 50,
@@ -376,7 +385,7 @@ export const recipes: RecipeData[] = [
       "1 onion, diced",
       "4 cloves garlic, minced",
       "2 inch ginger, minced",
-      "1 tbsp kasuri methi"
+      "1 tbsp kasuri methi",
     ],
     instructions: [
       "Marinate chicken in yogurt and half the garam masala for 1 hour",
@@ -386,9 +395,9 @@ export const recipes: RecipeData[] = [
       "Blend sauce until smooth",
       "Add marinated chicken and cook through",
       "Stir in cream and kasuri methi",
-      "Serve with naan or rice"
+      "Serve with naan or rice",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1603894584373-5ac82b2fb076"
+    imageUrl: "https://images.unsplash.com/photo-1603894584373-5ac82b2fb076",
   },
   {
     name: "Vegetable Samosas",
@@ -407,7 +416,7 @@ export const recipes: RecipeData[] = [
       "1 tsp garam masala",
       "1 tsp turmeric",
       "2 green chiles, minced",
-      "Oil for frying"
+      "Oil for frying",
     ],
     instructions: [
       "Make dough with flour, oil, and water, rest for 30 minutes",
@@ -417,15 +426,16 @@ export const recipes: RecipeData[] = [
       "Form cones and fill with potato mixture",
       "Seal edges with water",
       "Deep fry until golden brown",
-      "Serve with mint chutney"
+      "Serve with mint chutney",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1601050690597-df0568f70950"
+    imageUrl: "https://images.unsplash.com/photo-1601050690597-df0568f70950",
   },
 
   // AMERICAN CUISINE
   {
     name: "Classic Cheeseburger",
-    description: "Juicy beef patty with melted cheese, lettuce, tomato, and special sauce.",
+    description:
+      "Juicy beef patty with melted cheese, lettuce, tomato, and special sauce.",
     prepTime: 15,
     cookTime: 10,
     totalTime: 25,
@@ -441,7 +451,7 @@ export const recipes: RecipeData[] = [
       "1 onion, sliced",
       "Pickles",
       "Ketchup, mustard, mayo",
-      "Salt and pepper"
+      "Salt and pepper",
     ],
     instructions: [
       "Form beef into 4 equal patties, season with salt and pepper",
@@ -450,9 +460,9 @@ export const recipes: RecipeData[] = [
       "Add cheese in last minute of cooking",
       "Toast buns on grill",
       "Assemble burgers with toppings and condiments",
-      "Serve with fries"
+      "Serve with fries",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd"
+    imageUrl: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd",
   },
   {
     name: "Pancakes",
@@ -472,7 +482,7 @@ export const recipes: RecipeData[] = [
       "2 cups buttermilk",
       "2 eggs",
       "1/4 cup melted butter",
-      "Maple syrup for serving"
+      "Maple syrup for serving",
     ],
     instructions: [
       "Mix dry ingredients in a large bowl",
@@ -482,15 +492,16 @@ export const recipes: RecipeData[] = [
       "Pour 1/4 cup batter per pancake",
       "Flip when bubbles form on surface",
       "Cook until golden on both sides",
-      "Serve with butter and maple syrup"
+      "Serve with butter and maple syrup",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445"
+    imageUrl: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445",
   },
 
   // FRENCH CUISINE
   {
     name: "Coq au Vin",
-    description: "Classic French chicken braised in red wine with mushrooms and pearl onions.",
+    description:
+      "Classic French chicken braised in red wine with mushrooms and pearl onions.",
     prepTime: 20,
     cookTime: 90,
     totalTime: 110,
@@ -507,7 +518,7 @@ export const recipes: RecipeData[] = [
       "4 cloves garlic",
       "2 tbsp tomato paste",
       "2 cups chicken stock",
-      "Thyme and bay leaf"
+      "Thyme and bay leaf",
     ],
     instructions: [
       "Brown bacon in Dutch oven, remove and set aside",
@@ -517,9 +528,9 @@ export const recipes: RecipeData[] = [
       "Deglaze with red wine and add stock",
       "Return chicken and bacon to pot with herbs",
       "Simmer covered for 1.5 hours until tender",
-      "Serve with crusty bread or mashed potatoes"
+      "Serve with crusty bread or mashed potatoes",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6"
+    imageUrl: "https://images.unsplash.com/photo-1598103442097-8b74394b95c6",
   },
   {
     name: "Crème Brûlée",
@@ -535,7 +546,7 @@ export const recipes: RecipeData[] = [
       "1 vanilla bean",
       "5 egg yolks",
       "1/2 cup sugar, plus extra for topping",
-      "Pinch of salt"
+      "Pinch of salt",
     ],
     instructions: [
       "Heat cream with vanilla bean until simmering",
@@ -545,15 +556,16 @@ export const recipes: RecipeData[] = [
       "Bake in water bath at 325°F for 40 minutes",
       "Chill for at least 3 hours",
       "Sprinkle sugar on top and caramelize with torch",
-      "Let sugar harden for 1 minute before serving"
+      "Let sugar harden for 1 minute before serving",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1470124182917-cc6e71b22ecc"
+    imageUrl: "https://images.unsplash.com/photo-1470124182917-cc6e71b22ecc",
   },
 
   // MEDITERRANEAN CUISINE
   {
     name: "Greek Salad",
-    description: "Fresh vegetables with feta cheese, olives, and lemon vinaigrette.",
+    description:
+      "Fresh vegetables with feta cheese, olives, and lemon vinaigrette.",
     prepTime: 15,
     cookTime: 0,
     totalTime: 15,
@@ -570,16 +582,16 @@ export const recipes: RecipeData[] = [
       "1/4 cup olive oil",
       "2 tbsp lemon juice",
       "1 tsp oregano",
-      "Salt and pepper"
+      "Salt and pepper",
     ],
     instructions: [
       "Combine tomatoes, cucumber, onion, and bell pepper in a bowl",
       "Add olives and feta cheese",
       "Whisk together olive oil, lemon juice, oregano, salt, and pepper",
       "Drizzle dressing over salad",
-      "Toss gently and serve immediately"
+      "Toss gently and serve immediately",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe"
+    imageUrl: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe",
   },
   {
     name: "Falafel",
@@ -600,7 +612,7 @@ export const recipes: RecipeData[] = [
       "2 tsp coriander",
       "1 tsp baking powder",
       "Salt and pepper",
-      "Oil for frying"
+      "Oil for frying",
     ],
     instructions: [
       "Drain soaked chickpeas (do not cook them)",
@@ -609,9 +621,9 @@ export const recipes: RecipeData[] = [
       "Refrigerate mixture for 1 hour",
       "Form into small patties or balls",
       "Deep fry at 350°F until golden brown",
-      "Serve in pita with tahini sauce and vegetables"
+      "Serve in pita with tahini sauce and vegetables",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1601050690597-df0568f70950"
+    imageUrl: "https://images.unsplash.com/photo-1601050690597-df0568f70950",
   },
 
   // KOREAN CUISINE
@@ -634,7 +646,7 @@ export const recipes: RecipeData[] = [
       "4 eggs",
       "Gochujang sauce",
       "Sesame oil",
-      "Soy sauce"
+      "Soy sauce",
     ],
     instructions: [
       "Marinate beef in soy sauce and sesame oil",
@@ -644,9 +656,9 @@ export const recipes: RecipeData[] = [
       "Fry eggs sunny-side up",
       "Arrange rice in bowls with vegetables and beef on top",
       "Top with fried egg and gochujang",
-      "Mix everything together before eating"
+      "Mix everything together before eating",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1553163147-622ab57be1c7"
+    imageUrl: "https://images.unsplash.com/photo-1553163147-622ab57be1c7",
   },
   {
     name: "Korean Fried Chicken",
@@ -666,7 +678,7 @@ export const recipes: RecipeData[] = [
       "2 tbsp rice vinegar",
       "4 cloves garlic, minced",
       "1 tbsp ginger, minced",
-      "Sesame seeds for garnish"
+      "Sesame seeds for garnish",
     ],
     instructions: [
       "Coat chicken wings in potato starch",
@@ -674,15 +686,16 @@ export const recipes: RecipeData[] = [
       "Mix gochujang, honey, soy sauce, vinegar, garlic, and ginger",
       "Heat sauce in a pan until thickened",
       "Toss crispy wings in sauce",
-      "Garnish with sesame seeds and serve"
+      "Garnish with sesame seeds and serve",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec"
+    imageUrl: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec",
   },
 
   // VIETNAMESE CUISINE
   {
     name: "Pho Bo",
-    description: "Vietnamese beef noodle soup with aromatic broth and fresh herbs.",
+    description:
+      "Vietnamese beef noodle soup with aromatic broth and fresh herbs.",
     prepTime: 30,
     cookTime: 180,
     totalTime: 210,
@@ -697,7 +710,7 @@ export const recipes: RecipeData[] = [
       "Star anise, cinnamon stick, coriander seeds",
       "1 lb rice noodles",
       "Fish sauce",
-      "Bean sprouts, Thai basil, lime, jalapeños for serving"
+      "Bean sprouts, Thai basil, lime, jalapeños for serving",
     ],
     instructions: [
       "Blanch bones to remove impurities",
@@ -707,13 +720,14 @@ export const recipes: RecipeData[] = [
       "Cook rice noodles according to package",
       "Arrange noodles and raw beef in bowls",
       "Ladle hot broth over to cook beef",
-      "Serve with fresh herbs and condiments"
+      "Serve with fresh herbs and condiments",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43"
+    imageUrl: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43",
   },
   {
     name: "Banh Mi",
-    description: "Vietnamese sandwich with pickled vegetables and savory fillings.",
+    description:
+      "Vietnamese sandwich with pickled vegetables and savory fillings.",
     prepTime: 30,
     cookTime: 15,
     totalTime: 45,
@@ -730,7 +744,7 @@ export const recipes: RecipeData[] = [
       "Jalapeño slices",
       "Mayonnaise",
       "Pâté (optional)",
-      "Soy sauce and fish sauce for marinade"
+      "Soy sauce and fish sauce for marinade",
     ],
     instructions: [
       "Marinate pork in soy sauce and fish sauce",
@@ -739,15 +753,16 @@ export const recipes: RecipeData[] = [
       "Toast baguettes until crispy outside",
       "Spread mayo and pâté on bread",
       "Layer pork, pickled vegetables, cucumber, cilantro, and jalapeños",
-      "Serve immediately"
+      "Serve immediately",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1591814468924-caf88d1232e1"
+    imageUrl: "https://images.unsplash.com/photo-1591814468924-caf88d1232e1",
   },
 
   // SPANISH CUISINE
   {
     name: "Paella",
-    description: "Traditional Spanish rice dish with seafood, chicken, and saffron.",
+    description:
+      "Traditional Spanish rice dish with seafood, chicken, and saffron.",
     prepTime: 20,
     cookTime: 40,
     totalTime: 60,
@@ -765,7 +780,7 @@ export const recipes: RecipeData[] = [
       "4 cups chicken stock",
       "Pinch of saffron",
       "1 cup peas",
-      "Lemon wedges for serving"
+      "Lemon wedges for serving",
     ],
     instructions: [
       "Brown chicken in paella pan with olive oil",
@@ -775,13 +790,14 @@ export const recipes: RecipeData[] = [
       "Add hot stock and return chicken to pan",
       "Simmer without stirring for 20 minutes",
       "Add seafood and peas in last 10 minutes",
-      "Let rest for 5 minutes and serve with lemon"
+      "Let rest for 5 minutes and serve with lemon",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1534080564583-6be75777b70a"
+    imageUrl: "https://images.unsplash.com/photo-1534080564583-6be75777b70a",
   },
   {
     name: "Churros with Chocolate",
-    description: "Crispy fried dough pastry with thick hot chocolate for dipping.",
+    description:
+      "Crispy fried dough pastry with thick hot chocolate for dipping.",
     prepTime: 15,
     cookTime: 20,
     totalTime: 35,
@@ -797,7 +813,7 @@ export const recipes: RecipeData[] = [
       "Oil for frying",
       "Cinnamon sugar for coating",
       "8 oz dark chocolate",
-      "1/2 cup heavy cream for chocolate sauce"
+      "1/2 cup heavy cream for chocolate sauce",
     ],
     instructions: [
       "Bring water, sugar, salt, and oil to a boil",
@@ -808,8 +824,8 @@ export const recipes: RecipeData[] = [
       "Fry until golden brown, about 2 minutes per side",
       "Roll in cinnamon sugar while hot",
       "Heat cream and pour over chocolate to make sauce",
-      "Serve churros with chocolate for dipping"
+      "Serve churros with chocolate for dipping",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1611686802018-e3c1886d73f5"
-  }
+    imageUrl: "https://images.unsplash.com/photo-1611686802018-e3c1886d73f5",
+  },
 ];

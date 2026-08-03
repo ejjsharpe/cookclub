@@ -79,11 +79,7 @@ export const AdjustRecipeSheet = forwardRef<
     };
 
     return (
-      <AppSheet
-        ref={sheetRef}
-        title="Adjust Recipe"
-        detents={["auto"]}
-      >
+      <AppSheet ref={sheetRef} title="Adjust Recipe" detents={["auto"]}>
         <View style={styles.content}>
           <View style={styles.servingsSection}>
             <View style={styles.sectionHeader}>

@@ -20,9 +20,7 @@ export const useRefreshSubscriptionEntitlement = () => {
   return useMutation({
     ...trpc.subscription.refreshEntitlement.mutationOptions(),
     onSuccess: () => {
-      queryClient.invalidateQueries(
-        trpc.subscription.getStatus.pathFilter(),
-      );
+      queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter());
     },
   });
 };

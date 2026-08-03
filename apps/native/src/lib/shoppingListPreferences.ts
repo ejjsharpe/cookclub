@@ -7,8 +7,8 @@ const SELECTED_SHOPPING_LIST_ID_KEY = "selected_shopping_list_id";
 const SELECTED_SHOPPING_LIST_NAME_KEY = "selected_shopping_list_name";
 
 export function clearSelectedShoppingList(): void {
-  storage.delete(SELECTED_SHOPPING_LIST_ID_KEY);
-  storage.delete(SELECTED_SHOPPING_LIST_NAME_KEY);
+  storage.remove(SELECTED_SHOPPING_LIST_ID_KEY);
+  storage.remove(SELECTED_SHOPPING_LIST_NAME_KEY);
 }
 
 /** Reactive hook for selected shopping list - auto-updates when MMKV changes */

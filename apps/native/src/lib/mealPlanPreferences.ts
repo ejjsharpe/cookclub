@@ -12,8 +12,8 @@ export function setSelectedMealPlan(planId: number, planName: string): void {
 }
 
 export function clearSelectedMealPlan(): void {
-  storage.delete(SELECTED_MEAL_PLAN_ID_KEY);
-  storage.delete(SELECTED_MEAL_PLAN_NAME_KEY);
+  storage.remove(SELECTED_MEAL_PLAN_ID_KEY);
+  storage.remove(SELECTED_MEAL_PLAN_NAME_KEY);
 }
 
 /** Reactive hook for selected meal plan - auto-updates when MMKV changes */

@@ -1,3 +1,4 @@
-import { MMKV } from "react-native-mmkv";
+import { createMMKV } from "react-native-mmkv";
 
-export const storage = new MMKV();
+// Omitting an id preserves MMKV's existing default store across the v4 upgrade.
+export const storage = createMMKV();

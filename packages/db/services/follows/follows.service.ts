@@ -1,7 +1,8 @@
-import { follows, user } from "../../schemas";
-import { eq, and } from "drizzle-orm";
+import { eq, and, notInArray } from "drizzle-orm";
 
+import { follows, user } from "../../schemas";
 import { ServiceError } from "../errors";
+import { areUsersBlocked, getBlockedUserIds } from "../moderation";
 import {
   publicSubscriptionTierSqlForUserTable,
   type PublicSubscriptionTier,
@@ -12,10 +13,7 @@ import type { DbClient } from "../types";
 
 export type FollowListItem = {
   followId: number;
-  user: Pick<
-    typeof user.$inferSelect,
-    "id" | "name" | "username" | "image"
-  > & {
+  user: Pick<typeof user.$inferSelect, "id" | "name" | "username" | "image"> & {
     subscriptionTier: PublicSubscriptionTier;
   };
   followedAt: Date;
@@ -33,6 +31,10 @@ export async function followUser(
 ) {
   if (followingId === followerId) {
     throw new ServiceError("BAD_REQUEST", "Cannot follow yourself");
+  }
+
+  if (await areUsersBlocked(db, followerId, followingId)) {
+    throw new ServiceError("FORBIDDEN", "This interaction is not available");
   }
 
   // Check if already following
@@ -115,6 +117,7 @@ export async function getFollowList(
   },
 ): Promise<FollowListItem[]> {
   const { userId, type } = params;
+  const blockedUserIds = await getBlockedUserIds(db, userId);
 
   const followList = await db
     .select({
@@ -130,9 +133,14 @@ export async function getFollowList(
         : eq(follows.followerId, user.id),
     )
     .where(
-      type === "following"
-        ? eq(follows.followerId, userId)
-        : eq(follows.followingId, userId),
+      and(
+        type === "following"
+          ? eq(follows.followerId, userId)
+          : eq(follows.followingId, userId),
+        ...(blockedUserIds.length > 0
+          ? [notInArray(user.id, blockedUserIds)]
+          : []),
+      ),
     );
 
   return followList.map((item) => ({

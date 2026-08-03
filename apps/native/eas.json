@@ -1,41 +1,21 @@
 {
   "cli": {
-    "version": ">= 16.0.1",
+    "version": "21.4.0",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "environment": "development",
       "developmentClient": true,
-      "distribution": "internal",
-      "env" :{
-        "EXPO_PUBLIC_ADAPTY_PUBLIC_SDK_KEY": "public_live_8FQGMLK6.jfT7Jix98Zmv7qg30reM",
-        "EXPO_PUBLIC_ADAPTY_PAYWALL_PLACEMENT_ID": "pro_paywall"
-      }
+      "distribution": "internal"
     },
     "preview": {
       "environment": "preview",
-      "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_AUTH_BASE_URL": "https://api.cookclub.app",
-        "EXPO_PUBLIC_API_URL": "https://api.cookclub.app/trpc",
-        "EXPO_PUBLIC_ADAPTY_PUBLIC_SDK_KEY": "public_live_8FQGMLK6.jfT7Jix98Zmv7qg30reM",
-        "EXPO_PUBLIC_ADAPTY_PAYWALL_PLACEMENT_ID": "pro_paywall",
-        "EXPO_PUBLIC_ADAPTY_PRO_ACCESS_LEVEL_ID": "pro",
-        "EXPO_PUBLIC_SENTRY_DSN": "https://edd562aa00f038963a5cccd503320874@o4511452119629824.ingest.de.sentry.io/4511452128608336"
-      }
+      "distribution": "internal"
     },
     "production": {
       "environment": "production",
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_AUTH_BASE_URL": "https://api.cookclub.app",
-        "EXPO_PUBLIC_API_URL": "https://api.cookclub.app/trpc",
-        "EXPO_PUBLIC_ADAPTY_PUBLIC_SDK_KEY": "public_live_8FQGMLK6.jfT7Jix98Zmv7qg30reM",
-        "EXPO_PUBLIC_ADAPTY_PAYWALL_PLACEMENT_ID": "pro_paywall",
-        "EXPO_PUBLIC_ADAPTY_PRO_ACCESS_LEVEL_ID": "pro",
-        "EXPO_PUBLIC_SENTRY_DSN": "https://edd562aa00f038963a5cccd503320874@o4511452119629824.ingest.de.sentry.io/4511452128608336"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {

@@ -11,6 +11,8 @@
     "lint": "nx run-many -t lint",
     "test": "nx run-many -t test",
     "check-types": "nx run-many -t check-types",
+    "check:expo": "bun run --cwd apps/native check:expo",
+    "check:release": "bun run check-boundaries && bun run lint && bun run check-types && bun run test && bun run build && bun run check:expo",
     "deploy:api:prod": "bun run --cwd apps/api deploy:prod",
     "deploy:admin:prod": "bun run --cwd apps/admin deploy:prod",
     "deploy:recipe-ai:prod": "bun run --cwd apps/recipe-ai deploy:prod",
@@ -25,7 +27,11 @@
     "tooling/*"
   ],
   "devDependencies": {
-    "nx": "22.7.3"
+    "eas-cli": "21.4.0",
+    "eslint": "9.39.5",
+    "eslint-config-universe": "15.2.0",
+    "nx": "23.1.1",
+    "prettier": "3.9.6"
   },
   "trustedDependencies": [
     "@sentry/cli",

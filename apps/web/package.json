@@ -8,26 +8,22 @@
     "build": "astro build",
     "preview": "astro preview --host 0.0.0.0 --port 4321",
     "check-types": "astro check",
-    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern",
+    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern --max-warnings=0",
     "deploy": "astro build && wrangler deploy"
   },
   "dependencies": {
-    "@astrojs/react": "5.0.5",
-    "@astrojs/sitemap": "3.7.2",
-    "astro": "6.3.7",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "@astrojs/react": "6.0.2",
+    "@astrojs/sitemap": "3.7.3",
+    "astro": "7.1.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.9",
-    "@types/react": "19.2.15",
+    "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "eslint-config-universe": "15.2.0",
     "typescript": "6.0.3",
-    "wrangler": "4.112.0"
-  },
-  "eslintConfig": {
-    "extends": "universe/web"
+    "wrangler": "4.118.0"
   },
   "nx": {
     "tags": [

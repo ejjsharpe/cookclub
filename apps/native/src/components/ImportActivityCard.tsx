@@ -23,6 +23,8 @@ interface Props {
   onImportRecipePress?: (recipeId: number) => void;
   onViewSourcePress?: () => void;
   onCommentPress?: (activityEventId: number) => void;
+  onReportPress?: (activityEventId: number) => void;
+  onBlockPress?: (userId: string) => void;
   currentUserId?: string;
   timeAgo?: string;
   sourceDescription?: string;
@@ -143,6 +145,8 @@ export const ImportActivityCard = memo(
     onImportPress,
     onImportRecipePress,
     onCommentPress,
+    onReportPress,
+    onBlockPress,
     currentUserId,
     timeAgo: providedTimeAgo,
     sourceDescription: providedSourceDescription,
@@ -237,6 +241,13 @@ export const ImportActivityCard = memo(
           likeCount={activity.likeCount}
           onLikePress={onLikePress}
           onCommentPress={onCommentPress}
+          onReportPress={
+            activity.actor.id === currentUserId ? undefined : onReportPress
+          }
+          blockUserId={
+            activity.actor.id === currentUserId ? undefined : activity.actor.id
+          }
+          onBlockPress={onBlockPress}
           onImportPress={handleImport}
           primaryActionLabel={isCurrentUserRecipe ? "View Recipe" : "Import"}
           primaryActionIcon={isCurrentUserRecipe ? "book-outline" : "add"}

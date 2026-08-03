@@ -3,10 +3,7 @@ import type { ComponentProps } from "react";
 import type { Ionicons } from "@/components/Ionicons";
 
 export type RecipeImportSocialPlatform =
-  | "tiktok"
-  | "instagram"
-  | "facebook"
-  | "youtube";
+  "tiktok" | "instagram" | "facebook" | "youtube";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 

@@ -7,15 +7,21 @@ import { AppleLogo } from "../svg/AppleLogo";
 
 interface SignInWithAppleButtonProps {
   onPress: PressableProps["onPress"];
+  disabled?: boolean;
 }
 
 export const SignInWithAppleButton = ({
   onPress,
+  disabled,
 }: SignInWithAppleButtonProps) => {
   const { colors } = UnistylesRuntime.getTheme();
 
   return (
-    <BaseButton style={styles.container} onPress={onPress}>
+    <BaseButton
+      style={[styles.container, disabled && styles.disabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
       <View style={styles.content}>
         <AppleLogo size={20} color={colors.buttonText} />
         <Text style={styles.text}>Sign in with Apple</Text>
@@ -33,6 +39,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     alignItems: "center",
   },
+  disabled: { opacity: 0.5 },
   content: {
     flexDirection: "row",
     alignItems: "center",

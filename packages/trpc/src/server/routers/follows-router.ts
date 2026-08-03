@@ -3,6 +3,8 @@ import {
   followUser as followUserService,
   unfollowUser as unfollowUserService,
   getFollowList,
+  areUsersBlocked,
+  getBlockedUserIds,
   publicSubscriptionTierSqlForUserTable,
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
@@ -149,6 +151,7 @@ export const followsRouter = router({
       }
 
       try {
+        const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
         const users = await ctx.db
           .select({
             id: user.id,
@@ -161,6 +164,9 @@ export const followsRouter = router({
           .where(
             and(
               ne(user.id, ctx.user.id),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(user.id, blockedUserIds)]
+                : []),
               or(
                 like(user.name, `%${query}%`),
                 like(user.username, `%${query}%`),
@@ -189,6 +195,7 @@ export const followsRouter = router({
       const limit = normalizeUserSearchLimit(input.limit);
 
       try {
+        const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
         // Get IDs of users the current user already follows
         const followedIds = ctx.db
           .select({ id: follows.followingId })
@@ -211,7 +218,13 @@ export const followsRouter = router({
           })
           .from(user)
           .where(
-            and(ne(user.id, ctx.user.id), notInArray(user.id, followedIds)),
+            and(
+              ne(user.id, ctx.user.id),
+              notInArray(user.id, followedIds),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(user.id, blockedUserIds)]
+                : []),
+            ),
           )
           .orderBy(
             desc(
@@ -241,6 +254,9 @@ export const followsRouter = router({
       const currentUserId = ctx.user.id;
 
       try {
+        if (await areUsersBlocked(ctx.db, currentUserId, userId)) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
         // Single query with subqueries for all profile data
         // Note: We use "user"."id" explicitly in subqueries because Drizzle's ${user.id}
         // emits just "id" which would resolve to the subquery's table (e.g., follows.id)
@@ -316,6 +332,10 @@ export const followsRouter = router({
       const { userId } = input;
 
       try {
+        if (await areUsersBlocked(ctx.db, ctx.user.id, userId)) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
         const followersList = await ctx.db
           .select({
             follow: follows,
@@ -324,7 +344,14 @@ export const followsRouter = router({
           })
           .from(follows)
           .innerJoin(user, eq(follows.followerId, user.id))
-          .where(eq(follows.followingId, userId));
+          .where(
+            and(
+              eq(follows.followingId, userId),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(user.id, blockedUserIds)]
+                : []),
+            ),
+          );
 
         return followersList.map((item) => ({
           followId: item.follow.id,
@@ -337,7 +364,8 @@ export const followsRouter = router({
           },
           followedAt: item.follow.createdAt,
         }));
-      } catch {
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch user followers list",
@@ -356,6 +384,10 @@ export const followsRouter = router({
       const { userId } = input;
 
       try {
+        if (await areUsersBlocked(ctx.db, ctx.user.id, userId)) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
         const followingList = await ctx.db
           .select({
             follow: follows,
@@ -364,7 +396,14 @@ export const followsRouter = router({
           })
           .from(follows)
           .innerJoin(user, eq(follows.followingId, user.id))
-          .where(eq(follows.followerId, userId));
+          .where(
+            and(
+              eq(follows.followerId, userId),
+              ...(blockedUserIds.length > 0
+                ? [notInArray(user.id, blockedUserIds)]
+                : []),
+            ),
+          );
 
         return followingList.map((item) => ({
           followId: item.follow.id,
@@ -377,7 +416,8 @@ export const followsRouter = router({
           },
           followedAt: item.follow.createdAt,
         }));
-      } catch {
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch user following list",

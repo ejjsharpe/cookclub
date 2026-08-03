@@ -3,11 +3,7 @@ import type { PublicErrorCode } from "./errors";
 export type RecipeImportType = "basic" | "smart";
 export type RecipeImportMode = "url" | "text" | "image";
 export type RecipeImportStatus =
-  | "pending"
-  | "processing"
-  | "ready"
-  | "failed"
-  | "consumed";
+  "pending" | "processing" | "ready" | "failed" | "consumed";
 export type RecipeImportStrategy = "deterministic" | "ai-assisted";
 
 export type RecipeImportErrorCode = Extract<

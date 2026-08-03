@@ -87,6 +87,13 @@
       "entrypoint": "ImageService",
     },
   ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "destination_address": "help@cookclub.app",
+      "allowed_sender_addresses": ["moderation@cookclub.app"],
+    },
+  ],
   "ratelimits": [
     {
       "name": "API_RATE_LIMITER",
@@ -107,6 +114,11 @@
       "name": "UPLOAD_RATE_LIMITER",
       "namespace_id": "4602004",
       "simple": { "limit": 60, "period": 60 },
+    },
+    {
+      "name": "MODERATION_RATE_LIMITER",
+      "namespace_id": "4602005",
+      "simple": { "limit": 10, "period": 60 },
     },
   ],
   "vars": {
@@ -141,6 +153,13 @@
           "binding": "IMAGE_SERVICE",
           "service": "cookclub-images-production",
           "entrypoint": "ImageService",
+        },
+      ],
+      "send_email": [
+        {
+          "name": "EMAIL",
+          "destination_address": "help@cookclub.app",
+          "allowed_sender_addresses": ["moderation@cookclub.app"],
         },
       ],
       "durable_objects": {
@@ -228,6 +247,11 @@
           "name": "UPLOAD_RATE_LIMITER",
           "namespace_id": "4601004",
           "simple": { "limit": 60, "period": 60 },
+        },
+        {
+          "name": "MODERATION_RATE_LIMITER",
+          "namespace_id": "4601005",
+          "simple": { "limit": 10, "period": 60 },
         },
       ],
       "vars": {

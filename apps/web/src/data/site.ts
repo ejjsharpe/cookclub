@@ -5,10 +5,10 @@ export const site = {
   description:
     "Cook Club helps home cooks save recipes from anywhere, use up ingredients, plan meals, build shopping lists, and share the dishes worth making again.",
   supportEmail: "help@cookclub.app",
-  lastUpdated: "May 23, 2026",
-  appleSubscriptionsUrl: "https://support.apple.com/en-us/118428",
+  lastUpdated: "August 2, 2026",
+  appleSubscriptionsUrl: "https://apps.apple.com/account/subscriptions",
   googleSubscriptionsUrl:
-    "https://support.google.com/googleplay/answer/7018481?hl=en",
+    "https://play.google.com/store/account/subscriptions?package=com.shakyhand.cookclub",
 };
 
 export const supportMailto = `mailto:${site.supportEmail}`;

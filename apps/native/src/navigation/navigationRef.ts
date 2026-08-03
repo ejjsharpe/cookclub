@@ -15,6 +15,7 @@ export interface AppParamList extends ParamListBase {
   Start: undefined;
   Onboarding: undefined;
   Settings: undefined;
+  BlockedUsers: undefined;
   Notifications: undefined;
   GenerateRecipe: undefined;
   UserProfile: { userId: string };

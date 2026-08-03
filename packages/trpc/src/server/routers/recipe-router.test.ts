@@ -27,6 +27,10 @@ vi.mock("../services/activity", () => ({
     mocks.propagateActivityToFollowersInBackground,
 }));
 
+vi.mock("../legal", () => ({
+  requireCurrentTerms: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock the recipe service
 const mockCreateRecipeInTransaction = vi.fn();
 const mockUpdateRecipe = vi.fn();
@@ -38,6 +42,7 @@ const mockQueryUserRecipes = vi.fn();
 const mockQueryUserRecipesByOwner = vi.fn();
 const mockSearchUserRecipes = vi.fn();
 const mockGetSubscriptionStatus = vi.fn();
+const mockAreUsersBlocked = vi.fn();
 
 vi.mock("@repo/db/services", () => ({
   createRecipeInTransaction: (...args: unknown[]) =>
@@ -52,6 +57,7 @@ vi.mock("@repo/db/services", () => ({
   queryUserRecipes: (...args: unknown[]) => mockQueryUserRecipes(...args),
   queryUserRecipesByOwner: (...args: unknown[]) =>
     mockQueryUserRecipesByOwner(...args),
+  areUsersBlocked: (...args: unknown[]) => mockAreUsersBlocked(...args),
   searchUserRecipes: (...args: unknown[]) => mockSearchUserRecipes(...args),
   queryPopularRecipesThisWeek: vi.fn(),
   DEFAULT_PRO_ACCESS_LEVEL_ID: "pro",
@@ -864,6 +870,10 @@ describe("recipeRouter - activity integration", () => {
   });
 
   describe("recipe list queries", () => {
+    beforeEach(() => {
+      mockAreUsersBlocked.mockResolvedValue(false);
+    });
+
     it("routes current-user browsing through the database service", async () => {
       const ctx = createMockContext(mockDb);
       const caller = recipeRouter.createCaller(ctx as any);
@@ -899,6 +909,17 @@ describe("recipeRouter - activity integration", () => {
         search: "pasta",
         limit: 15,
       });
+    });
+
+    it("does not expose recipes across a user block", async () => {
+      mockAreUsersBlocked.mockResolvedValue(true);
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await expect(
+        caller.getUserRecipesById({ userId: "blocked-user" }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect(mockQueryUserRecipesByOwner).not.toHaveBeenCalled();
     });
 
     it("rejects excessive browse tags before querying", async () => {

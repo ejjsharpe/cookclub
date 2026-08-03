@@ -1,5 +1,7 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
+import { LEGAL_URLS } from "@repo/contracts";
 import { Image } from "expo-image";
+import * as Linking from "expo-linking";
 import {
   forwardRef,
   useCallback,
@@ -67,6 +69,12 @@ const FEATURES: {
     subtitle: "Generate ideas and personalise recipes around your kitchen.",
   },
 ];
+
+const STORE_NAME = process.env.EXPO_OS === "ios" ? "App Store" : "Google Play";
+const SUBSCRIPTION_MANAGEMENT_URL =
+  process.env.EXPO_OS === "ios"
+    ? "https://apps.apple.com/account/subscriptions"
+    : "https://play.google.com/store/account/subscriptions?package=com.shakyhand.cookclub";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error) {
@@ -172,9 +180,7 @@ export const ProPaywallSheet = forwardRef<
 
       try {
         await identifyAdaptyUser(userId);
-        const nextPaywall = await adapty.getPaywall(
-          ADAPTY_PAYWALL_PLACEMENT_ID,
-        );
+        const nextPaywall = await adapty.getFlow(ADAPTY_PAYWALL_PLACEMENT_ID);
         const nextProducts = await adapty.getPaywallProducts(nextPaywall);
 
         if (requestId !== loadRequestIdRef.current) return;
@@ -186,7 +192,7 @@ export const ProPaywallSheet = forwardRef<
             null,
         );
 
-        adapty.logShowPaywall(nextPaywall).catch((error) => {
+        adapty.logShowFlow(nextPaywall).catch((error) => {
           console.log("Adapty paywall view logging failed:", error);
         });
       } catch (error) {
@@ -337,8 +343,8 @@ export const ProPaywallSheet = forwardRef<
           </TouchableOpacity>
           <Text style={styles.footerNote}>
             {isPro
-              ? "Managed through App Store."
-              : "Cancel anytime in App Store."}
+              ? `Managed through ${STORE_NAME}.`
+              : `Cancel anytime in ${STORE_NAME}.`}
           </Text>
         </View>
       </View>
@@ -521,6 +527,33 @@ export const ProPaywallSheet = forwardRef<
               })}
             </View>
           ) : null}
+
+          <View style={styles.subscriptionDisclosure}>
+            <Text type="caption" style={styles.disclosureText}>
+              {selectedProduct
+                ? `${getPriceLine(selectedProduct)}. Payment is charged to your ${STORE_NAME} account when you confirm. `
+                : "Payment is charged to your store account when you confirm. "}
+              Subscriptions renew automatically unless cancelled at least 24
+              hours before the current period ends. No free trial is included.
+            </Text>
+            <View style={styles.legalLinkRow}>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(LEGAL_URLS.terms)}
+              >
+                <Text style={styles.legalLink}>Terms</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(LEGAL_URLS.privacy)}
+              >
+                <Text style={styles.legalLink}>Privacy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(SUBSCRIPTION_MANAGEMENT_URL)}
+              >
+                <Text style={styles.legalLink}>Manage subscription</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </ScrollView>
       </AppSheet>
     );
@@ -688,6 +721,21 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   planList: {
     gap: 10,
+  },
+  subscriptionDisclosure: { gap: 10 },
+  disclosureText: {
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  legalLinkRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+  },
+  legalLink: {
+    color: theme.colors.primary,
+    fontFamily: theme.fonts.semiBold,
+    fontSize: 13,
   },
   planCard: {
     minHeight: 112,

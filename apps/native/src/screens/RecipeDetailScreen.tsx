@@ -46,6 +46,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 
 import { useCreateCookingReview } from "@/api/activity";
+import { useBlockUser } from "@/api/moderation";
 import {
   useRecipeDetail,
   useCompleteRecipeImport,
@@ -80,6 +81,10 @@ import {
   PersonaliseRecipeSheet,
   type PersonaliseRecipeSheetRef,
 } from "@/components/PersonaliseRecipeSheet";
+import {
+  ReportContentSheet,
+  type ReportContentSheetRef,
+} from "@/components/ReportContentSheet";
 import {
   ShoppingListSelectorSheet,
   type ShoppingListSelectorSheetRef,
@@ -119,8 +124,7 @@ type RecipeDetailScreenRoute = RouteProp<AppParamList, "RecipeDetail">;
 type SourceType = "url" | "image" | "text" | "ai" | "manual" | "user";
 
 type RecipeLike =
-  | Recipe
-  | NonNullable<ReturnType<typeof transformParsedRecipeForPreview>>;
+  Recipe | NonNullable<ReturnType<typeof transformParsedRecipeForPreview>>;
 
 interface RecipeImage {
   id: number;
@@ -535,6 +539,7 @@ export const RecipeDetailScreen = () => {
   const generateRecipeImageMutation = useGenerateRecipeImage();
   const nutritionMutation = useGetRecipeNutrition();
   const createCookingReviewMutation = useCreateCookingReview();
+  const blockUserMutation = useBlockUser();
   const { isPro, requireProFeature, presentPaywall } = useSubscription();
   const { dismissImport } = useRecipeImport();
 
@@ -561,6 +566,7 @@ export const RecipeDetailScreen = () => {
   const shoppingListSheetRef = useRef<ShoppingListSelectorSheetRef>(null);
   const collectionSheetRef = useRef<CollectionSelectorSheetRef>(null);
   const cookingReviewSheetRef = useRef<CookingReviewSheetRef>(null);
+  const reportSheetRef = useRef<ReportContentSheetRef>(null);
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [ratingOverride, setRatingOverride] = useState<number | null>(null);
@@ -1413,6 +1419,34 @@ export const RecipeDetailScreen = () => {
     updateRecipeMutation,
   ]);
 
+  const handleBlockRecipeOwner = useCallback(() => {
+    const owner = recipe?.owner;
+    if (!owner) return;
+
+    Alert.alert(
+      `Block ${owner.name}?`,
+      "You will no longer see each other's profiles or content. Previous follows will be removed.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await blockUserMutation.mutateAsync({ userId: owner.id });
+              navigation.goBack();
+            } catch (error) {
+              alertApiError("Block Failed", error, {
+                operation: "moderation.blockUser",
+                fallback: "Could not block this user. Please try again.",
+              });
+            }
+          },
+        },
+      ],
+    );
+  }, [blockUserMutation, navigation, recipe?.owner]);
+
   useLayoutEffect(() => {
     const headerRightItems: any[] = [];
 
@@ -1487,6 +1521,33 @@ export const RecipeDetailScreen = () => {
           ],
         },
       });
+    } else if (!isEditing && !isPreviewMode && recipeId !== null) {
+      headerRightItems.push({
+        type: "menu" as const,
+        label: "Safety options",
+        icon: { type: "sfSymbol" as const, name: "ellipsis" },
+        menu: {
+          items: [
+            {
+              type: "action" as const,
+              label: "Report Recipe",
+              icon: { type: "sfSymbol" as const, name: "flag" },
+              onPress: () =>
+                reportSheetRef.current?.present({
+                  targetType: "recipe",
+                  targetId: String(recipeId),
+                }),
+            },
+            {
+              type: "action" as const,
+              label: "Block Recipe Author",
+              icon: { type: "sfSymbol" as const, name: "hand.raised" },
+              destructive: true,
+              onPress: handleBlockRecipeOwner,
+            },
+          ],
+        },
+      });
     }
 
     navigation.setOptions({
@@ -1495,6 +1556,7 @@ export const RecipeDetailScreen = () => {
     });
   }, [
     deleteMutation,
+    handleBlockRecipeOwner,
     handleEnterEditMode,
     isEditing,
     isOwnRecipe,
@@ -2889,6 +2951,8 @@ export const RecipeDetailScreen = () => {
         }
         onSubmit={handleSubmitReview}
       />
+
+      <ReportContentSheet ref={reportSheetRef} />
 
       {isEditing && draft ? (
         <Animated.View

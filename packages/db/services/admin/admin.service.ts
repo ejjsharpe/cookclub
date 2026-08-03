@@ -8,7 +8,8 @@ export type AdminAuditEventType =
   | "user.unban"
   | "user.delete"
   | "subscription.override.set"
-  | "subscription.override.clear";
+  | "subscription.override.clear"
+  | "moderation.report.resolve";
 
 export interface RecordAdminAuditEventInput {
   eventType: AdminAuditEventType;

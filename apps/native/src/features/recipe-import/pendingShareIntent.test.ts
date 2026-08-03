@@ -17,7 +17,7 @@ vi.mock("@/lib/mmkv", () => ({
   storage: {
     getString: (key: string) => mocks.values.get(key),
     set: (key: string, value: string) => mocks.values.set(key, value),
-    delete: (key: string) => mocks.values.delete(key),
+    remove: (key: string) => mocks.values.delete(key),
   },
 }));
 

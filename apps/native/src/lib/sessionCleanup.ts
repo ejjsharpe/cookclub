@@ -1,12 +1,12 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import { clearPendingShareIntent } from "@/features/recipe-import/pendingShareIntent";
-
 import { clearSelectedMealPlan } from "./mealPlanPreferences";
 import { storage } from "./mmkv";
 import { queryPersister } from "./queryPersister";
 import { clearSelectedShoppingList } from "./shoppingListPreferences";
 import { applyThemePreference, setThemePreference } from "./themePreferences";
+
+import { clearPendingShareIntent } from "@/features/recipe-import/pendingShareIntent";
 
 export async function clearLocalSessionState(queryClient: QueryClient) {
   await queryClient.cancelQueries();
@@ -17,7 +17,7 @@ export async function clearLocalSessionState(queryClient: QueryClient) {
   await queryPersister.removeClient();
   storage.getAllKeys().forEach((key) => {
     if (key.startsWith("cookclub")) {
-      storage.delete(key);
+      storage.remove(key);
     }
   });
   clearSelectedMealPlan();

@@ -29,16 +29,19 @@ updates:
         patterns:
           - "*"
     ignore:
-      # Expo SDK 56 is intentionally held until expo-share-intent supports it.
+      # Expo SDK 57 and the native modules below move only with Expo's
+      # supported-version matrix. Third-party native packages update normally.
       - dependency-name: "expo"
-        update-types:
-          - "version-update:semver-major"
       - dependency-name: "expo-*"
-        update-types:
-          - "version-update:semver-major"
       - dependency-name: "@shopify/flash-list"
+      - dependency-name: "@sentry/react-native"
       - dependency-name: "react-native"
-      - dependency-name: "react-native-*"
+      - dependency-name: "react-native-gesture-handler"
+      - dependency-name: "react-native-reanimated"
+      - dependency-name: "react-native-safe-area-context"
+      - dependency-name: "react-native-screens"
+      - dependency-name: "react-native-svg"
+      - dependency-name: "react-native-worklets"
       - dependency-name: "react"
     commit-message:
       prefix: "deps"

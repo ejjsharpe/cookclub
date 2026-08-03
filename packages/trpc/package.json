@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "check-types": "tsc --noEmit",
-    "lint": "eslint \"**/*.{js,jsx,ts,tsx}\"",
+    "lint": "eslint \"**/*.{js,jsx,ts,tsx}\" --max-warnings=0",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -20,20 +20,17 @@
     "@repo/contracts": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/shared": "workspace:*",
-    "@trpc/client": "11.17.0",
-    "@trpc/server": "11.17.0",
-    "@trpc/tanstack-react-query": "11.17.0",
+    "@trpc/client": "11.18.0",
+    "@trpc/server": "11.18.0",
+    "@trpc/tanstack-react-query": "11.18.0",
     "arktype": "2.2.0",
-    "drizzle-orm": "0.45.2"
+    "drizzle-orm": "0.45.2",
+    "glin-profanity": "3.3.0"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "eslint-config-universe": "15.2.0",
     "typescript": "6.0.3",
     "vitest": "4.1.7"
-  },
-  "eslintConfig": {
-    "extends": "universe/node"
   },
   "nx": {
     "tags": [
