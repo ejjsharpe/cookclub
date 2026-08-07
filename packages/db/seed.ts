@@ -1,11 +1,12 @@
 import { neon } from "@neondatabase/serverless";
+import { CURRENT_TERMS_VERSION } from "@repo/contracts";
 import {
   classifyIngredientAisle,
   extractPreparation,
   normalizeIngredientName,
 } from "@repo/shared";
 import { hashPassword } from "better-auth/crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, type SQLWrapper } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import * as readline from "readline";
 
@@ -279,7 +280,11 @@ async function clearDatabase(db: DbClient) {
   console.log("🗑️  Clearing existing data...");
 
   // Delete in order respecting foreign keys
+  await db.delete(schema.pushNotificationTickets);
   await db.delete(schema.notifications);
+  await db.delete(schema.pushTokens);
+  await db.delete(schema.contentReports);
+  await db.delete(schema.adminAuditEvents);
   await db.delete(schema.comments);
   await db.delete(schema.activityLikes);
   await db.delete(schema.cookingReviewImages);
@@ -293,10 +298,13 @@ async function clearDatabase(db: DbClient) {
   await db.delete(schema.shoppingListRecipes);
   await db.delete(schema.shoppingLists);
   await db.delete(schema.follows);
+  await db.delete(schema.userBlocks);
   await db.delete(schema.recipeCollections);
   await db.delete(schema.collections);
   await db.delete(schema.recipeTags);
   await db.delete(schema.recipeNutrition);
+  await db.delete(schema.recipeImportJobs);
+  await db.delete(schema.recipeSearchDocuments);
   // Delete ingredients/instructions first, then their sections
   await db.delete(schema.recipeInstructions);
   await db.delete(schema.recipeIngredients);
@@ -305,6 +313,11 @@ async function clearDatabase(db: DbClient) {
   await db.delete(schema.recipeImages);
   await db.delete(schema.recipes);
   await db.delete(schema.tags);
+  await db.delete(schema.adaptyWebhookEvents);
+  await db.delete(schema.smartImportUsage);
+  await db.delete(schema.subscriptionAdminOverrides);
+  await db.delete(schema.subscriptionEntitlements);
+  await db.delete(schema.legalAcceptances);
   await db.delete(schema.verification);
   await db.delete(schema.session);
   await db.delete(schema.account);
@@ -331,6 +344,7 @@ async function seedUsers(db: DbClient) {
         email: u.email,
         emailVerified: true,
         image: u.image,
+        role: u.id === "user_001" ? "admin" : "user",
         createdAt,
         updatedAt: createdAt,
         onboardingCompleted: true,
@@ -1113,6 +1127,158 @@ async function seedImportedRecipes(
   return importedRecipes;
 }
 
+async function seedRecipeImportJobs(
+  db: DbClient,
+  users: (typeof schema.user.$inferSelect)[],
+  allRecipes: (typeof schema.recipes.$inferSelect)[],
+) {
+  console.log("🧾 Seeding recipe import job lifecycle...");
+
+  const [pendingUser, processingUser, readyUser, failedUser, consumedUser] =
+    users;
+  const consumedRecipe = consumedUser
+    ? allRecipes.find((recipe) => recipe.ownerId === consumedUser.id)
+    : undefined;
+
+  if (
+    !pendingUser ||
+    !processingUser ||
+    !readyUser ||
+    !failedUser ||
+    !consumedUser ||
+    !consumedRecipe
+  ) {
+    throw new Error("Not enough seeded data to create recipe import jobs");
+  }
+
+  const now = new Date();
+  const minutesAgo = (minutes: number) =>
+    new Date(now.getTime() - minutes * 60 * 1_000);
+  const readyRecipe = {
+    success: true,
+    data: {
+      name: "Weeknight tomato pasta",
+      description: "A ready-to-save recipe import used for development.",
+      prepTime: 10,
+      cookTime: 20,
+      totalTime: 30,
+      servings: 4,
+      sourceType: "text",
+      ingredientSections: [
+        {
+          name: null,
+          ingredients: [
+            { index: 0, quantity: 320, unit: "g", name: "spaghetti" },
+            { index: 1, quantity: 400, unit: "g", name: "chopped tomatoes" },
+            { index: 2, quantity: 2, unit: "cloves", name: "garlic" },
+          ],
+        },
+      ],
+      instructionSections: [
+        {
+          name: null,
+          instructions: [
+            { index: 0, instruction: "Cook the pasta until al dente." },
+            { index: 1, instruction: "Simmer the tomatoes and garlic." },
+            { index: 2, instruction: "Toss together and serve." },
+          ],
+        },
+      ],
+      images: [],
+      suggestedTags: ["Quick", "Pasta"],
+    },
+    metadata: {
+      source: "text",
+      strategy: "ai-assisted",
+      confidence: "high",
+      cached: false,
+    },
+  } satisfies NonNullable<
+    (typeof schema.recipeImportJobs.$inferInsert)["recipe"]
+  >;
+
+  const jobs: (typeof schema.recipeImportJobs.$inferInsert)[] = [
+    {
+      id: "00000000-0000-4000-8000-000000000001",
+      userId: pendingUser.id,
+      importType: "basic",
+      mode: "url",
+      title: "seriouseats.com",
+      sourceData: "https://www.seriouseats.com/seed-pending-recipe",
+      requestFingerprint: "1".repeat(64),
+      status: "pending",
+      createdAt: minutesAgo(2),
+      updatedAt: minutesAgo(2),
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000002",
+      userId: processingUser.id,
+      importType: "smart",
+      mode: "image",
+      title: "Recipe image",
+      sourceData: null,
+      requestFingerprint: "2".repeat(64),
+      status: "processing",
+      processingStartedAt: minutesAgo(1),
+      createdAt: minutesAgo(3),
+      updatedAt: minutesAgo(1),
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000003",
+      userId: readyUser.id,
+      importType: "smart",
+      mode: "text",
+      title: readyRecipe.data.name,
+      sourceData: null,
+      requestFingerprint: "3".repeat(64),
+      status: "ready",
+      recipe: readyRecipe,
+      completedAt: minutesAgo(45),
+      createdAt: minutesAgo(48),
+      updatedAt: minutesAgo(45),
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000004",
+      userId: failedUser.id,
+      importType: "basic",
+      mode: "url",
+      title: "Unavailable recipe URL",
+      sourceData: null,
+      requestFingerprint: "4".repeat(64),
+      status: "failed",
+      error: "That recipe source is unavailable right now.",
+      errorCode: "IMPORT_SOURCE_UNAVAILABLE",
+      completedAt: minutesAgo(120),
+      createdAt: minutesAgo(123),
+      updatedAt: minutesAgo(120),
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000005",
+      userId: consumedUser.id,
+      importType: "smart",
+      mode: "url",
+      title: consumedRecipe.name,
+      sourceData: null,
+      requestFingerprint: "5".repeat(64),
+      completionFingerprint: "a".repeat(64),
+      status: "consumed",
+      recipeId: consumedRecipe.id,
+      completedAt: minutesAgo(180),
+      consumedAt: minutesAgo(175),
+      createdAt: minutesAgo(185),
+      updatedAt: minutesAgo(175),
+    },
+  ];
+
+  const seededJobs = await db
+    .insert(schema.recipeImportJobs)
+    .values(jobs)
+    .returning({ id: schema.recipeImportJobs.id });
+
+  console.log(`✅ Seeded ${seededJobs.length} recipe import jobs`);
+  return seededJobs;
+}
+
 async function seedActivityFeed(
   db: DbClient,
   users: (typeof schema.user.$inferSelect)[],
@@ -1533,6 +1699,429 @@ async function seedSharedResources(
   );
 }
 
+async function seedModeration(
+  db: DbClient,
+  users: (typeof schema.user.$inferSelect)[],
+  allRecipes: (typeof schema.recipes.$inferSelect)[],
+) {
+  console.log("🛡️  Seeding legal and moderation data...");
+
+  const adminUser = users.find((user) => user.role === "admin");
+  if (!adminUser) {
+    throw new Error("An admin user is required to seed moderation data");
+  }
+
+  await db.insert(schema.legalAcceptances).values(
+    users.map((user) => ({
+      userId: user.id,
+      termsVersion: CURRENT_TERMS_VERSION,
+      acceptedAt: randomDateAfter(user.createdAt, 60),
+      ipAddress: "127.0.0.1",
+      userAgent: "Cook Club seed script",
+    })),
+  );
+
+  const blockPairs = [
+    [users[5], users[8]],
+    [users[9], users[11]],
+  ].filter(
+    (
+      pair,
+    ): pair is [
+      typeof schema.user.$inferSelect,
+      typeof schema.user.$inferSelect,
+    ] => Boolean(pair[0] && pair[1]),
+  );
+
+  for (const [blocker, blocked] of blockPairs) {
+    const createdAt = randomDateAfter(
+      maxDate(blocker.createdAt, blocked.createdAt),
+      30,
+    );
+    await db.insert(schema.userBlocks).values({
+      blockerUserId: blocker.id,
+      blockedUserId: blocked.id,
+      createdAt,
+    });
+
+    const eitherDirection = (
+      first: SQLWrapper,
+      second: SQLWrapper,
+      firstValue: string,
+      secondValue: string,
+    ) =>
+      or(
+        and(eq(first, firstValue), eq(second, secondValue)),
+        and(eq(first, secondValue), eq(second, firstValue)),
+      );
+
+    await db
+      .delete(schema.follows)
+      .where(
+        eitherDirection(
+          schema.follows.followerId,
+          schema.follows.followingId,
+          blocker.id,
+          blocked.id,
+        ),
+      );
+    await db
+      .delete(schema.notifications)
+      .where(
+        eitherDirection(
+          schema.notifications.actorId,
+          schema.notifications.recipientId,
+          blocker.id,
+          blocked.id,
+        ),
+      );
+    await db
+      .delete(schema.mealPlanInvitations)
+      .where(
+        eitherDirection(
+          schema.mealPlanInvitations.invitedByUserId,
+          schema.mealPlanInvitations.invitedUserId,
+          blocker.id,
+          blocked.id,
+        ),
+      );
+    await db
+      .delete(schema.shoppingListInvitations)
+      .where(
+        eitherDirection(
+          schema.shoppingListInvitations.invitedByUserId,
+          schema.shoppingListInvitations.invitedUserId,
+          blocker.id,
+          blocked.id,
+        ),
+      );
+  }
+
+  const comments = await db.select().from(schema.comments).limit(2);
+  const [review] = await db
+    .select()
+    .from(schema.cookingReviews)
+    .where(eq(schema.cookingReviews.moderationState, "visible"))
+    .limit(1);
+  const openRecipe = allRecipes[0];
+  const hiddenRecipe = allRecipes.find(
+    (recipe) => recipe.id !== openRecipe?.id,
+  );
+  const reportedUser = users.find((user) => user.id !== adminUser.id);
+  const [dismissedComment, hiddenComment] = comments;
+
+  if (
+    !dismissedComment ||
+    !hiddenComment ||
+    !review?.activityEventId ||
+    !openRecipe ||
+    !hiddenRecipe ||
+    !reportedUser
+  ) {
+    throw new Error("Not enough seeded content to create moderation reports");
+  }
+
+  const [activity] = await db
+    .select()
+    .from(schema.activityEvents)
+    .where(eq(schema.activityEvents.id, review.activityEventId))
+    .limit(1);
+  if (!activity) {
+    throw new Error("Moderation activity target was not found");
+  }
+
+  const reporterFor = (ownerId: string, offset: number) => {
+    const candidates = users.filter(
+      (user) => user.id !== ownerId && user.id !== adminUser.id,
+    );
+    const reporter = candidates[offset % candidates.length];
+    if (!reporter) throw new Error("Moderation reporter was not found");
+    return reporter;
+  };
+  const snapshot = (
+    targetType: schema.ModerationTargetType,
+    targetId: string,
+    ownerUserId: string | null,
+    capturedAt: Date,
+    content: Record<string, unknown>,
+  ): schema.ModerationTargetSnapshot => ({
+    targetType,
+    targetId,
+    ownerUserId,
+    capturedAt: capturedAt.toISOString(),
+    content,
+  });
+  const reportRows: (typeof schema.contentReports.$inferInsert)[] = [];
+
+  const userReporter = reporterFor(reportedUser.id, 0);
+  const userReportCreatedAt = randomDateAfter(
+    maxDate(userReporter.createdAt, reportedUser.createdAt),
+    30,
+  );
+  reportRows.push({
+    reporterUserId: userReporter.id,
+    targetType: "user",
+    targetId: reportedUser.id,
+    targetOwnerUserId: reportedUser.id,
+    reason: "harassment_hate",
+    details: "Seeded open user report for the moderation queue.",
+    targetSnapshot: snapshot(
+      "user",
+      reportedUser.id,
+      reportedUser.id,
+      userReportCreatedAt,
+      {
+        id: reportedUser.id,
+        name: reportedUser.name,
+        username: reportedUser.username,
+        bio: reportedUser.bio,
+        image: reportedUser.image,
+        banned: reportedUser.banned,
+      },
+    ),
+    status: "open",
+    createdAt: userReportCreatedAt,
+    updatedAt: userReportCreatedAt,
+  });
+
+  const recipeReporter = reporterFor(openRecipe.ownerId, 1);
+  const recipeReportCreatedAt = randomDateAfter(
+    maxDate(recipeReporter.createdAt, openRecipe.createdAt),
+    20,
+  );
+  reportRows.push({
+    reporterUserId: recipeReporter.id,
+    targetType: "recipe",
+    targetId: String(openRecipe.id),
+    targetOwnerUserId: openRecipe.ownerId,
+    reason: "intellectual_property",
+    details: "Seeded open recipe report for review.",
+    targetSnapshot: snapshot(
+      "recipe",
+      String(openRecipe.id),
+      openRecipe.ownerId,
+      recipeReportCreatedAt,
+      {
+        id: openRecipe.id,
+        ownerId: openRecipe.ownerId,
+        name: openRecipe.name,
+        description: openRecipe.description,
+        sourceType: openRecipe.sourceType,
+        sourceUrl: openRecipe.sourceUrl,
+        moderationState: openRecipe.moderationState,
+        createdAt: openRecipe.createdAt.toISOString(),
+      },
+    ),
+    status: "open",
+    createdAt: recipeReportCreatedAt,
+    updatedAt: recipeReportCreatedAt,
+  });
+
+  const dismissedReporter = reporterFor(dismissedComment.userId, 2);
+  const dismissedCreatedAt = randomDateAfter(
+    maxDate(dismissedReporter.createdAt, dismissedComment.createdAt),
+    14,
+  );
+  const dismissedAt = randomDateAfter(dismissedCreatedAt, 2);
+  reportRows.push({
+    reporterUserId: dismissedReporter.id,
+    targetType: "comment",
+    targetId: String(dismissedComment.id),
+    targetOwnerUserId: dismissedComment.userId,
+    reason: "spam_scam",
+    details: "Seeded dismissed comment report.",
+    targetSnapshot: snapshot(
+      "comment",
+      String(dismissedComment.id),
+      dismissedComment.userId,
+      dismissedCreatedAt,
+      {
+        id: dismissedComment.id,
+        userId: dismissedComment.userId,
+        activityEventId: dismissedComment.activityEventId,
+        parentCommentId: dismissedComment.parentCommentId,
+        content: dismissedComment.content,
+        moderationState: dismissedComment.moderationState,
+        createdAt: dismissedComment.createdAt.toISOString(),
+      },
+    ),
+    status: "dismissed",
+    resolutionAction: "dismiss",
+    resolutionNotes: "No policy violation found in this seeded example.",
+    resolvedByUserId: adminUser.id,
+    resolvedAt: dismissedAt,
+    createdAt: dismissedCreatedAt,
+    updatedAt: dismissedAt,
+  });
+
+  const hiddenCommentReporter = reporterFor(hiddenComment.userId, 3);
+  const hiddenCommentCreatedAt = randomDateAfter(
+    maxDate(hiddenCommentReporter.createdAt, hiddenComment.createdAt),
+    14,
+  );
+  const hiddenCommentResolvedAt = randomDateAfter(hiddenCommentCreatedAt, 2);
+  reportRows.push({
+    reporterUserId: hiddenCommentReporter.id,
+    targetType: "comment",
+    targetId: String(hiddenComment.id),
+    targetOwnerUserId: hiddenComment.userId,
+    reason: "sexual_content",
+    details: "Seeded resolved report with the comment hidden.",
+    targetSnapshot: snapshot(
+      "comment",
+      String(hiddenComment.id),
+      hiddenComment.userId,
+      hiddenCommentCreatedAt,
+      {
+        id: hiddenComment.id,
+        userId: hiddenComment.userId,
+        activityEventId: hiddenComment.activityEventId,
+        parentCommentId: hiddenComment.parentCommentId,
+        content: hiddenComment.content,
+        moderationState: hiddenComment.moderationState,
+        createdAt: hiddenComment.createdAt.toISOString(),
+      },
+    ),
+    status: "resolved",
+    resolutionAction: "hide",
+    resolutionNotes: "Hidden by the seeded moderation workflow.",
+    resolvedByUserId: adminUser.id,
+    resolvedAt: hiddenCommentResolvedAt,
+    createdAt: hiddenCommentCreatedAt,
+    updatedAt: hiddenCommentResolvedAt,
+  });
+
+  const activityReporter = reporterFor(activity.userId, 4);
+  const activityReportCreatedAt = randomDateAfter(
+    maxDate(activityReporter.createdAt, activity.createdAt),
+    10,
+  );
+  const activityResolvedAt = randomDateAfter(activityReportCreatedAt, 2);
+  reportRows.push({
+    reporterUserId: activityReporter.id,
+    targetType: "activity",
+    targetId: String(activity.id),
+    targetOwnerUserId: activity.userId,
+    reason: "violence_danger",
+    details: "Seeded resolved activity report.",
+    targetSnapshot: snapshot(
+      "activity",
+      String(activity.id),
+      activity.userId,
+      activityReportCreatedAt,
+      {
+        id: activity.id,
+        userId: activity.userId,
+        type: activity.type,
+        recipeId: activity.recipeId,
+        moderationState: activity.moderationState,
+        reviewId: review.id,
+        rating: review.rating,
+        reviewText: review.reviewText,
+        createdAt: activity.createdAt.toISOString(),
+      },
+    ),
+    status: "resolved",
+    resolutionAction: "hide",
+    resolutionNotes: "Activity hidden by the seeded moderation workflow.",
+    resolvedByUserId: adminUser.id,
+    resolvedAt: activityResolvedAt,
+    createdAt: activityReportCreatedAt,
+    updatedAt: activityResolvedAt,
+  });
+
+  const hiddenRecipeReporter = reporterFor(hiddenRecipe.ownerId, 5);
+  const hiddenRecipeReportCreatedAt = randomDateAfter(
+    maxDate(hiddenRecipeReporter.createdAt, hiddenRecipe.createdAt),
+    10,
+  );
+  const hiddenRecipeResolvedAt = randomDateAfter(
+    hiddenRecipeReportCreatedAt,
+    2,
+  );
+  reportRows.push({
+    reporterUserId: hiddenRecipeReporter.id,
+    targetType: "recipe",
+    targetId: String(hiddenRecipe.id),
+    targetOwnerUserId: hiddenRecipe.ownerId,
+    reason: "other",
+    details: "Seeded resolved recipe report.",
+    targetSnapshot: snapshot(
+      "recipe",
+      String(hiddenRecipe.id),
+      hiddenRecipe.ownerId,
+      hiddenRecipeReportCreatedAt,
+      {
+        id: hiddenRecipe.id,
+        ownerId: hiddenRecipe.ownerId,
+        name: hiddenRecipe.name,
+        description: hiddenRecipe.description,
+        sourceType: hiddenRecipe.sourceType,
+        sourceUrl: hiddenRecipe.sourceUrl,
+        moderationState: hiddenRecipe.moderationState,
+        createdAt: hiddenRecipe.createdAt.toISOString(),
+      },
+    ),
+    status: "resolved",
+    resolutionAction: "hide",
+    resolutionNotes: "Recipe hidden by the seeded moderation workflow.",
+    resolvedByUserId: adminUser.id,
+    resolvedAt: hiddenRecipeResolvedAt,
+    createdAt: hiddenRecipeReportCreatedAt,
+    updatedAt: hiddenRecipeResolvedAt,
+  });
+
+  const reports = await db
+    .insert(schema.contentReports)
+    .values(reportRows)
+    .returning();
+
+  await db
+    .update(schema.comments)
+    .set({ moderationState: "hidden" })
+    .where(eq(schema.comments.id, hiddenComment.id));
+  await db
+    .update(schema.activityEvents)
+    .set({ moderationState: "hidden" })
+    .where(eq(schema.activityEvents.id, activity.id));
+  await db
+    .update(schema.cookingReviews)
+    .set({ moderationState: "hidden" })
+    .where(eq(schema.cookingReviews.id, review.id));
+  await db
+    .update(schema.recipes)
+    .set({ moderationState: "hidden" })
+    .where(eq(schema.recipes.id, hiddenRecipe.id));
+  await db
+    .update(schema.activityEvents)
+    .set({ moderationState: "hidden" })
+    .where(eq(schema.activityEvents.recipeId, hiddenRecipe.id));
+
+  const resolvedReports = reports.filter((report) => report.status !== "open");
+  if (resolvedReports.length > 0) {
+    await db.insert(schema.adminAuditEvents).values(
+      resolvedReports.map((report) => ({
+        eventType: "moderation.report.resolve",
+        actorUserId: adminUser.id,
+        targetUserId: report.targetOwnerUserId,
+        reason: report.resolutionNotes,
+        metadata: {
+          reportId: report.id,
+          action: report.resolutionAction,
+          targetType: report.targetType,
+          targetId: report.targetId,
+        },
+        createdAt: report.resolvedAt ?? report.updatedAt,
+      })),
+    );
+  }
+
+  console.log(
+    `✅ Seeded ${users.length} legal acceptances, ${blockPairs.length} user blocks, ${reports.length} reports, and ${resolvedReports.length} moderation audit events`,
+  );
+  return { reports, blocks: blockPairs.length };
+}
+
 async function seedNutrition(
   db: DbClient,
   recipes: (typeof schema.recipes.$inferSelect)[],
@@ -1618,6 +2207,9 @@ async function main() {
     console.log(`✅ Synced ${allRecipes.length} recipe search documents`);
     console.log("");
 
+    const importJobs = await seedRecipeImportJobs(db, users, allRecipes);
+    console.log("");
+
     await seedActivityFeed(db, users, allRecipes);
     console.log("");
 
@@ -1636,6 +2228,9 @@ async function main() {
     await seedSharedResources(db, users, mealPlans, shoppingLists);
     console.log("");
 
+    const moderation = await seedModeration(db, users, allRecipes);
+    console.log("");
+
     console.log("✨ Database seeded successfully!");
     console.log("\n📊 Summary:");
     console.log(`   👥 ${users.length} users`);
@@ -1645,10 +2240,15 @@ async function main() {
     console.log(`   📚 ${collections.length} collections`);
     console.log(`   🗓️  ${mealPlans.length} meal plans`);
     console.log(`   🛒 ${shoppingLists.length} shopping lists`);
+    console.log(`   🧾 ${importJobs.length} recipe import jobs`);
+    console.log(
+      `   🛡️  ${moderation.reports.length} moderation reports + ${moderation.blocks} user blocks`,
+    );
     console.log("\n🔑 All users have password: Password123!");
     console.log("\n📧 Sample login:");
     console.log("   Email: emma.rodriguez@example.com");
     console.log("   Password: Password123!");
+    console.log("   Role: admin");
   } catch (error) {
     console.error("❌ Error seeding database:", error);
     process.exit(1);

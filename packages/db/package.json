@@ -19,7 +19,6 @@
     "reset:dev-schema": "dotenvx run -- bun run scripts/reset-dev-schema.ts",
     "seed": "dotenvx run -- bun run seed.ts",
     "seed:reset": "dotenvx run -- bun run seed.ts --clear",
-    "seed:prod": "dotenvx run -f .env.production -- bun run seed.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
