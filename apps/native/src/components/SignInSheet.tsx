@@ -13,6 +13,10 @@ import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { SignInWithAppleButton } from "@/components/buttons/SignInWithAppleButton";
 import { SignInWithGoogleButton } from "@/components/buttons/SignInWithGoogleButton";
 import { alertApiError } from "@/lib/apiErrorAlert";
+import {
+  getEmailError,
+  getSignInPasswordError,
+} from "@/lib/sign-up-validation";
 
 export interface SignInSheetProps {
   onSwitchToSignUp?: () => void;
@@ -30,7 +34,11 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
     const sheetRef = useRef<TrueSheet>(null);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const { mutate: signInWithEmail } = useSignInWithEmail();
+    const [emailError, setEmailError] = useState<string>();
+    const [passwordError, setPasswordError] = useState<string>();
+    const [credentialError, setCredentialError] = useState<string>();
+    const { mutate: signInWithEmail, isPending: isSigningInWithEmail } =
+      useSignInWithEmail();
     const { mutate: signInWithSocial } = useSignInWithSocial();
 
     useImperativeHandle(ref, () => ({
@@ -40,9 +48,31 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
 
     const dismissSheet = () => sheetRef.current?.dismiss() ?? Promise.resolve();
 
-    const onPressSignInWithEmail = () =>
+    const onChangeEmail = (value: string) => {
+      setEmail(value);
+      setEmailError(undefined);
+      setCredentialError(undefined);
+    };
+
+    const onChangePassword = (value: string) => {
+      setPassword(value);
+      setPasswordError(undefined);
+      setCredentialError(undefined);
+    };
+
+    const onPressSignInWithEmail = () => {
+      const normalizedEmail = email.trim();
+      const nextEmailError = getEmailError(email);
+      const nextPasswordError = getSignInPasswordError(password);
+
+      setEmailError(nextEmailError);
+      setPasswordError(nextPasswordError);
+      setCredentialError(undefined);
+
+      if (nextEmailError || nextPasswordError) return;
+
       signInWithEmail(
-        { email, password },
+        { email: normalizedEmail, password },
         {
           onSuccess: dismissSheet,
           onError: async (error) => {
@@ -51,16 +81,29 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
               error.code === "EMAIL_NOT_VERIFIED"
             ) {
               await dismissSheet();
-              navigation.navigate("EmailVerification", { email });
-            } else {
-              alertApiError("Sign In Failed", error, {
-                operation: "auth.signIn.email",
-                fallback: "Please check your details and try again.",
+              navigation.navigate("EmailVerification", {
+                email: normalizedEmail,
               });
+              return;
             }
+
+            if (
+              error instanceof AuthError &&
+              (error.code === "INVALID_EMAIL_OR_PASSWORD" ||
+                error.code === "INVALID_PASSWORD")
+            ) {
+              setCredentialError("Incorrect email or password.");
+              return;
+            }
+
+            alertApiError("Sign In Failed", error, {
+              operation: "auth.signIn.email",
+              fallback: "Please check your details and try again.",
+            });
           },
         },
       );
+    };
 
     const onPressSignUp = async () => {
       await dismissSheet();
@@ -98,23 +141,33 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
           <VSpace size={32} />
           <Input
             label="Email"
-            onChangeText={setEmail}
+            value={email}
+            onChangeText={onChangeEmail}
+            onBlur={() => setEmailError(getEmailError(email))}
+            error={emailError}
             placeholder="gordon@superchef.com"
             autoCapitalize="none"
+            autoCorrect={false}
             keyboardType="email-address"
             autoComplete="email"
           />
-          <VSpace size={12} />
           <Input
             label="Password"
-            onChangeText={setPassword}
+            value={password}
+            onChangeText={onChangePassword}
+            onBlur={() => setPasswordError(getSignInPasswordError(password))}
+            onSubmitEditing={onPressSignInWithEmail}
+            error={passwordError ?? credentialError}
             placeholder="••••••••••••"
             secureTextEntry
             autoComplete="password"
+            returnKeyType="go"
           />
-          <VSpace size={12} />
-          <PrimaryButton onPress={onPressSignInWithEmail}>
-            Sign in
+          <PrimaryButton
+            disabled={isSigningInWithEmail}
+            onPress={onPressSignInWithEmail}
+          >
+            {isSigningInWithEmail ? "Signing in…" : "Sign in"}
           </PrimaryButton>
           <VSpace size={12} />
           <Text type="bodyFaded" style={styles.textAlignCenter}>

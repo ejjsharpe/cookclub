@@ -1,14 +1,30 @@
 import { TextInput, TextInputProps, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Text } from "./Text";
 
+const ERROR_ENTERING = FadeIn.duration(160);
+const ERROR_EXITING = FadeOut.duration(100);
+
 interface Props extends TextInputProps {
   label?: string;
   rightElement?: React.ReactNode;
+  error?: string;
 }
 
-export const Input = ({ label, style, rightElement, ...props }: Props) => {
+export const Input = (inputProps: Props) => {
+  const reservesErrorSpace = Object.hasOwn(inputProps, "error");
+  const {
+    label,
+    style,
+    rightElement,
+    error,
+    accessibilityHint,
+    accessibilityLabel,
+    ...props
+  } = inputProps;
+
   return (
     <View style={styles.container}>
       {!!label && <Text style={styles.label}>{label}</Text>}
@@ -17,8 +33,11 @@ export const Input = ({ label, style, rightElement, ...props }: Props) => {
           style={[
             styles.input,
             rightElement ? styles.inputWithRight : undefined,
+            error ? styles.inputError : undefined,
             style,
           ]}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityHint={error ?? accessibilityHint}
           placeholderTextColor={styles.placeholder.color}
           {...props}
         />
@@ -26,6 +45,24 @@ export const Input = ({ label, style, rightElement, ...props }: Props) => {
           <View style={styles.rightElement}>{rightElement}</View>
         )}
       </View>
+      {reservesErrorSpace ? (
+        <View style={styles.reservedError}>
+          {error ? (
+            <Animated.View entering={ERROR_ENTERING} exiting={ERROR_EXITING}>
+              <Text
+                type="footnote"
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                numberOfLines={1}
+                selectable
+                style={styles.error}
+              >
+                {error}
+              </Text>
+            </Animated.View>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -55,6 +92,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 17,
     color: theme.colors.text,
   },
+  inputError: {
+    borderWidth: 1,
+    borderColor: theme.colors.destructive,
+  },
   inputWithRight: {
     paddingRight: 48,
   },
@@ -68,5 +109,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   placeholder: {
     color: theme.colors.placeholderText,
+  },
+  error: {
+    marginTop: 4,
+    marginLeft: 16,
+    color: theme.colors.destructive,
+  },
+  reservedError: {
+    height: 24,
+    overflow: "hidden",
   },
 }));
