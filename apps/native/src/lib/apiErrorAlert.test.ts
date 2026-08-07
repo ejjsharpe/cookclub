@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   alert: vi.fn(),
   isReady: vi.fn(() => true),
   navigate: vi.fn(),
-  openURL: vi.fn(),
+  openExternalWebsite: vi.fn(),
 }));
 
 vi.mock("@sentry/react-native", () => ({
@@ -16,7 +16,10 @@ vi.mock("@sentry/react-native", () => ({
 
 vi.mock("react-native", () => ({
   Alert: { alert: mocks.alert },
-  Linking: { openURL: mocks.openURL },
+}));
+
+vi.mock("./externalBrowser", () => ({
+  openExternalWebsite: mocks.openExternalWebsite,
 }));
 
 vi.mock("@/navigation/navigationRef", () => ({

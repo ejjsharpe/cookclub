@@ -1,7 +1,6 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { LEGAL_URLS } from "@repo/contracts";
 import { Image } from "expo-image";
-import * as Linking from "expo-linking";
 import {
   forwardRef,
   useCallback,
@@ -34,6 +33,7 @@ import {
   identifyAdaptyUser,
   isAdaptyConfigured,
 } from "@/lib/adapty";
+import { openExternalWebsite } from "@/lib/externalBrowser";
 
 export interface ProPaywallSheetRef {
   present: () => void;
@@ -538,17 +538,17 @@ export const ProPaywallSheet = forwardRef<
             </Text>
             <View style={styles.legalLinkRow}>
               <TouchableOpacity
-                onPress={() => Linking.openURL(LEGAL_URLS.terms)}
+                onPress={() => openExternalWebsite(LEGAL_URLS.terms)}
               >
                 <Text style={styles.legalLink}>Terms</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => Linking.openURL(LEGAL_URLS.privacy)}
+                onPress={() => openExternalWebsite(LEGAL_URLS.privacy)}
               >
                 <Text style={styles.legalLink}>Privacy</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => Linking.openURL(SUBSCRIPTION_MANAGEMENT_URL)}
+                onPress={() => openExternalWebsite(SUBSCRIPTION_MANAGEMENT_URL)}
               >
                 <Text style={styles.legalLink}>Manage subscription</Text>
               </TouchableOpacity>

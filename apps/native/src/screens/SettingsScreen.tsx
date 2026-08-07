@@ -1,6 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
 import { LEGAL_URLS } from "@repo/contracts";
-import * as Linking from "expo-linking";
 import { useState } from "react";
 import { View, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -19,6 +18,12 @@ import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { alertApiError } from "@/lib/apiErrorAlert";
+import {
+  openExternalWebsite,
+  setExternalBrowserPreference,
+  useExternalBrowserPreference,
+  type ExternalBrowserPreference,
+} from "@/lib/externalBrowser";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { useSubscription } from "@/lib/subscription";
 import {
@@ -134,6 +139,7 @@ export const SettingsScreen = () => {
   const updateProfileMutation = useUpdateProfile();
   const [currentTheme, setCurrentTheme] =
     useState<ThemePreference>(getThemePreference);
+  const currentExternalBrowser = useExternalBrowserPreference();
   const { data: userData } = useUser();
   const { isPro, smartImportsRemaining, presentPaywall, restorePurchases } =
     useSubscription();
@@ -148,12 +154,7 @@ export const SettingsScreen = () => {
       : "https://play.google.com/store/account/subscriptions?package=com.shakyhand.cookclub";
 
   const openUrl = (url: string) => {
-    Linking.openURL(url).catch((error) =>
-      alertApiError("Could Not Open Link", error, {
-        operation: "settings.openLink",
-        fallback: "Please try again.",
-      }),
-    );
+    return openExternalWebsite(url);
   };
 
   const handleThemeChange = (theme: ThemePreference) => {
@@ -165,6 +166,12 @@ export const SettingsScreen = () => {
   const handleMeasurementChange = (system: MeasurementSystem) => {
     setCurrentMeasurement(system);
     updateProfileMutation.mutate({ measurementPreference: system });
+  };
+
+  const handleExternalBrowserChange = (
+    preference: ExternalBrowserPreference,
+  ) => {
+    setExternalBrowserPreference(preference);
   };
 
   const handleSignOut = () => {
@@ -299,6 +306,25 @@ export const SettingsScreen = () => {
             label="Original"
             selected={currentMeasurement === "auto"}
             onPress={() => handleMeasurementChange("auto")}
+          />
+        </View>
+
+        {/* External Browser Section */}
+        <VSpace size={32} />
+        <Text type="heading" style={styles.sectionTitle}>
+          Open websites
+        </Text>
+        <VSpace size={12} />
+        <View style={styles.themeSelector}>
+          <ToggleOption
+            label="In App"
+            selected={currentExternalBrowser === "in_app"}
+            onPress={() => handleExternalBrowserChange("in_app")}
+          />
+          <ToggleOption
+            label="Phone"
+            selected={currentExternalBrowser === "system"}
+            onPress={() => handleExternalBrowserChange("system")}
           />
         </View>
 

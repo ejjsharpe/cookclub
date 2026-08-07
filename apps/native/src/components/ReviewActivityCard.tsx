@@ -1,4 +1,3 @@
-import * as WebBrowser from "expo-web-browser";
 import { memo, useMemo, useCallback } from "react";
 import { View, TouchableOpacity, ScrollView } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -11,6 +10,7 @@ import { Avatar } from "@/components/Avatar";
 import { Ionicons } from "@/components/Ionicons";
 import { OptimizedImage } from "@/components/OptimizedImage";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
+import { openExternalWebsite } from "@/lib/externalBrowser";
 import type { ImagePreset } from "@/utils/imageUrl";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
@@ -247,7 +247,7 @@ export const ReviewActivityCard = memo(
 
     const handleViewSource = useCallback(async () => {
       if (activity.recipe.sourceType === "url") {
-        await WebBrowser.openBrowserAsync(activity.recipe.sourceUrl);
+        await openExternalWebsite(activity.recipe.sourceUrl);
       }
     }, [activity.recipe]);
 

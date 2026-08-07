@@ -10,7 +10,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import * as WebBrowser from "expo-web-browser";
 import {
   useState,
   useEffect,
@@ -100,6 +99,7 @@ import {
 import { useRecipeImport } from "@/features/recipe-import/RecipeImportProvider";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { alertApiError } from "@/lib/apiErrorAlert";
+import { openExternalWebsite } from "@/lib/externalBrowser";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { publicErrorDetails, resolvePublicError } from "@/lib/publicError";
 import { useSubscription } from "@/lib/subscription";
@@ -822,15 +822,7 @@ export const RecipeDetailScreen = () => {
   const handleViewSource = useCallback(async () => {
     if (!recipeSourceUrl) return;
 
-    try {
-      await WebBrowser.openBrowserAsync(recipeSourceUrl);
-    } catch (err) {
-      console.error("Failed to open recipe source:", err);
-      Alert.alert(
-        "Unable to Open Website",
-        "Something went wrong while opening the original recipe.",
-      );
-    }
+    await openExternalWebsite(recipeSourceUrl);
   }, [recipeSourceUrl]);
 
   const handleStartCookMode = () => {
@@ -1593,13 +1585,7 @@ export const RecipeDetailScreen = () => {
           <>
             <PrimaryButton
               onPress={() => {
-                WebBrowser.openBrowserAsync(sourceUrl).catch((err) => {
-                  console.error("Failed to open recipe source:", err);
-                  Alert.alert(
-                    "Unable to Open Website",
-                    "Something went wrong while opening the original recipe.",
-                  );
-                });
+                return openExternalWebsite(sourceUrl);
               }}
             >
               {forbiddenSourceWebsiteName

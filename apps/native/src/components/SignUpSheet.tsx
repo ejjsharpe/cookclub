@@ -1,7 +1,6 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { useNavigation } from "@react-navigation/native";
 import { LEGAL_URLS, MINIMUM_ACCOUNT_AGE } from "@repo/contracts";
-import * as Linking from "expo-linking";
 import { forwardRef, useState, useImperativeHandle, useRef } from "react";
 import { Platform, View } from "react-native";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
@@ -15,6 +14,7 @@ import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { SignInWithAppleButton } from "@/components/buttons/SignInWithAppleButton";
 import { SignInWithGoogleButton } from "@/components/buttons/SignInWithGoogleButton";
 import { alertApiError } from "@/lib/apiErrorAlert";
+import { openExternalWebsite } from "@/lib/externalBrowser";
 import { shouldShowEmailVerificationAfterSignUp } from "@/lib/runtimeConfig";
 import {
   getEmailError,
@@ -192,7 +192,7 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
             <Text
               type="caption1"
               accessibilityRole="link"
-              onPress={() => Linking.openURL(LEGAL_URLS.terms)}
+              onPress={() => openExternalWebsite(LEGAL_URLS.terms)}
               style={styles.legalLink}
             >
               Terms of Service
@@ -201,7 +201,7 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
             <Text
               type="caption1"
               accessibilityRole="link"
-              onPress={() => Linking.openURL(LEGAL_URLS.privacy)}
+              onPress={() => openExternalWebsite(LEGAL_URLS.privacy)}
               style={styles.legalLink}
             >
               Privacy Policy

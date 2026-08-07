@@ -1,7 +1,8 @@
 import { LEGAL_URLS } from "@repo/contracts";
 import * as Sentry from "@sentry/react-native";
-import { Alert, Linking } from "react-native";
+import { Alert } from "react-native";
 
+import { openExternalWebsite } from "./externalBrowser";
 import { resolvePublicError } from "./publicError";
 
 import { navigationRef } from "@/navigation/navigationRef";
@@ -42,7 +43,7 @@ export function alertApiError(
       {
         text: "Read Terms",
         onPress: () => {
-          return Linking.openURL(LEGAL_URLS.terms).catch(() => undefined);
+          return openExternalWebsite(LEGAL_URLS.terms);
         },
       },
       {
