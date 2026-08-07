@@ -79,7 +79,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Allow cookclub to access your photos so you can choose a profile picture."
       },
-      "icon": "./assets/cookclub.icon"
+      "icon": "./assets/cookclub.icon",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
