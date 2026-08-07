@@ -5,7 +5,12 @@ import { forwardRef, useState, useImperativeHandle, useRef } from "react";
 import { Platform, View } from "react-native";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
-import { useSignUpWithEmail, useSignInWithSocial, AuthError } from "@/api/auth";
+import {
+  useSignInWithApple,
+  useSignUpWithEmail,
+  useSignInWithSocial,
+  AuthError,
+} from "@/api/auth";
 import { Input } from "@/components/Input";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
@@ -14,6 +19,7 @@ import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { SignInWithAppleButton } from "@/components/buttons/SignInWithAppleButton";
 import { SignInWithGoogleButton } from "@/components/buttons/SignInWithGoogleButton";
 import { alertApiError } from "@/lib/apiErrorAlert";
+import { isAppleSignInCancellation } from "@/lib/appleAuthentication";
 import { openExternalWebsite } from "@/lib/externalBrowser";
 import { shouldShowEmailVerificationAfterSignUp } from "@/lib/runtimeConfig";
 import {
@@ -42,6 +48,8 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
     const { mutate: signUpWithEmail, isPending: isSigningUpWithEmail } =
       useSignUpWithEmail();
     const { mutate: signInWithSocial } = useSignInWithSocial();
+    const { mutate: signInWithApple, isPending: isSigningInWithApple } =
+      useSignInWithApple();
 
     useImperativeHandle(ref, () => ({
       present: () => sheetRef.current?.present(),
@@ -133,7 +141,7 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
       onSwitchToSignIn?.();
     };
 
-    const onPressSignInWithSocial = (provider: "google" | "apple") => {
+    const onPressSignInWithSocial = (provider: "google") => {
       signInWithSocial(
         { provider },
         {
@@ -145,6 +153,20 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
             }),
         },
       );
+    };
+
+    const onPressSignInWithApple = () => {
+      signInWithApple(undefined, {
+        onSuccess: dismissSheet,
+        onError: (error) => {
+          if (isAppleSignInCancellation(error)) return;
+
+          alertApiError("Sign In Failed", error, {
+            operation: "auth.signIn.apple",
+            fallback: "Apple sign in failed. Please try again.",
+          });
+        },
+      });
     };
 
     return (
@@ -222,7 +244,8 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
           <VSpace size={12} />
           {Platform.OS === "ios" && (
             <SignInWithAppleButton
-              onPress={() => onPressSignInWithSocial("apple")}
+              disabled={isSigningInWithApple}
+              onPress={onPressSignInWithApple}
             />
           )}
           {Platform.OS === "ios" && <VSpace size={12} />}

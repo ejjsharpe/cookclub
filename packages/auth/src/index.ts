@@ -5,6 +5,7 @@ import { getOrCreateDefaultCollections } from "@repo/db/services";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins";
+import type { AppleProfile } from "better-auth/social-providers";
 import { Resend } from "resend";
 
 const FROM_EMAIL = "Cook Club <noreply@cookclub.app>";
@@ -122,6 +123,11 @@ export function getAuth(
             clientId: env.APPLE_CLIENT_ID,
             clientSecret: env.APPLE_CLIENT_SECRET,
             redirectURI: getCallbackUrl(env, "apple"),
+            mapProfileToUser: (profile: AppleProfile) => ({
+              // Apple only includes email on the first authorization, while
+              // Better Auth requires one for every social sign-in attempt.
+              email: profile.email ?? `${profile.sub}@apple.placeholder.local`,
+            }),
             ...(env.APPLE_BUNDLE_IDENTIFIER && {
               appBundleIdentifier: env.APPLE_BUNDLE_IDENTIFIER,
             }),

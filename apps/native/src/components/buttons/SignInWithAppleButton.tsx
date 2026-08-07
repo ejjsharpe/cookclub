@@ -1,12 +1,9 @@
-import { type PressableProps, View } from "react-native";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
-
-import { BaseButton } from "./BaseButton";
-import { Text } from "../Text";
-import { AppleLogo } from "../svg/AppleLogo";
+import * as AppleAuthentication from "expo-apple-authentication";
+import { useEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
 
 interface SignInWithAppleButtonProps {
-  onPress: PressableProps["onPress"];
+  onPress: () => void;
   disabled?: boolean;
 }
 
@@ -14,40 +11,50 @@ export const SignInWithAppleButton = ({
   onPress,
   disabled,
 }: SignInWithAppleButtonProps) => {
-  const { colors } = UnistylesRuntime.getTheme();
+  const [isAvailable, setIsAvailable] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    AppleAuthentication.isAvailableAsync()
+      .then((available) => {
+        if (isMounted) setIsAvailable(available);
+      })
+      .catch(() => {
+        if (isMounted) setIsAvailable(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (!isAvailable) return null;
 
   return (
-    <BaseButton
+    <View
+      pointerEvents={disabled ? "none" : "auto"}
       style={[styles.container, disabled && styles.disabled]}
-      onPress={onPress}
-      disabled={disabled}
     >
-      <View style={styles.content}>
-        <AppleLogo size={20} color={colors.buttonText} />
-        <Text style={styles.text}>Sign in with Apple</Text>
-      </View>
-    </BaseButton>
+      <AppleAuthentication.AppleAuthenticationButton
+        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+        cornerRadius={25}
+        style={styles.button}
+        onPress={onPress}
+      />
+    </View>
   );
 };
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#000000",
     width: "100%",
     height: 50,
-    borderRadius: 25,
-    justifyContent: "center",
-    alignItems: "center",
   },
   disabled: { opacity: 0.5 },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  button: {
+    width: "100%",
+    height: 50,
   },
-  text: {
-    fontSize: 17,
-    fontFamily: theme.fonts.semiBold,
-    color: "#FFFFFF",
-  },
-}));
+});

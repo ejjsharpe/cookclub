@@ -1,6 +1,7 @@
 import { useTRPC } from "@repo/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { requestAppleSignIn } from "@/lib/appleAuthentication";
 import { authClient } from "@/lib/authClient";
 import {
   resolvePublicError,
@@ -76,7 +77,7 @@ export const useSignUpWithEmail = () => {
 export const useSignInWithSocial = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ provider }: { provider: "google" | "apple" }) => {
+    mutationFn: async ({ provider }: { provider: "google" }) => {
       const result = await authClient.signIn.social({
         provider,
         callbackURL: "/",
@@ -84,6 +85,28 @@ export const useSignInWithSocial = () => {
       if (result.error) {
         throw new AuthError(
           resolvePublicError(result.error, "Social sign in failed."),
+        );
+      }
+      return result.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
+  });
+};
+
+export const useSignInWithApple = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const idToken = await requestAppleSignIn();
+      const result = await authClient.signIn.social({
+        provider: "apple",
+        idToken,
+      });
+      if (result.error) {
+        throw new AuthError(
+          resolvePublicError(result.error, "Apple sign in failed."),
         );
       }
       return result.data;
