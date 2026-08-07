@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import { TouchableOpacity, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
+import { ActivityPostOptionsButton } from "@/components/ActivityPostOptionsButton";
 import { Ionicons } from "@/components/Ionicons";
 import { Text } from "@/components/Text";
 
@@ -41,13 +42,9 @@ export const ActivityActionRow = memo(
       onCommentPress?.(activityId);
     }, [activityId, onCommentPress]);
 
-    const handleReport = useCallback(() => {
-      onReportPress?.(activityId);
-    }, [activityId, onReportPress]);
-
-    const handleBlock = useCallback(() => {
-      if (blockUserId) onBlockPress?.(blockUserId);
-    }, [blockUserId, onBlockPress]);
+    const hasPostOptions = Boolean(
+      onReportPress || (blockUserId && onBlockPress),
+    );
 
     return (
       <View style={styles.actionRow}>
@@ -65,32 +62,6 @@ export const ActivityActionRow = memo(
             {likeCount || "Like"}
           </Text>
         </TouchableOpacity>
-        {onReportPress ? (
-          <TouchableOpacity
-            accessibilityLabel="Report activity"
-            style={styles.actionPill}
-            activeOpacity={0.7}
-            onPress={handleReport}
-          >
-            <Ionicons name="flag-outline" size={14} style={styles.actionIcon} />
-            <Text type="subheadline" style={styles.actionText}>
-              Report
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        {blockUserId && onBlockPress ? (
-          <TouchableOpacity
-            accessibilityLabel="Block activity author"
-            style={styles.actionPill}
-            activeOpacity={0.7}
-            onPress={handleBlock}
-          >
-            <Ionicons name="ban-outline" size={14} style={styles.actionIcon} />
-            <Text type="subheadline" style={styles.actionText}>
-              Block
-            </Text>
-          </TouchableOpacity>
-        ) : null}
         <TouchableOpacity
           style={styles.actionPill}
           activeOpacity={0.7}
@@ -119,6 +90,16 @@ export const ActivityActionRow = memo(
             {primaryActionLabel}
           </Text>
         </TouchableOpacity>
+        {hasPostOptions ? (
+          <View style={styles.postOptions}>
+            <ActivityPostOptionsButton
+              activityId={activityId}
+              onReportPress={onReportPress}
+              blockUserId={blockUserId}
+              onBlockPress={onBlockPress}
+            />
+          </View>
+        ) : null}
       </View>
     );
   },
@@ -165,5 +146,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   actionTextPrimary: {
     color: theme.colors.buttonText,
+  },
+  postOptions: {
+    alignSelf: "center",
+    marginLeft: "auto",
   },
 }));

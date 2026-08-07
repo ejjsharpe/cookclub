@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
 import { memo, useMemo, useCallback } from "react";
@@ -13,6 +12,7 @@ import { Avatar } from "@/components/Avatar";
 import { OptimizedImage } from "@/components/OptimizedImage";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
 import type { ImagePreset } from "@/utils/imageUrl";
+import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
 interface Props {
   activity: RecipeImportFeedItem;
@@ -56,24 +56,20 @@ const ImportUserHeader = memo(
         subscriptionTier={actor.subscriptionTier}
       />
       <View style={styles.userInfo}>
-        <View style={styles.userNameRow}>
-          <View style={styles.nameGroup}>
-            <View style={styles.displayNameRow}>
-              <Text type="headline" numberOfLines={1} style={styles.userName}>
-                {actor.name}
-              </Text>
-            </View>
-            {actor.username && (
-              <Text type="footnote" numberOfLines={1} style={styles.username}>
-                @{actor.username}
-              </Text>
-            )}
-          </View>
+        <View style={styles.titleRow}>
+          <Text type="headline" numberOfLines={1} style={styles.userName}>
+            {actor.name}
+          </Text>
+          {actor.username ? (
+            <Text type="footnote" numberOfLines={1} style={styles.username}>
+              @{actor.username}
+            </Text>
+          ) : null}
           <Text type="footnote" style={styles.timeAgo}>
-            {timeAgo}
+            · {timeAgo}
           </Text>
         </View>
-        <Text type="subheadline" style={styles.activityText}>
+        <Text type="subheadline" numberOfLines={2} style={styles.activityText}>
           imported from {sourceDescription}
         </Text>
       </View>
@@ -159,9 +155,7 @@ export const ImportActivityCard = memo(
       activity.actor.id === currentUserId;
 
     const timeAgo = useMemo(
-      () =>
-        providedTimeAgo ??
-        formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true }),
+      () => providedTimeAgo ?? formatRelativeTimeShort(activity.createdAt),
       [activity.createdAt, providedTimeAgo],
     );
 
@@ -265,7 +259,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   userHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
     paddingHorizontal: 20,
   },
@@ -274,24 +268,10 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     gap: 2,
   },
-  userNameRow: {
+  titleRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  nameGroup: {
-    flexDirection: "row",
-    alignItems: "center",
+    alignItems: "baseline",
     gap: 6,
-    flex: 1,
-    minWidth: 0,
-  },
-  displayNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    flexShrink: 1,
     minWidth: 0,
   },
   userName: {

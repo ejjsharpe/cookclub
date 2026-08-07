@@ -5,8 +5,9 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
 import { useRef } from "react";
+
+import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
 // API Response Types
 export type FeedItem = Outputs["activity"]["getFeed"]["items"][number];
@@ -79,9 +80,7 @@ function useActivityItemsSelector<TPage extends ActivityPage>() {
         const selectedItem = {
           ...item,
           _display: {
-            timeAgo: formatDistanceToNow(new Date(item.createdAt), {
-              addSuffix: true,
-            }),
+            timeAgo: formatRelativeTimeShort(item.createdAt),
             sourceDescription: getSourceDescription(item),
           },
         } as ActivityFeedListItem;
