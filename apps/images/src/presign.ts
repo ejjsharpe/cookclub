@@ -41,7 +41,6 @@ export async function generatePresignedUploadUrl(
 ): Promise<Omit<PresignedUrlResponse, "kind">> {
   const {
     key,
-    contentType,
     expiresIn = PRESIGN_EXPIRY_SECONDS,
     maxFileSize = DEFAULT_MAX_FILE_SIZE,
   } = request;
@@ -65,20 +64,15 @@ export async function generatePresignedUploadUrl(
   // Add query parameters for presigned URL
   url.searchParams.set("X-Amz-Expires", expiresIn.toString());
 
-  // Build headers for signing.
-  const headers: Record<string, string> = {
-    "Content-Type": contentType,
-  };
-
+  // Sign only the stable request target. Native HTTP stacks may normalize
+  // Content-Type; the finalization step validates it before promoting the temp object.
   const signedRequest = await client.sign(
     new Request(url.toString(), {
       method: "PUT",
-      headers,
     }),
     {
       aws: {
         signQuery: true,
-        allHeaders: true,
       },
     },
   );
