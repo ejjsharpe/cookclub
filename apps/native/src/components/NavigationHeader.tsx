@@ -7,15 +7,17 @@ import { BackButton } from "@/components/buttons/BackButton";
 interface NavigationHeaderProps {
   title: string;
   rightElement?: React.ReactNode;
+  onBackPress?: () => void;
 }
 
 export const NavigationHeader = ({
   title,
   rightElement,
+  onBackPress,
 }: NavigationHeaderProps) => {
   return (
     <View style={styles.container}>
-      <BackButton />
+      <BackButton onPress={onBackPress} />
       <Text type="title2" style={styles.title} numberOfLines={1}>
         {title}
       </Text>

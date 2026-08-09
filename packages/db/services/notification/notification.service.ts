@@ -1,8 +1,32 @@
 import { eq, and, desc, lt, sql, inArray } from "drizzle-orm";
 
-import { notifications, user, type NotificationType } from "../../schemas";
+import {
+  comments,
+  notifications,
+  user,
+  type NotificationType,
+} from "../../schemas";
 import { areUsersBlocked } from "../moderation";
 import type { DbClient } from "../types";
+
+const COMMENT_PREVIEW_MAX_LENGTH = 120;
+const commentPreviewSource = sql<string | null>`nullif(
+  left(
+    btrim(regexp_replace(${comments.content}, '[[:space:]]+', ' ', 'g')),
+    ${COMMENT_PREVIEW_MAX_LENGTH + 1}
+  ),
+  ''
+)`;
+
+export function formatCommentPreview(source: string | null): string | null {
+  if (!source) return null;
+  const characters = Array.from(source);
+  if (characters.length <= COMMENT_PREVIEW_MAX_LENGTH) return source;
+  return `${characters
+    .slice(0, COMMENT_PREVIEW_MAX_LENGTH - 1)
+    .join("")
+    .trimEnd()}…`;
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -16,19 +40,54 @@ export type NotificationItem = {
   mealPlanId: number | null;
   shoppingListId: number | null;
   commentId: number | null;
+  commentPreview: string | null;
   isRead: boolean;
   createdAt: Date;
 };
 
-export type CreateNotificationParams = {
+type CreateNotificationBase = {
   recipientId: string;
   actorId: string;
-  type: NotificationType;
-  activityEventId?: number;
-  mealPlanId?: number;
-  shoppingListId?: number;
-  commentId?: number;
 };
+
+export type CreateNotificationParams = CreateNotificationBase &
+  (
+    | {
+        type: "follow";
+        activityEventId?: never;
+        mealPlanId?: never;
+        shoppingListId?: never;
+        commentId?: never;
+      }
+    | {
+        type: "activity_like";
+        activityEventId: number;
+        mealPlanId?: never;
+        shoppingListId?: never;
+        commentId?: never;
+      }
+    | {
+        type: "activity_comment" | "comment_reply";
+        activityEventId: number;
+        commentId: number;
+        mealPlanId?: never;
+        shoppingListId?: never;
+      }
+    | {
+        type: "meal_plan_share" | "meal_plan_invite";
+        mealPlanId: number;
+        activityEventId?: never;
+        shoppingListId?: never;
+        commentId?: never;
+      }
+    | {
+        type: "shopping_list_invite";
+        shoppingListId: number;
+        activityEventId?: never;
+        mealPlanId?: never;
+        commentId?: never;
+      }
+  );
 
 // ─── Notification Operations ─────────────────────────────────────────────────
 
@@ -71,6 +130,28 @@ export async function createNotification(
     return null;
   }
 
+  const commentPreview =
+    type === "activity_comment" || type === "comment_reply"
+      ? await db
+          .select({ source: commentPreviewSource })
+          .from(comments)
+          .where(
+            and(
+              eq(comments.id, params.commentId),
+              eq(comments.activityEventId, params.activityEventId),
+              eq(comments.moderationState, "visible"),
+            ),
+          )
+          .then((rows) => formatCommentPreview(rows[0]?.source ?? null))
+      : null;
+
+  if (
+    (type === "activity_comment" || type === "comment_reply") &&
+    !commentPreview
+  ) {
+    return null;
+  }
+
   const now = new Date();
 
   const [notification] = await db
@@ -104,6 +185,7 @@ export async function createNotification(
     mealPlanId: notification.mealPlanId,
     shoppingListId: notification.shoppingListId,
     commentId: notification.commentId,
+    commentPreview,
     isRead: notification.isRead,
     createdAt: notification.createdAt,
   };
@@ -130,31 +212,43 @@ export async function getNotifications(
     : eq(notifications.recipientId, userId);
 
   const results = await db
-    .select()
+    .select({
+      notification: notifications,
+      commentPreviewSource,
+    })
     .from(notifications)
+    .leftJoin(
+      comments,
+      and(
+        eq(notifications.commentId, comments.id),
+        eq(notifications.activityEventId, comments.activityEventId),
+        eq(comments.moderationState, "visible"),
+      ),
+    )
     .where(conditions)
-    .orderBy(desc(notifications.createdAt))
+    .orderBy(desc(notifications.id))
     .limit(limit + 1);
 
   const hasMore = results.length > limit;
   const items = hasMore ? results.slice(0, limit) : results;
 
   const lastItem = items[items.length - 1];
-  const nextCursor = hasMore && lastItem ? lastItem.id : null;
+  const nextCursor = hasMore && lastItem ? lastItem.notification.id : null;
 
   return {
     items: items.map((n) => ({
-      id: n.id,
-      type: n.type as NotificationType,
-      actorId: n.actorId,
-      actorName: n.actorName,
-      actorImage: n.actorImage,
-      activityEventId: n.activityEventId,
-      mealPlanId: n.mealPlanId,
-      shoppingListId: n.shoppingListId,
-      commentId: n.commentId,
-      isRead: n.isRead,
-      createdAt: n.createdAt,
+      id: n.notification.id,
+      type: n.notification.type as NotificationType,
+      actorId: n.notification.actorId,
+      actorName: n.notification.actorName,
+      actorImage: n.notification.actorImage,
+      activityEventId: n.notification.activityEventId,
+      mealPlanId: n.notification.mealPlanId,
+      shoppingListId: n.notification.shoppingListId,
+      commentId: n.notification.commentId,
+      commentPreview: formatCommentPreview(n.commentPreviewSource),
+      isRead: n.notification.isRead,
+      createdAt: n.notification.createdAt,
     })),
     nextCursor,
   };

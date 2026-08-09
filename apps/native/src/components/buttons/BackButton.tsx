@@ -4,12 +4,16 @@ import { StyleSheet } from "react-native-unistyles";
 import { Ionicons } from "@/components/Ionicons";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 
-export const BackButton = () => {
+interface BackButtonProps {
+  onPress?: () => void;
+}
+
+export const BackButton = ({ onPress }: BackButtonProps) => {
   const { goBack } = useNavigation();
   return (
     <ScalePressable
       style={styles.button}
-      onPress={goBack}
+      onPress={onPress ?? goBack}
       accessibilityRole="button"
       accessibilityLabel="Go back"
     >

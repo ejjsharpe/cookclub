@@ -37,7 +37,7 @@ import {
 import { RecipeCard } from "@/components/RecipeCard";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import type { AppParamList } from "@/navigation/navigationRef";
+import type { RootStackParamList } from "@/navigation/navigationRef";
 
 const NAVIGATION_HEADER_HEIGHT = 60;
 const RECIPE_ROW_LAYOUT = LinearTransition.duration(220);
@@ -47,7 +47,10 @@ const RECIPE_EMPTY_EXITING = FadeOut.duration(120);
 
 const ReanimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
-type CollectionDetailScreenRoute = RouteProp<AppParamList, "CollectionDetail">;
+type CollectionDetailScreenRoute = RouteProp<
+  RootStackParamList,
+  "CollectionDetail"
+>;
 
 export const CollectionDetailScreen = () => {
   const route = useRoute<CollectionDetailScreenRoute>();

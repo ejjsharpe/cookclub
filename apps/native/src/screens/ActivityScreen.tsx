@@ -1,0 +1,872 @@
+import {
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Keyboard,
+  Pressable,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type ListRenderItemInfo,
+} from "react-native";
+import {
+  KeyboardAvoidingView,
+  useReanimatedKeyboardAnimation,
+} from "react-native-keyboard-controller";
+import Animated, {
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import {
+  StyleSheet,
+  UnistylesRuntime,
+  useUnistyles,
+} from "react-native-unistyles";
+
+import { useActivity, useToggleActivityLike } from "@/api/activity";
+import {
+  useComments,
+  useCreateComment,
+  useDeleteComment,
+  type Comment,
+} from "@/api/comment";
+import { useBlockUser } from "@/api/moderation";
+import { useImportRecipe } from "@/api/recipe";
+import { useUser } from "@/api/user";
+import { CommentCard } from "@/components/CommentCard";
+import { ImportActivityCard } from "@/components/ImportActivityCard";
+import { Ionicons } from "@/components/Ionicons";
+import { NavigationHeader } from "@/components/NavigationHeader";
+import {
+  ReportContentSheet,
+  type ReportContentSheetRef,
+} from "@/components/ReportContentSheet";
+import { ReviewActivityCard } from "@/components/ReviewActivityCard";
+import { SEARCH_BAR_HEIGHT } from "@/components/SearchBar";
+import { Text } from "@/components/Text";
+import {
+  createRecipeImportId,
+  useRecipeImport,
+} from "@/features/recipe-import/RecipeImportProvider";
+import { alertApiError } from "@/lib/apiErrorAlert";
+import { useSessionContext } from "@/lib/sessionContext";
+import { useSubscription } from "@/lib/subscription";
+import type { RootStackParamList } from "@/navigation/navigationRef";
+import { selectFeedImagePreset } from "@/utils/imageUrl";
+
+const MAX_SCROLL_RETRIES = 2;
+const SCROLL_RETRY_DELAY_MS = 150;
+const NAVIGATION_HEADER_HEIGHT = 60;
+
+type ActivityScreenRoute = RouteProp<RootStackParamList, "Activity">;
+
+type CommentListItem = {
+  comment: Comment;
+  isReply: boolean;
+};
+
+const ReanimatedFlatList = Animated.createAnimatedComponent(
+  FlatList<CommentListItem>,
+);
+
+export const ActivityScreen = () => {
+  const navigation = useNavigation();
+  const route = useRoute<ActivityScreenRoute>();
+  const activityEventId =
+    Number.isInteger(route.params.activityEventId) &&
+    route.params.activityEventId > 0
+      ? route.params.activityEventId
+      : 0;
+  const focusedCommentId =
+    Number.isInteger(route.params.commentId) &&
+    (route.params.commentId ?? 0) > 0
+      ? route.params.commentId
+      : undefined;
+  const { width: windowWidth } = useWindowDimensions();
+  const { theme } = useUnistyles();
+  const insets = UnistylesRuntime.insets;
+  const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
+  const listRef = useRef<FlatList<CommentListItem>>(null);
+  const inputRef = useRef<TextInput>(null);
+  const reportSheetRef = useRef<ReportContentSheetRef>(null);
+  const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const scrollRetryCountRef = useRef(0);
+  const completedFocusRef = useRef<number | null>(null);
+  const sourceImportIdsRef = useRef(new Map<string, string>());
+  const headerOpacity = useSharedValue(1);
+  const headerHidden = useSharedValue(false);
+
+  const [commentText, setCommentText] = useState("");
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+
+  const feedImageWidth = Math.max(windowWidth - 40, 1);
+  const feedImagePreset = useMemo(
+    () => selectFeedImagePreset(feedImageWidth),
+    [feedImageWidth],
+  );
+  const inputAreaAnimatedStyle = useAnimatedStyle(() => ({
+    paddingBottom: interpolate(
+      keyboardProgress.get(),
+      [0, 1],
+      [insets.bottom + 10, 10],
+    ),
+  }));
+
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const nextHeaderHidden = event.contentOffset.y > 5;
+      if (headerHidden.get() !== nextHeaderHidden) {
+        headerHidden.set(nextHeaderHidden);
+        headerOpacity.set(
+          withTiming(nextHeaderHidden ? 0 : 1, {
+            duration: 150,
+          }),
+        );
+      }
+    },
+  });
+
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: headerOpacity.get(),
+  }));
+
+  const {
+    data: activity,
+    isLoading: isActivityLoading,
+    isError: isActivityError,
+    isFetching: isActivityFetching,
+    refetch: refetchActivity,
+  } = useActivity(activityEventId);
+  const {
+    data: commentsData,
+    isLoading: areCommentsLoading,
+    isError: areCommentsError,
+    isFetching: areCommentsFetching,
+    refetch: refetchComments,
+  } = useComments(activityEventId, focusedCommentId);
+  const { data: currentUser } = useUser();
+  const session = useSessionContext();
+  const currentUserId = currentUser?.user?.id ?? session?.user.id;
+  const activityActorName = activity?.actor.name;
+  const { mutate: toggleLike } = useToggleActivityLike();
+  const { mutateAsync: createComment, isPending: isCreatingComment } =
+    useCreateComment();
+  const { mutateAsync: deleteComment } = useDeleteComment(activityEventId);
+  const { mutate: blockUser } = useBlockUser();
+  const { mutateAsync: importExistingRecipe } = useImportRecipe();
+  const { submitImport } = useRecipeImport();
+  const { requireSmartImport } = useSubscription();
+
+  const flattenedComments = useMemo<CommentListItem[]>(
+    () =>
+      commentsData?.comments.flatMap((comment) => [
+        { comment, isReply: false },
+        ...comment.replies.map((reply) => ({ comment: reply, isReply: true })),
+      ]) ?? [],
+    [commentsData?.comments],
+  );
+
+  const focusedCommentUnavailable =
+    focusedCommentId !== undefined &&
+    commentsData?.focusedCommentStatus === "unavailable";
+
+  useEffect(() => {
+    completedFocusRef.current = null;
+    scrollRetryCountRef.current = 0;
+  }, [activityEventId, focusedCommentId]);
+
+  useEffect(() => {
+    setCommentText("");
+    setReplyingTo(null);
+    Keyboard.dismiss();
+  }, [activityEventId]);
+
+  useEffect(() => {
+    if (
+      !activity ||
+      focusedCommentId === undefined ||
+      commentsData?.focusedCommentStatus !== "found" ||
+      completedFocusRef.current === focusedCommentId
+    ) {
+      return;
+    }
+
+    const targetIndex = flattenedComments.findIndex(
+      ({ comment }) => comment.id === focusedCommentId,
+    );
+    if (targetIndex < 0) return;
+
+    scrollRetryCountRef.current = 0;
+    scrollRetryTimeoutRef.current = setTimeout(() => {
+      completedFocusRef.current = focusedCommentId;
+      listRef.current?.scrollToIndex({
+        index: targetIndex,
+        animated: true,
+        viewPosition: 0.2,
+      });
+    }, SCROLL_RETRY_DELAY_MS);
+
+    return () => {
+      if (scrollRetryTimeoutRef.current) {
+        clearTimeout(scrollRetryTimeoutRef.current);
+        scrollRetryTimeoutRef.current = null;
+      }
+    };
+  }, [
+    activity,
+    commentsData?.focusedCommentStatus,
+    flattenedComments,
+    focusedCommentId,
+  ]);
+
+  useEffect(
+    () => () => {
+      if (scrollRetryTimeoutRef.current) {
+        clearTimeout(scrollRetryTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleScrollToIndexFailed = useCallback(
+    ({
+      index,
+      averageItemLength,
+    }: {
+      index: number;
+      averageItemLength: number;
+    }) => {
+      if (scrollRetryCountRef.current >= MAX_SCROLL_RETRIES) return;
+
+      scrollRetryCountRef.current += 1;
+      listRef.current?.scrollToOffset({
+        offset: Math.max(0, index * averageItemLength),
+        animated: false,
+      });
+
+      if (scrollRetryTimeoutRef.current) {
+        clearTimeout(scrollRetryTimeoutRef.current);
+      }
+      scrollRetryTimeoutRef.current = setTimeout(() => {
+        listRef.current?.scrollToIndex({
+          index,
+          animated: true,
+          viewPosition: 0.2,
+        });
+      }, SCROLL_RETRY_DELAY_MS);
+    },
+    [],
+  );
+
+  const handleRecipePress = useCallback(
+    (recipeId: number) => {
+      navigation.navigate("RecipeDetail", { recipeId });
+    },
+    [navigation],
+  );
+
+  const handleBackPress = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate("Tabs");
+  }, [navigation]);
+
+  const handleUserPress = useCallback(
+    (userId: string) => {
+      navigation.navigate("UserProfile", { userId });
+    },
+    [navigation],
+  );
+
+  const handleImportRecipe = useCallback(
+    async (sourceUrl: string) => {
+      try {
+        const allowed = await requireSmartImport();
+        if (!allowed) {
+          navigation.navigate("Tabs", { screen: "Add recipe" });
+          return;
+        }
+
+        const id =
+          sourceImportIdsRef.current.get(sourceUrl) ?? createRecipeImportId();
+        sourceImportIdsRef.current.set(sourceUrl, id);
+        await submitImport({
+          id,
+          importType: "smart",
+          source: { type: "url", value: sourceUrl },
+        });
+        sourceImportIdsRef.current.delete(sourceUrl);
+        navigation.navigate("Tabs", { screen: "Add recipe" });
+      } catch (error) {
+        alertApiError("Import Failed", error, {
+          operation: "recipeImport.create",
+          fallback: "Unable to start this import. Please try again.",
+        });
+      }
+    },
+    [navigation, requireSmartImport, submitImport],
+  );
+
+  const handleImportExistingRecipe = useCallback(
+    async (recipeId: number) => {
+      try {
+        await importExistingRecipe({ recipeId });
+        Alert.alert("Success", "Recipe added to your collection!");
+      } catch (error) {
+        alertApiError("Import Failed", error, {
+          operation: "recipe.importExisting",
+          fallback: "Failed to import recipe. Please try again.",
+        });
+      }
+    },
+    [importExistingRecipe],
+  );
+
+  const handleLikePress = useCallback(() => {
+    toggleLike({ activityEventId });
+  }, [activityEventId, toggleLike]);
+
+  const handleCommentPress = useCallback(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleReportActivity = useCallback(() => {
+    reportSheetRef.current?.present({
+      targetType: "activity",
+      targetId: String(activityEventId),
+    });
+  }, [activityEventId]);
+
+  const handleReportComment = useCallback((targetCommentId: number) => {
+    reportSheetRef.current?.present({
+      targetType: "comment",
+      targetId: String(targetCommentId),
+    });
+  }, []);
+
+  const handleBlock = useCallback(
+    (userId: string, name: string) => {
+      Alert.alert(
+        `Block ${name}?`,
+        "You will no longer see each other's profiles or content. Previous follows will be removed.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Block",
+            style: "destructive",
+            onPress: () =>
+              blockUser(
+                { userId },
+                {
+                  onError: (error) =>
+                    alertApiError("Block Failed", error, {
+                      operation: "moderation.blockUser",
+                      fallback: "Could not block this user. Please try again.",
+                    }),
+                },
+              ),
+          },
+        ],
+      );
+    },
+    [blockUser],
+  );
+
+  const handleReply = useCallback((comment: Comment) => {
+    setReplyingTo(comment);
+    inputRef.current?.focus();
+  }, []);
+
+  const handleDelete = useCallback(
+    async (targetCommentId: number) => {
+      try {
+        await deleteComment({
+          commentId: targetCommentId,
+        });
+      } catch (error) {
+        alertApiError("Couldn’t Delete Comment", error, {
+          operation: "comment.delete",
+          fallback: "Failed to delete comment. Please try again.",
+        });
+      }
+    },
+    [deleteComment],
+  );
+
+  const handleSubmit = useCallback(async () => {
+    const content = commentText.trim();
+    if (!content) return;
+
+    Keyboard.dismiss();
+    try {
+      await createComment({
+        activityEventId,
+        parentCommentId: replyingTo?.id,
+        content,
+      });
+      setCommentText("");
+      setReplyingTo(null);
+    } catch (error) {
+      alertApiError("Couldn’t Post Comment", error, {
+        operation: "comment.create",
+        fallback: "Failed to post comment. Please try again.",
+      });
+    }
+  }, [activityEventId, commentText, createComment, replyingTo]);
+
+  const handleBlockActivityAuthor = useCallback(
+    (userId: string) => {
+      if (activityActorName) {
+        handleBlock(userId, activityActorName);
+      }
+    },
+    [activityActorName, handleBlock],
+  );
+
+  const renderComment = useCallback(
+    ({ item }: ListRenderItemInfo<CommentListItem>) => (
+      <View style={styles.commentRow}>
+        <CommentCard
+          comment={item.comment}
+          isReply={item.isReply}
+          isFocused={item.comment.id === focusedCommentId}
+          isOwnComment={item.comment.user.id === currentUserId}
+          onReply={handleReply}
+          onDelete={handleDelete}
+          onReport={handleReportComment}
+          onBlock={handleBlock}
+        />
+      </View>
+    ),
+    [
+      currentUserId,
+      focusedCommentId,
+      handleBlock,
+      handleDelete,
+      handleReply,
+      handleReportComment,
+    ],
+  );
+
+  const keyExtractor = useCallback(
+    ({ comment }: CommentListItem) => comment.id.toString(),
+    [],
+  );
+
+  const handleRetry = useCallback(() => {
+    refetchActivity();
+    refetchComments();
+  }, [refetchActivity, refetchComments]);
+
+  if (isActivityLoading) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.centeredState}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+        <Animated.View style={styles.fixedHeader}>
+          <NavigationHeader title="Activity" onBackPress={handleBackPress} />
+        </Animated.View>
+      </View>
+    );
+  }
+
+  if (isActivityError || !activity) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.centeredState}>
+          <Ionicons
+            name="document-outline"
+            size={44}
+            style={styles.stateIcon}
+          />
+          <Text type="title3">Activity unavailable</Text>
+          <Text type="body" style={styles.stateMessage}>
+            This activity may have been removed or is no longer available.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={isActivityFetching}
+            onPress={handleRetry}
+            style={({ pressed }) => [
+              styles.retryButton,
+              pressed && styles.retryButtonPressed,
+            ]}
+          >
+            {isActivityFetching ? (
+              <ActivityIndicator color={theme.colors.buttonText} />
+            ) : (
+              <Text type="headline" style={styles.retryButtonText}>
+                Try again
+              </Text>
+            )}
+          </Pressable>
+        </View>
+        <Animated.View style={styles.fixedHeader}>
+          <NavigationHeader title="Activity" onBackPress={handleBackPress} />
+        </Animated.View>
+      </View>
+    );
+  }
+
+  const activityCard =
+    activity.type === "cooking_review" ? (
+      <ReviewActivityCard
+        activity={activity}
+        onRecipePress={handleRecipePress}
+        onUserPress={handleUserPress}
+        onLikePress={handleLikePress}
+        onCommentPress={handleCommentPress}
+        onReportPress={handleReportActivity}
+        onBlockPress={handleBlockActivityAuthor}
+        onImportPress={handleImportRecipe}
+        onImportRecipePress={handleImportExistingRecipe}
+        currentUserId={currentUserId}
+        imagePreset={feedImagePreset}
+        imageWidth={feedImageWidth}
+        imagePriority="high"
+      />
+    ) : (
+      <ImportActivityCard
+        activity={activity}
+        onRecipePress={handleRecipePress}
+        onUserPress={handleUserPress}
+        onLikePress={handleLikePress}
+        onCommentPress={handleCommentPress}
+        onReportPress={handleReportActivity}
+        onBlockPress={handleBlockActivityAuthor}
+        onImportPress={handleImportRecipe}
+        onImportRecipePress={handleImportExistingRecipe}
+        currentUserId={currentUserId}
+        imagePreset={feedImagePreset}
+        imagePriority="high"
+      />
+    );
+
+  const commentsHeader = (
+    <>
+      {activityCard}
+      <View style={styles.sectionHeader}>
+        <Text type="title3">Comments</Text>
+        <Text type="footnote" style={styles.commentCount}>
+          {activity.commentCount}
+        </Text>
+      </View>
+      {focusedCommentUnavailable ? (
+        <View style={styles.notice}>
+          <Ionicons
+            name="information-circle-outline"
+            size={20}
+            style={styles.noticeIcon}
+          />
+          <Text type="subheadline" style={styles.noticeText}>
+            This comment is no longer available.
+          </Text>
+        </View>
+      ) : null}
+      {areCommentsError ? (
+        <View style={styles.commentsError}>
+          <Text type="headline">Comments unavailable</Text>
+          <Text type="subheadline" style={styles.stateMessage}>
+            We couldn’t load the comments for this activity.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={areCommentsFetching}
+            onPress={() => refetchComments()}
+            style={styles.inlineRetryButton}
+          >
+            <Text type="headline" style={styles.inlineRetryText}>
+              {areCommentsFetching ? "Trying again…" : "Try again"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {areCommentsLoading ? (
+        <ActivityIndicator style={styles.commentsLoader} />
+      ) : null}
+    </>
+  );
+
+  const canSubmit = commentText.trim().length > 0 && !isCreatingComment;
+
+  return (
+    <View style={styles.screen}>
+      <KeyboardAvoidingView
+        style={styles.keyboardArea}
+        behavior="padding"
+        keyboardVerticalOffset={0}
+        automaticOffset
+      >
+        <ReanimatedFlatList
+          ref={listRef}
+          data={areCommentsError ? [] : flattenedComments}
+          renderItem={renderComment}
+          keyExtractor={keyExtractor}
+          ListHeaderComponent={commentsHeader}
+          ListEmptyComponent={
+            !areCommentsLoading &&
+            !areCommentsError &&
+            !focusedCommentUnavailable ? (
+              <View style={styles.emptyComments}>
+                <Text type="body" style={styles.stateMessage}>
+                  No comments yet. Be the first to comment.
+                </Text>
+              </View>
+            ) : null
+          }
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingTop: insets.top + NAVIGATION_HEADER_HEIGHT },
+          ]}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          onScroll={handleScroll}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+        />
+
+        {!areCommentsError ? (
+          <Animated.View style={[styles.inputArea, inputAreaAnimatedStyle]}>
+            {replyingTo ? (
+              <View style={styles.replyingToBar}>
+                <Text type="footnote" style={styles.replyingToText}>
+                  Replying to {replyingTo.user.name}
+                </Text>
+                <Pressable
+                  accessibilityLabel="Cancel reply"
+                  onPress={() => setReplyingTo(null)}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name="close"
+                    size={18}
+                    style={styles.replyingToIcon}
+                  />
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={styles.inputRow}>
+              <TextInput
+                ref={inputRef}
+                accessibilityLabel="Comment"
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder={replyingTo ? "Write a reply…" : "Add a comment…"}
+                placeholderTextColor={theme.colors.placeholderText}
+                style={styles.input}
+                multiline
+                maxLength={500}
+              />
+              <Pressable
+                accessibilityLabel="Post comment"
+                accessibilityRole="button"
+                disabled={!canSubmit}
+                onPress={handleSubmit}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  !canSubmit && styles.sendButtonDisabled,
+                  pressed && canSubmit && styles.sendButtonPressed,
+                ]}
+              >
+                {isCreatingComment ? (
+                  <ActivityIndicator
+                    color={theme.colors.buttonText}
+                    size="small"
+                  />
+                ) : (
+                  <Ionicons name="send" size={18} style={styles.sendIcon} />
+                )}
+              </Pressable>
+            </View>
+          </Animated.View>
+        ) : null}
+      </KeyboardAvoidingView>
+      <Animated.View style={[styles.fixedHeader, headerAnimatedStyle]}>
+        <NavigationHeader title="Activity" onBackPress={handleBackPress} />
+      </Animated.View>
+      <ReportContentSheet ref={reportSheetRef} />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create((theme, rt) => ({
+  screen: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  fixedHeader: {
+    position: "absolute",
+    top: rt.insets.top,
+    left: rt.insets.left,
+    right: rt.insets.right,
+  },
+  keyboardArea: {
+    flex: 1,
+  },
+  centeredState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  stateIcon: {
+    color: theme.colors.textTertiary,
+  },
+  stateMessage: {
+    color: theme.colors.textSecondary,
+    textAlign: "center",
+  },
+  retryButton: {
+    minWidth: 132,
+    minHeight: 46,
+    marginTop: 8,
+    paddingHorizontal: 20,
+    borderRadius: theme.borderRadius.medium,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryButtonPressed: {
+    opacity: 0.8,
+  },
+  retryButtonText: {
+    color: theme.colors.buttonText,
+  },
+  listContent: {
+    paddingBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  commentCount: {
+    color: theme.colors.textSecondary,
+  },
+  commentRow: {
+    paddingHorizontal: 20,
+  },
+  notice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginVertical: 8,
+    padding: 12,
+    borderRadius: theme.borderRadius.medium,
+    backgroundColor: theme.colors.inputBackground,
+  },
+  noticeIcon: {
+    color: theme.colors.textSecondary,
+  },
+  noticeText: {
+    flex: 1,
+    color: theme.colors.textSecondary,
+  },
+  commentsError: {
+    marginHorizontal: 20,
+    marginVertical: 16,
+    padding: 20,
+    gap: 8,
+    alignItems: "center",
+    borderRadius: theme.borderRadius.large,
+    backgroundColor: theme.colors.inputBackground,
+  },
+  inlineRetryButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  inlineRetryText: {
+    color: theme.colors.primary,
+  },
+  commentsLoader: {
+    marginVertical: 24,
+  },
+  emptyComments: {
+    paddingHorizontal: 20,
+    paddingVertical: 32,
+  },
+  inputArea: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  replyingToBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: theme.borderRadius.small,
+    backgroundColor: theme.colors.inputBackground,
+  },
+  replyingToText: {
+    flex: 1,
+    color: theme.colors.textSecondary,
+  },
+  replyingToIcon: {
+    color: theme.colors.textSecondary,
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  input: {
+    flex: 1,
+    maxHeight: 110,
+    minHeight: SEARCH_BAR_HEIGHT,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: SEARCH_BAR_HEIGHT / 2,
+    backgroundColor: theme.colors.inputBackground,
+    color: theme.colors.text,
+    fontFamily: theme.fonts.regular,
+    fontSize: 17,
+    lineHeight: 22,
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.primary,
+  },
+  sendButtonDisabled: {
+    opacity: 0.45,
+  },
+  sendButtonPressed: {
+    transform: [{ scale: 0.96 }],
+  },
+  sendIcon: {
+    color: theme.colors.buttonText,
+  },
+}));

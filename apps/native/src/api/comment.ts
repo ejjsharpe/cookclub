@@ -3,14 +3,24 @@ import { useTRPC } from "@repo/trpc/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 // API Response Types
-export type CommentWithReplies = Outputs["comment"]["getComments"][number];
+export type CommentWithReplies =
+  Outputs["comment"]["getComments"]["comments"][number];
 export type Comment = Omit<CommentWithReplies, "replies">;
 
 // Get comments for an activity event
-export const useComments = (activityEventId: number) => {
+export const useComments = (
+  activityEventId: number,
+  focusedCommentId?: number,
+) => {
   const trpc = useTRPC();
 
-  return useQuery(trpc.comment.getComments.queryOptions({ activityEventId }));
+  return useQuery({
+    ...trpc.comment.getComments.queryOptions({
+      activityEventId,
+      ...(focusedCommentId === undefined ? {} : { focusedCommentId }),
+    }),
+    enabled: Number.isInteger(activityEventId) && activityEventId > 0,
+  });
 };
 
 // Create a new comment
@@ -21,12 +31,16 @@ export const useCreateComment = () => {
   return useMutation(
     trpc.comment.createComment.mutationOptions({
       onSuccess: (_data, variables) => {
-        // Invalidate comments query for this activity event
+        queryClient.invalidateQueries(trpc.comment.getComments.pathFilter());
         queryClient.invalidateQueries({
-          queryKey: trpc.comment.getComments.queryKey({
+          queryKey: trpc.activity.getActivity.queryKey({
             activityEventId: variables.activityEventId,
           }),
         });
+        queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+        queryClient.invalidateQueries(
+          trpc.activity.getUserActivities.pathFilter(),
+        );
       },
     }),
   );
@@ -40,10 +54,14 @@ export const useDeleteComment = (activityEventId: number) => {
   return useMutation(
     trpc.comment.deleteComment.mutationOptions({
       onSuccess: () => {
-        // Invalidate comments query for this activity event
+        queryClient.invalidateQueries(trpc.comment.getComments.pathFilter());
         queryClient.invalidateQueries({
-          queryKey: trpc.comment.getComments.queryKey({ activityEventId }),
+          queryKey: trpc.activity.getActivity.queryKey({ activityEventId }),
         });
+        queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+        queryClient.invalidateQueries(
+          trpc.activity.getUserActivities.pathFilter(),
+        );
       },
     }),
   );

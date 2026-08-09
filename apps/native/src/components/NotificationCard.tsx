@@ -127,6 +127,11 @@ export const NotificationCard = memo(
     const iconName = getNotificationIcon(notification.type);
     const hasActions = !expired && !!(onAccept || onDecline);
     const isPending = isAccepting || isDeclining;
+    const commentPreview =
+      notification.type === "activity_comment" ||
+      notification.type === "comment_reply"
+        ? notification.commentPreview
+        : null;
 
     return (
       <View
@@ -181,6 +186,15 @@ export const NotificationCard = memo(
             <Text type="caption" style={styles.timeAgo}>
               {expired ? "Expired" : timeAgo}
             </Text>
+            {commentPreview ? (
+              <Text
+                type="footnote"
+                style={styles.commentPreview}
+                numberOfLines={2}
+              >
+                “{commentPreview}”
+              </Text>
+            ) : null}
           </View>
           {!notification.isRead && !expired && !hasActions && (
             <View style={styles.unreadDot} />
@@ -286,6 +300,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   timeAgo: {
     color: theme.colors.textSecondary,
+  },
+  commentPreview: {
+    color: theme.colors.textSecondary,
+    marginTop: 4,
   },
   unreadDot: {
     width: 8,

@@ -3,6 +3,7 @@ import { useTRPC } from "@repo/trpc/client";
 import {
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import { useRef } from "react";
@@ -24,6 +25,16 @@ export type ActivityFeedListItem = FeedItem & {
 };
 
 const ACTIVITY_FEED_STALE_TIME = 1000 * 60 * 5;
+
+export const useActivity = (activityEventId: number) => {
+  const trpc = useTRPC();
+
+  return useQuery({
+    ...trpc.activity.getActivity.queryOptions({ activityEventId }),
+    staleTime: 0,
+    enabled: Number.isInteger(activityEventId) && activityEventId > 0,
+  });
+};
 
 // Get activity feed with infinite scroll
 interface UseActivityFeedParams {
@@ -227,6 +238,10 @@ export const useToggleActivityLike = () => {
         await queryClient.cancelQueries(
           trpc.activity.getUserActivities.pathFilter(),
         );
+        const activityQueryKey = trpc.activity.getActivity.queryKey({
+          activityEventId,
+        });
+        await queryClient.cancelQueries({ queryKey: activityQueryKey });
 
         // Snapshot previous feed data
         const previousFeedData = queryClient.getQueriesData<
@@ -235,6 +250,8 @@ export const useToggleActivityLike = () => {
         const previousUserActivitiesData = queryClient.getQueriesData<
           InfiniteData<UserActivitiesPage>
         >(trpc.activity.getUserActivities.pathFilter());
+        const previousActivityData =
+          queryClient.getQueryData<FeedItem>(activityQueryKey);
 
         // Helper to update feed items
         const updateFeedItem = (item: FeedItem): FeedItem => ({
@@ -254,8 +271,15 @@ export const useToggleActivityLike = () => {
           trpc.activity.getUserActivities.pathFilter(),
           (old) => updateActivityPages(old, activityEventId, updateFeedItem),
         );
+        queryClient.setQueryData<FeedItem>(activityQueryKey, (old) =>
+          old ? updateFeedItem(old) : old,
+        );
 
-        return { previousFeedData, previousUserActivitiesData };
+        return {
+          previousFeedData,
+          previousUserActivitiesData,
+          previousActivityData,
+        };
       },
       onError: (_err, _variables, context) => {
         // Rollback on error
@@ -268,6 +292,14 @@ export const useToggleActivityLike = () => {
           for (const [queryKey, data] of context.previousUserActivitiesData) {
             queryClient.setQueryData(queryKey, data);
           }
+        }
+        if (context?.previousActivityData) {
+          queryClient.setQueryData(
+            trpc.activity.getActivity.queryKey({
+              activityEventId: _variables.activityEventId,
+            }),
+            context.previousActivityData,
+          );
         }
       },
       onSuccess: (data, { activityEventId }) => {
@@ -296,6 +328,10 @@ export const useToggleActivityLike = () => {
           trpc.activity.getUserActivities.pathFilter(),
           (old) =>
             updateActivityPages(old, activityEventId, updateWithServerData),
+        );
+        queryClient.setQueryData<FeedItem>(
+          trpc.activity.getActivity.queryKey({ activityEventId }),
+          (old) => (old ? updateWithServerData(old) : old),
         );
       },
     }),

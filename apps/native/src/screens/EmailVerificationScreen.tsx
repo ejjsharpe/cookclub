@@ -15,9 +15,12 @@ import { BaseButton } from "@/components/buttons/BaseButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import { authClient } from "@/lib/authClient";
-import type { AppParamList } from "@/navigation/navigationRef";
+import type { RootStackParamList } from "@/navigation/navigationRef";
 
-type EmailVerificationRoute = RouteProp<AppParamList, "EmailVerification">;
+type EmailVerificationRoute = RouteProp<
+  RootStackParamList,
+  "EmailVerification"
+>;
 
 export const EmailVerificationScreen = () => {
   const navigation = useNavigation();

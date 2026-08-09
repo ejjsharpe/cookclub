@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { Platform } from "react-native";
 
+import { getActivityNotificationTarget } from "./activityNotification";
 import { isCookTimerNotificationData } from "./cook-timer-notifications";
 import { useSessionContext } from "./sessionContext";
 
@@ -78,19 +79,26 @@ function navigateWhenReady(data: PushNotificationData, attempts = 0) {
 
   const type = typeof data.type === "string" ? data.type : null;
   const actorId = typeof data.actorId === "string" ? data.actorId : null;
+  const activityTarget = getActivityNotificationTarget(data);
+
+  if (activityTarget) {
+    navigationRef.navigate("Activity", activityTarget);
+    return;
+  }
 
   switch (type) {
     case "follow":
-    case "activity_like":
-    case "activity_comment":
-    case "comment_reply":
       if (actorId) {
         navigationRef.navigate("UserProfile", { userId: actorId });
         return;
       }
       break;
+    case "activity_like":
+    case "activity_comment":
+    case "comment_reply":
+      break;
     case "meal_plan_share":
-      navigationRef.navigate("Tabs", { screen: "Meal Plan" } as never);
+      navigationRef.navigate("Tabs", { screen: "Meal Plan" });
       return;
     case "meal_plan_invite":
     case "shopping_list_invite":

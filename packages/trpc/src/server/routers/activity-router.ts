@@ -55,6 +55,37 @@ function reviewImageInsertValues(
 }
 
 export const activityRouter = router({
+  getActivity: authedProcedure
+    .input(
+      type({
+        activityEventId: "number",
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const [activity] = await hydrateActivityIds(
+          ctx.db,
+          [input.activityEventId],
+          ctx.user.id,
+        );
+
+        if (!activity) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Activity not found",
+          });
+        }
+
+        return activity;
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch activity",
+        });
+      }
+    }),
+
   // Get the user's activity feed from their Durable Object
   getFeed: authedProcedure
     .input(

@@ -103,7 +103,7 @@ import { openExternalWebsite } from "@/lib/externalBrowser";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { publicErrorDetails, resolvePublicError } from "@/lib/publicError";
 import { useSubscription } from "@/lib/subscription";
-import type { AppParamList } from "@/navigation/navigationRef";
+import type { RootStackParamList } from "@/navigation/navigationRef";
 import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
 import { getImageUrl, selectDetailImagePreset } from "@/utils/imageUrl";
 import {
@@ -119,7 +119,7 @@ const IMAGE_HEIGHT = SCREEN_WIDTH;
 
 type RecipeDetailMode = "view" | "edit";
 
-type RecipeDetailScreenRoute = RouteProp<AppParamList, "RecipeDetail">;
+type RecipeDetailScreenRoute = RouteProp<RootStackParamList, "RecipeDetail">;
 
 type SourceType = "url" | "image" | "text" | "ai" | "manual" | "user";
 
@@ -203,7 +203,9 @@ interface RecipeDraft {
   instructionSections: DraftInstructionSection[];
 }
 
-function isPreviewParams(params: AppParamList["RecipeDetail"]): params is {
+function isPreviewParams(
+  params: RootStackParamList["RecipeDetail"],
+): params is {
   parsedRecipe: ParsedRecipe;
   mode?: RecipeDetailMode;
   generatedImage?: {
@@ -215,13 +217,13 @@ function isPreviewParams(params: AppParamList["RecipeDetail"]): params is {
 }
 
 function isImportReviewParams(
-  params: AppParamList["RecipeDetail"],
+  params: RootStackParamList["RecipeDetail"],
 ): params is { importJobId: string; mode?: RecipeDetailMode } {
   return "importJobId" in params;
 }
 
 function isBlankDraftParams(
-  params: AppParamList["RecipeDetail"],
+  params: RootStackParamList["RecipeDetail"],
 ): params is { draft: true; mode: "edit" } {
   return "draft" in params;
 }

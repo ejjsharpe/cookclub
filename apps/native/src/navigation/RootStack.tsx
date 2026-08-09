@@ -9,8 +9,9 @@ import {
   useIsSignedOut,
   useNeedsOnboarding,
 } from "@/lib/signedInContext";
-import type { AppParamList } from "@/navigation/navigationRef";
+import type { RootStackParamList } from "@/navigation/navigationRef";
 import { AccountScreen } from "@/screens/AccountScreen";
+import { ActivityScreen } from "@/screens/ActivityScreen";
 import { BlockedUsersScreen } from "@/screens/BlockedUsersScreen";
 import { CollectionDetailScreen } from "@/screens/CollectionDetailScreen";
 import { CookModeScreen } from "@/screens/CookModeScreen";
@@ -27,7 +28,7 @@ export { navigationRef } from "@/navigation/navigationRef";
 const StartScreen = lazy(() => import("@/screens/StartScreen"));
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const RootNavigator = createNativeStackNavigator<AppParamList>();
+const RootNavigator = createNativeStackNavigator<RootStackParamList>();
 type RootNavigatorType = typeof RootNavigator;
 
 declare module "@react-navigation/core" {
@@ -60,6 +61,16 @@ const RootStack = createNativeStackNavigator({
         Settings: { screen: SettingsScreen },
         BlockedUsers: { screen: BlockedUsersScreen },
         Notifications: { screen: NotificationsScreen },
+        Activity: {
+          screen: ActivityScreen,
+          linking: {
+            path: "activity/:activityEventId",
+            parse: {
+              activityEventId: Number,
+              commentId: Number,
+            },
+          },
+        },
         UserProfile: { screen: UserProfileScreen },
         FollowsList: { screen: FollowsScreen },
         RecipeDetail: {

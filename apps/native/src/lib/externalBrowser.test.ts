@@ -45,7 +45,7 @@ describe("openExternalWebsite", () => {
     expect(mocks.alert).toHaveBeenCalledOnce();
     const buttons = mocks.alert.mock.calls[0]?.[2];
     const inAppButton = buttons.find(
-      (button: { text: string }) => button.text === "In Cook Club",
+      (button: { text: string }) => button.text === "In App",
     );
     inAppButton.onPress();
 

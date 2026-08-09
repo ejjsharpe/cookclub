@@ -28,7 +28,7 @@ export function ShareIntentImportHandler() {
 
   const navigateToImports = useCallback(() => {
     if (navigationRef.isReady()) {
-      navigationRef.navigate("Tabs", { screen: "Add recipe" } as never);
+      navigationRef.navigate("Tabs", { screen: "Add recipe" });
     }
   }, []);
 

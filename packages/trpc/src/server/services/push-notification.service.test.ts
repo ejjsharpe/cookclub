@@ -19,6 +19,7 @@ const baseNotification: NotificationItem = {
   mealPlanId: null,
   shoppingListId: null,
   commentId: null,
+  commentPreview: null,
   isRead: false,
   createdAt: new Date("2026-01-01T00:00:00Z"),
 };
@@ -34,6 +35,15 @@ describe("push notification mapping", () => {
     ["comment_reply", "Alex replied to your comment"],
   ] as const)("maps %s body text", (type, expected) => {
     expect(getPushNotificationBody({ actorName: "Alex", type })).toBe(expected);
+  });
+
+  it("does not expose comment previews in lock-screen notification bodies", () => {
+    expect(
+      getPushNotificationBody({
+        actorName: "Alex",
+        type: "activity_comment",
+      }),
+    ).toBe("Alex commented on your activity");
   });
 
   it("includes only relevant notification data fields", () => {

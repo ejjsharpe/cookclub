@@ -186,6 +186,41 @@ describe("activityRouter", () => {
     consoleErrorSpy.mockRestore();
   });
 
+  describe("getActivity", () => {
+    it("hydrates the requested activity for the signed-in user", async () => {
+      const activity = {
+        id: "42",
+        type: "recipe_import",
+        actor: { id: "author" },
+      };
+      mockDbServices.hydrateActivityIds.mockResolvedValueOnce([activity]);
+
+      const caller = activityRouter.createCaller(
+        createMockContext(mockDb, { env: mockEnv }) as any,
+      );
+
+      await expect(
+        caller.getActivity({ activityEventId: 42 }),
+      ).resolves.toEqual(activity);
+      expect(mockDbServices.hydrateActivityIds).toHaveBeenCalledWith(
+        expect.anything(),
+        [42],
+        "test-user-id",
+      );
+    });
+
+    it("returns NOT_FOUND when the activity is unavailable", async () => {
+      mockDbServices.hydrateActivityIds.mockResolvedValueOnce([]);
+      const caller = activityRouter.createCaller(
+        createMockContext(mockDb, { env: mockEnv }) as any,
+      );
+
+      await expect(
+        caller.getActivity({ activityEventId: 42 }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+  });
+
   describe("getFeed", () => {
     it("returns paginated feed items from Durable Object", async () => {
       const mockFeedItems = [

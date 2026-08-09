@@ -11,6 +11,7 @@ import type { Comment } from "@/api/comment";
 interface Props {
   comment: Comment;
   isReply?: boolean;
+  isFocused?: boolean;
   isOwnComment: boolean;
   onReply: (comment: Comment) => void;
   onDelete: (commentId: number) => void;
@@ -37,6 +38,7 @@ export const CommentCard = memo(
   ({
     comment,
     isReply = false,
+    isFocused = false,
     isOwnComment,
     onReply,
     onDelete,
@@ -70,7 +72,13 @@ export const CommentCard = memo(
     };
 
     return (
-      <View style={[styles.container, isReply && styles.replyContainer]}>
+      <View
+        style={[
+          styles.container,
+          isReply && styles.replyContainer,
+          isFocused && styles.focusedContainer,
+        ]}
+      >
         {/* User Avatar */}
         <View style={[styles.avatar, isReply && styles.replyAvatar]}>
           {comment.user.image ? (
@@ -172,6 +180,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   replyContainer: {
     marginLeft: 44,
+  },
+  focusedContainer: {
+    backgroundColor: theme.colors.inputBackground,
+    borderRadius: theme.borderRadius.medium,
+    paddingHorizontal: 12,
   },
   avatar: {
     width: 36,

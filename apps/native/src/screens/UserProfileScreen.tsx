@@ -26,10 +26,6 @@ import { useUserProfile, useFollowUser, useUnfollowUser } from "@/api/follows";
 import { useBlockUser } from "@/api/moderation";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser } from "@/api/user";
-import {
-  CommentsSheet,
-  type CommentsSheetRef,
-} from "@/components/CommentsSheet";
 import { ImportActivityCard } from "@/components/ImportActivityCard";
 import { Ionicons } from "@/components/Ionicons";
 import { ProBadge } from "@/components/ProBadge";
@@ -51,10 +47,10 @@ import {
 import { alertApiError } from "@/lib/apiErrorAlert";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
-import type { AppParamList } from "@/navigation/navigationRef";
+import type { RootStackParamList } from "@/navigation/navigationRef";
 import { selectFeedImagePreset } from "@/utils/imageUrl";
 
-type UserProfileScreenRoute = RouteProp<AppParamList, "UserProfile">;
+type UserProfileScreenRoute = RouteProp<RootStackParamList, "UserProfile">;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator, (theme) => ({
   color: theme.colors.primary,
@@ -78,11 +74,9 @@ export const UserProfileScreen = () => {
   const session = useSessionContext();
   const { requireSmartImport } = useSubscription();
 
-  const commentsSheetRef = useRef<CommentsSheetRef>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
 
   const [imageError, setImageError] = useState(false);
-  const [commentActivityId, setCommentActivityId] = useState<number>(0);
 
   const { data: currentUser } = useUser();
   const { data: profile, isLoading, error } = useUserProfile({ userId });
@@ -175,7 +169,7 @@ export const UserProfileScreen = () => {
   }, [hasMoreActivities, isFetchingNextActivities, fetchNextActivities]);
 
   const navigateToAddRecipeTab = useCallback(() => {
-    navigation.navigate("Tabs", { screen: "Add recipe" } as never);
+    navigation.navigate("Tabs", { screen: "Add recipe" });
   }, [navigation]);
 
   const sourceImportIdsRef = useRef(new Map<string, string>());
@@ -245,10 +239,12 @@ export const UserProfileScreen = () => {
     [toggleLike],
   );
 
-  const handleCommentPress = useCallback((activityEventId: number) => {
-    setCommentActivityId(activityEventId);
-    commentsSheetRef.current?.present();
-  }, []);
+  const handleCommentPress = useCallback(
+    (activityEventId: number) => {
+      navigation.navigate("Activity", { activityEventId });
+    },
+    [navigation],
+  );
 
   const handleReportActivity = useCallback((activityEventId: number) => {
     reportSheetRef.current?.present({
@@ -626,11 +622,6 @@ export const UserProfileScreen = () => {
         />
       </SkeletonContainer>
 
-      {/* Comments Sheet */}
-      <CommentsSheet
-        ref={commentsSheetRef}
-        activityEventId={commentActivityId}
-      />
       <ReportContentSheet ref={reportSheetRef} />
     </View>
   );

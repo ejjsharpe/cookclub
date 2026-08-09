@@ -14,7 +14,7 @@ import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { useSessionContext } from "@/lib/sessionContext";
-import type { AppParamList } from "@/navigation/navigationRef";
+import type { RootStackParamList } from "@/navigation/navigationRef";
 
 type TabType = "following" | "followers";
 
@@ -30,7 +30,7 @@ interface FollowUser {
   followedAt: string;
 }
 
-type FollowsScreenRouteProp = RouteProp<AppParamList, "FollowsList">;
+type FollowsScreenRouteProp = RouteProp<RootStackParamList, "FollowsList">;
 const UserSeparator = () => <VSpace size={6} />;
 
 export const FollowsScreen = () => {

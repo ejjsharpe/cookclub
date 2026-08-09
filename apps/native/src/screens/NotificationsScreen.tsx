@@ -36,6 +36,7 @@ import { NavigationHeader } from "@/components/NavigationHeader";
 import { NotificationCard } from "@/components/NotificationCard";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
+import { getActivityNotificationTarget } from "@/lib/activityNotification";
 import { setSelectedMealPlan } from "@/lib/mealPlanPreferences";
 
 const NAVIGATION_HEADER_HEIGHT = 60;
@@ -157,7 +158,7 @@ export const NotificationsScreen = () => {
       try {
         await acceptMealPlan.mutateAsync({ invitationId: invitation.id });
         setSelectedMealPlan(notification.mealPlanId, invitation.mealPlanName);
-        navigation.navigate("Tabs", { screen: "Meal Plan" } as never);
+        navigation.navigate("Tabs", { screen: "Meal Plan" });
       } catch {
         // Error handled by mutation
       } finally {
@@ -203,7 +204,7 @@ export const NotificationsScreen = () => {
       setActiveAction("accept");
       try {
         await acceptShoppingList.mutateAsync({ invitationId: invitation.id });
-        navigation.navigate("Tabs", { screen: "Shopping List" } as never);
+        navigation.navigate("Tabs", { screen: "Shopping List" });
       } catch {
         // Error handled by mutation
       } finally {
@@ -244,17 +245,22 @@ export const NotificationsScreen = () => {
 
   const handleNotificationPress = useCallback(
     (notification: NotificationItem) => {
+      const activityTarget = getActivityNotificationTarget(notification);
+      if (activityTarget) {
+        navigation.navigate("Activity", activityTarget);
+        return;
+      }
+
       switch (notification.type) {
         case "follow":
           navigation.navigate("UserProfile", { userId: notification.actorId });
           break;
         case "meal_plan_share":
-          navigation.navigate("Tabs", { screen: "Meal Plan" } as never);
+          navigation.navigate("Tabs", { screen: "Meal Plan" });
           break;
         case "activity_like":
         case "activity_comment":
         case "comment_reply":
-          navigation.navigate("UserProfile", { userId: notification.actorId });
           break;
         default:
           break;

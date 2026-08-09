@@ -56,9 +56,9 @@ export const notifications = pgTable(
     createdAt: timestamp("created_at").notNull(),
   },
   (table) => [
-    index("notifications_recipient_created_idx").on(
+    index("notifications_recipient_id_idx").on(
       table.recipientId,
-      table.createdAt.desc(),
+      table.id.desc(),
     ),
     index("notifications_recipient_unread_idx").on(
       table.recipientId,

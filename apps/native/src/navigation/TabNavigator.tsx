@@ -1,13 +1,14 @@
 import { createNativeBottomTabNavigator } from "@react-navigation/bottom-tabs/unstable";
 import { useUnistyles } from "react-native-unistyles";
 
+import type { TabParamList } from "@/navigation/navigationRef";
 import { AddRecipeScreen } from "@/screens/AddRecipeScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
 import { MealPlanScreen } from "@/screens/MealPlanScreen";
 import { MyRecipesScreen } from "@/screens/MyRecipesScreen";
 import { ShoppingListScreen } from "@/screens/ShoppingListScreen";
 
-const Tab = createNativeBottomTabNavigator();
+const Tab = createNativeBottomTabNavigator<TabParamList>();
 
 export const TabNavigator = () => {
   const { theme } = useUnistyles();

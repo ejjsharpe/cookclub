@@ -14,6 +14,7 @@ import { recipes as recipeData, type SourceType } from "./data/recipes";
 import { socialRecipes } from "./data/social-recipes";
 import { users as userData } from "./data/users";
 import * as schema from "./schemas";
+import type { CreateNotificationParams } from "./services/notification";
 import { syncRecipeSearchDocument } from "./services/recipe/recipe-search-document.service";
 
 const rl = readline.createInterface({
@@ -149,16 +150,9 @@ function seedImageAssetFields(url: string) {
 async function seedNotification(
   db: DbClient,
   usersById: Map<string, typeof schema.user.$inferSelect>,
-  params: {
-    recipientId: string;
-    actorId: string;
-    type: typeof schema.notifications.$inferInsert.type;
+  params: CreateNotificationParams & {
     createdAt: Date;
     isRead?: boolean;
-    activityEventId?: number;
-    mealPlanId?: number;
-    shoppingListId?: number;
-    commentId?: number;
   },
 ): Promise<boolean> {
   if (params.recipientId === params.actorId) {

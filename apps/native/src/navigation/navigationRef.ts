@@ -1,22 +1,27 @@
 import {
   createNavigationContainerRef,
-  type ParamListBase,
+  type NavigatorScreenParams,
 } from "@react-navigation/native";
 
 import type { ParsedRecipe } from "@/api/recipe";
+import type { ActivityNotificationTarget } from "@/lib/activityNotification";
 
-export interface AppParamList extends ParamListBase {
-  Tabs: undefined;
+export type TabParamList = {
   Home: undefined;
   Recipes: undefined;
   "Add recipe": undefined;
   "Meal Plan": undefined;
   "Shopping List": undefined;
+};
+
+export type RootStackParamList = {
+  Tabs: NavigatorScreenParams<TabParamList> | undefined;
   Start: undefined;
   Onboarding: undefined;
   Settings: undefined;
   BlockedUsers: undefined;
   Notifications: undefined;
+  Activity: ActivityNotificationTarget;
   GenerateRecipe: undefined;
   UserProfile: { userId: string };
   FollowsList: {
@@ -62,12 +67,12 @@ export interface AppParamList extends ParamListBase {
       }[];
     }[];
   };
-}
+};
 
 declare global {
   namespace ReactNavigation {
-    interface RootParamList extends AppParamList {}
+    interface RootParamList extends RootStackParamList {}
   }
 }
 
-export const navigationRef = createNavigationContainerRef<AppParamList>();
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();

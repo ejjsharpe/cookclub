@@ -46,10 +46,6 @@ import { useUnreadNotificationCount } from "@/api/notification";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser, User } from "@/api/user";
 import { Avatar } from "@/components/Avatar";
-import {
-  CommentsSheet,
-  type CommentsSheetRef,
-} from "@/components/CommentsSheet";
 import { EmptyFeedState } from "@/components/EmptyFeedState";
 import { FollowUserRow } from "@/components/FollowUserRow";
 import { ImportActivityCard } from "@/components/ImportActivityCard";
@@ -247,7 +243,6 @@ export const HomeScreen = () => {
   const browseScrollRef = useRef<FlashListRef<ActivityFeedListItem>>(null);
   const searchListRef = useRef<FlatList>(null);
   const searchBarRef = useRef<View>(null);
-  const commentsSheetRef = useRef<CommentsSheetRef>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
   const loadLatestTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -274,7 +269,6 @@ export const HomeScreen = () => {
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [showFloatingSearch, setShowFloatingSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [commentActivityId, setCommentActivityId] = useState<number>(0);
   const [showLoadLatest, setShowLoadLatest] = useState(false);
 
   // Track the search bar's Y position relative to the screen
@@ -539,7 +533,7 @@ export const HomeScreen = () => {
       try {
         const allowed = await requireSmartImport();
         if (!allowed) {
-          navigation.navigate("Add recipe");
+          navigation.navigate("Tabs", { screen: "Add recipe" });
           return;
         }
 
@@ -552,7 +546,7 @@ export const HomeScreen = () => {
           source: { type: "url", value: sourceUrl },
         });
         sourceImportIdsRef.current.delete(sourceUrl);
-        navigation.navigate("Add recipe");
+        navigation.navigate("Tabs", { screen: "Add recipe" });
       } catch (error) {
         alertApiError("Import Failed", error, {
           operation: "recipeImport.create",
@@ -585,10 +579,12 @@ export const HomeScreen = () => {
     [toggleLike],
   );
 
-  const handleCommentPress = useCallback((activityEventId: number) => {
-    setCommentActivityId(activityEventId);
-    commentsSheetRef.current?.present();
-  }, []);
+  const handleCommentPress = useCallback(
+    (activityEventId: number) => {
+      navigation.navigate("Activity", { activityEventId });
+    },
+    [navigation],
+  );
 
   const handleReportActivity = useCallback((activityEventId: number) => {
     reportSheetRef.current?.present({
@@ -1111,11 +1107,6 @@ export const HomeScreen = () => {
         </>
       )}
 
-      {/* Comments Sheet */}
-      <CommentsSheet
-        ref={commentsSheetRef}
-        activityEventId={commentActivityId}
-      />
       <ReportContentSheet ref={reportSheetRef} />
     </View>
   );
