@@ -5,11 +5,13 @@ import {
 } from "@react-navigation/native";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { Image } from "expo-image";
-import { useCallback, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
+  ActionSheetIOS,
   View,
   ActivityIndicator,
   Alert,
+  type AlertButton,
   TouchableOpacity,
   Share,
   useWindowDimensions,
@@ -75,8 +77,14 @@ export const UserProfileScreen = () => {
   const { requireSmartImport } = useSubscription();
 
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
+  const confirmedFollowingRef = useRef<boolean | null>(null);
+  const desiredFollowingRef = useRef<boolean | null>(null);
+  const isReconcilingFollowingRef = useRef(false);
 
   const [imageError, setImageError] = useState(false);
+  const [optimisticFollowing, setOptimisticFollowing] = useState<
+    boolean | null
+  >(null);
 
   const { data: currentUser } = useUser();
   const { data: profile, isLoading, error } = useUserProfile({ userId });
@@ -97,12 +105,99 @@ export const UserProfileScreen = () => {
 
   const isOwnProfile = currentUserId === userId;
   const shouldShowProIndicators = profile?.user.subscriptionTier === "pro";
+  const isFollowing = optimisticFollowing ?? profile?.isFollowing ?? false;
+  const followersCount = Math.max(
+    0,
+    (profile?.followersCount ?? 0) +
+      (optimisticFollowing !== null &&
+      profile &&
+      optimisticFollowing !== profile.isFollowing
+        ? optimisticFollowing
+          ? 1
+          : -1
+        : 0),
+  );
 
-  const handleFollow = () => {
-    followMutation.mutate({ userId });
-  };
+  useEffect(() => {
+    if (!profile) return;
+    if (isReconcilingFollowingRef.current) return;
 
-  const handleUnfollow = () => {
+    confirmedFollowingRef.current = profile.isFollowing;
+
+    if (
+      optimisticFollowing !== null &&
+      optimisticFollowing === profile.isFollowing
+    ) {
+      desiredFollowingRef.current = profile.isFollowing;
+      setOptimisticFollowing(null);
+    } else if (optimisticFollowing === null) {
+      desiredFollowingRef.current = profile.isFollowing;
+    }
+  }, [optimisticFollowing, profile]);
+
+  const reconcileFollowing = useCallback(
+    async (initialConfirmed: boolean) => {
+      if (isReconcilingFollowingRef.current) return;
+
+      isReconcilingFollowingRef.current = true;
+      confirmedFollowingRef.current ??= initialConfirmed;
+
+      try {
+        while (
+          desiredFollowingRef.current !== null &&
+          desiredFollowingRef.current !== confirmedFollowingRef.current
+        ) {
+          const nextFollowing: boolean = desiredFollowingRef.current;
+
+          try {
+            if (nextFollowing) {
+              await followMutation.mutateAsync({ userId });
+            } else {
+              await unfollowMutation.mutateAsync({ userId });
+            }
+            confirmedFollowingRef.current = nextFollowing;
+          } catch (error) {
+            desiredFollowingRef.current = confirmedFollowingRef.current;
+            setOptimisticFollowing(null);
+            alertApiError(
+              nextFollowing ? "Follow Failed" : "Unfollow Failed",
+              error,
+              {
+                operation: nextFollowing
+                  ? "follows.followUser"
+                  : "follows.unfollowUser",
+                fallback: nextFollowing
+                  ? "Could not follow this user. Please try again."
+                  : "Could not unfollow this user. Please try again.",
+              },
+            );
+            return;
+          }
+        }
+      } finally {
+        isReconcilingFollowingRef.current = false;
+        if (desiredFollowingRef.current === confirmedFollowingRef.current) {
+          setOptimisticFollowing(null);
+        }
+      }
+    },
+    [followMutation, unfollowMutation, userId],
+  );
+
+  const requestFollowing = useCallback(
+    (nextFollowing: boolean) => {
+      desiredFollowingRef.current = nextFollowing;
+      setOptimisticFollowing(nextFollowing);
+      reconcileFollowing(profile?.isFollowing ?? false);
+    },
+    [profile?.isFollowing, reconcileFollowing],
+  );
+
+  const handleFollow = useCallback(() => {
+    requestFollowing(true);
+  }, [requestFollowing]);
+
+  const handleUnfollow = useCallback(() => {
     Alert.alert(
       "Unfollow User",
       `Are you sure you want to unfollow ${profile?.user.name}?`,
@@ -111,11 +206,13 @@ export const UserProfileScreen = () => {
         {
           text: "Unfollow",
           style: "destructive",
-          onPress: () => unfollowMutation.mutate({ userId }),
+          onPress: () => {
+            requestFollowing(false);
+          },
         },
       ],
     );
-  };
+  }, [profile?.user.name, requestFollowing]);
 
   const handleShareProfile = async () => {
     if (!profile) return;
@@ -130,9 +227,9 @@ export const UserProfileScreen = () => {
     }
   };
 
-  const handleReportUser = () => {
+  const handleReportUser = useCallback(() => {
     reportSheetRef.current?.present({ targetType: "user", targetId: userId });
-  };
+  }, [userId]);
 
   const handleBlockUser = useCallback(
     (targetUserId = userId) => {
@@ -161,6 +258,33 @@ export const UserProfileScreen = () => {
     },
     [blockMutation, navigation, profile?.user.name, userId],
   );
+
+  const handleProfileOptions = useCallback(() => {
+    const handleBlock = () => handleBlockUser();
+
+    if (process.env.EXPO_OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: "Profile options",
+          options: ["Report user", "Block user", "Cancel"],
+          cancelButtonIndex: 2,
+          destructiveButtonIndex: 1,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) handleReportUser();
+          if (buttonIndex === 1) handleBlock();
+        },
+      );
+      return;
+    }
+
+    const buttons: AlertButton[] = [
+      { text: "Report user", onPress: handleReportUser },
+      { text: "Block user", style: "destructive", onPress: handleBlock },
+      { text: "Cancel", style: "cancel" },
+    ];
+    Alert.alert("Profile options", undefined, buttons, { cancelable: true });
+  }, [handleBlockUser, handleReportUser]);
 
   const handleLoadMoreActivities = useCallback(() => {
     if (hasMoreActivities && !isFetchingNextActivities) {
@@ -358,9 +482,6 @@ export const UserProfileScreen = () => {
     );
   }
 
-  const isMutationLoading =
-    followMutation.isPending || unfollowMutation.isPending;
-
   const renderHeader = () => {
     if (!profile) return null;
     return (
@@ -442,7 +563,7 @@ export const UserProfileScreen = () => {
               activeOpacity={0.7}
             >
               <Text type="heading" style={styles.statNumber}>
-                {profile.followersCount}
+                {followersCount}
               </Text>
               <Text type="bodyFaded" style={styles.statLabel}>
                 Followers
@@ -481,75 +602,40 @@ export const UserProfileScreen = () => {
 
         {/* Action Buttons */}
         {!isOwnProfile && (
-          <>
-            <View style={styles.actionButtons}>
-              {profile.isFollowing ? (
-                <TouchableOpacity
-                  style={[styles.pillButton, styles.followingButton]}
-                  onPress={handleUnfollow}
-                  disabled={isMutationLoading}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name="checkmark"
-                    size={18}
-                    style={styles.followingIcon}
-                  />
-                  <Text style={styles.followingButtonText}>Following</Text>
-                </TouchableOpacity>
-              ) : (
-                <PrimaryButton
-                  onPress={handleFollow}
-                  disabled={isMutationLoading}
-                  style={styles.followButton}
-                >
-                  Follow
-                </PrimaryButton>
-              )}
-              <View style={styles.buttonSpacer} />
-              <TouchableOpacity
-                style={styles.pillButton}
-                onPress={handleShareProfile}
-                activeOpacity={0.7}
+          <View style={styles.actionButtons}>
+            {isFollowing ? (
+              <ScalePressable
+                style={[styles.pillButton, styles.followingButton]}
+                onPress={handleUnfollow}
+                accessibilityRole="button"
+                accessibilityLabel={`Unfollow ${profile.user.name}`}
               >
                 <Ionicons
-                  name="share-outline"
+                  name="checkmark"
                   size={18}
-                  style={styles.pillButtonIcon}
+                  style={styles.followingIcon}
                 />
-                <Text style={styles.pillButtonText}>Share</Text>
-              </TouchableOpacity>
-            </View>
-            <VSpace size={12} />
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={styles.pillButton}
-                onPress={handleReportUser}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="flag-outline"
-                  size={18}
-                  style={styles.pillButtonIcon}
-                />
-                <Text style={styles.pillButtonText}>Report</Text>
-              </TouchableOpacity>
-              <View style={styles.buttonSpacer} />
-              <TouchableOpacity
-                style={[styles.pillButton, styles.blockButton]}
-                onPress={() => handleBlockUser()}
-                disabled={blockMutation.isPending}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="ban-outline"
-                  size={18}
-                  style={styles.blockButtonText}
-                />
-                <Text style={styles.blockButtonText}>Block</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+                <Text style={styles.followingButtonText}>Following</Text>
+              </ScalePressable>
+            ) : (
+              <PrimaryButton onPress={handleFollow} style={styles.followButton}>
+                Follow
+              </PrimaryButton>
+            )}
+            <View style={styles.buttonSpacer} />
+            <TouchableOpacity
+              style={styles.pillButton}
+              onPress={handleShareProfile}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="share-outline"
+                size={18}
+                style={styles.pillButtonIcon}
+              />
+              <Text style={styles.pillButtonText}>Share</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {profile.followsMe && !isOwnProfile && (
@@ -583,20 +669,37 @@ export const UserProfileScreen = () => {
       {/* Floating header */}
       <View style={styles.headerRow}>
         <BackButton />
-        {isOwnProfile && profile && (
-          <ScalePressable
-            style={styles.headerButton}
-            onPress={handleSettings}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-          >
-            <Ionicons
-              name="settings-outline"
-              size={22}
-              style={styles.settingsIcon}
-            />
-          </ScalePressable>
-        )}
+        {profile ? (
+          isOwnProfile ? (
+            <ScalePressable
+              style={styles.headerButton}
+              onPress={handleSettings}
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+            >
+              <Ionicons
+                name="settings-outline"
+                size={22}
+                style={styles.headerIcon}
+              />
+            </ScalePressable>
+          ) : (
+            <ScalePressable
+              style={styles.headerButton}
+              onPress={handleProfileOptions}
+              disabled={blockMutation.isPending}
+              accessibilityRole="button"
+              accessibilityLabel="More profile options"
+              accessibilityHint="Report or block this user"
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={22}
+                style={styles.headerIcon}
+              />
+            </ScalePressable>
+          )
+        ) : null}
       </View>
 
       <SkeletonContainer
@@ -652,7 +755,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     justifyContent: "center",
     alignItems: "center",
   },
-  settingsIcon: {
+  headerIcon: {
     color: theme.colors.text,
   },
   centered: {
@@ -784,8 +887,6 @@ const styles = StyleSheet.create((theme, rt) => ({
   pillButtonIcon: {
     color: theme.colors.text,
   },
-  blockButton: { backgroundColor: theme.colors.destructive + "12" },
-  blockButtonText: { color: theme.colors.destructive },
   buttonSpacer: {
     width: 12,
   },
