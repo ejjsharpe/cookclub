@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   db: {},
@@ -51,6 +51,10 @@ describe("recipe import queue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getDb.mockReturnValue(mocks.db);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("acknowledges processed jobs", async () => {
@@ -153,5 +157,86 @@ describe("recipe import queue", () => {
     await queue(createBatch(message) as any, {} as any, {} as any);
 
     expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 120 });
+  });
+
+  it("keeps the configured backoff when Retry-After is shorter or invalid", async () => {
+    const shortDelayMessage = createMessage(2);
+    const invalidDelayMessage = createMessage(3);
+    mocks.processRecipeImportJob
+      .mockResolvedValueOnce({
+        outcome: "retry",
+        errorCode: "SERVICE_UNAVAILABLE",
+        retryAfterSeconds: 1,
+      })
+      .mockResolvedValueOnce({
+        outcome: "retry",
+        errorCode: "SERVICE_UNAVAILABLE",
+        retryAfterSeconds: Number.NaN,
+      });
+
+    await queue(createBatch(shortDelayMessage) as any, {} as any, {} as any);
+    await queue(createBatch(invalidDelayMessage) as any, {} as any, {} as any);
+
+    expect(shortDelayMessage.retry).toHaveBeenCalledWith({ delaySeconds: 15 });
+    expect(invalidDelayMessage.retry).toHaveBeenCalledWith({
+      delaySeconds: 40,
+    });
+  });
+
+  it("caps provider Retry-After delays to the queue maximum", async () => {
+    const message = createMessage(1);
+    mocks.processRecipeImportJob.mockResolvedValue({
+      outcome: "retry",
+      errorCode: "SERVICE_UNAVAILABLE",
+      retryAfterSeconds: 7 * 24 * 60 * 60,
+    });
+
+    await queue(createBatch(message) as any, {} as any, {} as any);
+
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 24 * 60 * 60 });
+  });
+
+  it("captures thrown failures and retries non-terminal attempts", async () => {
+    const message = createMessage(3);
+    const error = new Error("provider connection failed");
+    mocks.processRecipeImportJob.mockRejectedValue(error);
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await queue(createBatch(message) as any, {} as any, {} as any);
+
+    expect(mocks.captureQueueException).toHaveBeenCalledWith(error, {
+      queue: "cookclub-recipe-import-url-development",
+      messageId: "message-1",
+      attempts: 3,
+      terminal: false,
+      jobId: "job-1",
+      userId: "user-1",
+    });
+    expect(mocks.failRecipeImportJob).not.toHaveBeenCalled();
+    expect(message.retry).toHaveBeenCalledWith({ delaySeconds: 40 });
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('"task":"recipe-import-job"'),
+    );
+  });
+
+  it("persists terminal thrown failures before routing them to the DLQ", async () => {
+    const message = createMessage(4);
+    const error = new Error("provider permanently unavailable");
+    mocks.processRecipeImportJob.mockRejectedValue(error);
+
+    await queue(createBatch(message) as any, {} as any, {} as any);
+
+    expect(mocks.captureQueueException).toHaveBeenCalledWith(
+      error,
+      expect.objectContaining({ terminal: true, attempts: 4 }),
+    );
+    expect(mocks.failRecipeImportJob).toHaveBeenCalledWith(
+      { db: mocks.db, env: {} },
+      message.body,
+      "SERVICE_UNAVAILABLE",
+    );
+    expect(message.retry).toHaveBeenCalledWith();
+    expect(message.ack).not.toHaveBeenCalled();
   });
 });

@@ -152,7 +152,9 @@ export function normalizeIngredientName(name: string): string {
   ) {
     const exceptions = ["lentils", "beans", "peas", "oats", "noodles"];
     if (!exceptions.includes(normalized)) {
-      normalized = normalized.slice(0, -1);
+      normalized = normalized.endsWith("oes")
+        ? normalized.slice(0, -2)
+        : normalized.slice(0, -1);
     }
   }
 

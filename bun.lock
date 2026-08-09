@@ -35,6 +35,7 @@
         "@vitejs/plugin-react": "6.0.5",
         "typescript": "6.0.3",
         "vite": "8.2.0",
+        "vitest": "4.1.7",
         "wrangler": "4.118.0",
       },
     },
@@ -190,6 +191,7 @@
       "devDependencies": {
         "@repo/tsconfig": "workspace:*",
         "typescript": "6.0.3",
+        "vitest": "4.1.7",
       },
     },
     "packages/contracts": {
@@ -199,6 +201,7 @@
         "@repo/tsconfig": "workspace:*",
         "@types/node": "22.20.1",
         "typescript": "6.0.3",
+        "vitest": "4.1.7",
       },
     },
     "packages/db": {
@@ -227,6 +230,7 @@
       "devDependencies": {
         "@repo/tsconfig": "workspace:*",
         "typescript": "6.0.3",
+        "vitest": "4.1.7",
       },
     },
     "packages/trpc": {

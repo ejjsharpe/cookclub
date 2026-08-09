@@ -5,6 +5,7 @@ import * as schema from "../../schemas";
 import { ServiceError } from "../errors";
 import {
   normalizeIngredientSearchQuery,
+  normalizeRecipeSearchInput,
   normalizeRecipeSearchQuery,
   normalizeRecipeTitleForSearch,
 } from "./recipe-search-input";
@@ -31,11 +32,39 @@ describe("recipe search normalization", () => {
   it.each([
     ["2 cups tomatoes", "tomatoes"],
     ["1 1/2 tbsp olive oil", "olive oil"],
+    ["1 T sugar", "sugar"],
+    ["1 t salt", "salt"],
     ["½ teaspoon salt", "salt"],
     ["250 g flour", "flour"],
     ["chicken stock", "chicken stock"],
   ])("removes only a leading quantity and unit from %s", (query, expected) => {
     expect(normalizeIngredientSearchQuery(query)).toBe(expected);
+  });
+
+  it("normalizes filters into a stable search input", () => {
+    expect(
+      normalizeRecipeSearchInput({
+        query: "  2 cups   Tomatoes ",
+        tagIds: [9.8, -1, 3, 9, 0, 3],
+        maxTotalTime: 30.9,
+        limit: 500,
+      }),
+    ).toEqual({
+      query: "2 cups Tomatoes",
+      ingredientQuery: "Tomatoes",
+      tagIds: [3, 9],
+      maxTotalTime: 30,
+      limit: 100,
+    });
+  });
+
+  it("normalizes non-finite and negative optional time filters", () => {
+    expect(
+      normalizeRecipeSearchInput({ query: "eggs", maxTotalTime: Infinity }),
+    ).toMatchObject({ maxTotalTime: null });
+    expect(
+      normalizeRecipeSearchInput({ query: "eggs", maxTotalTime: -5 }),
+    ).toMatchObject({ maxTotalTime: 0 });
   });
 });
 

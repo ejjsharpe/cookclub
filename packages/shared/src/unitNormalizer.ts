@@ -51,7 +51,9 @@ export function normalizeUnit(input: string | null): string | null {
 
 export function isRecognizedUnit(unit: string | null): boolean {
   if (!unit) return false;
-  const lowercased = unit.toLowerCase().trim();
+  const trimmed = unit.trim();
+  if (trimmed in CASE_SENSITIVE_MAPPINGS) return true;
+  const lowercased = trimmed.toLowerCase();
   return lowercased in VARIATION_TO_CANONICAL;
 }
 
