@@ -1,14 +1,20 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedWorkspaceFiles"],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedWorkspaceFiles"
+    ],
     "sharedWorkspaceFiles": [
       "{workspaceRoot}/package.json",
       "{workspaceRoot}/bun.lock",
       "{workspaceRoot}/.node-version",
       "{workspaceRoot}/bunfig.toml"
     ],
-    "lintInputs": ["default", "{workspaceRoot}/eslint.config.js"],
+    "lintInputs": [
+      "default",
+      "{workspaceRoot}/eslint.config.js"
+    ],
     "typescriptInputs": [
       "default",
       "{workspaceRoot}/tooling/typescript/**/*.json"
@@ -16,31 +22,52 @@
   },
   "targetDefaults": {
     "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["typescriptInputs", "{projectRoot}/.env*"],
-      "outputs": ["{projectRoot}/dist/**"],
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "typescriptInputs",
+        "{projectRoot}/.env*"
+      ],
+      "outputs": [
+        "{projectRoot}/dist/**"
+      ],
       "cache": true
     },
     "lint": {
-      "dependsOn": ["^lint"],
-      "inputs": ["lintInputs"],
+      "dependsOn": [
+        "^lint"
+      ],
+      "inputs": [
+        "lintInputs"
+      ],
       "cache": true
     },
     "check-types": {
-      "dependsOn": ["^check-types"],
-      "inputs": ["typescriptInputs"],
+      "dependsOn": [
+        "^check-types"
+      ],
+      "inputs": [
+        "typescriptInputs"
+      ],
       "cache": true
     },
     "test": {
-      "inputs": ["typescriptInputs"],
+      "inputs": [
+        "typescriptInputs"
+      ],
       "cache": true
     },
     "check:expo": {
-      "inputs": ["default"],
+      "inputs": [
+        "default"
+      ],
       "cache": true
     },
     "dry-run:prod": {
-      "inputs": ["default"],
+      "inputs": [
+        "default"
+      ],
       "cache": true
     },
     "dev": {
@@ -58,6 +85,6 @@
       "projectsAffectedByDependencyUpdates": "auto"
     }
   },
-  "nxCloudId": "6946e4467b43373d7eb56570",
+  "nxCloudId": "6a78c279088712f627b2b6f7",
   "analytics": false
 }
