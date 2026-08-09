@@ -17,6 +17,7 @@
     "deploy:admin:prod": "bun run --cwd apps/admin deploy:prod",
     "deploy:recipe-ai:prod": "bun run --cwd apps/recipe-ai deploy:prod",
     "deploy:images:prod": "bun run --cwd apps/images deploy:prod",
+    "deploy:web:prod": "bun run --cwd apps/web deploy:prod",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
@@ -26,6 +27,10 @@
     "packages/*",
     "tooling/*"
   ],
+  "overrides": {
+    "expo-constants": "57.0.9",
+    "expo-linking": "57.0.5"
+  },
   "devDependencies": {
     "eas-cli": "21.5.0",
     "eslint": "9.39.5",

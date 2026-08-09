@@ -138,19 +138,45 @@ bun run --cwd packages/db seed:reset  # Clear and reseed development data
 
 ## Deployment
 
-Production Worker deployments are exposed as root scripts:
+Successful pushes to `main` use Nx's last-successful-run baseline to validate
+affected projects and deploy only affected Cloudflare applications. Production
+deployments run serially in this order: images, recipe AI, API, admin, and the
+public website. A deployment is complete only after its applicable production
+smoke checks pass.
+
+Configure the `cloudflare-production` GitHub environment to allow deployments
+only from `main`, and store `CLOUDFLARE_API_TOKEN` as an environment secret.
+Store `EXPO_TOKEN` as a repository secret for the manual native actions. The
+workflow's **Run workflow** menu can perform full validation, publish a
+production EAS Update, queue a preview build, or build and submit a production
+binary to TestFlight or Google Play internal testing.
+
+Production Cloudflare deployments are also exposed as root scripts for
+operator use:
 
 ```sh
 bun run deploy:images:prod
 bun run deploy:recipe-ai:prod
 bun run deploy:api:prod
 bun run deploy:admin:prod
+bun run deploy:web:prod
 ```
 
-The public website deploys from its workspace with
-`bun run --cwd apps/web deploy`. Native builds use the EAS profiles in
-`apps/native/eas.json`, for example
-`bun run --cwd apps/native build:preview`.
+Database backups and migrations are deliberately manual and must be completed
+before a schema-sensitive application deployment. The workflow never rolls a
+failed deployment back automatically. If application code must be recovered,
+an operator can inspect and restore a prior Worker version from the affected
+workspace, for example:
+
+```sh
+cd apps/api
+bunx wrangler versions list --env production
+bunx wrangler rollback --env production
+```
+
+Confirm schema compatibility before rollback because Worker rollback does not
+revert database or bound-resource changes. Native builds use the EAS profiles
+in `apps/native/eas.json`, for example `bun run --cwd apps/native build:preview`.
 
 Production credentials belong in the relevant deployment platform or
 Cloudflare Worker secrets. Do not commit `.env`, `.env.production`, or

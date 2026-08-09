@@ -41,6 +41,8 @@ bun run check:expo
 bun run --cwd apps/api dry-run:prod
 bun run --cwd apps/images dry-run:prod
 bun run --cwd apps/recipe-ai dry-run:prod
+bun run --cwd apps/admin dry-run:prod
+bun run --cwd apps/web dry-run:prod
 ```
 
 Regenerate ignored native projects with
@@ -56,7 +58,10 @@ the EAS secret.
 ## Deployment and testing order
 
 1. Back up the production database and deploy the additive migration.
-2. Deploy the API Worker, Admin moderation queue, and legal website.
+2. Push the verified commit to `main`. The CI workflow deploys affected
+   Cloudflare applications in dependency order and requires the applicable
+   production smoke checks to pass. Database backups and migrations are never
+   run by CI.
 3. Verify report persistence, alert failure handling, child-safety priority,
    every target and reason, duplicate rejection, rate limits, hide/restore,
    ban/unban, audit entries, account-deletion anonymisation, Terms gating, and
@@ -72,6 +77,12 @@ the EAS secret.
    current Android, and an API 36 device.
 7. Push the existing local commits and the release remediation commit, tag the
    verified SHA, and create production builds only from that SHA.
+
+If a Worker deployment needs application-code recovery, use
+`wrangler versions list` and `wrangler rollback` from the affected application
+workspace. Do not automatically roll back schema-sensitive releases: a Worker
+rollback does not revert the database or changes to bound Cloudflare resources,
+so confirm compatibility and restore data separately when necessary.
 
 ## Store submission
 

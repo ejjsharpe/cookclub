@@ -9,7 +9,9 @@
     "preview": "astro preview --host 0.0.0.0 --port 4321",
     "check-types": "astro check",
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" --no-error-on-unmatched-pattern --max-warnings=0",
-    "deploy": "astro build && wrangler deploy"
+    "deploy": "astro build && wrangler deploy",
+    "deploy:prod": "astro build && wrangler deploy",
+    "dry-run:prod": "astro build && wrangler deploy --dry-run"
   },
   "dependencies": {
     "@astrojs/react": "6.0.2",

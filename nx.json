@@ -1,33 +1,61 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedWorkspaceFiles"],
+    "sharedWorkspaceFiles": [
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/bun.lock",
+      "{workspaceRoot}/.node-version",
+      "{workspaceRoot}/bunfig.toml"
+    ],
+    "lintInputs": ["default", "{workspaceRoot}/eslint.config.js"],
+    "typescriptInputs": [
+      "default",
+      "{workspaceRoot}/tooling/typescript/**/*.json"
+    ]
+  },
   "targetDefaults": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
-      "inputs": [
-        "{projectRoot}/**/*",
-        "{projectRoot}/.env*"
-      ],
-      "outputs": [
-        "{projectRoot}/dist/**"
-      ],
+      "dependsOn": ["^build"],
+      "inputs": ["typescriptInputs", "{projectRoot}/.env*"],
+      "outputs": ["{projectRoot}/dist/**"],
       "cache": true
     },
     "lint": {
-      "dependsOn": [
-        "^lint"
-      ],
+      "dependsOn": ["^lint"],
+      "inputs": ["lintInputs"],
       "cache": true
     },
     "check-types": {
-      "dependsOn": [
-        "^check-types"
-      ],
+      "dependsOn": ["^check-types"],
+      "inputs": ["typescriptInputs"],
+      "cache": true
+    },
+    "test": {
+      "inputs": ["typescriptInputs"],
+      "cache": true
+    },
+    "check:expo": {
+      "inputs": ["default"],
+      "cache": true
+    },
+    "dry-run:prod": {
+      "inputs": ["default"],
       "cache": true
     },
     "dev": {
       "cache": false
+    },
+    "deploy": {
+      "cache": false
+    },
+    "deploy:prod": {
+      "cache": false
+    }
+  },
+  "pluginsConfig": {
+    "@nx/js": {
+      "projectsAffectedByDependencyUpdates": "auto"
     }
   },
   "nxCloudId": "6946e4467b43373d7eb56570",
