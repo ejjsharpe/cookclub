@@ -8,31 +8,14 @@ updates:
       time: "09:00"
       timezone: "Europe/London"
     open-pull-requests-limit: 10
-    groups:
-      expo-sdk:
-        patterns:
-          - "expo"
-          - "expo-*"
-          - "react"
-          - "react-native"
-      native-libraries:
-        patterns:
-          - "react-native-*"
-          - "@react-navigation/*"
-      cloudflare:
-        patterns:
-          - "@cloudflare/*"
-          - "wrangler"
-          - "workerd"
-      dev-tooling:
-        dependency-type: "development"
-        patterns:
-          - "*"
     ignore:
-      # Expo SDK 57 and the native modules below move only with Expo's
-      # supported-version matrix. Third-party native packages update normally.
-      - dependency-name: "expo"
-      - dependency-name: "expo-*"
+      # Major upgrades always get an explicit migration and review.
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+      # Core native versions below move with Expo's supported-version matrix.
+      # Expo package patches may update only when `expo install --check` passes;
+      # Expo SDK majors are covered by the rule above.
       - dependency-name: "@shopify/flash-list"
       - dependency-name: "@sentry/react-native"
       - dependency-name: "react-native"
@@ -54,10 +37,10 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Europe/London"
-    groups:
-      github-actions:
-        patterns:
-          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     commit-message:
       prefix: "ci"
       include: "scope"
