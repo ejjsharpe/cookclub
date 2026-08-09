@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   followUser: vi.fn(),
   unfollowUser: vi.fn(),
   getFollowList: vi.fn(),
+  getBlockedUserIds: vi.fn().mockResolvedValue([]),
   publicSubscriptionTierSql: vi.fn(() => ({ type: "publicSubscriptionTier" })),
   publicSubscriptionTierSqlForUserTable: vi.fn(() => ({
     type: "publicSubscriptionTierForUserTable",
@@ -35,6 +36,7 @@ vi.mock("@repo/db/services", () => ({
   followUser: mocks.followUser,
   unfollowUser: mocks.unfollowUser,
   getFollowList: mocks.getFollowList,
+  getBlockedUserIds: mocks.getBlockedUserIds,
   publicSubscriptionTierSql: mocks.publicSubscriptionTierSql,
   publicSubscriptionTierSqlForUserTable:
     mocks.publicSubscriptionTierSqlForUserTable,
@@ -43,8 +45,19 @@ vi.mock("@repo/db/services", () => ({
 
 // Mock @repo/db/schemas
 vi.mock("@repo/db/schemas", () => ({
-  follows: { _name: "follows" },
-  user: { _name: "user" },
+  follows: {
+    _name: "follows",
+    followerId: "follows.followerId",
+    followingId: "follows.followingId",
+  },
+  user: {
+    _name: "user",
+    id: "user.id",
+    name: "user.name",
+    username: "user.username",
+    image: "user.image",
+    emailVerified: "user.emailVerified",
+  },
   recipes: { _name: "recipes" },
 }));
 
@@ -59,6 +72,7 @@ vi.mock("drizzle-orm", () => ({
   sql: vi.fn(),
   notInArray: vi.fn((a, b) => ({ type: "notInArray", field: a, values: b })),
   desc: vi.fn((a) => ({ type: "desc", field: a })),
+  isNotNull: vi.fn((a) => ({ type: "isNotNull", field: a })),
 }));
 
 // Create a simple mock db
@@ -68,6 +82,8 @@ function createMockDb() {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     innerJoin: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue([]),
     then: vi.fn().mockResolvedValue([]),
   } as any;
 }
@@ -204,6 +220,57 @@ describe("followsRouter - activity integration", () => {
         "test-user-id", // current user
         "user-to-unfollow", // user to unfollow
       );
+    });
+  });
+});
+
+describe("followsRouter - user discovery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getBlockedUserIds.mockResolvedValue([]);
+  });
+
+  it("only searches users with a verified email and username", async () => {
+    const ctx = createMockContext();
+    const caller = followsRouter.createCaller(ctx as any);
+
+    await caller.searchUsers({ query: "cook", limit: 10 });
+
+    expect(ctx.db.where).toHaveBeenCalledWith({
+      type: "and",
+      conditions: expect.arrayContaining([
+        {
+          type: "eq",
+          field: "user.emailVerified",
+          value: true,
+        },
+        {
+          type: "isNotNull",
+          field: "user.username",
+        },
+      ]),
+    });
+  });
+
+  it("only suggests users with a verified email and username", async () => {
+    const ctx = createMockContext();
+    const caller = followsRouter.createCaller(ctx as any);
+
+    await caller.getSuggestedUsers({ limit: 10 });
+
+    expect(ctx.db.where).toHaveBeenCalledWith({
+      type: "and",
+      conditions: expect.arrayContaining([
+        {
+          type: "eq",
+          field: "user.emailVerified",
+          value: true,
+        },
+        {
+          type: "isNotNull",
+          field: "user.username",
+        },
+      ]),
     });
   });
 });

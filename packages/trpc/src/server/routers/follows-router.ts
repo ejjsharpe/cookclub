@@ -9,7 +9,17 @@ import {
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, and, or, ne, like, sql, notInArray, desc } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  ne,
+  like,
+  sql,
+  notInArray,
+  desc,
+  isNotNull,
+} from "drizzle-orm";
 
 import { backfillFeedFromUser, removeUserFromFeed } from "../services/activity";
 import { createAndSendNotificationInBackground } from "../services/push-notification.service";
@@ -167,6 +177,8 @@ export const followsRouter = router({
           .where(
             and(
               ne(user.id, ctx.user.id),
+              eq(user.emailVerified, true),
+              isNotNull(user.username),
               ...(blockedUserIds.length > 0
                 ? [notInArray(user.id, blockedUserIds)]
                 : []),
@@ -223,6 +235,8 @@ export const followsRouter = router({
           .where(
             and(
               ne(user.id, ctx.user.id),
+              eq(user.emailVerified, true),
+              isNotNull(user.username),
               notInArray(user.id, followedIds),
               ...(blockedUserIds.length > 0
                 ? [notInArray(user.id, blockedUserIds)]
