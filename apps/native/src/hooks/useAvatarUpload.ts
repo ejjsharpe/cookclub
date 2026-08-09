@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image as ExpoImage } from "expo-image";
 import { useState, useCallback } from "react";
 
+import { invalidateUserIdentityQueries } from "@/api/utils/cache-helpers";
 import { normalizeImageForUpload } from "@/utils/imageUtils";
 
 export interface UseAvatarUploadOptions {
@@ -85,9 +86,7 @@ export function useAvatarUpload(options: UseAvatarUploadOptions = {}) {
 
       // Refresh screens and clear image caches that may still hold the old avatar URL.
       await Promise.all([
-        queryClient.invalidateQueries(trpc.user.getUser.queryFilter()),
-        queryClient.invalidateQueries(trpc.follows.pathFilter()),
-        queryClient.invalidateQueries(trpc.activity.pathFilter()),
+        invalidateUserIdentityQueries(queryClient, trpc),
         ExpoImage.clearMemoryCache().catch(() => false),
         ExpoImage.clearDiskCache().catch(() => false),
       ]);

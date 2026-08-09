@@ -15,7 +15,9 @@ import {
   recipeNutrition,
   collections,
   shoppingLists,
+  shoppingListItems,
   shoppingListRecipes,
+  mealPlanEntries,
   cookingReviews,
   tags,
   user,
@@ -771,13 +773,40 @@ export async function updateRecipe(
       }
     }
 
-    await tx
+    const insertedImages = await tx
       .insert(recipeImages)
       .values(
         input.images!.map((image) =>
           recipeImageInsertValues(input.recipeId, image),
         ),
-      );
+      )
+      .returning({ url: recipeImages.url });
+
+    const firstImageUrl = insertedImages[0]?.url ?? null;
+    const now = new Date();
+
+    await tx
+      .update(shoppingListRecipes)
+      .set({
+        recipeName: input.name,
+        recipeImageUrl: firstImageUrl,
+      })
+      .where(eq(shoppingListRecipes.recipeId, input.recipeId));
+    await tx
+      .update(shoppingListItems)
+      .set({
+        sourceRecipeName: input.name,
+        updatedAt: now,
+      })
+      .where(eq(shoppingListItems.sourceRecipeId, input.recipeId));
+    await tx
+      .update(mealPlanEntries)
+      .set({
+        recipeName: input.name,
+        recipeImageUrl: firstImageUrl,
+        updatedAt: now,
+      })
+      .where(eq(mealPlanEntries.recipeId, input.recipeId));
 
     await syncRecipeSearchDocument(tx, input.recipeId);
 

@@ -50,10 +50,18 @@ export const useDeleteShoppingList = () => {
 
   const mutationOptions = trpc.shopping.deleteShoppingList.mutationOptions({
     networkMode: "offlineFirst",
-    onSuccess: () => {
-      const shoppingListsFilter =
-        trpc.shopping.getUserShoppingLists.pathFilter();
-      queryClient.invalidateQueries(shoppingListsFilter);
+    onSuccess: async (_data, variables) => {
+      queryClient.removeQueries(
+        trpc.shopping.getShoppingList.queryFilter({
+          shoppingListId: variables.shoppingListId,
+        }),
+      );
+      await Promise.all([
+        queryClient.invalidateQueries(
+          trpc.shopping.getUserShoppingLists.pathFilter(),
+        ),
+        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
+      ]);
     },
     onError: () => {
       Alert.alert("Error", "Failed to delete shopping list");
@@ -71,13 +79,22 @@ export const useAddRecipeToSpecificList = () => {
   const mutationOptions = trpc.shopping.addRecipeToSpecificList.mutationOptions(
     {
       networkMode: "offlineFirst",
-      onSuccess: () => {
-        // Invalidate both the specific lists and the main shopping list
-        const shoppingListsFilter =
-          trpc.shopping.getUserShoppingLists.pathFilter();
-        const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-        queryClient.invalidateQueries(shoppingListsFilter);
-        queryClient.invalidateQueries(shoppingListFilter);
+      onSuccess: async (_data, variables) => {
+        await Promise.all([
+          queryClient.invalidateQueries(
+            trpc.shopping.getUserShoppingLists.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.shopping.getShoppingList.queryFilter({
+              shoppingListId: variables.shoppingListId,
+            }),
+          ),
+          queryClient.invalidateQueries(
+            trpc.recipe.getRecipeDetail.queryFilter({
+              recipeId: variables.recipeId,
+            }),
+          ),
+        ]);
       },
       onError: (error) => {
         alertApiError("Shopping List Error", error, {
@@ -150,14 +167,16 @@ export const useRemoveItem = () => {
   const mutationOptions = trpc.shopping.removeItem.mutationOptions({
     networkMode: "offlineFirst",
     onMutate: async (variables) => {
-      const { itemId } = variables;
+      const { itemId, shoppingListId } = variables;
 
       // Cancel outgoing refetches
       const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
       await queryClient.cancelQueries(shoppingListFilter);
 
       // Snapshot previous value
-      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey();
+      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey({
+        shoppingListId,
+      });
       const previous = queryClient.getQueryData(shoppingListQueryKey);
 
       // Optimistically remove the item
@@ -181,10 +200,15 @@ export const useRemoveItem = () => {
       }
       Alert.alert("Error", "Failed to remove item");
     },
-    onSettled: () => {
-      // Invalidate to ensure sync with server
-      const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-      queryClient.invalidateQueries(shoppingListFilter);
+    onSettled: async (_data, _error, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries(
+          trpc.shopping.getShoppingList.queryFilter({
+            shoppingListId: variables.shoppingListId,
+          }),
+        ),
+        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
+      ]);
     },
   });
 
@@ -198,13 +222,15 @@ export const useClearCheckedItems = () => {
 
   const mutationOptions = trpc.shopping.clearCheckedItems.mutationOptions({
     networkMode: "offlineFirst",
-    onMutate: async () => {
+    onMutate: async ({ shoppingListId }) => {
       // Cancel outgoing refetches
       const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
       await queryClient.cancelQueries(shoppingListFilter);
 
       // Snapshot previous value
-      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey();
+      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey({
+        shoppingListId,
+      });
       const previous = queryClient.getQueryData(shoppingListQueryKey);
 
       // Optimistically remove all checked items
@@ -228,54 +254,38 @@ export const useClearCheckedItems = () => {
       }
       Alert.alert("Error", "Failed to clear checked items");
     },
-    onSettled: () => {
-      // Invalidate to ensure sync with server
-      const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-      queryClient.invalidateQueries(shoppingListFilter);
+    onSettled: async (_data, _error, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries(
+          trpc.shopping.getShoppingList.queryFilter({
+            shoppingListId: variables.shoppingListId,
+          }),
+        ),
+        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
+      ]);
     },
   });
 
   return useMutation(mutationOptions);
 };
 
-// Remove recipe from shopping list with optimistic updates
+// Remove recipe from one shopping list with an optimistic list update
 export const useRemoveRecipeFromList = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  type RecipeDetailOutput = any; // Type will be inferred from tRPC
-
   const mutationOptions = trpc.shopping.removeRecipeFromList.mutationOptions({
     networkMode: "offlineFirst",
     onMutate: async (variables) => {
-      const { recipeId } = variables;
+      const { recipeId, shoppingListId } = variables;
 
-      // Get query filters
-      const recipeDetailFilter = trpc.recipe.getRecipeDetail.pathFilter();
-      const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries(recipeDetailFilter);
-      await queryClient.cancelQueries(shoppingListFilter);
-
-      // Snapshot previous values
-      const recipeDetailQueryKey = trpc.recipe.getRecipeDetail.queryKey({
-        recipeId,
+      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey({
+        shoppingListId,
       });
-      const previousRecipeDetail =
-        queryClient.getQueryData<RecipeDetailOutput>(recipeDetailQueryKey);
+      await queryClient.cancelQueries({ queryKey: shoppingListQueryKey });
 
-      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey();
       const previousShoppingList =
         queryClient.getQueryData(shoppingListQueryKey);
-
-      // Optimistically update recipe detail to show it's not in shopping list
-      if (previousRecipeDetail) {
-        queryClient.setQueryData(recipeDetailQueryKey, {
-          ...previousRecipeDetail,
-          isInShoppingList: false,
-        });
-      }
 
       // Optimistically remove items from this recipe from the shopping list
       queryClient.setQueryData(shoppingListQueryKey, (old: any) => {
@@ -297,20 +307,12 @@ export const useRemoveRecipeFromList = () => {
       });
 
       return {
-        previousRecipeDetail,
-        recipeDetailQueryKey,
         previousShoppingList,
         shoppingListQueryKey,
       };
     },
     onError: (_error, _variables, context) => {
       // Rollback on error
-      if (context?.previousRecipeDetail && context?.recipeDetailQueryKey) {
-        queryClient.setQueryData(
-          context.recipeDetailQueryKey,
-          context.previousRecipeDetail,
-        );
-      }
       if (context?.previousShoppingList && context?.shoppingListQueryKey) {
         queryClient.setQueryData(
           context.shoppingListQueryKey,
@@ -320,12 +322,19 @@ export const useRemoveRecipeFromList = () => {
 
       Alert.alert("Error", "Failed to remove recipe from list");
     },
-    onSettled: () => {
-      // Invalidate to ensure sync with server
-      const recipeDetailFilter = trpc.recipe.getRecipeDetail.pathFilter();
-      const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-      queryClient.invalidateQueries(recipeDetailFilter);
-      queryClient.invalidateQueries(shoppingListFilter);
+    onSettled: async (_data, _error, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries(
+          trpc.recipe.getRecipeDetail.queryFilter({
+            recipeId: variables.recipeId,
+          }),
+        ),
+        queryClient.invalidateQueries(
+          trpc.shopping.getShoppingList.queryFilter({
+            shoppingListId: variables.shoppingListId,
+          }),
+        ),
+      ]);
     },
   });
 
@@ -340,14 +349,16 @@ export const useAddManualItem = () => {
   const mutationOptions = trpc.shopping.addManualItem.mutationOptions({
     networkMode: "offlineFirst",
     onMutate: async (variables) => {
-      const { ingredientText } = variables;
+      const { ingredientText, shoppingListId } = variables;
 
       // Cancel outgoing refetches
       const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
       await queryClient.cancelQueries(shoppingListFilter);
 
       // Snapshot previous value
-      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey();
+      const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey({
+        shoppingListId,
+      });
       const previous = queryClient.getQueryData(shoppingListQueryKey);
 
       // Parse the ingredient text (simple extraction for optimistic update)
@@ -388,10 +399,12 @@ export const useAddManualItem = () => {
       }
       Alert.alert("Error", "Failed to add item");
     },
-    onSettled: () => {
-      // Invalidate to ensure sync with server
-      const shoppingListFilter = trpc.shopping.getShoppingList.pathFilter();
-      queryClient.invalidateQueries(shoppingListFilter);
+    onSettled: async (_data, _error, variables) => {
+      await queryClient.invalidateQueries(
+        trpc.shopping.getShoppingList.queryFilter({
+          shoppingListId: variables.shoppingListId,
+        }),
+      );
     },
   });
 

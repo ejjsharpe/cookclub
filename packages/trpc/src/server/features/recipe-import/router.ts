@@ -405,7 +405,8 @@ export const recipeImportRouter = router({
 
         if (transactionResult.created) {
           movedKeys = [];
-          propagateActivityToFollowersInBackground(
+          // Update the owner's feed before responding; followers fan out in the background.
+          await propagateActivityToFollowersInBackground(
             ctx,
             transactionResult.activityEvent.id,
             ctx.user.id,

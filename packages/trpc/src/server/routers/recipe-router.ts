@@ -656,9 +656,9 @@ const recipeHeadRouter = router({
         );
         movedKeys = [];
 
-        // Schedule propagation without blocking the response.
+        // Update the owner's feed before responding; followers fan out in the background.
         if (activityEvent) {
-          propagateActivityToFollowersInBackground(
+          await propagateActivityToFollowersInBackground(
             ctx,
             activityEvent.id,
             ctx.user.id,
@@ -947,9 +947,9 @@ const recipeTailRouter = router({
           })
           .returning();
 
-        // Schedule propagation without blocking the response.
+        // Update the owner's feed before responding; followers fan out in the background.
         if (activityEvent) {
-          propagateActivityToFollowersInBackground(
+          await propagateActivityToFollowersInBackground(
             ctx,
             activityEvent.id,
             ctx.user.id,

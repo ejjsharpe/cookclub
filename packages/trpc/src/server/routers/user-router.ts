@@ -11,8 +11,12 @@ import {
   recipeImages,
   recipeInstructions,
   recipes,
+  mealPlanInvitations,
+  notifications,
+  shoppingListInvitations,
   user,
 } from "@repo/db/schemas";
+import type { DbClient, TransactionClient } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
@@ -108,6 +112,48 @@ function isHttpUrl(url: string | null | undefined): url is string {
     return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch {
     return false;
+  }
+}
+
+function versionImageUrl(url: string, updatedAt: Date) {
+  const versionedUrl = new URL(url);
+  versionedUrl.searchParams.set("v", updatedAt.getTime().toString());
+  return versionedUrl.toString();
+}
+
+async function syncDenormalizedUserIdentity(
+  db: DbClient | TransactionClient,
+  userId: string,
+  identity: { name?: string; image?: string | null },
+) {
+  if (identity.name !== undefined) {
+    await db
+      .update(mealPlanInvitations)
+      .set({ inviterName: identity.name })
+      .where(eq(mealPlanInvitations.invitedByUserId, userId));
+    await db
+      .update(shoppingListInvitations)
+      .set({ inviterName: identity.name })
+      .where(eq(shoppingListInvitations.invitedByUserId, userId));
+    await db
+      .update(notifications)
+      .set({ actorName: identity.name })
+      .where(eq(notifications.actorId, userId));
+  }
+
+  if (identity.image !== undefined) {
+    await db
+      .update(mealPlanInvitations)
+      .set({ inviterImage: identity.image })
+      .where(eq(mealPlanInvitations.invitedByUserId, userId));
+    await db
+      .update(shoppingListInvitations)
+      .set({ inviterImage: identity.image })
+      .where(eq(shoppingListInvitations.invitedByUserId, userId));
+    await db
+      .update(notifications)
+      .set({ actorImage: identity.image })
+      .where(eq(notifications.actorId, userId));
   }
 }
 
@@ -368,19 +414,27 @@ export const userRouter = router({
         }
       }
 
-      const [updatedUser] = await ctx.db
-        .update(user)
-        .set({
-          ...(name !== undefined && { name }),
-          ...(input.username !== undefined && { username: input.username }),
-          ...(bio !== undefined && { bio }),
-          ...(input.measurementPreference !== undefined && {
-            measurementPreference: input.measurementPreference,
-          }),
-          updatedAt: new Date(),
-        })
-        .where(eq(user.id, ctx.user.id))
-        .returning();
+      const updatedUser = await ctx.db.transaction(async (tx) => {
+        const [updatedUser] = await tx
+          .update(user)
+          .set({
+            ...(name !== undefined && { name }),
+            ...(input.username !== undefined && { username: input.username }),
+            ...(bio !== undefined && { bio }),
+            ...(input.measurementPreference !== undefined && {
+              measurementPreference: input.measurementPreference,
+            }),
+            updatedAt: new Date(),
+          })
+          .where(eq(user.id, ctx.user.id))
+          .returning();
+
+        if (name !== undefined) {
+          await syncDenormalizedUserIdentity(tx, ctx.user.id, { name });
+        }
+
+        return updatedUser;
+      });
 
       return { user: updatedUser };
     }),
@@ -413,20 +467,28 @@ export const userRouter = router({
         });
       }
 
-      const [updatedUser] = await ctx.db
-        .update(user)
-        .set({
-          username: input.username,
-          ...(name !== undefined && { name }),
-          ...(bio !== undefined && { bio }),
-          ...(input.measurementPreference !== undefined && {
-            measurementPreference: input.measurementPreference,
-          }),
-          onboardingCompleted: true,
-          updatedAt: new Date(),
-        })
-        .where(eq(user.id, ctx.user.id))
-        .returning();
+      const updatedUser = await ctx.db.transaction(async (tx) => {
+        const [updatedUser] = await tx
+          .update(user)
+          .set({
+            username: input.username,
+            ...(name !== undefined && { name }),
+            ...(bio !== undefined && { bio }),
+            ...(input.measurementPreference !== undefined && {
+              measurementPreference: input.measurementPreference,
+            }),
+            onboardingCompleted: true,
+            updatedAt: new Date(),
+          })
+          .where(eq(user.id, ctx.user.id))
+          .returning();
+
+        if (name !== undefined) {
+          await syncDenormalizedUserIdentity(tx, ctx.user.id, { name });
+        }
+
+        return updatedUser;
+      });
 
       return { user: updatedUser };
     }),
@@ -465,13 +527,23 @@ export const userRouter = router({
       const imageUrl =
         moveResult.results[0]?.asset?.publicUrl ??
         publicImageUrlForKey(ctx.env.IMAGE_PUBLIC_URL, destinationKey);
+      const updatedAt = new Date();
+      const versionedImageUrl = versionImageUrl(imageUrl, updatedAt);
 
-      // Update user record
-      const [updatedUser] = await ctx.db
-        .update(user)
-        .set({ image: imageUrl, updatedAt: new Date() })
-        .where(eq(user.id, userId))
-        .returning();
+      // Keep the user row and embedded identity snapshots consistent.
+      const updatedUser = await ctx.db.transaction(async (tx) => {
+        const [updatedUser] = await tx
+          .update(user)
+          .set({ image: versionedImageUrl, updatedAt })
+          .where(eq(user.id, userId))
+          .returning();
+
+        await syncDenormalizedUserIdentity(tx, userId, {
+          image: versionedImageUrl,
+        });
+
+        return updatedUser;
+      });
 
       return { user: updatedUser };
     }),

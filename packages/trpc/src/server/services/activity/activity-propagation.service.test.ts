@@ -38,7 +38,7 @@ describe("propagateActivityToFollowersInBackground", () => {
       waitUntilPromises.push(promise);
     });
 
-    propagateActivityToFollowersInBackground(
+    await propagateActivityToFollowersInBackground(
       { db, env, waitUntil },
       123,
       "owner-1",

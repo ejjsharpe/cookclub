@@ -2,6 +2,8 @@ import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { invalidateUserIdentityQueries } from "./utils/cache-helpers";
+
 import { clearLocalSessionState } from "@/lib/sessionCleanup";
 
 // API Response Types
@@ -21,8 +23,18 @@ export const useUpdateProfile = () => {
 
   return useMutation({
     ...trpc.user.updateProfile.mutationOptions(),
-    onSuccess: () => {
-      queryClient.invalidateQueries(trpc.user.getUser.queryFilter());
+    onSuccess: async (_data, variables) => {
+      const changesPublicIdentity =
+        variables.name !== undefined ||
+        variables.username !== undefined ||
+        variables.bio !== undefined;
+
+      if (changesPublicIdentity) {
+        await invalidateUserIdentityQueries(queryClient, trpc);
+        return;
+      }
+
+      await queryClient.invalidateQueries(trpc.user.getUser.queryFilter());
     },
   });
 };
@@ -33,8 +45,8 @@ export const useCompleteOnboarding = () => {
 
   return useMutation({
     ...trpc.user.completeOnboarding.mutationOptions(),
-    onSuccess: () => {
-      queryClient.invalidateQueries(trpc.user.getUser.queryFilter());
+    onSuccess: async () => {
+      await invalidateUserIdentityQueries(queryClient, trpc);
     },
   });
 };

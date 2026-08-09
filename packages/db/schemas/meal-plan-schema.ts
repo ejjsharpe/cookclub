@@ -111,6 +111,9 @@ export const mealPlanInvitations = pgTable(
     createdAt: timestamp("created_at").notNull(),
   },
   (table) => [
+    index("meal_plan_invitations_invited_by_user_idx").on(
+      table.invitedByUserId,
+    ),
     // Index for finding all invitations for a user
     index("meal_plan_invitations_invited_user_idx").on(table.invitedUserId),
     // Index for finding all invitations for a meal plan

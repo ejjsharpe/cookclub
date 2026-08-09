@@ -93,8 +93,11 @@ export function RecipeImportProvider({ children }: PropsWithChildren) {
   });
   const dismissMutation = useMutation({
     ...trpc.recipeImport.dismiss.mutationOptions(),
-    onSettled: () => {
-      queryClient.invalidateQueries(trpc.recipeImport.list.pathFilter());
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(trpc.recipeImport.list.pathFilter()),
+        queryClient.invalidateQueries(trpc.recipeImport.get.pathFilter()),
+      ]);
     },
   });
 

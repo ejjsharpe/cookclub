@@ -39,9 +39,11 @@ export const useDeleteMealPlan = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.mealPlan.deleteMealPlan.mutationOptions({
-    onSuccess: () => {
-      const plansFilter = trpc.mealPlan.getMealPlans.pathFilter();
-      queryClient.invalidateQueries(plansFilter);
+    onSuccess: async () => {
+      queryClient.removeQueries(trpc.mealPlan.getEntries.pathFilter());
+      await queryClient.invalidateQueries(
+        trpc.mealPlan.getMealPlans.pathFilter(),
+      );
     },
     onError: () => {
       Alert.alert("Error", "Failed to delete meal plan. Please try again.");

@@ -19,8 +19,12 @@ export const useRefreshSubscriptionEntitlement = () => {
 
   return useMutation({
     ...trpc.subscription.refreshEntitlement.mutationOptions(),
-    onSuccess: () => {
-      queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter());
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter()),
+        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
+        queryClient.invalidateQueries(trpc.recipeImport.get.pathFilter()),
+      ]);
     },
   });
 };

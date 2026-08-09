@@ -23,9 +23,7 @@ export function useUnblockUser() {
   return useMutation({
     ...trpc.moderation.unblockUser.mutationOptions(),
     onSuccess: async () => {
-      await queryClient.invalidateQueries(
-        trpc.moderation.listBlockedUsers.pathFilter(),
-      );
+      await queryClient.invalidateQueries();
     },
   });
 }

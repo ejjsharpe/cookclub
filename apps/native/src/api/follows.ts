@@ -2,6 +2,8 @@ import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { invalidateFollowRelatedQueries } from "./utils/cache-helpers";
+
 // API Response Types
 export type SearchUser = Outputs["follows"]["searchUsers"][number];
 
@@ -47,9 +49,8 @@ export const useFollowUser = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.follows.followUser.mutationOptions({
-    onSuccess: () => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({ queryKey: ["follows"] });
+    onSuccess: async () => {
+      await invalidateFollowRelatedQueries(queryClient, trpc);
     },
   });
 
@@ -62,9 +63,8 @@ export const useUnfollowUser = () => {
 
   return useMutation({
     ...trpc.follows.unfollowUser.mutationOptions(),
-    onSuccess: () => {
-      // Invalidate all follow-related queries
-      queryClient.invalidateQueries({ queryKey: ["follows"] });
+    onSuccess: async () => {
+      await invalidateFollowRelatedQueries(queryClient, trpc);
     },
   });
 };

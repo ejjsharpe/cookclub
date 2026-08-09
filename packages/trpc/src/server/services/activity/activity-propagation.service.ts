@@ -6,31 +6,16 @@ import type { ActivityServiceEnv } from "./feed-types";
 
 // ─── Propagation Functions (send IDs to DOs) ─────────────────────────────────
 
-/**
- * Propagate an activity ID to all followers and the user's own feed.
- * Now sends only the activity ID, not the full item.
- */
-export async function propagateActivityToFollowers(
-  db: DbType,
+type FeedEntry = {
+  activityEventId: number;
+  createdAt: number;
+};
+
+async function addActivityToFeeds(
   env: ActivityServiceEnv,
-  activityEventId: number,
-  userId: string,
-  createdAt: Date,
-): Promise<void> {
-  // Get all followers of the user
-  const followers = await db
-    .select({ followerId: follows.followerId })
-    .from(follows)
-    .where(eq(follows.followingId, userId));
-
-  // Fan out to each follower's Feed DO and to the user's own feed
-  const targetUserIds = [userId, ...followers.map((f) => f.followerId)];
-
-  const entry = {
-    activityEventId,
-    createdAt: createdAt.getTime(),
-  };
-
+  targetUserIds: string[],
+  entry: FeedEntry,
+) {
   await Promise.all(
     targetUserIds.map(async (targetUserId) => {
       const feedDO = env.USER_FEED.get(env.USER_FEED.idFromName(targetUserId));
@@ -45,7 +30,51 @@ export async function propagateActivityToFollowers(
   );
 }
 
-export function propagateActivityToFollowersInBackground(
+async function getFollowerIds(db: DbType, userId: string) {
+  return await db
+    .select({ followerId: follows.followerId })
+    .from(follows)
+    .where(eq(follows.followingId, userId));
+}
+
+export async function addActivityToUserFeed(
+  env: ActivityServiceEnv,
+  userId: string,
+  activityEventId: number,
+  createdAt: Date,
+) {
+  await addActivityToFeeds(env, [userId], {
+    activityEventId,
+    createdAt: createdAt.getTime(),
+  });
+}
+
+/**
+ * Propagate an activity ID to all followers and the user's own feed.
+ * Now sends only the activity ID, not the full item.
+ */
+export async function propagateActivityToFollowers(
+  db: DbType,
+  env: ActivityServiceEnv,
+  activityEventId: number,
+  userId: string,
+  createdAt: Date,
+): Promise<void> {
+  // Get all followers of the user
+  const followers = await getFollowerIds(db, userId);
+
+  // Fan out to each follower's Feed DO and to the user's own feed
+  const targetUserIds = [userId, ...followers.map((f) => f.followerId)];
+
+  const entry: FeedEntry = {
+    activityEventId,
+    createdAt: createdAt.getTime(),
+  };
+
+  await addActivityToFeeds(env, targetUserIds, entry);
+}
+
+export async function propagateActivityToFollowersInBackground(
   ctx: {
     db: DbType;
     env: ActivityServiceEnv;
@@ -55,18 +84,38 @@ export function propagateActivityToFollowersInBackground(
   userId: string,
   createdAt: Date,
   errorMessage: string,
-): void {
-  const promise = propagateActivityToFollowers(
-    ctx.db,
-    ctx.env,
-    activityEventId,
-    userId,
-    createdAt,
-  ).catch((err) => {
+): Promise<void> {
+  // The mutation response drives a client cache refresh, so the owner's feed
+  // must contain the new activity before the response is returned.
+  try {
+    await addActivityToUserFeed(ctx.env, userId, activityEventId, createdAt);
+  } catch (err) {
+    // Feed maintenance is best effort and must not turn an already-committed
+    // recipe mutation into a client-visible failure that may be retried.
     console.error(errorMessage, err);
-  });
+  }
 
-  ctx.waitUntil?.(promise);
+  const promise = getFollowerIds(ctx.db, userId)
+    .then((followers) =>
+      addActivityToFeeds(
+        ctx.env,
+        followers.map((follower) => follower.followerId),
+        {
+          activityEventId,
+          createdAt: createdAt.getTime(),
+        },
+      ),
+    )
+    .catch((err) => {
+      console.error(errorMessage, err);
+    });
+
+  if (ctx.waitUntil) {
+    ctx.waitUntil(promise);
+    return;
+  }
+
+  await promise;
 }
 
 /**

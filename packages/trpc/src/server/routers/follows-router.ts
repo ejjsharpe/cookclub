@@ -50,16 +50,19 @@ export const followsRouter = router({
           "Error creating follow notification:",
         );
 
-        // Backfill feed with recent activities from the followed user
-        backfillFeedFromUser(
-          ctx.db,
-          ctx.env,
-          ctx.user.id,
-          input.userId,
-          10,
-        ).catch((err) => {
+        // The client refreshes its feed when this mutation resolves, so finish
+        // the current user's feed update before returning the response.
+        try {
+          await backfillFeedFromUser(
+            ctx.db,
+            ctx.env,
+            ctx.user.id,
+            input.userId,
+            10,
+          );
+        } catch (err) {
           console.error("Error backfilling feed:", err);
-        });
+        }
 
         return result;
       } catch (err) {
@@ -82,12 +85,12 @@ export const followsRouter = router({
           input.userId,
         );
 
-        // Remove unfollowed user's items from feed
-        removeUserFromFeed(ctx.db, ctx.env, ctx.user.id, input.userId).catch(
-          (err) => {
-            console.error("Error removing user from feed:", err);
-          },
-        );
+        // Keep feed state in sync before the client invalidates its cache.
+        try {
+          await removeUserFromFeed(ctx.db, ctx.env, ctx.user.id, input.userId);
+        } catch (err) {
+          console.error("Error removing user from feed:", err);
+        }
 
         return result;
       } catch (err) {

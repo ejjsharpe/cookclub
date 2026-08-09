@@ -124,9 +124,6 @@ describe("followsRouter - activity integration", () => {
 
       await caller.followUser({ userId: "followed-user-id" });
 
-      // Allow async fire-and-forget to run
-      await new Promise((r) => setTimeout(r, 0));
-
       expect(mocks.backfillFeedFromUser).toHaveBeenCalledWith(
         expect.anything(), // db
         expect.anything(), // env
@@ -144,7 +141,7 @@ describe("followsRouter - activity integration", () => {
       const ctx = createMockContext({ env: mockEnv });
       const caller = followsRouter.createCaller(ctx as any);
 
-      // Should not throw - backfill is fire-and-forget
+      // Feed maintenance is best effort, but it is no longer a floating task.
       const result = await caller.followUser({ userId: "followed-user-id" });
 
       // Mutation should complete successfully, returning the follow record
@@ -172,9 +169,6 @@ describe("followsRouter - activity integration", () => {
 
       await caller.unfollowUser({ userId: "unfollowed-user-id" });
 
-      // Allow async fire-and-forget to run
-      await new Promise((r) => setTimeout(r, 0));
-
       expect(mocks.removeUserFromFeed).toHaveBeenCalledWith(
         expect.anything(), // db
         expect.anything(), // env
@@ -191,7 +185,7 @@ describe("followsRouter - activity integration", () => {
       const ctx = createMockContext({ env: mockEnv });
       const caller = followsRouter.createCaller(ctx as any);
 
-      // Should not throw - cleanup is fire-and-forget
+      // Feed maintenance is best effort, but it is no longer a floating task.
       const result = await caller.unfollowUser({
         userId: "unfollowed-user-id",
       });

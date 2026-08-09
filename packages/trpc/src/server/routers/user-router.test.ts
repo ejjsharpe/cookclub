@@ -16,6 +16,12 @@ vi.mock("@repo/db/schemas", () => ({
     id: "cooking_reviews.id",
     userId: "cooking_reviews.user_id",
   },
+  mealPlanInvitations: {
+    invitedByUserId: "meal_plan_invitations.invited_by_user_id",
+  },
+  notifications: {
+    actorId: "notifications.actor_id",
+  },
   instructionSections: {
     id: "instruction_sections.id",
     recipeId: "instruction_sections.recipe_id",
@@ -31,6 +37,9 @@ vi.mock("@repo/db/schemas", () => ({
   recipes: {
     id: "recipes.id",
     ownerId: "recipes.owner_id",
+  },
+  shoppingListInvitations: {
+    invitedByUserId: "shopping_list_invitations.invited_by_user_id",
   },
   user: {
     id: "user.id",
@@ -82,21 +91,30 @@ function createMockDb(
     where: vi.fn(() => deleteBuilder),
   };
   let updateSet: unknown = null;
+  const updateSets: unknown[] = [];
   const updateBuilder = {
     set: vi.fn((values: unknown) => {
       updateSet = values;
+      updateSets.push(values);
       return updateBuilder;
     }),
     where: vi.fn(() => updateBuilder),
     returning: vi.fn().mockResolvedValue(updateReturning),
   };
 
-  return {
+  const db = {
     delete: vi.fn(() => deleteBuilder),
     select: vi.fn(() => createSelectBuilder(queuedSelectResults.shift() ?? [])),
     update: vi.fn(() => updateBuilder),
     _getUpdateSet: () => updateSet,
+    _getUpdateSets: () => updateSets,
   };
+
+  const transaction = vi.fn(
+    async (callback: (tx: typeof db) => Promise<unknown>) => callback(db),
+  );
+
+  return { ...db, transaction };
 }
 
 function createMockContext(
@@ -220,6 +238,60 @@ describe("userRouter profile inputs", () => {
         image: "file:///tmp/avatar.jpg",
       }),
     );
+  });
+
+  it("keeps denormalized invitations and notifications in sync", async () => {
+    const db = createMockDb([[], []]);
+    const ctx = createMockContext(db);
+    const caller = userRouter.createCaller(ctx as any);
+
+    await caller.updateProfile({ name: "Updated User" });
+
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(db._getUpdateSets()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Updated User" }),
+        { inviterName: "Updated User" },
+        { actorName: "Updated User" },
+      ]),
+    );
+  });
+
+  it("versions avatar URLs and syncs embedded avatar data", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-09T10:00:00.000Z"));
+
+    try {
+      const env = createMockEnv();
+      env.IMAGE_SERVICE.move = vi.fn().mockResolvedValue({
+        success: true,
+        results: [
+          {
+            asset: {
+              publicUrl: "https://images.example.com/avatars/user-1.jpg",
+            },
+          },
+        ],
+      });
+      const db = createMockDb([]);
+      const ctx = createMockContext(db, env);
+      const caller = userRouter.createCaller(ctx as any);
+
+      await caller.uploadAvatar({ imageKey: "temp/avatar.jpg" });
+
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      const versionedUrl =
+        "https://images.example.com/avatars/user-1.jpg?v=1786269600000";
+      expect(db._getUpdateSets()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ image: versionedUrl }),
+          { inviterImage: versionedUrl },
+          { actorImage: versionedUrl },
+        ]),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

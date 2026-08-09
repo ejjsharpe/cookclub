@@ -484,13 +484,14 @@ export const ShoppingListScreen = () => {
 
   const handleRemoveItem = useCallback(
     (itemId: number) => {
-      removeMutation.mutate({ itemId });
+      if (!activeList) return;
+      removeMutation.mutate({ itemId, shoppingListId: activeList.id });
     },
-    [removeMutation],
+    [activeList, removeMutation],
   );
 
   const handleClearChecked = useCallback(() => {
-    if (checkedCount === 0) return;
+    if (checkedCount === 0 || !activeList) return;
 
     Alert.alert(
       "Clear Checked Items",
@@ -501,15 +502,16 @@ export const ShoppingListScreen = () => {
           text: "Clear",
           style: "destructive",
           onPress: () => {
-            clearMutation.mutate();
+            clearMutation.mutate({ shoppingListId: activeList.id });
           },
         },
       ],
     );
-  }, [checkedCount, clearMutation]);
+  }, [activeList, checkedCount, clearMutation]);
 
   const handleRemoveRecipe = useCallback(
     (recipeId: number, recipeName: string) => {
+      if (!activeList) return;
       Alert.alert(
         "Remove Recipe",
         `Remove all ingredients from "${recipeName}"?`,
@@ -519,27 +521,33 @@ export const ShoppingListScreen = () => {
             text: "Remove",
             style: "destructive",
             onPress: () => {
-              removeRecipeMutation.mutate({ recipeId });
+              removeRecipeMutation.mutate({
+                recipeId,
+                shoppingListId: activeList.id,
+              });
             },
           },
         ],
       );
     },
-    [removeRecipeMutation],
+    [activeList, removeRecipeMutation],
   );
 
   const handleAddManualItem = useCallback(() => {
-    if (!manualItemText.trim()) return;
+    if (!manualItemText.trim() || !activeList) return;
 
     addManualMutation.mutate(
-      { ingredientText: manualItemText.trim() },
+      {
+        ingredientText: manualItemText.trim(),
+        shoppingListId: activeList.id,
+      },
       {
         onSuccess: () => {
           setManualItemText("");
         },
       },
     );
-  }, [addManualMutation, manualItemText]);
+  }, [activeList, addManualMutation, manualItemText]);
 
   const handleRecipePress = useCallback(
     (recipeId: number) => {

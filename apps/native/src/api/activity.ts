@@ -119,7 +119,6 @@ export const useActivityFeed = ({ limit = 20 }: UseActivityFeedParams = {}) => {
   return useInfiniteQuery({
     ...infiniteQueryOptions,
     staleTime: ACTIVITY_FEED_STALE_TIME,
-    refetchOnMount: false,
     refetchOnWindowFocus: false,
     select: selectActivityItems,
   });
@@ -132,25 +131,40 @@ export const useCreateCookingReview = () => {
 
   return useMutation(
     trpc.activity.createCookingReview.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
-        queryClient.invalidateQueries(
-          trpc.activity.getUserActivities.pathFilter(),
-        );
-        queryClient.invalidateQueries(
-          trpc.activity.getRecipeReviews.pathFilter(),
-        );
-        queryClient.invalidateQueries(
-          trpc.activity.getRecipeRating.pathFilter(),
-        );
-        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
-        queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
-        queryClient.invalidateQueries(
-          trpc.collection.getUserCollections.pathFilter(),
-        );
-        queryClient.invalidateQueries(
-          trpc.collection.getCollectionDetail.pathFilter(),
-        );
+      onSuccess: async () => {
+        await Promise.all([
+          queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter()),
+          queryClient.invalidateQueries(
+            trpc.activity.getUserActivities.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.activity.getRecipeReviews.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.activity.getRecipeRating.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.recipe.getRecipeDetail.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.recipe.getUserRecipes.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.recipe.searchUserRecipes.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.recipe.getPopularThisWeek.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.recipe.getUserPreferences.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.collection.getUserCollections.pathFilter(),
+          ),
+          queryClient.invalidateQueries(
+            trpc.collection.getCollectionDetail.pathFilter(),
+          ),
+        ]);
       },
     }),
   );
@@ -178,7 +192,6 @@ export const useUserActivities = ({
   return useInfiniteQuery({
     ...infiniteQueryOptions,
     staleTime: ACTIVITY_FEED_STALE_TIME,
-    refetchOnMount: false,
     refetchOnWindowFocus: false,
     select: selectActivityItems,
   });

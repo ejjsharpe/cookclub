@@ -435,10 +435,11 @@ export const shoppingRouter = router({
     .input(
       type({
         itemId: "number",
+        shoppingListId: "number",
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { itemId } = input;
+      const { itemId, shoppingListId } = input;
 
       try {
         // Get item details
@@ -448,7 +449,12 @@ export const shoppingRouter = router({
             sourceRecipeId: shoppingListItems.sourceRecipeId,
           })
           .from(shoppingListItems)
-          .where(eq(shoppingListItems.id, itemId))
+          .where(
+            and(
+              eq(shoppingListItems.id, itemId),
+              eq(shoppingListItems.shoppingListId, shoppingListId),
+            ),
+          )
           .then((rows) => rows[0]);
 
         if (!item) {
@@ -519,89 +525,95 @@ export const shoppingRouter = router({
    * Clear all checked items
    * Also removes recipes if all their items were checked and cleared
    */
-  clearCheckedItems: authedProcedure.mutation(async ({ ctx }) => {
-    try {
-      // Get user's shopping list
-      const shoppingList = await ctx.db
-        .select({ id: shoppingLists.id })
-        .from(shoppingLists)
-        .where(eq(shoppingLists.userId, ctx.user.id))
-        .then((rows) => rows[0]);
+  clearCheckedItems: authedProcedure
+    .input(type({ shoppingListId: "number" }))
+    .mutation(async ({ ctx, input }) => {
+      const { shoppingListId } = input;
 
-      if (!shoppingList) {
-        return { success: true, deletedCount: 0 };
-      }
+      try {
+        const canEdit = await canUserEditShoppingList(
+          ctx.db,
+          ctx.user.id,
+          shoppingListId,
+        );
+        if (!canEdit) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You do not have access to this shopping list",
+          });
+        }
 
-      await ctx.db.transaction(async (tx) => {
-        // Get all checked items that are being deleted
-        const checkedItems = await tx
-          .select({
-            id: shoppingListItems.id,
-            sourceRecipeId: shoppingListItems.sourceRecipeId,
-          })
-          .from(shoppingListItems)
-          .where(
-            and(
-              eq(shoppingListItems.shoppingListId, shoppingList.id),
-              eq(shoppingListItems.isChecked, true),
-            ),
-          );
-
-        // Collect unique recipe IDs from checked items
-        const recipeIds = [
-          ...new Set(
-            checkedItems
-              .map((item) => item.sourceRecipeId)
-              .filter((id): id is number => id !== null),
-          ),
-        ];
-
-        // Delete all checked items
-        await tx
-          .delete(shoppingListItems)
-          .where(
-            and(
-              eq(shoppingListItems.shoppingListId, shoppingList.id),
-              eq(shoppingListItems.isChecked, true),
-            ),
-          );
-
-        // For each recipe, check if any items remain
-        for (const recipeId of recipeIds) {
-          const remainingItems = await tx
-            .select({ id: shoppingListItems.id })
+        await ctx.db.transaction(async (tx) => {
+          // Get all checked items that are being deleted
+          const checkedItems = await tx
+            .select({
+              id: shoppingListItems.id,
+              sourceRecipeId: shoppingListItems.sourceRecipeId,
+            })
             .from(shoppingListItems)
             .where(
               and(
-                eq(shoppingListItems.shoppingListId, shoppingList.id),
-                eq(shoppingListItems.sourceRecipeId, recipeId),
+                eq(shoppingListItems.shoppingListId, shoppingListId),
+                eq(shoppingListItems.isChecked, true),
               ),
-            )
-            .limit(1);
+            );
 
-          // If no items remain from this recipe, remove the recipe
-          if (remainingItems.length === 0) {
-            await tx
-              .delete(shoppingListRecipes)
+          // Collect unique recipe IDs from checked items
+          const recipeIds = [
+            ...new Set(
+              checkedItems
+                .map((item) => item.sourceRecipeId)
+                .filter((id): id is number => id !== null),
+            ),
+          ];
+
+          // Delete all checked items
+          await tx
+            .delete(shoppingListItems)
+            .where(
+              and(
+                eq(shoppingListItems.shoppingListId, shoppingListId),
+                eq(shoppingListItems.isChecked, true),
+              ),
+            );
+
+          // For each recipe, check if any items remain
+          for (const recipeId of recipeIds) {
+            const remainingItems = await tx
+              .select({ id: shoppingListItems.id })
+              .from(shoppingListItems)
               .where(
                 and(
-                  eq(shoppingListRecipes.shoppingListId, shoppingList.id),
-                  eq(shoppingListRecipes.recipeId, recipeId),
+                  eq(shoppingListItems.shoppingListId, shoppingListId),
+                  eq(shoppingListItems.sourceRecipeId, recipeId),
                 ),
-              );
-          }
-        }
-      });
+              )
+              .limit(1);
 
-      return { success: true };
-    } catch (err) {
-      console.error("Error clearing checked items:", err);
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Failed to clear checked items",
-      });
-    }
-  }),
+            // If no items remain from this recipe, remove the recipe
+            if (remainingItems.length === 0) {
+              await tx
+                .delete(shoppingListRecipes)
+                .where(
+                  and(
+                    eq(shoppingListRecipes.shoppingListId, shoppingListId),
+                    eq(shoppingListRecipes.recipeId, recipeId),
+                  ),
+                );
+            }
+          }
+        });
+
+        return { success: true };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        console.error("Error clearing checked items:", err);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to clear checked items",
+        });
+      }
+    }),
 
   /**
    * Remove all items from a specific recipe
@@ -611,21 +623,23 @@ export const shoppingRouter = router({
     .input(
       type({
         recipeId: "number",
+        shoppingListId: "number",
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { recipeId } = input;
+      const { recipeId, shoppingListId } = input;
 
       try {
-        // Get user's shopping list
-        const shoppingList = await ctx.db
-          .select({ id: shoppingLists.id })
-          .from(shoppingLists)
-          .where(eq(shoppingLists.userId, ctx.user.id))
-          .then((rows) => rows[0]);
-
-        if (!shoppingList) {
-          return { success: true };
+        const canEdit = await canUserEditShoppingList(
+          ctx.db,
+          ctx.user.id,
+          shoppingListId,
+        );
+        if (!canEdit) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You do not have access to this shopping list",
+          });
         }
 
         await ctx.db.transaction(async (tx) => {
@@ -634,7 +648,7 @@ export const shoppingRouter = router({
             .delete(shoppingListRecipes)
             .where(
               and(
-                eq(shoppingListRecipes.shoppingListId, shoppingList.id),
+                eq(shoppingListRecipes.shoppingListId, shoppingListId),
                 eq(shoppingListRecipes.recipeId, recipeId),
               ),
             );
@@ -645,7 +659,7 @@ export const shoppingRouter = router({
             .delete(shoppingListItems)
             .where(
               and(
-                eq(shoppingListItems.shoppingListId, shoppingList.id),
+                eq(shoppingListItems.shoppingListId, shoppingListId),
                 eq(shoppingListItems.sourceRecipeId, recipeId),
               ),
             );
@@ -653,6 +667,7 @@ export const shoppingRouter = router({
 
         return { success: true };
       } catch (err) {
+        if (err instanceof TRPCError) throw err;
         console.error("Error removing recipe items:", err);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -668,10 +683,11 @@ export const shoppingRouter = router({
     .input(
       type({
         ingredientText: "string",
+        shoppingListId: "number",
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { ingredientText } = input;
+      const { ingredientText, shoppingListId } = input;
 
       if (!ingredientText || !ingredientText.trim()) {
         throw new TRPCError({
@@ -681,14 +697,24 @@ export const shoppingRouter = router({
       }
 
       try {
-        const shoppingList = await getOrCreateShoppingList(ctx.db, ctx.user.id);
+        const canEdit = await canUserEditShoppingList(
+          ctx.db,
+          ctx.user.id,
+          shoppingListId,
+        );
+        if (!canEdit) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You do not have access to this shopping list",
+          });
+        }
 
         // Parse ingredient
         const parsed = parseIngredient(ingredientText.trim());
 
         // Insert the item (manual items have no sourceRecipeId)
         const item = await insertShoppingListItem(ctx.db, {
-          shoppingListId: shoppingList.id,
+          shoppingListId,
           ingredientName: parsed.name,
           quantity: parsed.quantity,
           unit: parsed.unit,

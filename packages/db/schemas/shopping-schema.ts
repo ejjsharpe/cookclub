@@ -58,7 +58,9 @@ export const shoppingListItems = pgTable(
     isChecked: boolean("is_checked").notNull().default(false),
     // Source recipe ID (null for manual items or user-edited/unlinked items)
     // Only ONE recipe per row - this is the key change from the old model
-    sourceRecipeId: integer("source_recipe_id"),
+    sourceRecipeId: integer("source_recipe_id").references(() => recipes.id, {
+      onDelete: "cascade",
+    }),
     // Source recipe name for display (null for manual items)
     sourceRecipeName: text("source_recipe_name"),
     // Supermarket aisle for grouping (e.g., "Fresh Produce", "Dairy")
@@ -136,6 +138,9 @@ export const shoppingListInvitations = pgTable(
     createdAt: timestamp("created_at").notNull(),
   },
   (table) => [
+    index("shopping_list_invitations_invited_by_user_idx").on(
+      table.invitedByUserId,
+    ),
     // Index for finding all invitations for a user
     index("shopping_list_invitations_invited_user_idx").on(table.invitedUserId),
     // Index for finding all invitations for a shopping list
