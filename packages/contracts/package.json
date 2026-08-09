@@ -19,9 +19,9 @@
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "@types/node": "22.20.1",
-    "typescript": "6.0.3",
-    "vitest": "4.1.7"
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   },
   "nx": {
     "tags": [
