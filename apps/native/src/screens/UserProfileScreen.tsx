@@ -11,12 +11,17 @@ import {
   View,
   ActivityIndicator,
   Alert,
+  RefreshControl,
   type AlertButton,
   TouchableOpacity,
   Share,
   useWindowDimensions,
 } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import {
+  StyleSheet,
+  UnistylesRuntime,
+  withUnistyles,
+} from "react-native-unistyles";
 
 import type {
   ActivityFeedListItem,
@@ -82,12 +87,18 @@ export const UserProfileScreen = () => {
   const isReconcilingFollowingRef = useRef(false);
 
   const [imageError, setImageError] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [optimisticFollowing, setOptimisticFollowing] = useState<
     boolean | null
   >(null);
 
   const { data: currentUser } = useUser();
-  const { data: profile, isLoading, error } = useUserProfile({ userId });
+  const {
+    data: profile,
+    isLoading,
+    error,
+    refetch: refetchProfile,
+  } = useUserProfile({ userId });
   const followMutation = useFollowUser();
   const unfollowMutation = useUnfollowUser();
   const blockMutation = useBlockUser();
@@ -101,6 +112,7 @@ export const UserProfileScreen = () => {
     hasNextPage: hasMoreActivities,
     isFetchingNextPage: isFetchingNextActivities,
     isLoading: isLoadingActivities,
+    refetch: refetchActivities,
   } = useUserActivities({ userId });
 
   const isOwnProfile = currentUserId === userId;
@@ -291,6 +303,15 @@ export const UserProfileScreen = () => {
       fetchNextActivities();
     }
   }, [hasMoreActivities, isFetchingNextActivities, fetchNextActivities]);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refetchProfile(), refetchActivities()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetchActivities, refetchProfile]);
 
   const navigateToAddRecipeTab = useCallback(() => {
     navigation.navigate("Tabs", { screen: "Add recipe" });
@@ -664,6 +685,9 @@ export const UserProfileScreen = () => {
     navigation.navigate("Settings");
   };
 
+  const theme = UnistylesRuntime.getTheme();
+  const refreshOffset = UnistylesRuntime.insets.top + HEADER_HEIGHT + 8;
+
   return (
     <View style={styles.container}>
       {/* Floating header */}
@@ -722,6 +746,15 @@ export const UserProfileScreen = () => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <VSpace size={16} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+              progressViewOffset={refreshOffset}
+            />
+          }
         />
       </SkeletonContainer>
 
