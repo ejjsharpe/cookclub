@@ -15,7 +15,7 @@
     "@better-auth/expo": "1.6.25",
     "@repo/db": "workspace:*",
     "better-auth": "1.6.25",
-    "resend": "6.12.3"
+    "resend": "6.18.1"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
