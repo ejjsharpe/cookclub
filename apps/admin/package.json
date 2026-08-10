@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.39.0",
-    "@cloudflare/workers-types": "5.20260801.1",
+    "@cloudflare/workers-types": "5.20260804.1",
     "@repo/tsconfig": "workspace:*",
     "@tanstack/router-plugin": "1.168.23",
     "@types/react": "19.2.17",
