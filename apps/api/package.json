@@ -24,7 +24,7 @@
     "@repo/trpc": "workspace:*",
     "@sentry/cloudflare": "10.69.0",
     "@sentry/hono": "10.69.0",
-    "hono": "4.12.33"
+    "hono": "4.13.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260801.1",
