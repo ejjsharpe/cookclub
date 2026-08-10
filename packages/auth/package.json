@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@better-auth/expo": "1.6.25",
+    "@better-auth/expo": "1.6.26",
     "@repo/db": "workspace:*",
     "better-auth": "1.6.25",
     "resend": "6.18.1"
