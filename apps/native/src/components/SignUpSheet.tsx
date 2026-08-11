@@ -20,6 +20,7 @@ import { SignInWithAppleButton } from "@/components/buttons/SignInWithAppleButto
 import { SignInWithGoogleButton } from "@/components/buttons/SignInWithGoogleButton";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import { isAppleSignInCancellation } from "@/lib/appleAuthentication";
+import { EMAIL_VERIFICATION_CALLBACK_URL } from "@/lib/emailVerificationCallback";
 import { openExternalWebsite } from "@/lib/externalBrowser";
 import { shouldShowEmailVerificationAfterSignUp } from "@/lib/runtimeConfig";
 import {
@@ -79,7 +80,11 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
       if (nextEmailError || nextPasswordError) return;
 
       signUpWithEmail(
-        { email: normalizedEmail, password },
+        {
+          email: normalizedEmail,
+          password,
+          callbackURL: EMAIL_VERIFICATION_CALLBACK_URL,
+        },
         {
           onSuccess: async () => {
             await dismissSheet();

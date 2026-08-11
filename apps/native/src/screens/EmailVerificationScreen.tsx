@@ -15,6 +15,7 @@ import { BaseButton } from "@/components/buttons/BaseButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import { authClient } from "@/lib/authClient";
+import { EMAIL_VERIFICATION_CALLBACK_URL } from "@/lib/emailVerificationCallback";
 import type { RootStackParamList } from "@/navigation/navigationRef";
 
 type EmailVerificationRoute = RouteProp<
@@ -33,7 +34,7 @@ export const EmailVerificationScreen = () => {
     try {
       const result = await authClient.sendVerificationEmail({
         email,
-        callbackURL: "cookclub://",
+        callbackURL: EMAIL_VERIFICATION_CALLBACK_URL,
       });
       if (result.error) {
         alertApiError("Verification Failed", result.error, {

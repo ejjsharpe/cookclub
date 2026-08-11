@@ -51,15 +51,17 @@ export const useSignUpWithEmail = () => {
     mutationFn: async ({
       email,
       password,
+      callbackURL,
     }: {
       email: string;
       password: string;
+      callbackURL: string;
     }) => {
       const result = await authClient.signUp.email({
         email,
         password,
         name: "",
-        callbackURL: "cookclub://",
+        callbackURL,
       });
       if (result.error) {
         throw new AuthError(
