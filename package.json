@@ -27,10 +27,6 @@
     "packages/*",
     "tooling/*"
   ],
-  "overrides": {
-    "expo-constants": "57.0.9",
-    "expo-linking": "57.0.5"
-  },
   "devDependencies": {
     "eas-cli": "21.5.0",
     "eslint": "9.39.5",
