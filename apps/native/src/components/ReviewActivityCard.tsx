@@ -310,6 +310,7 @@ export const ReviewActivityCard = memo(
           activityId={activityId}
           isLiked={activity.isLiked}
           likeCount={activity.likeCount}
+          commentCount={activity.commentCount}
           onLikePress={onLikePress}
           onCommentPress={onCommentPress}
           onReportPress={

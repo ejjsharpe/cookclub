@@ -10,6 +10,7 @@ interface Props {
   activityId: number;
   isLiked: boolean;
   likeCount: number;
+  commentCount: number;
   onLikePress?: (activityEventId: number) => void;
   onCommentPress?: (activityEventId: number) => void;
   onImportPress?: () => void;
@@ -25,6 +26,7 @@ export const ActivityActionRow = memo(
     activityId,
     isLiked,
     likeCount,
+    commentCount,
     onLikePress,
     onCommentPress,
     onImportPress,
@@ -73,7 +75,7 @@ export const ActivityActionRow = memo(
             style={styles.actionIcon}
           />
           <Text type="subheadline" style={styles.actionText}>
-            Comment
+            {commentCount || "Comment"}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
