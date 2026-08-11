@@ -214,6 +214,73 @@ describe("extractStructuredRecipeCandidates", () => {
     expect(recipe?.ingredientSections[0]?.ingredients[1]?.name).toBe("lentils");
   });
 
+  it("prefers JSON-LD over a conflicting generic recipe card", () => {
+    const html = `
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Recipe",
+          "name": "Sausage, kale & gnocchi one-pot",
+          "recipeIngredient": ["6 pork sausages", "500g gnocchi"],
+          "recipeInstructions": [
+            { "@type": "HowToStep", "text": "Brown the sausages." },
+            { "@type": "HowToStep", "text": "Cook the gnocchi and kale." }
+          ]
+        }
+      </script>
+      <div class="recipe-card">
+        <h2>Ingredients</h2>
+        <div class="ingredients">
+          <ul>
+            <li>6 pork sausages</li>
+            <li>500g gnocchi</li>
+            <li>kcal516</li>
+            <li>fat27g</li>
+          </ul>
+        </div>
+        <div class="instructions">
+          <ol>
+            <li>6 pork sausages</li>
+            <li>500g gnocchi</li>
+            <li>Brown the sausages.</li>
+            <li>Cook the gnocchi and kale.</li>
+          </ol>
+        </div>
+      </div>
+    `;
+
+    const recipes = extractStructuredRecipeCandidates(
+      html,
+      "https://www.bbcgoodfood.com/recipes/sausage-kale-gnocchi-one-pot",
+    );
+
+    expect(recipes).toHaveLength(1);
+    expect(recipes[0]?.name).toBe("Sausage, kale & gnocchi one-pot");
+    expect(recipes[0]?.ingredientSections[0]?.ingredients).toHaveLength(2);
+    expect(recipes[0]?.instructionSections[0]?.instructions).toHaveLength(2);
+  });
+
+  it("does not treat a page-level .recipe wrapper as a plugin card", () => {
+    const html = `
+      <div class="post recipe">
+        <h2>Ingredients</h2>
+        <div class="ingredients">
+          <ul><li>1 cup flour</li><li>2 eggs</li></ul>
+        </div>
+        <div class="instructions">
+          <ol><li>Mix the batter.</li><li>Bake until set.</li></ol>
+        </div>
+      </div>
+    `;
+
+    expect(
+      extractStructuredRecipeCandidates(
+        html,
+        "https://example.com/not-a-recipe-card",
+      ),
+    ).toEqual([]);
+  });
+
   it("extracts recipes nested in hydration JSON", () => {
     const hydration = {
       props: {

@@ -158,17 +158,33 @@ export function extractStructuredRecipeCandidates(
   try {
     const $ = cheerio.load(html);
 
-    const candidates = [
-      parseJsonLd($),
-      parseHydrationData($),
-      parseMicrodataRecipe($),
-      parseRecipePluginCard($),
+    // Prefer explicitly structured sources over increasingly broad DOM
+    // heuristics. Generic recipe-card selectors can match a page-level wrapper
+    // and must not compete with valid schema.org data from the same page.
+    const candidateTiers = [
+      [parseJsonLd($), parseHydrationData($)],
+      [parseMicrodataRecipe($)],
+      [parseRecipePluginCard($)],
     ];
 
-    return candidates.flatMap((candidate) => {
-      const raw = normalizeRawRecipe(candidate, sourceUrl);
-      return hasMinimumRecipeData(raw) ? [toParsedRecipe(raw, sourceUrl)] : [];
-    });
+    for (const candidates of candidateTiers) {
+      const recipes = candidates.flatMap((candidate) => {
+        const raw = normalizeRawRecipe(candidate, sourceUrl);
+        return hasMinimumRecipeData(raw)
+          ? [toParsedRecipe(raw, sourceUrl)]
+          : [];
+      });
+
+      if (recipes.length > 0) {
+        return Array.from(
+          new Map(
+            recipes.map((recipe) => [JSON.stringify(recipe), recipe]),
+          ).values(),
+        );
+      }
+    }
+
+    return [];
   } catch (error) {
     console.error("Error extracting structured recipe data:", error);
     return [];
@@ -654,7 +670,6 @@ const RECIPE_PLUGIN_CONFIGS: RecipePluginConfig[] = [
       ".easyrecipe",
       ".easy-recipes",
       ".recipe-card",
-      ".recipe",
     ],
     nameSelectors: [
       ".recipe-title",

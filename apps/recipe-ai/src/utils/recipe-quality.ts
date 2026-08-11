@@ -81,6 +81,18 @@ const GENERIC_TITLE_KEYS = new Set([
   "untitled",
   "watch",
 ]);
+const SECTION_HEADING_TITLE_KEYS = new Set([
+  "direction",
+  "directions",
+  "ingredient",
+  "ingredients",
+  "instruction",
+  "instructions",
+  "method",
+  "nutrition",
+  "step",
+  "steps",
+]);
 const SOCIAL_SOURCE_DOMAINS = [
   "instagram.com",
   "tiktok.com",
@@ -131,6 +143,10 @@ function isGenericTitle(title: string): boolean {
       key,
     )
   );
+}
+
+function isSectionHeadingTitle(title: string): boolean {
+  return SECTION_HEADING_TITLE_KEYS.has(normalizedTitleKey(title));
 }
 
 function isSocialSourceUrl(url: string | null | undefined): boolean {
@@ -476,6 +492,11 @@ export function evaluateRecipeQuality(
     score -= 20;
   }
 
+  if (isSectionHeadingTitle(inputRecipe.name)) {
+    reasons.push("section_heading_title");
+    score -= 40;
+  }
+
   score += Math.min(ingredientCount * 5, 30);
   score += Math.min(instructionCount * 7, 30);
 
@@ -496,7 +517,8 @@ export function evaluateRecipeQuality(
   const usable =
     hasMinimumShape &&
     (instructionCount === 0 || score >= threshold) &&
-    !reasons.includes("missing_ingredients");
+    !reasons.includes("missing_ingredients") &&
+    !reasons.includes("section_heading_title");
   const confidence =
     instructionCount === 0
       ? "low"

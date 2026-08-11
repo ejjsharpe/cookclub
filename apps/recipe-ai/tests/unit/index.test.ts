@@ -218,7 +218,7 @@ function cacheEntry(
   strategy: "deterministic" | "ai-assisted" = "ai-assisted",
 ) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     parseMethod: strategy === "deterministic" ? "structured_data" : "ai_only",
     strategy,
     provenance: strategy,

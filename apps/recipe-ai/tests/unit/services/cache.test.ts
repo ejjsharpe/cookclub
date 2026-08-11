@@ -59,7 +59,7 @@ const aiOptions = {
   strategy: "ai-assisted" as const,
 };
 
-describe("recipe cache v2", () => {
+describe("recipe cache v3", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
@@ -74,9 +74,9 @@ describe("recipe cache v2", () => {
     );
 
     const [key, serialized, options] = kv.put.mock.calls[0]!;
-    expect(key).toMatch(/^recipe:v2:deterministic:/);
+    expect(key).toMatch(/^recipe:v3:deterministic:/);
     expect(JSON.parse(serialized)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       parseMethod: "structured_data",
       strategy: "deterministic",
       provenance: "deterministic",
@@ -114,8 +114,8 @@ describe("recipe cache v2", () => {
     );
 
     expect(deterministic).not.toBe(assisted);
-    expect(deterministic).toMatch(/^recipe:v2:deterministic:/);
-    expect(assisted).toMatch(/^recipe:v2:ai-assisted:/);
+    expect(deterministic).toMatch(/^recipe:v3:deterministic:/);
+    expect(assisted).toMatch(/^recipe:v3:ai-assisted:/);
   });
 
   it("does not let Basic read an AI-assisted entry", async () => {

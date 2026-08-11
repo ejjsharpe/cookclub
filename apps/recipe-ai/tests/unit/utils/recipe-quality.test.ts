@@ -155,4 +155,37 @@ describe("evaluateRecipeQuality", () => {
     expect(quality.usable).toBe(false);
     expect(quality.reasons).toContain("missing_ingredients");
   });
+
+  it("rejects section headings used as recipe titles", () => {
+    const quality = evaluateRecipeQuality(
+      {
+        ...recipeWithImages(["https://example.com/recipe.jpg"]),
+        name: "Ingredients",
+        ingredientSections: [
+          {
+            name: null,
+            ingredients: Array.from({ length: 8 }, (_, index) => ({
+              index,
+              quantity: index + 1,
+              unit: null,
+              name: `ingredient ${index + 1}`,
+            })),
+          },
+        ],
+        instructionSections: [
+          {
+            name: null,
+            instructions: Array.from({ length: 8 }, (_, index) => ({
+              index,
+              instruction: `Complete recipe step ${index + 1}.`,
+            })),
+          },
+        ],
+      },
+      "structured",
+    );
+
+    expect(quality.usable).toBe(false);
+    expect(quality.reasons).toContain("section_heading_title");
+  });
 });

@@ -4,7 +4,7 @@ import type { ParsedRecipe } from "../../schema";
 import type { Env, ParseMetadata } from "../../types";
 
 const CACHE_TTL_SECONDS = 86_400;
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 
 export interface RecipeCacheEntry {
   schemaVersion: typeof CACHE_SCHEMA_VERSION;
@@ -37,7 +37,7 @@ export async function recipeCacheKey(
   const hashHex = Array.from(new Uint8Array(hashBuffer))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return `recipe:v2:${strategy}:${hashHex}`;
+  return `recipe:v3:${strategy}:${hashHex}`;
 }
 
 function isRecipeCacheEntry(value: unknown): value is RecipeCacheEntry {
