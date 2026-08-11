@@ -58,13 +58,6 @@ function getPlatform(): "ios" | "android" | "web" {
   return "web";
 }
 
-function invalidateNotificationQueries(
-  queryClient: ReturnType<typeof useQueryClient>,
-  trpc: ReturnType<typeof useTRPC>,
-) {
-  queryClient.invalidateQueries(trpc.notification.pathFilter());
-}
-
 function navigateWhenReady(data: PushNotificationData, attempts = 0) {
   if (isCookTimerNotificationData(data)) {
     return;
@@ -202,7 +195,7 @@ export const PushNotificationsProvider = ({
           return;
         }
 
-        invalidateNotificationQueries(queryClient, trpc);
+        queryClient.invalidateQueries(trpc.notification.pathFilter());
       },
     );
 
@@ -216,7 +209,7 @@ export const PushNotificationsProvider = ({
           return;
         }
 
-        invalidateNotificationQueries(queryClient, trpc);
+        queryClient.invalidateQueries(trpc.notification.pathFilter());
         navigateWhenReady(
           response.notification.request.content.data as PushNotificationData,
         );
@@ -234,7 +227,7 @@ export const PushNotificationsProvider = ({
             return;
           }
 
-          invalidateNotificationQueries(queryClient, trpc);
+          queryClient.invalidateQueries(trpc.notification.pathFilter());
           navigateWhenReady(
             response.notification.request.content.data as PushNotificationData,
           );

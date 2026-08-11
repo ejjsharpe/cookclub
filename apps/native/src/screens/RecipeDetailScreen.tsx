@@ -562,6 +562,7 @@ export const RecipeDetailScreen = () => {
   const draftImageListRef = useRef<FlatList<DraftImage>>(null);
   const pendingImageScrollIndexRef = useRef<number | null>(null);
   const nutritionRequestRecipeIdRef = useRef<number | null>(null);
+  const isDismissingImportRef = useRef(false);
   const adjustRecipeSheetRef = useRef<AdjustRecipeSheetRef>(null);
   const personaliseRecipeSheetRef = useRef<PersonaliseRecipeSheetRef>(null);
   const addToMealPlanSheetRef = useRef<AddToMealPlanSheetRef>(null);
@@ -1340,15 +1341,17 @@ export const RecipeDetailScreen = () => {
   }, [draft, isCreateMode, navigation]);
 
   const handleDismissImportReview = useCallback(() => {
-    if (!importJobId) return;
-    dismissImport(importJobId)
-      .then(() => navigation.goBack())
-      .catch((dismissError) => {
-        alertApiError("Dismiss Failed", dismissError, {
-          operation: "recipeImport.dismiss",
-          fallback: "Unable to dismiss this import.",
-        });
+    if (!importJobId || isDismissingImportRef.current) return;
+
+    isDismissingImportRef.current = true;
+    navigation.goBack();
+
+    dismissImport(importJobId).catch((dismissError) => {
+      alertApiError("Dismiss Failed", dismissError, {
+        operation: "recipeImport.dismiss",
+        fallback: "Unable to dismiss this import.",
       });
+    });
   }, [dismissImport, importJobId, navigation]);
 
   const handleSaveDraft = useCallback(async () => {

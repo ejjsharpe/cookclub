@@ -86,20 +86,45 @@ export function RecipeImportProvider({ children }: PropsWithChildren) {
 
   const createMutation = useMutation({
     ...trpc.recipeImport.create.mutationOptions(),
-    onSettled: () => {
+    onSuccess: (_job, variables) => {
       queryClient.invalidateQueries(trpc.recipeImport.list.pathFilter());
-      queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter());
+      if (variables.importType === "smart") {
+        queryClient.invalidateQueries(trpc.subscription.getStatus.pathFilter());
+      }
     },
   });
-  const dismissMutation = useMutation({
-    ...trpc.recipeImport.dismiss.mutationOptions(),
-    onSettled: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries(trpc.recipeImport.list.pathFilter()),
-        queryClient.invalidateQueries(trpc.recipeImport.get.pathFilter()),
-      ]);
-    },
-  });
+  const dismissMutation = useMutation(
+    trpc.recipeImport.dismiss.mutationOptions({
+      onMutate: async ({ id }) => {
+        const listFilter = trpc.recipeImport.list.pathFilter();
+        await queryClient.cancelQueries(listFilter);
+
+        const previousLists =
+          queryClient.getQueriesData<RecipeImportSummary[]>(listFilter);
+        queryClient.setQueriesData<RecipeImportSummary[]>(
+          listFilter,
+          (current) => current?.filter((job) => job.id !== id),
+        );
+
+        return { previousLists };
+      },
+      onError: (_error, _variables, context) => {
+        for (const [queryKey, data] of context?.previousLists ?? []) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      },
+      onSuccess: (_data, { id }) => {
+        queryClient.setQueriesData<RecipeImportSummary[]>(
+          trpc.recipeImport.list.pathFilter(),
+          (current) => current?.filter((job) => job.id !== id),
+        );
+        queryClient.removeQueries({
+          queryKey: trpc.recipeImport.get.queryKey({ id }),
+          exact: true,
+        });
+      },
+    }),
+  );
 
   useEffect(() => {
     const subscription = AppState.addEventListener(

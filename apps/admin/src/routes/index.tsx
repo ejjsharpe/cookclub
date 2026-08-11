@@ -430,41 +430,42 @@ function AdminDashboard({
     setSelectedUser(null);
   }, [selectedUser, users, usersQuery.data]);
 
-  const invalidateUsers = async () => {
-    await queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter());
-  };
-
   const createUserMutation = useMutation({
     ...trpc.admin.createUser.mutationOptions(),
     onSuccess: async () => {
-      await invalidateUsers();
+      await queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter());
       setIsCreateOpen(false);
     },
   });
   const setRoleMutation = useMutation({
     ...trpc.admin.setRole.mutationOptions(),
-    onSuccess: invalidateUsers,
+    onSuccess: () =>
+      queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter()),
   });
   const setSubscriptionOverrideMutation = useMutation({
     ...trpc.admin.setSubscriptionOverride.mutationOptions(),
-    onSuccess: invalidateUsers,
+    onSuccess: () =>
+      queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter()),
   });
   const clearSubscriptionOverrideMutation = useMutation({
     ...trpc.admin.clearSubscriptionOverride.mutationOptions(),
-    onSuccess: invalidateUsers,
+    onSuccess: () =>
+      queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter()),
   });
   const banUserMutation = useMutation({
     ...trpc.admin.banUser.mutationOptions(),
-    onSuccess: invalidateUsers,
+    onSuccess: () =>
+      queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter()),
   });
   const unbanUserMutation = useMutation({
     ...trpc.admin.unbanUser.mutationOptions(),
-    onSuccess: invalidateUsers,
+    onSuccess: () =>
+      queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter()),
   });
   const deleteUserMutation = useMutation({
     ...trpc.admin.deleteUser.mutationOptions(),
     onSuccess: async () => {
-      await invalidateUsers();
+      await queryClient.invalidateQueries(trpc.admin.listUsers.pathFilter());
       setSelectedUser(null);
     },
   });

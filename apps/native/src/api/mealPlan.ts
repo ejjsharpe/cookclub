@@ -39,8 +39,12 @@ export const useDeleteMealPlan = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.mealPlan.deleteMealPlan.mutationOptions({
-    onSuccess: async () => {
-      queryClient.removeQueries(trpc.mealPlan.getEntries.pathFilter());
+    onSuccess: async (_data, variables) => {
+      queryClient.removeQueries(
+        trpc.mealPlan.getEntries.queryFilter({
+          mealPlanId: variables.mealPlanId,
+        }),
+      );
       await queryClient.invalidateQueries(
         trpc.mealPlan.getMealPlans.pathFilter(),
       );
@@ -86,9 +90,12 @@ export const useAddRecipeToMealPlan = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.mealPlan.addRecipe.mutationOptions({
-    onSuccess: () => {
-      const entriesFilter = trpc.mealPlan.getEntries.pathFilter();
-      queryClient.invalidateQueries(entriesFilter);
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries(
+        trpc.mealPlan.getEntries.queryFilter({
+          mealPlanId: variables.mealPlanId,
+        }),
+      );
     },
     onError: () => {
       Alert.alert(
@@ -140,7 +147,7 @@ export const useRemoveFromMealPlan = () => {
     },
     onSettled: () => {
       const entriesFilter = trpc.mealPlan.getEntries.pathFilter();
-      queryClient.invalidateQueries(entriesFilter);
+      return queryClient.invalidateQueries(entriesFilter);
     },
   });
 
@@ -159,10 +166,13 @@ export const useInviteToMealPlan = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.mealPlan.inviteToMealPlan.mutationOptions({
-    onSuccess: () => {
-      const invitationFilter =
-        trpc.mealPlan.getMealPlanInvitationStatus.pathFilter();
-      queryClient.invalidateQueries(invitationFilter);
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: trpc.mealPlan.getMealPlanInvitationStatus.queryKey({
+          mealPlanId: variables.mealPlanId,
+        }),
+        exact: true,
+      });
     },
     onError: () => {
       Alert.alert("Error", "Failed to send invitation. Please try again.");
@@ -179,10 +189,13 @@ export const useCancelMealPlanInvitation = () => {
 
   const mutationOptions =
     trpc.mealPlan.cancelMealPlanInvitation.mutationOptions({
-      onSuccess: () => {
-        const invitationFilter =
-          trpc.mealPlan.getMealPlanInvitationStatus.pathFilter();
-        queryClient.invalidateQueries(invitationFilter);
+      onSuccess: (_data, variables) => {
+        queryClient.invalidateQueries({
+          queryKey: trpc.mealPlan.getMealPlanInvitationStatus.queryKey({
+            mealPlanId: variables.mealPlanId,
+          }),
+          exact: true,
+        });
       },
       onError: () => {
         Alert.alert("Error", "Failed to cancel invitation. Please try again.");
@@ -240,9 +253,13 @@ export const useRemoveMealPlanMember = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.mealPlan.removeMealPlanMember.mutationOptions({
-    onSuccess: () => {
-      const shareStatusFilter = trpc.mealPlan.getShareStatus.pathFilter();
-      queryClient.invalidateQueries(shareStatusFilter);
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: trpc.mealPlan.getShareStatus.queryKey({
+          mealPlanId: variables.mealPlanId,
+        }),
+        exact: true,
+      });
     },
     onError: () => {
       Alert.alert("Error", "Failed to remove member. Please try again.");

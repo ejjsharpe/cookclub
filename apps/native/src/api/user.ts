@@ -2,8 +2,6 @@ import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { invalidateUserIdentityQueries } from "./utils/cache-helpers";
-
 import { clearLocalSessionState } from "@/lib/sessionCleanup";
 
 // API Response Types
@@ -30,11 +28,24 @@ export const useUpdateProfile = () => {
         variables.bio !== undefined;
 
       if (changesPublicIdentity) {
-        await invalidateUserIdentityQueries(queryClient, trpc);
+        await Promise.all([
+          queryClient.invalidateQueries(trpc.user.getUser.pathFilter()),
+          queryClient.invalidateQueries(trpc.follows.pathFilter()),
+          queryClient.invalidateQueries(trpc.activity.pathFilter()),
+          queryClient.invalidateQueries(trpc.collection.pathFilter()),
+          queryClient.invalidateQueries(trpc.comment.pathFilter()),
+          queryClient.invalidateQueries(trpc.recipe.pathFilter()),
+          queryClient.invalidateQueries(trpc.mealPlan.pathFilter()),
+          queryClient.invalidateQueries(trpc.shopping.pathFilter()),
+          queryClient.invalidateQueries(trpc.notification.pathFilter()),
+        ]);
         return;
       }
 
-      await queryClient.invalidateQueries(trpc.user.getUser.queryFilter());
+      await queryClient.invalidateQueries({
+        queryKey: trpc.user.getUser.queryKey(),
+        exact: true,
+      });
     },
   });
 };
@@ -46,7 +57,17 @@ export const useCompleteOnboarding = () => {
   return useMutation({
     ...trpc.user.completeOnboarding.mutationOptions(),
     onSuccess: async () => {
-      await invalidateUserIdentityQueries(queryClient, trpc);
+      await Promise.all([
+        queryClient.invalidateQueries(trpc.user.getUser.pathFilter()),
+        queryClient.invalidateQueries(trpc.follows.pathFilter()),
+        queryClient.invalidateQueries(trpc.activity.pathFilter()),
+        queryClient.invalidateQueries(trpc.collection.pathFilter()),
+        queryClient.invalidateQueries(trpc.comment.pathFilter()),
+        queryClient.invalidateQueries(trpc.recipe.pathFilter()),
+        queryClient.invalidateQueries(trpc.mealPlan.pathFilter()),
+        queryClient.invalidateQueries(trpc.shopping.pathFilter()),
+        queryClient.invalidateQueries(trpc.notification.pathFilter()),
+      ]);
     },
   });
 };

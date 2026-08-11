@@ -88,28 +88,17 @@ export const useDeleteCollection = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.collection.deleteCollection.mutationOptions({
-    onSuccess: async (_data, variables) => {
-      queryClient.removeQueries(
-        trpc.collection.getCollectionDetail.queryFilter({
+    onSuccess: (_data, variables) => {
+      queryClient.removeQueries({
+        queryKey: trpc.collection.getCollectionDetail.queryKey({
           collectionId: variables.collectionId,
         }),
+        exact: true,
+      });
+      queryClient.invalidateQueries(
+        trpc.collection.getUserCollections.pathFilter(),
       );
-      await Promise.all([
-        queryClient.invalidateQueries(
-          trpc.collection.getUserCollections.pathFilter(),
-        ),
-        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
-        queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.recipe.searchUserRecipes.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getPopularThisWeek.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserPreferences.pathFilter(),
-        ),
-      ]);
+      queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
     },
     onError: () => {
       Alert.alert("Error", "Failed to delete collection. Please try again.");
@@ -126,32 +115,18 @@ export const useUpdateRecipeCollections = () => {
 
   const mutationOptions =
     trpc.collection.updateRecipeCollections.mutationOptions({
-      onSuccess: async (_data, variables) => {
+      onSuccess: (_data, variables) => {
         const { recipeId, collectionIds } = variables;
 
         // Update recipe detail cache with new collectionIds
         updateRecipeCollections(queryClient, trpc, recipeId, collectionIds);
 
-        await Promise.all([
-          queryClient.invalidateQueries(
-            trpc.collection.getUserCollections.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.collection.getCollectionDetail.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getUserRecipes.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.searchUserRecipes.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getPopularThisWeek.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getUserPreferences.pathFilter(),
-          ),
-        ]);
+        queryClient.invalidateQueries(
+          trpc.collection.getUserCollections.pathFilter(),
+        );
+        queryClient.invalidateQueries(
+          trpc.collection.getCollectionDetail.pathFilter(),
+        );
       },
       onError: () => {
         Alert.alert("Error", "Failed to update collections. Please try again.");
@@ -168,7 +143,7 @@ export const useAddRecipeToCollection = () => {
 
   const mutationOptions = trpc.collection.addRecipeToCollection.mutationOptions(
     {
-      onSuccess: async (_data, variables) => {
+      onSuccess: (_data, variables) => {
         const { recipeId, collectionId } = variables;
 
         queryClient.setQueriesData<any>(
@@ -189,29 +164,15 @@ export const useAddRecipeToCollection = () => {
           },
         );
 
-        await Promise.all([
-          queryClient.invalidateQueries(
-            trpc.collection.getCollectionDetail.queryFilter({ collectionId }),
-          ),
-          queryClient.invalidateQueries(
-            trpc.collection.getUserCollections.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getRecipeDetail.queryFilter({ recipeId }),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getUserRecipes.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.searchUserRecipes.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getPopularThisWeek.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getUserPreferences.pathFilter(),
-          ),
-        ]);
+        queryClient.invalidateQueries({
+          queryKey: trpc.collection.getCollectionDetail.queryKey({
+            collectionId,
+          }),
+          exact: true,
+        });
+        queryClient.invalidateQueries(
+          trpc.collection.getUserCollections.pathFilter(),
+        );
       },
       onError: () => {
         Alert.alert(

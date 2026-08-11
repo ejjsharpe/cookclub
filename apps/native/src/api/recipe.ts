@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 
+import { useSessionContext } from "@/lib/sessionContext";
+
 // API Response Types
 export type Recipe = Outputs["recipe"]["getRecipeDetail"];
 export type RecipeListItem =
@@ -19,30 +21,6 @@ export type ParsedRecipe = Extract<
 >;
 export type PersonalizationGoal =
   Inputs["recipeAi"]["personalizeRecipe"]["goals"][number];
-
-type RecipeTRPC = ReturnType<typeof useTRPC>;
-type RecipeQueryClient = ReturnType<typeof useQueryClient>;
-
-async function invalidateUserRecipeLists(
-  queryClient: RecipeQueryClient,
-  trpc: RecipeTRPC,
-) {
-  await Promise.all([
-    queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter()),
-    queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter()),
-  ]);
-}
-
-async function invalidateRecipeActivityQueries(
-  queryClient: RecipeQueryClient,
-  trpc: RecipeTRPC,
-) {
-  await Promise.all([
-    queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter()),
-    queryClient.invalidateQueries(trpc.activity.getUserActivities.pathFilter()),
-    queryClient.invalidateQueries(trpc.activity.getActivity.pathFilter()),
-  ]);
-}
 
 interface UseGetUserRecipesParams {
   search?: string;
@@ -147,32 +125,36 @@ export const useUserRecipeTags = () => {
 export const useImportRecipe = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const userId = useSessionContext()?.user.id;
 
   return useMutation({
     ...trpc.recipe.importRecipe.mutationOptions(),
-    onSuccess: async () => {
-      await Promise.all([
-        invalidateUserRecipeLists(queryClient, trpc),
-        invalidateRecipeActivityQueries(queryClient, trpc),
-        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
-        queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserRecipeTags.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserPreferences.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getPopularThisWeek.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getUserCollections.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getCollectionDetail.pathFilter(),
-        ),
-        queryClient.invalidateQueries(trpc.follows.getUserProfile.pathFilter()),
-      ]);
+    onSuccess: () => {
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+      queryClient.invalidateQueries(
+        userId
+          ? trpc.activity.getUserActivities.infiniteQueryFilter({ userId })
+          : trpc.activity.getUserActivities.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(
+        userId
+          ? {
+              queryKey: trpc.follows.getUserProfile.queryKey({ userId }),
+              exact: true,
+            }
+          : trpc.follows.getUserProfile.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.collection.getUserCollections.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.collection.getCollectionDetail.pathFilter(),
+      );
     },
   });
 };
@@ -181,40 +163,44 @@ export const useImportRecipe = () => {
 export const useDeleteRecipe = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const userId = useSessionContext()?.user.id;
 
   return useMutation({
     ...trpc.recipe.deleteRecipe.mutationOptions(),
-    onSuccess: async (_data, variables) => {
-      queryClient.removeQueries(
-        trpc.recipe.getRecipeDetail.queryFilter({
+    onSuccess: (_data, variables) => {
+      queryClient.removeQueries({
+        queryKey: trpc.recipe.getRecipeDetail.queryKey({
           recipeId: variables.recipeId,
         }),
+        exact: true,
+      });
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+      queryClient.invalidateQueries(
+        userId
+          ? trpc.activity.getUserActivities.infiniteQueryFilter({ userId })
+          : trpc.activity.getUserActivities.pathFilter(),
       );
-      await Promise.all([
-        invalidateUserRecipeLists(queryClient, trpc),
-        invalidateRecipeActivityQueries(queryClient, trpc),
-        queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserRecipeTags.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserPreferences.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getPopularThisWeek.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getUserCollections.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getCollectionDetail.pathFilter(),
-        ),
-        queryClient.invalidateQueries(trpc.mealPlan.getEntries.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.shopping.getShoppingList.pathFilter(),
-        ),
-        queryClient.invalidateQueries(trpc.follows.getUserProfile.pathFilter()),
-      ]);
+      queryClient.invalidateQueries(trpc.activity.getActivity.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(
+        userId
+          ? {
+              queryKey: trpc.follows.getUserProfile.queryKey({ userId }),
+              exact: true,
+            }
+          : trpc.follows.getUserProfile.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.collection.getUserCollections.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.collection.getCollectionDetail.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.mealPlan.getEntries.pathFilter());
+      queryClient.invalidateQueries(trpc.shopping.getShoppingList.pathFilter());
     },
   });
 };
@@ -223,32 +209,36 @@ export const useDeleteRecipe = () => {
 export const useSaveRecipe = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const userId = useSessionContext()?.user.id;
 
   return useMutation({
     ...trpc.recipe.postRecipe.mutationOptions(),
-    onSuccess: async () => {
-      await Promise.all([
-        invalidateUserRecipeLists(queryClient, trpc),
-        invalidateRecipeActivityQueries(queryClient, trpc),
-        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
-        queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserRecipeTags.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserPreferences.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getPopularThisWeek.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getUserCollections.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getCollectionDetail.pathFilter(),
-        ),
-        queryClient.invalidateQueries(trpc.follows.getUserProfile.pathFilter()),
-      ]);
+    onSuccess: () => {
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+      queryClient.invalidateQueries(
+        userId
+          ? trpc.activity.getUserActivities.infiniteQueryFilter({ userId })
+          : trpc.activity.getUserActivities.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter());
+      queryClient.invalidateQueries(
+        userId
+          ? {
+              queryKey: trpc.follows.getUserProfile.queryKey({ userId }),
+              exact: true,
+            }
+          : trpc.follows.getUserProfile.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.collection.getUserCollections.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.collection.getCollectionDetail.pathFilter(),
+      );
     },
   });
 };
@@ -259,31 +249,38 @@ export const useCompleteRecipeImport = () => {
 
   return useMutation({
     ...trpc.recipeImport.complete.mutationOptions(),
-    onSuccess: async () => {
-      await Promise.all([
-        invalidateUserRecipeLists(queryClient, trpc),
-        invalidateRecipeActivityQueries(queryClient, trpc),
-        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
-        queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserRecipeTags.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserPreferences.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getPopularThisWeek.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getUserCollections.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getCollectionDetail.pathFilter(),
-        ),
-        queryClient.invalidateQueries(trpc.recipeImport.list.pathFilter()),
-        queryClient.invalidateQueries(trpc.recipeImport.get.pathFilter()),
-        queryClient.invalidateQueries(trpc.follows.getUserProfile.pathFilter()),
-      ]);
+    onSuccess: (recipe, variables) => {
+      queryClient.setQueryData(
+        trpc.recipe.getRecipeDetail.queryKey({ recipeId: recipe.id }),
+        recipe,
+      );
+      queryClient.removeQueries({
+        queryKey: trpc.recipeImport.get.queryKey({ id: variables.id }),
+        exact: true,
+      });
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.activity.getUserActivities.infiniteQueryFilter({
+          userId: recipe.owner.id,
+        }),
+      );
+      queryClient.invalidateQueries({
+        queryKey: trpc.follows.getUserProfile.queryKey({
+          userId: recipe.owner.id,
+        }),
+        exact: true,
+      });
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.collection.getUserCollections.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.collection.getCollectionDetail.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.recipeImport.list.pathFilter());
     },
   });
 };
@@ -292,35 +289,36 @@ export const useCompleteRecipeImport = () => {
 export const useUpdateRecipe = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const userId = useSessionContext()?.user.id;
 
   return useMutation({
     ...trpc.recipe.updateRecipe.mutationOptions(),
-    onSuccess: async () => {
-      await Promise.all([
-        invalidateUserRecipeLists(queryClient, trpc),
-        invalidateRecipeActivityQueries(queryClient, trpc),
-        queryClient.invalidateQueries(trpc.recipe.getRecipeDetail.pathFilter()),
-        queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserRecipeTags.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getUserPreferences.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.recipe.getPopularThisWeek.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getUserCollections.pathFilter(),
-        ),
-        queryClient.invalidateQueries(
-          trpc.collection.getCollectionDetail.pathFilter(),
-        ),
-        queryClient.invalidateQueries(trpc.mealPlan.getEntries.pathFilter()),
-        queryClient.invalidateQueries(
-          trpc.shopping.getShoppingList.pathFilter(),
-        ),
-      ]);
+    onSuccess: async (_data, variables) => {
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.searchUserRecipes.pathFilter());
+      queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+      queryClient.invalidateQueries(
+        userId
+          ? trpc.activity.getUserActivities.infiniteQueryFilter({ userId })
+          : trpc.activity.getUserActivities.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.activity.getActivity.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserTags.pathFilter());
+      queryClient.invalidateQueries(trpc.recipe.getUserRecipeTags.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.collection.getUserCollections.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.collection.getCollectionDetail.pathFilter(),
+      );
+      queryClient.invalidateQueries(trpc.mealPlan.getEntries.pathFilter());
+
+      await queryClient.invalidateQueries({
+        queryKey: trpc.recipe.getRecipeDetail.queryKey({
+          recipeId: variables.recipeId,
+        }),
+        exact: true,
+      });
     },
   });
 };
@@ -355,11 +353,12 @@ export const useGetRecipeNutrition = () => {
       retry: false,
     }),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries(
-        trpc.recipe.getRecipeDetail.queryFilter({
+      queryClient.invalidateQueries({
+        queryKey: trpc.recipe.getRecipeDetail.queryKey({
           recipeId: variables.recipeId,
         }),
-      );
+        exact: true,
+      });
     },
   });
 };

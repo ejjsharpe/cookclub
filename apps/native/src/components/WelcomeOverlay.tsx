@@ -43,16 +43,13 @@ export function WelcomeOverlayProvider({
   const cookingTranslateY = useSharedValue(60);
 
   const updateQueryCache = useCallback(() => {
-    queryClient.setQueryData(
-      trpc.user.getUser.queryFilter().queryKey,
-      (old: any) => {
-        if (!old) return old;
-        return {
-          ...old,
-          user: { ...old.user, onboardingCompleted: true },
-        };
-      },
-    );
+    queryClient.setQueryData(trpc.user.getUser.queryKey(), (old: any) => {
+      if (!old) return old;
+      return {
+        ...old,
+        user: { ...old.user, onboardingCompleted: true },
+      };
+    });
   }, [queryClient, trpc]);
 
   const unmountOverlay = useCallback(() => {

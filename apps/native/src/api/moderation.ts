@@ -12,7 +12,16 @@ export function useBlockUser() {
   return useMutation({
     ...trpc.moderation.blockUser.mutationOptions(),
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      await Promise.all([
+        queryClient.invalidateQueries(trpc.moderation.pathFilter()),
+        queryClient.invalidateQueries(trpc.follows.pathFilter()),
+        queryClient.invalidateQueries(trpc.activity.pathFilter()),
+        queryClient.invalidateQueries(trpc.comment.pathFilter()),
+        queryClient.invalidateQueries(trpc.recipe.pathFilter()),
+        queryClient.invalidateQueries(trpc.mealPlan.pathFilter()),
+        queryClient.invalidateQueries(trpc.shopping.pathFilter()),
+        queryClient.invalidateQueries(trpc.notification.pathFilter()),
+      ]);
     },
   });
 }
@@ -23,7 +32,16 @@ export function useUnblockUser() {
   return useMutation({
     ...trpc.moderation.unblockUser.mutationOptions(),
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      await Promise.all([
+        queryClient.invalidateQueries(trpc.moderation.pathFilter()),
+        queryClient.invalidateQueries(trpc.follows.pathFilter()),
+        queryClient.invalidateQueries(trpc.activity.pathFilter()),
+        queryClient.invalidateQueries(trpc.comment.pathFilter()),
+        queryClient.invalidateQueries(trpc.recipe.pathFilter()),
+        queryClient.invalidateQueries(trpc.mealPlan.pathFilter()),
+        queryClient.invalidateQueries(trpc.shopping.pathFilter()),
+        queryClient.invalidateQueries(trpc.notification.pathFilter()),
+      ]);
     },
   });
 }

@@ -2,8 +2,6 @@ import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { invalidateFollowRelatedQueries } from "./utils/cache-helpers";
-
 // API Response Types
 export type SearchUser = Outputs["follows"]["searchUsers"][number];
 
@@ -49,8 +47,15 @@ export const useFollowUser = () => {
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.follows.followUser.mutationOptions({
-    onSuccess: async () => {
-      await invalidateFollowRelatedQueries(queryClient, trpc);
+    onSuccess: () => {
+      queryClient.invalidateQueries(trpc.follows.pathFilter());
+      queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.mealPlan.getShareableUsers.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.shopping.getShoppingListShareableUsers.pathFilter(),
+      );
     },
   });
 
@@ -63,8 +68,15 @@ export const useUnfollowUser = () => {
 
   return useMutation({
     ...trpc.follows.unfollowUser.mutationOptions(),
-    onSuccess: async () => {
-      await invalidateFollowRelatedQueries(queryClient, trpc);
+    onSuccess: () => {
+      queryClient.invalidateQueries(trpc.follows.pathFilter());
+      queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+      queryClient.invalidateQueries(
+        trpc.mealPlan.getShareableUsers.pathFilter(),
+      );
+      queryClient.invalidateQueries(
+        trpc.shopping.getShoppingListShareableUsers.pathFilter(),
+      );
     },
   });
 };

@@ -4,16 +4,8 @@ import type {
   PersonalizationGoal,
 } from "@repo/contracts";
 import type { PublicImageAsset } from "@repo/contracts/images";
+import { recipes, tags, recipeTags, activityEvents } from "@repo/db/schemas";
 import {
-  recipes,
-  recipeCollections,
-  collections,
-  tags,
-  recipeTags,
-  activityEvents,
-} from "@repo/db/schemas";
-import {
-  queryPopularRecipesThisWeek,
   createRecipeInTransaction,
   updateRecipe,
   getRecipeDetail,
@@ -28,7 +20,7 @@ import {
 import { parseIngredients } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, desc, and, count } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 import {
   filterOptionalPublicText,
@@ -997,50 +989,6 @@ const recipeTailRouter = router({
       return { success: true };
     }),
 
-  getUserPreferences: authedProcedure.query(async ({ ctx }) => {
-    try {
-      // Analyze user's saved recipes to find most frequent tags
-      const userTagPreferences = await ctx.db
-        .select({
-          tag: {
-            id: tags.id,
-            name: tags.name,
-          },
-          count: count(recipeTags.id),
-        })
-        .from(recipeCollections)
-        .innerJoin(
-          collections,
-          eq(recipeCollections.collectionId, collections.id),
-        )
-        .innerJoin(
-          recipeTags,
-          eq(recipeCollections.recipeId, recipeTags.recipeId),
-        )
-        .innerJoin(tags, eq(recipeTags.tagId, tags.id))
-        .where(
-          and(
-            eq(collections.userId, ctx.user.id),
-            eq(tags.userId, ctx.user.id),
-          ),
-        )
-        .groupBy(tags.id)
-        .orderBy(desc(count(recipeTags.id)))
-        .limit(15);
-
-      return userTagPreferences.map((item) => ({
-        ...item.tag,
-        count: item.count,
-      }));
-    } catch (err) {
-      console.error("Error fetching user preferences:", err);
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Failed to fetch user preferences",
-      });
-    }
-  }),
-
   getUserTags: authedProcedure.query(async ({ ctx }) => {
     try {
       return await ctx.db
@@ -1089,28 +1037,6 @@ const recipeTailRouter = router({
     )
     .query(({ input }) => {
       return parseIngredients(input.ingredients);
-    }),
-
-  getPopularThisWeek: authedProcedure
-    .input(
-      type({
-        limit: "number = 10",
-      }),
-    )
-    .query(async ({ ctx, input }) => {
-      try {
-        return await queryPopularRecipesThisWeek(
-          ctx.db,
-          ctx.user.id,
-          input.limit,
-        );
-      } catch (err) {
-        console.error("Error fetching popular recipes:", err);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to fetch popular recipes",
-        });
-      }
     }),
 });
 

@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { useRef } from "react";
 
+import { useSessionContext } from "@/lib/sessionContext";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
 // API Response Types
@@ -128,42 +129,42 @@ export const useActivityFeed = ({ limit = 20 }: UseActivityFeedParams = {}) => {
 export const useCreateCookingReview = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const userId = useSessionContext()?.user.id;
 
   return useMutation(
     trpc.activity.createCookingReview.mutationOptions({
-      onSuccess: async () => {
+      onSuccess: async (_data, variables) => {
+        queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+        queryClient.invalidateQueries(
+          userId
+            ? trpc.activity.getUserActivities.infiniteQueryFilter({ userId })
+            : trpc.activity.getUserActivities.pathFilter(),
+        );
+        queryClient.invalidateQueries(
+          trpc.collection.getUserCollections.pathFilter(),
+        );
+        queryClient.invalidateQueries(
+          trpc.collection.getCollectionDetail.pathFilter(),
+        );
+
         await Promise.all([
-          queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter()),
           queryClient.invalidateQueries(
-            trpc.activity.getUserActivities.pathFilter(),
+            trpc.activity.getRecipeReviews.infiniteQueryFilter({
+              recipeId: variables.recipeId,
+            }),
           ),
-          queryClient.invalidateQueries(
-            trpc.activity.getRecipeReviews.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.activity.getRecipeRating.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getRecipeDetail.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getUserRecipes.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.searchUserRecipes.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getPopularThisWeek.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.recipe.getUserPreferences.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.collection.getUserCollections.pathFilter(),
-          ),
-          queryClient.invalidateQueries(
-            trpc.collection.getCollectionDetail.pathFilter(),
-          ),
+          queryClient.invalidateQueries({
+            queryKey: trpc.activity.getRecipeRating.queryKey({
+              recipeId: variables.recipeId,
+            }),
+            exact: true,
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.recipe.getRecipeDetail.queryKey({
+              recipeId: variables.recipeId,
+            }),
+            exact: true,
+          }),
         ]);
       },
     }),
@@ -254,7 +255,10 @@ export const useToggleActivityLike = () => {
         const activityQueryKey = trpc.activity.getActivity.queryKey({
           activityEventId,
         });
-        await queryClient.cancelQueries({ queryKey: activityQueryKey });
+        await queryClient.cancelQueries({
+          queryKey: activityQueryKey,
+          exact: true,
+        });
 
         // Snapshot previous feed data
         const previousFeedData = queryClient.getQueriesData<

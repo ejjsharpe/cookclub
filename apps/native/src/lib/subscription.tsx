@@ -1,5 +1,3 @@
-import { useTRPC } from "@repo/trpc/client";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -50,8 +48,6 @@ const SubscriptionContext = createContext<SubscriptionContextValue | null>(
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
   const session = useSessionContext();
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
   const enabled = Boolean(session?.user.id);
   const statusQuery = useSubscriptionStatus(enabled);
   const refreshMutation = useRefreshSubscriptionEntitlement();
@@ -62,12 +58,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
   const refresh = useCallback(async () => {
     if (!session?.user.id) return undefined;
-    const nextStatus = await refreshMutation.mutateAsync();
-    await queryClient.invalidateQueries(
-      trpc.subscription.getStatus.pathFilter(),
-    );
-    return nextStatus;
-  }, [queryClient, refreshMutation, session?.user.id, trpc]);
+    return await refreshMutation.mutateAsync();
+  }, [refreshMutation, session?.user.id]);
 
   useEffect(() => {
     const userId = session?.user.id;

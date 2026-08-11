@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image as ExpoImage } from "expo-image";
 import { useState, useCallback } from "react";
 
-import { invalidateUserIdentityQueries } from "@/api/utils/cache-helpers";
 import { normalizeImageForUpload } from "@/utils/imageUtils";
 
 export interface UseAvatarUploadOptions {
@@ -79,14 +78,22 @@ export function useAvatarUpload(options: UseAvatarUploadOptions = {}) {
       // Show the new avatar immediately on mounted screens; invalidation below
       // refreshes other queries that may embed the old user image.
       if (updatedUser.user) {
-        queryClient.setQueryData(trpc.user.getUser.queryFilter().queryKey, {
+        queryClient.setQueryData(trpc.user.getUser.queryKey(), {
           user: updatedUser.user,
         });
       }
 
       // Refresh screens and clear image caches that may still hold the old avatar URL.
       await Promise.all([
-        invalidateUserIdentityQueries(queryClient, trpc),
+        queryClient.invalidateQueries(trpc.user.getUser.pathFilter()),
+        queryClient.invalidateQueries(trpc.follows.pathFilter()),
+        queryClient.invalidateQueries(trpc.activity.pathFilter()),
+        queryClient.invalidateQueries(trpc.collection.pathFilter()),
+        queryClient.invalidateQueries(trpc.comment.pathFilter()),
+        queryClient.invalidateQueries(trpc.recipe.pathFilter()),
+        queryClient.invalidateQueries(trpc.mealPlan.pathFilter()),
+        queryClient.invalidateQueries(trpc.shopping.pathFilter()),
+        queryClient.invalidateQueries(trpc.notification.pathFilter()),
         ExpoImage.clearMemoryCache().catch(() => false),
         ExpoImage.clearDiskCache().catch(() => false),
       ]);

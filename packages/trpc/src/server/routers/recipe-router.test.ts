@@ -59,7 +59,6 @@ vi.mock("@repo/db/services", () => ({
     mockQueryUserRecipesByOwner(...args),
   areUsersBlocked: (...args: unknown[]) => mockAreUsersBlocked(...args),
   searchUserRecipes: (...args: unknown[]) => mockSearchUserRecipes(...args),
-  queryPopularRecipesThisWeek: vi.fn(),
   DEFAULT_PRO_ACCESS_LEVEL_ID: "pro",
   getSubscriptionStatus: (...args: unknown[]) =>
     mockGetSubscriptionStatus(...args),

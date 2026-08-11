@@ -31,15 +31,23 @@ export const useCreateComment = () => {
   return useMutation(
     trpc.comment.createComment.mutationOptions({
       onSuccess: (_data, variables) => {
-        queryClient.invalidateQueries(trpc.comment.getComments.pathFilter());
-        queryClient.invalidateQueries({
-          queryKey: trpc.activity.getActivity.queryKey({
+        if (variables.parentCommentId === undefined) {
+          queryClient.invalidateQueries({
+            queryKey: trpc.activity.getActivity.queryKey({
+              activityEventId: variables.activityEventId,
+            }),
+            exact: true,
+          });
+          queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
+          queryClient.invalidateQueries(
+            trpc.activity.getUserActivities.pathFilter(),
+          );
+        }
+
+        return queryClient.invalidateQueries(
+          trpc.comment.getComments.queryFilter({
             activityEventId: variables.activityEventId,
           }),
-        });
-        queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
-        queryClient.invalidateQueries(
-          trpc.activity.getUserActivities.pathFilter(),
         );
       },
     }),
@@ -54,13 +62,17 @@ export const useDeleteComment = (activityEventId: number) => {
   return useMutation(
     trpc.comment.deleteComment.mutationOptions({
       onSuccess: () => {
-        queryClient.invalidateQueries(trpc.comment.getComments.pathFilter());
         queryClient.invalidateQueries({
           queryKey: trpc.activity.getActivity.queryKey({ activityEventId }),
+          exact: true,
         });
         queryClient.invalidateQueries(trpc.activity.getFeed.pathFilter());
         queryClient.invalidateQueries(
           trpc.activity.getUserActivities.pathFilter(),
+        );
+
+        return queryClient.invalidateQueries(
+          trpc.comment.getComments.queryFilter({ activityEventId }),
         );
       },
     }),
