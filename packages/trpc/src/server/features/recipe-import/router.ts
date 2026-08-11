@@ -35,7 +35,7 @@ import { mapServiceError } from "../../utils";
 
 const UrlSource = type({ type: "'url'", value: "string" });
 const TextSource = type({ type: "'text'", value: "string" });
-const ImageSource = type({ type: "'image'", uploadKey: "string" });
+const ImageSource = type({ type: "'image'", uploadKeys: "string[]" });
 const SmartSource = type.or(UrlSource, TextSource, ImageSource);
 const CreateImport = type.or(
   type({ id: "string", importType: "'basic'", source: UrlSource }),

@@ -21,6 +21,7 @@ type TestRecipeAI = Omit<RecipeAI, "parse"> & {
       | {
           type: "image";
           jobId: string;
+          imageCount?: number;
           strategy: "ai-assisted";
           imageStagingId?: string;
         }
@@ -3195,6 +3196,43 @@ Serves 4
       }
     });
 
+    it("combines multiple staged images in page order", async () => {
+      const jobId = "60562c7b-3208-40e0-a5fa-97449c7ec360";
+
+      const result = await parser.parse({
+        type: "image",
+        jobId,
+        imageCount: 2,
+        strategy: "ai-assisted",
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockEnv.IMAGE_SERVICE.getImportSource).toHaveBeenNthCalledWith(
+        1,
+        jobId,
+        0,
+      );
+      expect(mockEnv.IMAGE_SERVICE.getImportSource).toHaveBeenNthCalledWith(
+        2,
+        jobId,
+        1,
+      );
+      if (result.success) {
+        expect(result.data.images).toEqual([
+          `https://images.example.com/imports/${jobId}/source.jpg`,
+          `https://images.example.com/imports/${jobId}/source-2.jpg`,
+        ]);
+      }
+
+      const request = mockEnv.aiClient.complete.mock.calls.at(-1)?.[1] as {
+        messages: { role: string; content: unknown[] }[];
+      };
+      const userContent = request.messages.find(
+        (message) => message.role === "user",
+      )?.content;
+      expect(userContent).toHaveLength(3);
+    });
+
     it("returns a retryable failure when staged bytes are temporarily unavailable", async () => {
       mockEnv.IMAGE_SERVICE.getImportSource.mockResolvedValueOnce(
         new Response(null, { status: 503 }),
@@ -3223,6 +3261,33 @@ Serves 4
       const result = await parser.parse({
         type: "image",
         jobId: "197415af-17c8-4461-813b-12934f0e1bf8",
+        strategy: "ai-assisted",
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe("PAYLOAD_TOO_LARGE");
+      }
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
+    });
+
+    it("rejects images that exceed the combined source limit", async () => {
+      mockEnv.IMAGE_SERVICE.getImportSource
+        .mockResolvedValueOnce(
+          new Response(new Uint8Array(7 * 1024 * 1024), {
+            headers: { "content-type": "image/jpeg" },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(new Uint8Array(7 * 1024 * 1024), {
+            headers: { "content-type": "image/jpeg" },
+          }),
+        );
+
+      const result = await parser.parse({
+        type: "image",
+        jobId: "714508b0-abde-46fe-9964-e77da3d6608c",
+        imageCount: 2,
         strategy: "ai-assisted",
       });
 

@@ -94,7 +94,7 @@ export const RECIPE_EXTRACTION_SYSTEM_PROMPT = `You are a strict Recipe Data Ext
 - Use "instructionSections": [] when no cooking instructions are present
 - Nutrition units: kcal for calories, grams for protein/carbohydrates/fat/saturatedFat/fiber/sugar, milligrams for sodium/cholesterol/potassium, percent daily value for vitaminA/vitaminC/calcium/iron`;
 
-export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extraction API. Analyze the image and extract any recipe information you can identify.
+export const IMAGE_EXTRACTION_SYSTEM_PROMPT = `You are a Recipe OCR and Extraction API. Analyze all supplied images as one recipe and extract any recipe information you can identify. Images may be consecutive pages and are supplied in reading order.
 
 ### RULES:
 1. **JSON ONLY**: Output strictly valid JSON. No markdown, no explanation.
@@ -197,5 +197,5 @@ ${options.evidence}`;
 }
 
 export function createImageExtractionPrompt(): string {
-  return `Extract all recipe information visible in this image. Include the recipe name, ingredients with quantities, cooking instructions, and estimated nutrition per serving.`;
+  return `Extract all recipe information visible across these images as one recipe. Preserve the supplied page order and combine details without duplication. Include the recipe name, ingredients with quantities, cooking instructions, and estimated nutrition per serving.`;
 }

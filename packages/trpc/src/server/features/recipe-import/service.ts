@@ -205,13 +205,29 @@ function normalizeSource(
     return { type: "text", value };
   }
 
-  if (!source.uploadKey.startsWith("temp/")) {
+  const { uploadKeys } = source;
+  if (uploadKeys.length === 0) {
     throw new PublicTRPCError({
       code: "BAD_REQUEST",
       appCode: "IMPORT_IMAGE_INVALID",
     });
   }
-  return { type: "image", uploadKey: source.uploadKey };
+  if (uploadKeys.length > RECIPE_IMPORT_LIMITS.sourceImages) {
+    throw new PublicTRPCError({
+      code: "PAYLOAD_TOO_LARGE",
+      appCode: "PAYLOAD_TOO_LARGE",
+    });
+  }
+  if (
+    new Set(uploadKeys).size !== uploadKeys.length ||
+    uploadKeys.some((uploadKey) => !uploadKey.startsWith("temp/"))
+  ) {
+    throw new PublicTRPCError({
+      code: "BAD_REQUEST",
+      appCode: "IMPORT_IMAGE_INVALID",
+    });
+  }
+  return { type: "image", uploadKeys: [...uploadKeys] };
 }
 
 export async function enqueueRecipeImportJob(
@@ -240,18 +256,30 @@ export async function createRecipeImportJob(
   validateJobId(request.id);
   const source = normalizeSource(request.importType, request.source);
   const fingerprint = await fingerprintRecipeImportRequest({
-    version: 2,
+    version: 3,
     importType: request.importType,
     source,
   });
 
   if (source.type === "image") {
     try {
-      await ctx.env.IMAGE_SERVICE.stageImportSource(
-        source.uploadKey,
-        userId,
-        request.id,
+      const stagingResults = await Promise.allSettled(
+        source.uploadKeys.map((uploadKey, sourceIndex) =>
+          ctx.env.IMAGE_SERVICE.stageImportSource(
+            uploadKey,
+            userId,
+            request.id,
+            sourceIndex,
+            source.uploadKeys.length,
+          ),
+        ),
       );
+      const failedStaging = stagingResults.find(
+        (result) => result.status === "rejected",
+      );
+      if (failedStaging?.status === "rejected") {
+        throw failedStaging.reason;
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown staging error";
@@ -351,7 +379,12 @@ export async function createRecipeImportJob(
         importType: request.importType,
         mode: source.type,
         title: recipeImportPlaceholderTitle(source),
-        sourceData: source.type === "image" ? null : source.value,
+        sourceData:
+          source.type === "image"
+            ? source.uploadKeys.length > 1
+              ? String(source.uploadKeys.length)
+              : null
+            : source.value,
         requestFingerprint: fingerprint,
         status: "pending",
         usagePeriodStart,
@@ -594,11 +627,19 @@ async function parseRecipeImportJob(
     });
   }
   if (job.mode === "image" && strategy === "ai-assisted") {
+    const storedImageCount = Number(job.sourceData ?? 1);
+    const imageCount =
+      Number.isInteger(storedImageCount) &&
+      storedImageCount > 1 &&
+      storedImageCount <= RECIPE_IMPORT_LIMITS.sourceImages
+        ? storedImageCount
+        : 1;
     return await ctx.env.RECIPE_AI.parse({
       type: "image",
       jobId: job.id,
       strategy,
       imageStagingId: job.id,
+      ...(imageCount > 1 ? { imageCount } : {}),
     });
   }
   return {

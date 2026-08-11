@@ -1,6 +1,6 @@
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
-const IMPORT_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
+const IMPORT_SOURCE_MAX_BYTES = 4 * 1024 * 1024;
 const AVATAR_MAX_BYTES = 512 * 1024;
 const PHOTO_NORMALIZATION_ATTEMPTS = [
   { maxLongEdge: 2560, compress: 0.84 },
@@ -122,10 +122,13 @@ async function normalizeAvatarImage(
 export async function normalizeImageForUpload(
   uri: string,
   kind: UploadImageKind,
+  maxBytes?: number,
 ): Promise<NormalizedUploadImage> {
   if (kind === "avatar") return normalizeAvatarImage(uri);
+  const kindMaxBytes =
+    kind === "recipe_import_source" ? IMPORT_SOURCE_MAX_BYTES : PHOTO_MAX_BYTES;
   return normalizePhotoImage(
     uri,
-    kind === "recipe_import_source" ? IMPORT_SOURCE_MAX_BYTES : PHOTO_MAX_BYTES,
+    maxBytes === undefined ? kindMaxBytes : Math.min(kindMaxBytes, maxBytes),
   );
 }

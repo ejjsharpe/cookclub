@@ -267,6 +267,8 @@ export interface ImageService {
     tempKey: string,
     ownerId: string,
     jobId: string,
+    sourceIndex?: number,
+    sourceCount?: number,
   ): Promise<StoredImageAsset>;
-  getImportSource(jobId: string): Promise<Response>;
+  getImportSource(jobId: string, sourceIndex?: number): Promise<Response>;
 }

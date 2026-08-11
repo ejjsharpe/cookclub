@@ -421,6 +421,14 @@ export async function parseRecipeFromImage(
   imageData: string,
   mimeType: string,
 ): Promise<AiRecipeResult> {
+  return await parseRecipeFromImages(ai, [{ imageData, mimeType }]);
+}
+
+/** Extract one recipe spread across one or more images using a single model call. */
+export async function parseRecipeFromImages(
+  ai: AiClient,
+  images: { imageData: string; mimeType: string }[],
+): Promise<AiRecipeResult> {
   const response = await ai.complete("vision", {
     messages: [
       { role: "system", content: IMAGE_EXTRACTION_SYSTEM_PROMPT },
@@ -428,12 +436,12 @@ export async function parseRecipeFromImage(
         role: "user",
         content: [
           { type: "text", text: createImageExtractionPrompt() },
-          {
+          ...images.map(({ imageData, mimeType }) => ({
             type: "image_url",
             image_url: {
               url: `data:${mimeType};base64,${imageData}`,
             },
-          },
+          })),
         ],
       },
     ],

@@ -270,18 +270,87 @@ describe("durable recipe import creation", () => {
     await createRecipeImportJob(createContext(db, env) as never, "user-1", {
       id: JOB_ID,
       importType: "smart",
-      source: { type: "image", uploadKey: "temp/user-1/source.jpg" },
+      source: {
+        type: "image",
+        uploadKeys: ["temp/user-1/source.jpg"],
+      },
     });
 
     expect(env.IMAGE_SERVICE.stageImportSource).toHaveBeenCalledWith(
       "temp/user-1/source.jpg",
       "user-1",
       JOB_ID,
+      0,
+      1,
     );
     expect(state.inserted[0]).toMatchObject({
       mode: "image",
       sourceData: null,
     });
+  });
+
+  it("stages multiple image sources and records their count", async () => {
+    const { db, state } = createCreateDb();
+    const env = createEnvironment();
+
+    await createRecipeImportJob(createContext(db, env) as never, "user-1", {
+      id: JOB_ID,
+      importType: "smart",
+      source: {
+        type: "image",
+        uploadKeys: ["temp/user-1/source-1.jpg", "temp/user-1/source-2.jpg"],
+      },
+    });
+
+    expect(env.IMAGE_SERVICE.stageImportSource).toHaveBeenNthCalledWith(
+      1,
+      "temp/user-1/source-1.jpg",
+      "user-1",
+      JOB_ID,
+      0,
+      2,
+    );
+    expect(env.IMAGE_SERVICE.stageImportSource).toHaveBeenNthCalledWith(
+      2,
+      "temp/user-1/source-2.jpg",
+      "user-1",
+      JOB_ID,
+      1,
+      2,
+    );
+    expect(state.inserted[0]).toMatchObject({
+      mode: "image",
+      sourceData: "2",
+    });
+  });
+
+  it("rejects empty and over-limit image source lists", async () => {
+    const { db } = createCreateDb();
+    const env = createEnvironment();
+
+    await expect(
+      createRecipeImportJob(createContext(db, env) as never, "user-1", {
+        id: JOB_ID,
+        importType: "smart",
+        source: { type: "image", uploadKeys: [] },
+      }),
+    ).rejects.toMatchObject({ appCode: "IMPORT_IMAGE_INVALID" });
+
+    await expect(
+      createRecipeImportJob(createContext(db, env) as never, "user-1", {
+        id: JOB_ID,
+        importType: "smart",
+        source: {
+          type: "image",
+          uploadKeys: Array.from(
+            { length: 4 },
+            (_, index) => `temp/user-1/source-${index}.jpg`,
+          ),
+        },
+      }),
+    ).rejects.toMatchObject({ appCode: "PAYLOAD_TOO_LARGE" });
+
+    expect(env.IMAGE_SERVICE.stageImportSource).not.toHaveBeenCalled();
   });
 
   it("uses canonical stable fingerprints", async () => {
@@ -296,6 +365,41 @@ describe("durable recipe import creation", () => {
 describe("recipe import processing outcomes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("passes the stored image count to the recipe AI worker", async () => {
+    const { db, state } = createProcessDb();
+    state.job.mode = "image";
+    state.job.sourceData = "2";
+    const parse = vi.fn().mockResolvedValue({
+      success: false,
+      error: {
+        code: "IMPORT_SOURCE_UNAVAILABLE",
+        message: "Temporary fetch failure",
+        disposition: "retry",
+      },
+    });
+    const env = {
+      ...createEnvironment(),
+      RECIPE_AI: { parse },
+      IMAGE_SERVICE: {
+        stageImportSource: vi.fn(),
+        deleteImportImages: vi.fn(),
+      },
+    };
+
+    await processRecipeImportJob({ db, env } as never, {
+      jobId: JOB_ID,
+      userId: "user-1",
+    });
+
+    expect(parse).toHaveBeenCalledWith({
+      type: "image",
+      jobId: JOB_ID,
+      imageCount: 2,
+      strategy: "ai-assisted",
+      imageStagingId: JOB_ID,
+    });
   });
 
   it("resets a retryable parse to pending without refund or cleanup", async () => {

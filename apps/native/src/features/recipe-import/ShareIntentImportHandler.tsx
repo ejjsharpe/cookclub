@@ -70,7 +70,7 @@ export function ShareIntentImportHandler() {
         await submitImport({
           id: record.id,
           importType: "smart",
-          source: { type: "image", uploadKey },
+          source: { type: "image", uploadKeys: [uploadKey] },
         });
       } else {
         if (importType === "basic") {

@@ -6,7 +6,7 @@ import {
 } from "@repo/contracts/recipe-import";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-import { parseImage, parseText, parseUrl } from "./import";
+import { parseImages, parseText, parseUrl } from "./import";
 import { createCerebrasClient } from "./services/cerebras-client";
 import { createFallbackAiClient } from "./services/fallback-ai-client";
 import { createGroqClient } from "./services/groq-client";
@@ -149,37 +149,76 @@ async function parseWithEnv(
 
       case "image":
         {
-          const sourceResponse = await env.IMAGE_SERVICE.getImportSource(
-            input.jobId,
-          );
-          if (!sourceResponse.ok) {
+          const imageCount = input.imageCount ?? 1;
+          if (
+            !Number.isInteger(imageCount) ||
+            imageCount < 1 ||
+            imageCount > RECIPE_IMPORT_LIMITS.sourceImages
+          ) {
             result = {
               success: false,
               error: {
-                code: "FETCH_FAILED",
-                message: `Import source image was unavailable (${sourceResponse.status}).`,
-                disposition:
-                  sourceResponse.status >= 500 ? "retry" : "terminal",
+                code: "INVALID_INPUT",
+                message: `Image imports support between 1 and ${RECIPE_IMPORT_LIMITS.sourceImages} images.`,
               },
               metadata: { source: "image", confidence: "low" },
             };
             break;
           }
-          const imageData = await readBoundedBody(
-            sourceResponse,
-            RECIPE_IMPORT_LIMITS.sourceImageBytes,
-            "Image service",
-          );
-          result = await parseImage(
-            env,
-            imageData,
-            "image/jpeg",
-            publicImageUrlForKey(
-              env.IMAGE_PUBLIC_URL,
-              `imports/${input.jobId}/source.jpg`,
+          const sourceResponses = await Promise.all(
+            Array.from({ length: imageCount }, (_, sourceIndex) =>
+              imageCount === 1
+                ? env.IMAGE_SERVICE.getImportSource(input.jobId)
+                : env.IMAGE_SERVICE.getImportSource(input.jobId, sourceIndex),
             ),
-            aiClient,
           );
+          const unavailableSource = sourceResponses.find(
+            (sourceResponse) => !sourceResponse.ok,
+          );
+          if (unavailableSource) {
+            result = {
+              success: false,
+              error: {
+                code: "FETCH_FAILED",
+                message: `Import source image was unavailable (${unavailableSource.status}).`,
+                disposition:
+                  unavailableSource.status >= 500 ? "retry" : "terminal",
+              },
+              metadata: { source: "image", confidence: "low" },
+            };
+            break;
+          }
+          const sourceImages = [];
+          let totalImageBytes = 0;
+          for (const [
+            sourceIndex,
+            sourceResponse,
+          ] of sourceResponses.entries()) {
+            const imageData = await readBoundedBody(
+              sourceResponse,
+              RECIPE_IMPORT_LIMITS.sourceImageBytes,
+              "Image service",
+            );
+            totalImageBytes += imageData.byteLength;
+            if (totalImageBytes > RECIPE_IMPORT_LIMITS.sourceImagesTotalBytes) {
+              throw new Error(
+                `Image service response exceeded the ${RECIPE_IMPORT_LIMITS.sourceImagesTotalBytes} byte combined limit.`,
+              );
+            }
+            sourceImages.push({
+              imageData,
+              mimeType: "image/jpeg",
+              sourceImageUrl: publicImageUrlForKey(
+                env.IMAGE_PUBLIC_URL,
+                `imports/${input.jobId}/${
+                  sourceIndex === 0
+                    ? "source.jpg"
+                    : `source-${sourceIndex + 1}.jpg`
+                }`,
+              ),
+            });
+          }
+          result = await parseImages(env, sourceImages, aiClient);
         }
         break;
 

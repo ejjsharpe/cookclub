@@ -4,6 +4,7 @@ import {
   parseRecipeFromText,
   parseRecipeFromHtml,
   parseRecipeFromImage,
+  parseRecipeFromImages,
 } from "../../../src/services/ai-client";
 
 // Mock AI binding
@@ -234,6 +235,30 @@ describe("parseRecipeFromImage", () => {
         }),
       ]),
     );
+  });
+
+  it("sends multiple images in their supplied order", async () => {
+    const mockAi = createMockAi(validRecipeJson);
+
+    await parseRecipeFromImages(mockAi as any, [
+      { imageData: "first", mimeType: "image/jpeg" },
+      { imageData: "second", mimeType: "image/png" },
+    ]);
+
+    const call = mockAi.complete.mock.calls[0]!;
+    const userMessage = call[1].messages.find(
+      (message: { role: string }) => message.role === "user",
+    );
+    expect(userMessage.content.slice(1)).toEqual([
+      {
+        type: "image_url",
+        image_url: { url: "data:image/jpeg;base64,first" },
+      },
+      {
+        type: "image_url",
+        image_url: { url: "data:image/png;base64,second" },
+      },
+    ]);
   });
 
   it("throws error on invalid AI response", async () => {

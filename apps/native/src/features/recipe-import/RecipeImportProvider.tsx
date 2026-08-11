@@ -34,7 +34,7 @@ export type RecipeImportSubmission =
       importType: "smart";
       source:
         | { type: "url" | "text"; value: string }
-        | { type: "image"; fileUri?: string; uploadKey?: string };
+        | { type: "image"; uploadKeys: string[] };
     };
 
 export type RecipeImportItem = Omit<
@@ -54,7 +54,7 @@ type RecipeImportContextValue = {
   submitImport: (
     submission: RecipeImportSubmission,
   ) => Promise<RecipeImportSummary>;
-  uploadImportSource: (fileUri: string) => Promise<string>;
+  uploadImportSource: (fileUri: string, maxBytes?: number) => Promise<string>;
   dismissImport: (id: string) => Promise<void>;
 };
 
@@ -71,7 +71,7 @@ export function RecipeImportProvider({ children }: PropsWithChildren) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const enabled = Boolean(session?.user.id);
-  const { uploadImages } = useImageUpload({ maxConcurrent: 1 });
+  const { uploadImages } = useImageUpload({ maxConcurrent: 3 });
 
   const jobsQuery = useQuery({
     ...trpc.recipeImport.list.queryOptions(),
@@ -139,10 +139,16 @@ export function RecipeImportProvider({ children }: PropsWithChildren) {
   }, [enabled, jobsQuery]);
 
   const uploadImportSource = useCallback(
-    async (fileUri: string) => {
-      const [upload] = await uploadImages([fileUri], "recipe_import_source");
-      if (!upload) throw new Error("The recipe image could not be uploaded.");
-      return upload.key;
+    async (fileUri: string, maxBytes?: number) => {
+      const [upload] = await uploadImages(
+        [fileUri],
+        "recipe_import_source",
+        maxBytes,
+      );
+      const uploadKey = upload?.key;
+      if (!uploadKey)
+        throw new Error("The recipe image could not be uploaded.");
+      return uploadKey;
     },
     [uploadImages],
   );
@@ -151,18 +157,15 @@ export function RecipeImportProvider({ children }: PropsWithChildren) {
     async (submission: RecipeImportSubmission) => {
       try {
         if (submission.source.type === "image") {
-          const uploadKey =
-            submission.source.uploadKey ??
-            (submission.source.fileUri
-              ? await uploadImportSource(submission.source.fileUri)
-              : null);
-          if (!uploadKey) {
-            throw new Error("A local image or completed upload is required.");
+          if (!submission.source.uploadKeys.length) {
+            throw new Error(
+              "One or more completed image uploads are required.",
+            );
           }
           return await createMutation.mutateAsync({
             id: submission.id,
             importType: "smart",
-            source: { type: "image", uploadKey },
+            source: submission.source,
           });
         }
 
@@ -186,7 +189,7 @@ export function RecipeImportProvider({ children }: PropsWithChildren) {
         throw error;
       }
     },
-    [createMutation, uploadImportSource],
+    [createMutation],
   );
 
   const dismissImport = useCallback(

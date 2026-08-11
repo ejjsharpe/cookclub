@@ -23,6 +23,7 @@ export type ParseInput =
   | {
       type: "image";
       jobId: string;
+      imageCount?: number;
       strategy: "ai-assisted";
       imageStagingId?: string;
     };

@@ -139,6 +139,64 @@ describe("recipe import source staging", () => {
     expect(bucket.delete).toHaveBeenCalledWith(TEMP_KEY);
   });
 
+  it("stages additional sources under stable numbered keys", async () => {
+    const destinationKey = `imports/${JOB_ID}/source-2.jpg`;
+    const bucket = {
+      head: vi.fn().mockResolvedValue(null),
+      get: vi.fn().mockResolvedValue(sourceObject()),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const inspect = vi.fn().mockResolvedValue(asset(destinationKey));
+
+    await expect(
+      stageImportSource(
+        {
+          bucket: bucket as never,
+          normalize: vi
+            .fn()
+            .mockResolvedValue(new Uint8Array([9, 8, 7, 6]).buffer),
+          inspect,
+        },
+        "temp/user-1/source-2.png",
+        OWNER_ID,
+        JOB_ID,
+        1,
+      ),
+    ).resolves.toEqual(asset(destinationKey));
+
+    expect(inspect).toHaveBeenCalledWith(destinationKey);
+  });
+
+  it("rejects normalized bytes above the per-source budget", async () => {
+    const bucket = {
+      head: vi.fn().mockResolvedValue(null),
+      get: vi.fn().mockResolvedValue(sourceObject()),
+      put: vi.fn(),
+      delete: vi.fn(),
+    };
+
+    await expect(
+      stageImportSource(
+        {
+          bucket: bucket as never,
+          normalize: vi
+            .fn()
+            .mockResolvedValue(new Uint8Array([1, 2, 3, 4]).buffer),
+          inspect: vi.fn(),
+        },
+        TEMP_KEY,
+        OWNER_ID,
+        JOB_ID,
+        0,
+        3,
+      ),
+    ).rejects.toThrow("too large after normalization");
+
+    expect(bucket.put).not.toHaveBeenCalled();
+    expect(bucket.delete).not.toHaveBeenCalled();
+  });
+
   it("streams only a bounded normalised JPEG", async () => {
     const body = new ReadableStream({
       start(controller) {
@@ -162,5 +220,21 @@ describe("recipe import source staging", () => {
     expect(await response.arrayBuffer()).toEqual(
       new Uint8Array([1, 2, 3, 4]).buffer,
     );
+  });
+
+  it("reads an additional source by its index", async () => {
+    const bucket = {
+      get: vi.fn().mockResolvedValue({
+        size: 4,
+        etag: "etag-2",
+        body: new Blob([new Uint8Array([5, 6, 7, 8])]).stream(),
+        httpMetadata: { contentType: "image/jpeg" },
+      }),
+    };
+
+    const response = await getImportSource(bucket as never, JOB_ID, 1);
+
+    expect(bucket.get).toHaveBeenCalledWith(`imports/${JOB_ID}/source-2.jpg`);
+    expect(response.status).toBe(200);
   });
 });

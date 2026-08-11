@@ -1,10 +1,13 @@
 import { Buffer } from "node:buffer";
 
-import { parseRecipeFromImage } from "../services/ai-client";
+import {
+  parseRecipeFromImage,
+  parseRecipeFromImages,
+} from "../services/ai-client";
+import { providerFailureFields } from "../services/provider-response";
 import { aiResultToRecipe } from "../services/recipe-mapper";
 import type { Env, ParseResult } from "../types";
 import { acceptedCandidate } from "./url/parse";
-import { providerFailureFields } from "../services/provider-response";
 import type { AiClient } from "../utils/ai-response-parser";
 import {
   appendFallbackPath,
@@ -13,6 +16,12 @@ import {
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const VALID_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+export interface RecipeSourceImage {
+  imageData: ArrayBuffer;
+  mimeType: string;
+  sourceImageUrl: string;
+}
 
 /**
  * Parse a recipe from an image
@@ -24,10 +33,19 @@ export async function parseImage(
   sourceImageUrl: string,
   ai: AiClient,
 ): Promise<ParseResult> {
+  return await parseImages(env, [{ imageData, mimeType, sourceImageUrl }], ai);
+}
+
+/** Parse a single recipe that may span several selected photos or pages. */
+export async function parseImages(
+  env: Env,
+  images: RecipeSourceImage[],
+  ai: AiClient,
+): Promise<ParseResult> {
   let diagnostics = {};
 
   // Validate mime type
-  if (!VALID_MIME_TYPES.includes(mimeType)) {
+  if (images.some(({ mimeType }) => !VALID_MIME_TYPES.includes(mimeType))) {
     return {
       success: false,
       error: {
@@ -48,7 +66,7 @@ export async function parseImage(
     };
   }
 
-  if (imageData.byteLength > MAX_IMAGE_SIZE) {
+  if (images.some(({ imageData }) => imageData.byteLength > MAX_IMAGE_SIZE)) {
     return {
       success: false,
       error: {
@@ -71,11 +89,18 @@ export async function parseImage(
 
   try {
     const aiStart = Date.now();
-    const aiResult = await parseRecipeFromImage(
-      ai,
-      Buffer.from(imageData).toString("base64"),
+    const encodedImages = images.map(({ imageData, mimeType }) => ({
+      imageData: Buffer.from(imageData).toString("base64"),
       mimeType,
-    );
+    }));
+    const aiResult =
+      encodedImages.length === 1
+        ? await parseRecipeFromImage(
+            ai,
+            encodedImages[0]!.imageData,
+            encodedImages[0]!.mimeType,
+          )
+        : await parseRecipeFromImages(ai, encodedImages);
     diagnostics = recordDiagnosticsStage(
       appendFallbackPath(diagnostics, "ai"),
       "ai",
@@ -85,7 +110,10 @@ export async function parseImage(
       sourceType: "image",
       sourceUrl: null,
     });
-    const candidateRecipe = { ...recipe, images: [sourceImageUrl] };
+    const candidateRecipe = {
+      ...recipe,
+      images: images.map(({ sourceImageUrl }) => sourceImageUrl),
+    };
     const parsedResult = await acceptedCandidate(
       env,
       "image",

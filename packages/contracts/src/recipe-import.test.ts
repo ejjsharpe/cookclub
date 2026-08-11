@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  RECIPE_IMPORT_LIMITS,
   isBasicImportUnsupportedHost,
   isBasicImportUnsupportedUrl,
   isRecipeImportSourceImageType,
   normalizeRecipeImportUrl,
   recipeImportPlaceholderTitle,
+  recipeImportSourceImageByteBudget,
   recipeImportStrategyForType,
 } from "./recipe-import";
 
@@ -45,6 +47,18 @@ describe("recipe import source validation", () => {
 });
 
 describe("recipe import normalization", () => {
+  it("divides the provider-safe image payload across all sources", () => {
+    expect(recipeImportSourceImageByteBudget(1)).toBe(
+      RECIPE_IMPORT_LIMITS.sourceImagesTotalBytes,
+    );
+    expect(recipeImportSourceImageByteBudget(3) * 3).toBeLessThanOrEqual(
+      RECIPE_IMPORT_LIMITS.sourceImagesTotalBytes,
+    );
+    expect(() => recipeImportSourceImageByteBudget(0)).toThrow(
+      "Invalid recipe import source count",
+    );
+  });
+
   it("trims, canonicalizes, and removes fragments from HTTP URLs", () => {
     expect(
       normalizeRecipeImportUrl("  https://example.com/recipe?q=1#method  "),
@@ -79,7 +93,10 @@ describe("recipe import normalization", () => {
       recipeImportPlaceholderTitle({ type: "text", value: "Recipe" }),
     ).toBe("Pasted recipe text");
     expect(
-      recipeImportPlaceholderTitle({ type: "image", uploadKey: "job/source" }),
+      recipeImportPlaceholderTitle({
+        type: "image",
+        uploadKeys: ["job/source"],
+      }),
     ).toBe("Recipe image");
   });
 });

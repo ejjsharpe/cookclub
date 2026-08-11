@@ -36,11 +36,19 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
   );
 
   const uploadSingleImage = useCallback(
-    async (localUri: string, kind: UploadImageKind): Promise<UploadResult> => {
+    async (
+      localUri: string,
+      kind: UploadImageKind,
+      maxBytes?: number,
+    ): Promise<UploadResult> => {
       // Update progress
       setUploadProgress((prev) => ({ ...prev, [localUri]: 0 }));
 
-      const normalized = await normalizeImageForUpload(localUri, kind);
+      const normalized = await normalizeImageForUpload(
+        localUri,
+        kind,
+        maxBytes,
+      );
       setUploadProgress((prev) => ({ ...prev, [localUri]: 20 }));
 
       // Get presigned URL
@@ -88,6 +96,7 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
     async (
       localUris: string[],
       kind: UploadImageKind = "recipe_photo",
+      maxBytesPerImage?: number,
     ): Promise<UploadResult[]> => {
       const validUris = localUris.filter(Boolean);
       if (validUris.length === 0) return [];
@@ -106,7 +115,7 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
         const batchResults = await Promise.all(
           batch.map(async (uri) => {
             try {
-              return await uploadSingleImage(uri, kind);
+              return await uploadSingleImage(uri, kind, maxBytesPerImage);
             } catch (error) {
               console.error(`Failed to upload image ${uri}:`, error);
               setUploadProgress((prev) => ({ ...prev, [uri]: -1 }));
@@ -127,10 +136,12 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
     mutationFn: ({
       localUris,
       kind,
+      maxBytesPerImage,
     }: {
       localUris: string[];
       kind?: UploadImageKind;
-    }) => uploadImagesInternal(localUris, kind),
+      maxBytesPerImage?: number;
+    }) => uploadImagesInternal(localUris, kind, maxBytesPerImage),
     onSuccess: (data) => {
       setUploadProgress({});
       onSuccess?.(data);
@@ -147,8 +158,11 @@ export function useImageUpload(options: UseImageUploadOptions = {}) {
   }, [uploadMutation]);
 
   return {
-    uploadImages: (localUris: string[], kind?: UploadImageKind) =>
-      uploadMutation.mutateAsync({ localUris, kind }),
+    uploadImages: (
+      localUris: string[],
+      kind?: UploadImageKind,
+      maxBytesPerImage?: number,
+    ) => uploadMutation.mutateAsync({ localUris, kind, maxBytesPerImage }),
     isUploading: uploadMutation.isPending,
     uploadProgress,
     error: uploadMutation.error,

@@ -29,7 +29,10 @@ export type ParseFailure = {
 export const RECIPE_IMPORT_LIMITS = {
   urlCharacters: 4_096,
   textCharacters: 10_000,
+  sourceImages: 3,
   sourceImageBytes: 10 * 1024 * 1024,
+  // Keeps the base64-encoded image payload below the primary provider's 10 MB limit.
+  sourceImagesTotalBytes: 7 * 1024 * 1024,
   placeholderTitleCharacters: 200,
   activeJobsPerUser: 5,
   pendingTimeoutMs: 10 * 60 * 1_000,
@@ -38,6 +41,17 @@ export const RECIPE_IMPORT_LIMITS = {
   terminalRetentionMs: 30 * 24 * 60 * 60 * 1_000,
   pendingIntentRetentionMs: 24 * 60 * 60 * 1_000,
 } as const;
+
+export function recipeImportSourceImageByteBudget(sourceCount: number): number {
+  if (
+    !Number.isInteger(sourceCount) ||
+    sourceCount < 1 ||
+    sourceCount > RECIPE_IMPORT_LIMITS.sourceImages
+  ) {
+    throw new Error("Invalid recipe import source count");
+  }
+  return Math.floor(RECIPE_IMPORT_LIMITS.sourceImagesTotalBytes / sourceCount);
+}
 
 export const RECIPE_IMPORT_SOURCE_IMAGE_TYPES = [
   "image/jpeg",
@@ -60,7 +74,7 @@ export const BASIC_IMPORT_UNSUPPORTED_HOSTS = [
 export type RecipeImportSource =
   | { type: "url"; value: string }
   | { type: "text"; value: string }
-  | { type: "image"; uploadKey: string };
+  | { type: "image"; uploadKeys: string[] };
 
 export type CreateRecipeImportRequest =
   | {

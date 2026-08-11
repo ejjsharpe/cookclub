@@ -1,5 +1,6 @@
 import type { StoredImageAsset } from "@repo/contracts/images";
 import { isValidImportImageStagingId } from "@repo/contracts/images";
+import { RECIPE_IMPORT_LIMITS } from "@repo/contracts/recipe-import";
 
 import { putAndInspectImage } from "./image-storage";
 import { isOwnedTempKey } from "./presign";
@@ -13,6 +14,19 @@ type ImportSourceDependencies = {
   normalize: (bytes: ArrayBuffer) => Promise<ArrayBuffer>;
   inspect: (key: string) => Promise<StoredImageAsset>;
 };
+
+function importSourceKey(jobId: string, sourceIndex: number) {
+  if (
+    !Number.isInteger(sourceIndex) ||
+    sourceIndex < 0 ||
+    sourceIndex >= RECIPE_IMPORT_LIMITS.sourceImages
+  ) {
+    throw new Error("Invalid import source index");
+  }
+  return `imports/${jobId}/${
+    sourceIndex === 0 ? "source.jpg" : `source-${sourceIndex + 1}.jpg`
+  }`;
+}
 
 async function deleteTempBestEffort(
   bucket: R2Bucket,
@@ -38,6 +52,8 @@ export async function stageImportSource(
   tempKey: string,
   ownerId: string,
   jobId: string,
+  sourceIndex = 0,
+  maxNormalizedBytes = MAX_SOURCE_BYTES,
 ): Promise<StoredImageAsset> {
   if (!isValidImportImageStagingId(jobId)) {
     throw new Error("Invalid import job id");
@@ -46,11 +62,11 @@ export async function stageImportSource(
     throw new Error("Import source upload does not belong to user");
   }
 
-  const destinationKey = `imports/${jobId}/source.jpg`;
+  const destinationKey = importSourceKey(jobId, sourceIndex);
   const existing = await dependencies.bucket.head(destinationKey);
   if (existing) {
     if (
-      existing.size > MAX_SOURCE_BYTES ||
+      existing.size > maxNormalizedBytes ||
       existing.httpMetadata?.contentType !== NORMALIZED_CONTENT_TYPE ||
       existing.customMetadata?.ownerId !== ownerId ||
       existing.customMetadata?.sourceTempKey !== tempKey
@@ -72,6 +88,9 @@ export async function stageImportSource(
   }
 
   const normalized = await dependencies.normalize(await source.arrayBuffer());
+  if (normalized.byteLength > maxNormalizedBytes) {
+    throw new Error("Import source image is too large after normalization");
+  }
   const asset = await putAndInspectImage(
     dependencies.bucket,
     destinationKey,
@@ -90,11 +109,21 @@ export async function stageImportSource(
 export async function getImportSource(
   bucket: R2Bucket,
   jobId: string,
+  sourceIndex = 0,
 ): Promise<Response> {
   if (!isValidImportImageStagingId(jobId)) {
     return Response.json({ error: "Invalid import job id" }, { status: 400 });
   }
-  const object = await bucket.get(`imports/${jobId}/source.jpg`);
+  let sourceKey: string;
+  try {
+    sourceKey = importSourceKey(jobId, sourceIndex);
+  } catch {
+    return Response.json(
+      { error: "Invalid import source index" },
+      { status: 400 },
+    );
+  }
+  const object = await bucket.get(sourceKey);
   if (!object) {
     return Response.json({ error: "Import source not found" }, { status: 404 });
   }

@@ -7,6 +7,10 @@ import {
   imageKeyFromPublicUrl,
   publicImageUrlForKey,
 } from "@repo/contracts/images";
+import {
+  RECIPE_IMPORT_LIMITS,
+  recipeImportSourceImageByteBudget,
+} from "@repo/contracts/recipe-import";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -548,26 +552,37 @@ export class ImageService extends WorkerEntrypoint<Env> {
     tempKey: string,
     ownerId: string,
     jobId: string,
+    sourceIndex = 0,
+    sourceCount = 1,
   ): Promise<StoredImageAsset> {
+    if (
+      !Number.isInteger(sourceCount) ||
+      sourceCount < 1 ||
+      sourceCount > RECIPE_IMPORT_LIMITS.sourceImages ||
+      !Number.isInteger(sourceIndex) ||
+      sourceIndex < 0 ||
+      sourceIndex >= sourceCount
+    ) {
+      throw new Error("Invalid import source count");
+    }
+    const maxNormalizedBytes = recipeImportSourceImageByteBudget(sourceCount);
     return await stageImportSourceObject(
       {
         bucket: this.env.IMAGES,
         normalize: (bytes) =>
-          normalizeImageBytesToJpeg(
-            this.env,
-            bytes,
-            TRUSTED_SOURCE_MAX_FILE_SIZE,
-          ),
+          normalizeImageBytesToJpeg(this.env, bytes, maxNormalizedBytes),
         inspect: (key) => buildStoredImageAsset(this.env, key),
       },
       tempKey,
       ownerId,
       jobId,
+      sourceIndex,
+      maxNormalizedBytes,
     );
   }
 
-  async getImportSource(jobId: string): Promise<Response> {
-    return await getStagedImportSource(this.env.IMAGES, jobId);
+  async getImportSource(jobId: string, sourceIndex = 0): Promise<Response> {
+    return await getStagedImportSource(this.env.IMAGES, jobId, sourceIndex);
   }
 
   /**

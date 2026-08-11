@@ -1,6 +1,7 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import {
   RECIPE_IMPORT_LIMITS,
+  recipeImportSourceImageByteBudget,
   type RecipeImportMode,
 } from "@repo/contracts/recipe-import";
 import { Image } from "expo-image";
@@ -34,7 +35,7 @@ export type SmartImportMode = RecipeImportMode;
 type SmartImportAttempt = {
   id: string;
   sourceKey: string;
-  uploadKey?: string;
+  uploadsByUri: Map<string, Promise<string>>;
 };
 
 const isDarkThemeRuntime = (runtime: {
@@ -142,7 +143,7 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
   const [mode, setMode] = useState<SmartImportMode>("url");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageUris, setImageUris] = useState<string[]>([]);
   const [isStarting, setIsStarting] = useState(false);
   const importAttemptRef = useRef<SmartImportAttempt | null>(null);
 
@@ -159,7 +160,7 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
     importAttemptRef.current = null;
     setUrl("");
     setText("");
-    setImageUri(null);
+    setImageUris([]);
     setIsStarting(false);
   };
 
@@ -170,26 +171,37 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
     const attempt: SmartImportAttempt = {
       id: createRecipeImportId(),
       sourceKey,
+      uploadsByUri: new Map(),
     };
     importAttemptRef.current = attempt;
     return attempt;
   };
 
-  const handlePickImage = async () => {
+  const handlePickImages = async () => {
+    const availableSlots = RECIPE_IMPORT_LIMITS.sourceImages - imageUris.length;
+    if (availableSlots <= 0) return;
+
     const hasPermission = await ensureMediaLibraryPermission({
-      message: "Please allow access to your photos to upload a recipe image.",
+      message: "Please allow access to your photos to upload recipe images.",
     });
     if (!hasPermission) return;
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
-        allowsEditing: true,
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        orderedSelection: true,
+        selectionLimit: availableSlots,
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        setImageUri(result.assets[0].uri);
+      if (!result.canceled) {
+        setImageUris((current) =>
+          Array.from(
+            new Set([...current, ...result.assets.map((asset) => asset.uri)]),
+          ).slice(0, RECIPE_IMPORT_LIMITS.sourceImages),
+        );
       }
     } catch (error) {
       console.error("Failed to pick recipe import image:", error);
@@ -198,22 +210,37 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
   };
 
   const handleTakePhoto = async () => {
+    if (imageUris.length >= RECIPE_IMPORT_LIMITS.sourceImages) return;
+
     const hasPermission = await ensureCameraPermission();
     if (!hasPermission) return;
 
     try {
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets[0]) {
-        setImageUri(result.assets[0].uri);
+        const capturedUri = result.assets[0].uri;
+        setImageUris((current) =>
+          current.includes(capturedUri)
+            ? current
+            : [...current, capturedUri].slice(
+                0,
+                RECIPE_IMPORT_LIMITS.sourceImages,
+              ),
+        );
       }
     } catch (error) {
       console.error("Failed to take recipe import photo:", error);
       Alert.alert("Camera Error", "Unable to open your camera.");
     }
+  };
+
+  const handleRemoveImage = (uri: string) => {
+    setImageUris((current) => current.filter((imageUri) => imageUri !== uri));
+    importAttemptRef.current = null;
   };
 
   const handleImport = async () => {
@@ -274,20 +301,37 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
       }
 
       if (mode === "image") {
-        const submittedImageUri = imageUri;
-        if (!submittedImageUri) {
-          Alert.alert("Error", "Please select an image");
+        const submittedImageUris = imageUris;
+        if (submittedImageUris.length === 0) {
+          Alert.alert("Error", "Please select at least one image");
           return;
         }
 
-        const attempt = getImportAttempt(`image:${submittedImageUri}`);
-        const uploadKey =
-          attempt.uploadKey ?? (await uploadImportSource(submittedImageUri));
-        attempt.uploadKey = uploadKey;
+        const attempt = getImportAttempt(
+          `images:${JSON.stringify(submittedImageUris)}`,
+        );
+        const maxBytesPerImage = recipeImportSourceImageByteBudget(
+          submittedImageUris.length,
+        );
+        const uploadKeys = await Promise.all(
+          submittedImageUris.map(async (uri) => {
+            const existingUpload = attempt.uploadsByUri.get(uri);
+            if (existingUpload) return await existingUpload;
+
+            const upload = uploadImportSource(uri, maxBytesPerImage).catch(
+              (error) => {
+                attempt.uploadsByUri.delete(uri);
+                throw error;
+              },
+            );
+            attempt.uploadsByUri.set(uri, upload);
+            return await upload;
+          }),
+        );
         await submitImport({
           id: attempt.id,
           importType: "smart",
-          source: { type: "image", uploadKey },
+          source: { type: "image", uploadKeys },
         });
         importAttemptRef.current = null;
         handleClose();
@@ -308,7 +352,9 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
       case "text":
         return "Import from Text";
       case "image":
-        return "Import from Image";
+        return imageUris.length > 1
+          ? `Import from ${imageUris.length} Images`
+          : "Import from Image";
     }
   };
 
@@ -398,37 +444,57 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
 
           {mode === "image" && (
             <Animated.View entering={FadeIn.duration(200)}>
-              <Text type="subheadline" style={styles.label}>
-                Recipe Image
-              </Text>
+              <View style={styles.imageLabelRow}>
+                <Text type="subheadline" style={styles.label}>
+                  Recipe Images
+                </Text>
+                <Text type="caption" style={styles.imageCount}>
+                  {imageUris.length} of {RECIPE_IMPORT_LIMITS.sourceImages}
+                </Text>
+              </View>
               <VSpace size={8} />
-              {imageUri ? (
-                <View style={styles.imagePreviewContainer}>
-                  <Image
-                    source={{ uri: imageUri }}
-                    style={styles.imagePreview}
-                  />
-                  <View style={styles.changeImageButtons}>
-                    <TouchableOpacity
-                      style={styles.changeImageButton}
-                      onPress={handleTakePhoto}
-                      disabled={isStarting}
-                    >
-                      <Ionicons name="camera" size={16} color="white" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.changeImageButton}
-                      onPress={handlePickImage}
-                      disabled={isStarting}
-                    >
-                      <Ionicons name="images" size={16} color="white" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
+              {imageUris.length > 0 && (
+                <ScrollView
+                  horizontal
+                  style={styles.imagePreviewScroll}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.imagePreviewList}
+                >
+                  {imageUris.map((uri, index) => (
+                    <View key={uri} style={styles.imagePreviewContainer}>
+                      <Image
+                        source={{ uri }}
+                        style={styles.imagePreview}
+                        contentFit="cover"
+                      />
+                      <View style={styles.imageNumberBadge}>
+                        <Text type="caption" style={styles.imageNumberText}>
+                          {index + 1}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.removeImageButton}
+                        onPress={() => handleRemoveImage(uri)}
+                        disabled={isStarting}
+                        accessibilityLabel={`Remove image ${index + 1}`}
+                      >
+                        <Ionicons name="close" size={18} color="white" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              {imageUris.length > 0 &&
+                imageUris.length < RECIPE_IMPORT_LIMITS.sourceImages && (
+                  <VSpace size={12} />
+                )}
+              {imageUris.length < RECIPE_IMPORT_LIMITS.sourceImages && (
                 <View style={styles.imagePickerOptions}>
                   <TouchableOpacity
-                    style={styles.imagePickerOption}
+                    style={[
+                      styles.imagePickerOption,
+                      imageUris.length > 0 && styles.imagePickerOptionCompact,
+                    ]}
                     onPress={handleTakePhoto}
                     disabled={isStarting}
                   >
@@ -439,12 +505,15 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
                     />
                     <VSpace size={6} />
                     <Text type="subheadline" style={styles.imagePickerText}>
-                      Take Photo
+                      {imageUris.length > 0 ? "Take Another" : "Take Photo"}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.imagePickerOption}
-                    onPress={handlePickImage}
+                    style={[
+                      styles.imagePickerOption,
+                      imageUris.length > 0 && styles.imagePickerOptionCompact,
+                    ]}
+                    onPress={handlePickImages}
                     disabled={isStarting}
                   >
                     <Ionicons
@@ -454,14 +523,15 @@ export const SmartImportSheet = forwardRef<SmartImportSheetRef>((_, ref) => {
                     />
                     <VSpace size={6} />
                     <Text type="subheadline" style={styles.imagePickerText}>
-                      Choose Photo
+                      Choose Photos
                     </Text>
                   </TouchableOpacity>
                 </View>
               )}
               <VSpace size={8} />
               <Text type="caption" style={styles.hint}>
-                Upload a photo of a recipe card, cookbook page, or screenshot
+                Add up to {RECIPE_IMPORT_LIMITS.sourceImages} full images in
+                page order from a recipe card, cookbook, or screenshots
               </Text>
             </Animated.View>
           )}
@@ -504,6 +574,15 @@ const styles = StyleSheet.create((theme, runtime) => {
       color: theme.colors.textSecondary,
       marginLeft: 4,
     },
+    imageLabelRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    imageCount: {
+      color: theme.colors.textSecondary,
+      marginRight: 4,
+    },
     textArea: {
       width: "100%",
       height: 180,
@@ -530,34 +609,56 @@ const styles = StyleSheet.create((theme, runtime) => {
       alignItems: "center",
       justifyContent: "center",
     },
+    imagePickerOptionCompact: {
+      height: 84,
+    },
     imagePickerIcon: {
       color: imagePickerIconColor,
     },
     imagePickerText: {
       color: imagePickerTextColor,
     },
+    imagePreviewScroll: {
+      marginHorizontal: -20,
+    },
+    imagePreviewList: {
+      gap: 12,
+      paddingHorizontal: 20,
+    },
     imagePreviewContainer: {
       position: "relative",
-      width: "100%",
-      height: 200,
+      width: 180,
+      height: 180,
       borderRadius: theme.borderRadius.large,
       overflow: "hidden",
+      backgroundColor: theme.colors.inputBackground,
     },
     imagePreview: {
       width: "100%",
       height: "100%",
     },
-    changeImageButtons: {
+    imageNumberBadge: {
       position: "absolute",
-      bottom: 12,
-      right: 12,
-      flexDirection: "row",
-      gap: 8,
+      left: 8,
+      top: 8,
+      width: 26,
+      height: 26,
+      borderRadius: theme.borderRadius.full,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.65)",
     },
-    changeImageButton: {
-      backgroundColor: "rgba(0,0,0,0.6)",
-      width: 36,
-      height: 36,
+    imageNumberText: {
+      color: "white",
+      fontWeight: "600",
+    },
+    removeImageButton: {
+      position: "absolute",
+      right: 8,
+      top: 8,
+      backgroundColor: "rgba(0,0,0,0.65)",
+      width: 30,
+      height: 30,
       borderRadius: theme.borderRadius.full,
       alignItems: "center",
       justifyContent: "center",
