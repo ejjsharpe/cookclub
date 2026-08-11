@@ -99,12 +99,12 @@ jobs:
             bunx nx affected -t build --nxBail --outputStyle=static
           fi
 
-      - name: Check Expo
+      - name: Check Expo package versions
         run: |
           if [ "$FULL_VALIDATION" = "true" ]; then
-            bunx nx run-many -t check:expo --nxBail --outputStyle=static
+            bunx nx run-many -t check:expo-install --nxBail --outputStyle=static
           else
-            bunx nx affected -t check:expo --nxBail --outputStyle=static
+            bunx nx affected -t check:expo-install --nxBail --outputStyle=static
           fi
 
       - name: Dry-run production Cloudflare deployments
