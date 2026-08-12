@@ -2108,7 +2108,6 @@ export const RecipeDetailScreen = () => {
 
   const renderMethod = () => {
     if (!recipe) return null;
-    let globalStepIndex = 0;
 
     return (
       <View style={styles.tabContent}>
@@ -2123,8 +2122,7 @@ export const RecipeDetailScreen = () => {
               </View>
             )}
 
-            {section.instructions.map((item) => {
-              globalStepIndex++;
+            {section.instructions.map((item, instructionIndex) => {
               const stepImageUrl = item.imageUrl
                 ? getImageUrl(item.imageUrl, "step-thumb")
                 : undefined;
@@ -2132,7 +2130,9 @@ export const RecipeDetailScreen = () => {
                 <View key={item.id} style={styles.instructionItem}>
                   <View style={styles.stepMarkerColumn}>
                     <View style={styles.stepNumberBadge}>
-                      <Text style={styles.stepNumber}>{globalStepIndex}</Text>
+                      <Text style={styles.stepNumber}>
+                        {instructionIndex + 1}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.instructionContent}>
@@ -2168,7 +2168,6 @@ export const RecipeDetailScreen = () => {
 
   const renderEditableMethod = () => {
     if (!draft) return null;
-    let globalStepIndex = 0;
 
     return (
       <View style={styles.tabContent}>
@@ -2203,8 +2202,7 @@ export const RecipeDetailScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {section.instructions.map((instruction) => {
-              globalStepIndex++;
+            {section.instructions.map((instruction, instructionIndex) => {
               const stepImageUrl = instruction.imageUrl
                 ? getImageUrl(instruction.imageUrl, "step-thumb")
                 : undefined;
@@ -2218,7 +2216,9 @@ export const RecipeDetailScreen = () => {
                 >
                   <View style={styles.stepMarkerColumn}>
                     <View style={styles.stepNumberBadgeEdit}>
-                      <Text style={styles.stepNumber}>{globalStepIndex}</Text>
+                      <Text style={styles.stepNumber}>
+                        {instructionIndex + 1}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.instructionContent}>
