@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCommentPreview } from "./notification.service";
+import {
+  formatCommentPreview,
+  getNotificationActorName,
+} from "./notification.service";
 
 describe("formatCommentPreview", () => {
   it("keeps short previews intact", () => {
@@ -24,5 +27,23 @@ describe("formatCommentPreview", () => {
 
   it("keeps absent previews absent", () => {
     expect(formatCommentPreview(null)).toBeNull();
+  });
+});
+
+describe("getNotificationActorName", () => {
+  it("uses the display name when available", () => {
+    expect(getNotificationActorName({ name: " Alex ", username: "alex" })).toBe(
+      "Alex",
+    );
+  });
+
+  it("falls back to the username for a blank display name", () => {
+    expect(getNotificationActorName({ name: " ", username: "alex" })).toBe(
+      "@alex",
+    );
+  });
+
+  it("rejects actors without a usable identity", () => {
+    expect(getNotificationActorName({ name: "", username: null })).toBeNull();
   });
 });

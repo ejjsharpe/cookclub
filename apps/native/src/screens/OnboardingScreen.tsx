@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { View, ScrollView, useWindowDimensions } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Animated, {
@@ -19,7 +19,12 @@ import {
   currentTermsAcceptanceInput,
   useAcceptCurrentTerms,
 } from "@/api/legal";
-import { useCheckUsername, useCompleteOnboarding, useUser } from "@/api/user";
+import {
+  useCheckUsername,
+  useCompleteOnboarding,
+  useUpdateProfile,
+  useUser,
+} from "@/api/user";
 import { OnboardingProgress } from "@/components/OnboardingProgress";
 import { SafeAreaView } from "@/components/SafeAreaView";
 import { VSpace } from "@/components/Space";
@@ -37,6 +42,12 @@ const SPRING_CONFIG = { damping: 20, stiffness: 170, mass: 0.8 };
 const TIMING_CONFIG = { duration: 250, easing: Easing.out(Easing.cubic) };
 const BACK_BUTTON_WIDTH = 88;
 
+function isMeasurementSystem(
+  value: string | null | undefined,
+): value is MeasurementSystem {
+  return value === "auto" || value === "metric" || value === "imperial";
+}
+
 export default function OnboardingScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -44,6 +55,7 @@ export default function OnboardingScreen() {
   const user = userData?.user;
   const { triggerWelcome } = useWelcomeOverlay();
   const completeOnboarding = useCompleteOnboarding();
+  const updateProfile = useUpdateProfile();
   const acceptTerms = useAcceptCurrentTerms();
   const { upload: uploadAvatar, isUploading: isUploadingAvatar } =
     useAvatarUpload();
@@ -61,6 +73,19 @@ export default function OnboardingScreen() {
   // Step 2: Measurements
   const [measurementSystem, setMeasurementSystem] =
     useState<MeasurementSystem>("auto");
+  const hasHydratedUser = useRef(false);
+
+  useEffect(() => {
+    if (!user || hasHydratedUser.current) return;
+
+    hasHydratedUser.current = true;
+    setName(user.name);
+    setUsername(user.username ?? "");
+    setBio(user.bio ?? "");
+    if (isMeasurementSystem(user.measurementPreference)) {
+      setMeasurementSystem(user.measurementPreference);
+    }
+  }, [user]);
 
   // Username validation
   const debouncedUsername = useDebounce(username, 300);
@@ -102,17 +127,29 @@ export default function OnboardingScreen() {
       return;
     }
 
-    if (currentStep < TOTAL_STEPS) {
-      navigateToStep(currentStep + 1);
-    } else {
-      setIsSubmitting(true);
-      try {
+    setIsSubmitting(true);
+    try {
+      if (currentStep === 1) {
         await acceptTerms.mutateAsync(currentTermsAcceptanceInput);
+
+        await updateProfile.mutateAsync({
+          username,
+          name: name.trim(),
+          bio: bio || null,
+        });
 
         if (profileImage) {
           await uploadAvatar(profileImage);
+          setProfileImage(null);
         }
 
+        navigateToStep(2);
+      } else if (currentStep === 2) {
+        await updateProfile.mutateAsync({
+          measurementPreference: measurementSystem,
+        });
+        navigateToStep(3);
+      } else {
         await completeOnboarding.mutateAsync({
           username,
           name: name.trim(),
@@ -120,14 +157,34 @@ export default function OnboardingScreen() {
           measurementPreference: measurementSystem,
         });
         triggerWelcome();
-      } catch (error) {
-        alertApiError("Profile Save Failed", error, {
-          operation: "onboarding.saveProfile",
-          fallback: "Failed to save your profile. Please try again.",
-        });
-        setIsSubmitting(false);
+        return;
       }
+    } catch (error) {
+      const errorDetails =
+        currentStep === 1
+          ? {
+              title: "Profile Save Failed",
+              operation: "onboarding.saveProfile",
+              fallback: "Failed to save your profile. Please try again.",
+            }
+          : currentStep === 2
+            ? {
+                title: "Preferences Save Failed",
+                operation: "onboarding.savePreferences",
+                fallback: "Failed to save your preferences. Please try again.",
+              }
+            : {
+                title: "Onboarding Failed",
+                operation: "onboarding.complete",
+                fallback: "Failed to finish onboarding. Please try again.",
+              };
+
+      alertApiError(errorDetails.title, error, {
+        operation: errorDetails.operation,
+        fallback: errorDetails.fallback,
+      });
     }
+    setIsSubmitting(false);
   };
 
   const handleBack = () => {

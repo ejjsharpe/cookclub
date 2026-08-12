@@ -178,6 +178,7 @@ export const followsRouter = router({
             and(
               ne(user.id, ctx.user.id),
               eq(user.emailVerified, true),
+              eq(user.onboardingCompleted, true),
               isNotNull(user.username),
               ...(blockedUserIds.length > 0
                 ? [notInArray(user.id, blockedUserIds)]
@@ -236,6 +237,7 @@ export const followsRouter = router({
             and(
               ne(user.id, ctx.user.id),
               eq(user.emailVerified, true),
+              eq(user.onboardingCompleted, true),
               isNotNull(user.username),
               notInArray(user.id, followedIds),
               ...(blockedUserIds.length > 0

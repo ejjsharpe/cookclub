@@ -28,6 +28,15 @@ export function formatCommentPreview(source: string | null): string | null {
     .trimEnd()}…`;
 }
 
+export function getNotificationActorName(actor: {
+  name: string;
+  username: string | null;
+}): string | null {
+  const name = actor.name.trim();
+  if (name) return name;
+  return actor.username ? `@${actor.username}` : null;
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type NotificationItem = {
@@ -121,12 +130,21 @@ export async function createNotification(
 
   // Fetch actor info for denormalization
   const actor = await db
-    .select({ name: user.name, image: user.image })
+    .select({
+      name: user.name,
+      username: user.username,
+      image: user.image,
+    })
     .from(user)
     .where(eq(user.id, actorId))
     .then((rows) => rows[0]);
 
   if (!actor) {
+    return null;
+  }
+
+  const actorName = getNotificationActorName(actor);
+  if (!actorName) {
     return null;
   }
 
@@ -164,7 +182,7 @@ export async function createNotification(
       mealPlanId: mealPlanId ?? null,
       shoppingListId: shoppingListId ?? null,
       commentId: commentId ?? null,
-      actorName: actor.name,
+      actorName,
       actorImage: actor.image,
       isRead: false,
       createdAt: now,

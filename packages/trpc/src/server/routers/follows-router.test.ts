@@ -57,6 +57,7 @@ vi.mock("@repo/db/schemas", () => ({
     username: "user.username",
     image: "user.image",
     emailVerified: "user.emailVerified",
+    onboardingCompleted: "user.onboardingCompleted",
   },
   recipes: { _name: "recipes" },
 }));
@@ -230,7 +231,7 @@ describe("followsRouter - user discovery", () => {
     mocks.getBlockedUserIds.mockResolvedValue([]);
   });
 
-  it("only searches users with a verified email and username", async () => {
+  it("only searches fully onboarded users with a verified email and username", async () => {
     const ctx = createMockContext();
     const caller = followsRouter.createCaller(ctx as any);
 
@@ -245,6 +246,11 @@ describe("followsRouter - user discovery", () => {
           value: true,
         },
         {
+          type: "eq",
+          field: "user.onboardingCompleted",
+          value: true,
+        },
+        {
           type: "isNotNull",
           field: "user.username",
         },
@@ -252,7 +258,7 @@ describe("followsRouter - user discovery", () => {
     });
   });
 
-  it("only suggests users with a verified email and username", async () => {
+  it("only suggests fully onboarded users with a verified email and username", async () => {
     const ctx = createMockContext();
     const caller = followsRouter.createCaller(ctx as any);
 
@@ -264,6 +270,11 @@ describe("followsRouter - user discovery", () => {
         {
           type: "eq",
           field: "user.emailVerified",
+          value: true,
+        },
+        {
+          type: "eq",
+          field: "user.onboardingCompleted",
           value: true,
         },
         {
