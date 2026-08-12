@@ -4,7 +4,9 @@ import {
   type RouteProp,
 } from "@react-navigation/native";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
+import { BlurTargetView, BlurView } from "expo-blur";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ActionSheetIOS,
@@ -13,10 +15,21 @@ import {
   Alert,
   RefreshControl,
   type AlertButton,
+  Modal,
+  Pressable,
   TouchableOpacity,
   Share,
   useWindowDimensions,
 } from "react-native";
+import Animated, {
+  Easing,
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import {
   StyleSheet,
   UnistylesRuntime,
@@ -51,11 +64,13 @@ import {
   createRecipeImportId,
   useRecipeImport,
 } from "@/features/recipe-import/RecipeImportProvider";
+import { useAvatarUpload } from "@/hooks/useAvatarUpload";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
 import type { RootStackParamList } from "@/navigation/navigationRef";
-import { selectFeedImagePreset } from "@/utils/imageUrl";
+import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
+import { getImageUrl, selectFeedImagePreset } from "@/utils/imageUrl";
 
 type UserProfileScreenRoute = RouteProp<RootStackParamList, "UserProfile">;
 
@@ -65,11 +80,16 @@ const ThemedActivityIndicator = withUnistyles(ActivityIndicator, (theme) => ({
 const ThemedFlashList = withUnistyles(FlashList<ActivityFeedListItem>);
 const HEADER_HEIGHT = 52;
 const HORIZONTAL_PADDING = 20;
+const AVATAR_SIZE = 100;
+const AVATAR_PREVIEW_SIZE = 220;
+const AVATAR_PREVIEW_ACTION_GAP = 20;
+const AVATAR_PREVIEW_ACTION_HEIGHT = 48;
+const AVATAR_TRANSITION_DURATION = 240;
 
 export const UserProfileScreen = () => {
   const route = useRoute<UserProfileScreenRoute>();
   const navigation = useNavigation();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const feedImageWidth = Math.max(windowWidth - HORIZONTAL_PADDING * 2, 1);
   const feedImagePreset = useMemo(
     () => selectFeedImagePreset(feedImageWidth),
@@ -82,15 +102,26 @@ export const UserProfileScreen = () => {
   const { requireSmartImport } = useSubscription();
 
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
+  const profileBlurTargetRef = useRef<View>(null);
+  const avatarRef = useRef<View>(null);
+  const isDismissingAvatarPreviewRef = useRef(false);
+  const shouldChangeAvatarAfterDismissRef = useRef(false);
   const confirmedFollowingRef = useRef<boolean | null>(null);
   const desiredFollowingRef = useRef<boolean | null>(null);
   const isReconcilingFollowingRef = useRef(false);
 
   const [imageError, setImageError] = useState(false);
+  const [isAvatarPreviewVisible, setIsAvatarPreviewVisible] = useState(false);
+  const [isAvatarSourceHidden, setIsAvatarSourceHidden] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [optimisticFollowing, setOptimisticFollowing] = useState<
     boolean | null
   >(null);
+  const avatarTransitionProgress = useSharedValue(0);
+  const avatarOriginX = useSharedValue(0);
+  const avatarOriginY = useSharedValue(0);
+  const avatarOriginWidth = useSharedValue(AVATAR_SIZE);
+  const avatarOriginHeight = useSharedValue(AVATAR_SIZE);
 
   const { data: currentUser } = useUser();
   const {
@@ -104,6 +135,11 @@ export const UserProfileScreen = () => {
   const blockMutation = useBlockUser();
   const toggleLike = useToggleActivityLike();
   const currentUserId = currentUser?.user?.id ?? session?.user.id;
+  const {
+    upload: uploadAvatar,
+    isUploading: isUploadingAvatar,
+    progress: avatarUploadProgress,
+  } = useAvatarUpload();
 
   // Fetch user activities
   const {
@@ -129,6 +165,81 @@ export const UserProfileScreen = () => {
           : -1
         : 0),
   );
+  const avatarThumbnailUrl =
+    getImageUrl(profile?.user.image, "avatar-lg") ??
+    profile?.user.image ??
+    undefined;
+  const avatarPreviewUrl =
+    getImageUrl(profile?.user.image, "detail_1600") ?? avatarThumbnailUrl;
+  const avatarPreviewGroupHeight =
+    AVATAR_PREVIEW_SIZE +
+    (isOwnProfile
+      ? AVATAR_PREVIEW_ACTION_GAP + AVATAR_PREVIEW_ACTION_HEIGHT
+      : 0);
+  const avatarPreviewTargetX = (windowWidth - AVATAR_PREVIEW_SIZE) / 2;
+  const avatarPreviewTargetY = (windowHeight - avatarPreviewGroupHeight) / 2;
+
+  const avatarPreviewAnimatedStyle = useAnimatedStyle(() => {
+    const progress = avatarTransitionProgress.get();
+    const targetCenterX = avatarPreviewTargetX + AVATAR_PREVIEW_SIZE / 2;
+    const targetCenterY = avatarPreviewTargetY + AVATAR_PREVIEW_SIZE / 2;
+    const originCenterX = avatarOriginX.get() + avatarOriginWidth.get() / 2;
+    const originCenterY = avatarOriginY.get() + avatarOriginHeight.get() / 2;
+
+    return {
+      transform: [
+        {
+          translateX: interpolate(
+            progress,
+            [0, 1],
+            [originCenterX - targetCenterX, 0],
+            Extrapolation.CLAMP,
+          ),
+        },
+        {
+          translateY: interpolate(
+            progress,
+            [0, 1],
+            [originCenterY - targetCenterY, 0],
+            Extrapolation.CLAMP,
+          ),
+        },
+        {
+          scale: interpolate(
+            progress,
+            [0, 1],
+            [avatarOriginWidth.get() / AVATAR_PREVIEW_SIZE, 1],
+            Extrapolation.CLAMP,
+          ),
+        },
+      ],
+    };
+  });
+
+  const avatarPreviewBackdropAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: avatarTransitionProgress.get(),
+  }));
+
+  const avatarPreviewControlsAnimatedStyle = useAnimatedStyle(() => {
+    const progress = avatarTransitionProgress.get();
+    return {
+      opacity: interpolate(progress, [0.55, 1], [0, 1], Extrapolation.CLAMP),
+      transform: [
+        {
+          translateY: interpolate(
+            progress,
+            [0.55, 1],
+            [8, 0],
+            Extrapolation.CLAMP,
+          ),
+        },
+      ],
+    };
+  });
+
+  useEffect(() => {
+    setImageError(false);
+  }, [profile?.user.image]);
 
   useEffect(() => {
     if (!profile) return;
@@ -312,6 +423,96 @@ export const UserProfileScreen = () => {
       setIsRefreshing(false);
     }
   }, [refetchActivities, refetchProfile]);
+
+  const pickAvatar = useCallback(async () => {
+    const hasPermission = await ensureMediaLibraryPermission({
+      message: "Please allow access to your photos to change your avatar.",
+    });
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadAvatar(result.assets[0].uri);
+      }
+    } catch (error) {
+      alertApiError("Avatar Update Failed", error, {
+        operation: "user.uploadAvatar",
+        fallback: "Could not update your avatar. Please try again.",
+      });
+    }
+  }, [uploadAvatar]);
+
+  const finishAvatarPreviewDismissal = useCallback(() => {
+    setIsAvatarSourceHidden(false);
+    setIsAvatarPreviewVisible(false);
+    isDismissingAvatarPreviewRef.current = false;
+
+    if (shouldChangeAvatarAfterDismissRef.current) {
+      shouldChangeAvatarAfterDismissRef.current = false;
+      pickAvatar();
+    }
+  }, [pickAvatar]);
+
+  const handleAvatarPreviewShown = useCallback(() => {
+    setIsAvatarSourceHidden(true);
+    avatarTransitionProgress.set(
+      withTiming(1, {
+        duration: AVATAR_TRANSITION_DURATION,
+        easing: Easing.out(Easing.cubic),
+      }),
+    );
+  }, [avatarTransitionProgress]);
+
+  const handleCloseAvatarPreview = useCallback(() => {
+    if (isDismissingAvatarPreviewRef.current) return;
+    isDismissingAvatarPreviewRef.current = true;
+
+    avatarTransitionProgress.set(
+      withTiming(
+        0,
+        {
+          duration: AVATAR_TRANSITION_DURATION,
+          easing: Easing.inOut(Easing.cubic),
+        },
+        (finished) => {
+          if (finished) {
+            runOnJS(finishAvatarPreviewDismissal)();
+          }
+        },
+      ),
+    );
+  }, [avatarTransitionProgress, finishAvatarPreviewDismissal]);
+
+  const handleChangeAvatar = useCallback(() => {
+    shouldChangeAvatarAfterDismissRef.current = true;
+    handleCloseAvatarPreview();
+  }, [handleCloseAvatarPreview]);
+
+  const handleOpenAvatarPreview = useCallback(() => {
+    avatarRef.current?.measureInWindow((x, y, width, height) => {
+      avatarOriginX.set(x);
+      avatarOriginY.set(y);
+      avatarOriginWidth.set(width);
+      avatarOriginHeight.set(height);
+      avatarTransitionProgress.set(0);
+      isDismissingAvatarPreviewRef.current = false;
+      shouldChangeAvatarAfterDismissRef.current = false;
+      setIsAvatarPreviewVisible(true);
+    });
+  }, [
+    avatarOriginHeight,
+    avatarOriginWidth,
+    avatarOriginX,
+    avatarOriginY,
+    avatarTransitionProgress,
+  ]);
 
   const navigateToAddRecipeTab = useCallback(() => {
     navigation.navigate("Tabs", { screen: "Add recipe" });
@@ -513,24 +714,49 @@ export const UserProfileScreen = () => {
             style={[
               styles.avatarFrame,
               shouldShowProIndicators && styles.proAvatarFrame,
+              isAvatarSourceHidden && styles.avatarSourceHidden,
             ]}
           >
-            <View style={styles.avatar}>
-              {profile.user.image && !imageError ? (
-                <Image
-                  source={{ uri: profile.user.image }}
-                  style={styles.avatarImage}
-                  onError={() => setImageError(true)}
-                  cachePolicy="memory-disk"
-                  transition={100}
-                />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text type="largeTitle" style={styles.avatarText}>
-                    {profile.user.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
+            <View ref={avatarRef} collapsable={false} style={styles.avatar}>
+              <Pressable
+                style={styles.avatar}
+                onPress={handleOpenAvatarPreview}
+                disabled={isUploadingAvatar}
+                accessibilityRole="imagebutton"
+                accessibilityLabel={
+                  isUploadingAvatar
+                    ? `Uploading avatar, ${avatarUploadProgress}% complete`
+                    : `${profile.user.name}'s avatar`
+                }
+                accessibilityHint="Opens a larger avatar preview"
+                accessibilityState={{
+                  busy: isUploadingAvatar,
+                  disabled: isUploadingAvatar,
+                }}
+              >
+                {avatarThumbnailUrl && !imageError ? (
+                  <Image
+                    source={{ uri: avatarThumbnailUrl }}
+                    style={styles.avatarImage}
+                    contentFit="cover"
+                    onError={() => setImageError(true)}
+                    cachePolicy="memory-disk"
+                    transition={100}
+                    accessible={false}
+                  />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text type="largeTitle" style={styles.avatarText}>
+                      {profile.user.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                {isUploadingAvatar && (
+                  <View style={styles.avatarUploadingOverlay}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                )}
+              </Pressable>
             </View>
             {shouldShowProIndicators && (
               <View style={styles.profileProSparkle}>
@@ -690,75 +916,186 @@ export const UserProfileScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Floating header */}
-      <View style={styles.headerRow}>
-        <BackButton />
-        {profile ? (
-          isOwnProfile ? (
-            <ScalePressable
-              style={styles.headerButton}
-              onPress={handleSettings}
-              accessibilityRole="button"
-              accessibilityLabel="Open settings"
-            >
-              <Ionicons
-                name="settings-outline"
-                size={22}
-                style={styles.headerIcon}
-              />
-            </ScalePressable>
-          ) : (
-            <ScalePressable
-              style={styles.headerButton}
-              onPress={handleProfileOptions}
-              disabled={blockMutation.isPending}
-              accessibilityRole="button"
-              accessibilityLabel="More profile options"
-              accessibilityHint="Report or block this user"
-            >
-              <Ionicons
-                name="ellipsis-horizontal"
-                size={22}
-                style={styles.headerIcon}
-              />
-            </ScalePressable>
-          )
-        ) : null}
-      </View>
+      <BlurTargetView ref={profileBlurTargetRef} style={styles.container}>
+        {/* Floating header */}
+        <View style={styles.headerRow}>
+          <BackButton />
+          {profile ? (
+            isOwnProfile ? (
+              <ScalePressable
+                style={styles.headerButton}
+                onPress={handleSettings}
+                accessibilityRole="button"
+                accessibilityLabel="Open settings"
+              >
+                <Ionicons
+                  name="settings-outline"
+                  size={22}
+                  style={styles.headerIcon}
+                />
+              </ScalePressable>
+            ) : (
+              <ScalePressable
+                style={styles.headerButton}
+                onPress={handleProfileOptions}
+                disabled={blockMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="More profile options"
+                accessibilityHint="Report or block this user"
+              >
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={22}
+                  style={styles.headerIcon}
+                />
+              </ScalePressable>
+            )
+          ) : null}
+        </View>
 
-      <SkeletonContainer
-        isLoading={isLoading || !profile}
-        skeleton={
-          <View style={styles.skeletonContent}>
-            <UserProfileSkeleton />
-          </View>
-        }
-      >
-        <ThemedFlashList
-          data={activities}
-          renderItem={renderActivityItem}
-          keyExtractor={(item) => item.id}
-          ListHeaderComponent={renderHeader}
-          ListEmptyComponent={renderEmpty}
-          ListFooterComponent={renderFooter}
-          onEndReached={handleLoadMoreActivities}
-          onEndReachedThreshold={0.5}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <VSpace size={16} />}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={theme.colors.primary}
-              colors={[theme.colors.primary]}
-              progressViewOffset={refreshOffset}
-            />
+        <SkeletonContainer
+          isLoading={isLoading || !profile}
+          skeleton={
+            <View style={styles.skeletonContent}>
+              <UserProfileSkeleton />
+            </View>
           }
-        />
-      </SkeletonContainer>
+        >
+          <ThemedFlashList
+            data={activities}
+            renderItem={renderActivityItem}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={renderHeader}
+            ListEmptyComponent={renderEmpty}
+            ListFooterComponent={renderFooter}
+            onEndReached={handleLoadMoreActivities}
+            onEndReachedThreshold={0.5}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <VSpace size={16} />}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={theme.colors.primary}
+                colors={[theme.colors.primary]}
+                progressViewOffset={refreshOffset}
+              />
+            }
+          />
+        </SkeletonContainer>
 
-      <ReportContentSheet ref={reportSheetRef} />
+        <ReportContentSheet ref={reportSheetRef} />
+      </BlurTargetView>
+
+      <Modal
+        visible={isAvatarPreviewVisible}
+        transparent
+        animationType="none"
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+        onShow={handleAvatarPreviewShown}
+        onRequestClose={handleCloseAvatarPreview}
+      >
+        <View style={styles.avatarPreviewOverlay}>
+          <Pressable
+            style={styles.avatarPreviewBackdrop}
+            onPress={handleCloseAvatarPreview}
+            accessibilityRole="button"
+            accessibilityLabel="Close avatar preview"
+          >
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.avatarPreviewBackdropFill,
+                avatarPreviewBackdropAnimatedStyle,
+              ]}
+            >
+              <BlurView
+                blurTarget={profileBlurTargetRef}
+                blurMethod="dimezisBlurViewSdk31Plus"
+                intensity={55}
+                tint="systemUltraThinMaterialDark"
+                style={styles.avatarPreviewBlur}
+              />
+              <View style={styles.avatarPreviewDimmer} />
+            </Animated.View>
+          </Pressable>
+
+          <Animated.View
+            style={[
+              styles.avatarPreviewAnimatedAvatar,
+              {
+                left: avatarPreviewTargetX,
+                top: avatarPreviewTargetY,
+              },
+              avatarPreviewAnimatedStyle,
+            ]}
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`${profile?.user.name ?? "User"}'s avatar`}
+          >
+            {avatarThumbnailUrl && !imageError ? (
+              <>
+                <Image
+                  source={{ uri: avatarThumbnailUrl }}
+                  style={styles.avatarPreviewImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  accessible={false}
+                />
+                {avatarPreviewUrl &&
+                  avatarPreviewUrl !== avatarThumbnailUrl && (
+                    <Image
+                      source={{ uri: avatarPreviewUrl }}
+                      style={styles.avatarPreviewHighResolutionImage}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                      transition={150}
+                      accessible={false}
+                    />
+                  )}
+              </>
+            ) : (
+              <View style={styles.avatarPreviewPlaceholder}>
+                <Text type="largeTitle" style={styles.avatarPreviewText}>
+                  {profile?.user.name.charAt(0).toUpperCase() ?? "?"}
+                </Text>
+              </View>
+            )}
+          </Animated.View>
+
+          {isOwnProfile && (
+            <Animated.View
+              pointerEvents="box-none"
+              style={[
+                styles.avatarPreviewActions,
+                {
+                  top:
+                    avatarPreviewTargetY +
+                    AVATAR_PREVIEW_SIZE +
+                    AVATAR_PREVIEW_ACTION_GAP,
+                },
+                avatarPreviewControlsAnimatedStyle,
+              ]}
+            >
+              <ScalePressable
+                style={styles.changeAvatarButton}
+                onPress={handleChangeAvatar}
+                accessibilityRole="button"
+                accessibilityLabel="Change avatar"
+              >
+                <Ionicons
+                  name="camera"
+                  size={18}
+                  style={styles.changeAvatarButtonIcon}
+                />
+                <Text style={styles.changeAvatarButtonText}>Change photo</Text>
+              </ScalePressable>
+            </Animated.View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -811,6 +1148,9 @@ const styles = StyleSheet.create((theme, rt) => ({
     justifyContent: "center",
     alignItems: "center",
   },
+  avatarSourceHidden: {
+    opacity: 0,
+  },
   proAvatarFrame: {
     width: 108,
     height: 108,
@@ -840,6 +1180,17 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   avatarText: {
     color: theme.colors.primary,
+  },
+  avatarUploadingOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 50,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   profileProSparkle: {
     position: "absolute",
@@ -965,5 +1316,93 @@ const styles = StyleSheet.create((theme, rt) => ({
   footer: {
     paddingVertical: 20,
     alignItems: "center",
+  },
+  avatarPreviewOverlay: {
+    flex: 1,
+  },
+  avatarPreviewBackdrop: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  avatarPreviewBackdropFill: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  avatarPreviewBlur: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  avatarPreviewDimmer: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.48)",
+  },
+  avatarPreviewAnimatedAvatar: {
+    position: "absolute",
+    zIndex: 1,
+    width: AVATAR_PREVIEW_SIZE,
+    height: AVATAR_PREVIEW_SIZE,
+    borderRadius: AVATAR_PREVIEW_SIZE / 2,
+    overflow: "hidden",
+    backgroundColor: theme.colors.primary + "20",
+  },
+  avatarPreviewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarPreviewHighResolutionImage: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  avatarPreviewPlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: theme.colors.primary + "20",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarPreviewText: {
+    color: theme.colors.primary,
+    fontSize: AVATAR_PREVIEW_SIZE * 0.36,
+  },
+  avatarPreviewActions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 2,
+    alignItems: "center",
+  },
+  changeAvatarButton: {
+    width: 180,
+    height: AVATAR_PREVIEW_ACTION_HEIGHT,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.primary,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  changeAvatarButtonIcon: {
+    color: theme.colors.buttonText,
+  },
+  changeAvatarButtonText: {
+    color: theme.colors.buttonText,
+    fontSize: 16,
+    fontFamily: theme.fonts.medium,
   },
 }));
