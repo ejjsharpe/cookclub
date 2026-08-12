@@ -53,7 +53,7 @@ jobs:
             --data-urlencode "event=push" \
             --data-urlencode "head_sha=$GITHUB_SHA" \
             --data-urlencode "per_page=10" \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/ci-cloudflare.yml/runs" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
             --output "$response_file"
 
           ci_run_url=$(jq -r \
