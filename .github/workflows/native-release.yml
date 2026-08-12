@@ -1,0 +1,118 @@
+name: Native release
+run-name: Native ${{ inputs.action }} (${{ inputs.platform }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Native release action
+        required: true
+        default: preview-build
+        type: choice
+        options:
+          - preview-build
+          - production-update
+          - production-build
+      platform:
+        description: Native platform
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  native-release:
+    name: Native ${{ inputs.action }} (${{ inputs.platform }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Native releases must be run from the main branch."
+          exit 1
+
+      - name: Verify successful CI for this commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          response_file="$RUNNER_TEMP/ci-runs.json"
+
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "X-GitHub-Api-Version: 2026-03-10" \
+            --get \
+            --data-urlencode "branch=main" \
+            --data-urlencode "event=push" \
+            --data-urlencode "head_sha=$GITHUB_SHA" \
+            --data-urlencode "per_page=10" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/ci-cloudflare.yml/runs" \
+            --output "$response_file"
+
+          ci_run_url=$(jq -r \
+            '[.workflow_runs[] | select(.conclusion == "success")][0].html_url // empty' \
+            "$response_file")
+
+          if [ -z "$ci_run_url" ]; then
+            ci_state=$(jq -r \
+              '.workflow_runs[0] | if . == null then "not found" else "\(.status)/\(.conclusion // "pending")" end' \
+              "$response_file")
+            echo "::error::Commit $GITHUB_SHA has no successful main CI run (latest: $ci_state)."
+            exit 1
+          fi
+
+          echo "Validated by $ci_run_url"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Publish production EAS Update
+        if: inputs.action == 'production-update'
+        working-directory: apps/native
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          PLATFORM: ${{ inputs.platform }}
+        run: >-
+          bunx eas update --platform "$PLATFORM" --channel production
+          --environment production --message "GitHub Actions ${GITHUB_SHA}"
+          --non-interactive
+
+      - name: Queue preview build
+        if: inputs.action == 'preview-build'
+        working-directory: apps/native
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          PLATFORM: ${{ inputs.platform }}
+        run: >-
+          bunx eas build --platform "$PLATFORM" --profile preview
+          --non-interactive --no-wait
+
+      - name: Build and submit to beta stores
+        if: inputs.action == 'production-build'
+        working-directory: apps/native
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          PLATFORM: ${{ inputs.platform }}
+        run: >-
+          bunx eas build --platform "$PLATFORM" --profile production
+          --auto-submit --non-interactive --wait
