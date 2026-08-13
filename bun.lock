@@ -54,6 +54,7 @@
       "devDependencies": {
         "@cloudflare/workers-types": "5.20260801.1",
         "@repo/tsconfig": "workspace:*",
+        "@sentry/cli": "^2",
         "@types/node": "22.20.1",
         "typescript": "6.0.3",
         "vitest": "4.1.7",
