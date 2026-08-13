@@ -7,7 +7,7 @@
     "dev": "wait-on tcp:8788 && wait-on tcp:8789 && bun scripts/dev.mjs",
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --minify --outdir dist --upload-source-maps --var SENTRY_RELEASE:$(sentry-cli releases propose-version)",
-    "deploy:prod": "wrangler deploy --env production --minify",
+    "deploy:prod": "wrangler deploy --env production --minify --outdir dist --upload-source-maps --var SENTRY_RELEASE:$(sentry-cli releases propose-version)",
     "generate:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false",
     "check:worker-types": "wrangler types --env production --env-file .dev.vars.example --strict-vars=false --include-runtime=false --check",
     "check-types": "bun run check:worker-types && tsc --noEmit",
@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sentry:sourcemaps": "_SENTRY_RELEASE=$(sentry-cli releases propose-version) && sentry-cli releases new $_SENTRY_RELEASE --org=shaky-hand --project=cook-club-api && sentry-cli sourcemaps upload --org=shaky-hand --project=cook-club-api --release=$_SENTRY_RELEASE --strip-prefix 'dist/..' dist",
-    "postdeploy": "bun run sentry:sourcemaps"
+    "postdeploy": "bun run sentry:sourcemaps",
+    "postdeploy:prod": "bun run sentry:sourcemaps"
   },
   "dependencies": {
     "@hono/trpc-server": "0.4.2",
