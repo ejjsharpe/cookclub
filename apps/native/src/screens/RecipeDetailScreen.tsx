@@ -26,16 +26,20 @@ import {
   Modal,
   Alert,
   FlatList,
+  Keyboard,
   NativeSyntheticEvent,
   NativeScrollEvent,
   TextInput,
 } from "react-native";
+import {
+  KeyboardAwareScrollView,
+  type KeyboardAwareScrollViewRef,
+} from "react-native-keyboard-controller";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   interpolate,
   Extrapolation,
-  useAnimatedRef,
   useAnimatedScrollHandler,
   FadeIn,
   FadeOut,
@@ -540,6 +544,7 @@ export const RecipeDetailScreen = () => {
     return null;
   });
   const [hasAttemptedSave, setHasAttemptedSave] = useState(false);
+  const [editFooterHeight, setEditFooterHeight] = useState(0);
   const initialDraftRef = useRef<RecipeDraft | null>(draft);
   const draftSourceRef = useRef<string | null>(null);
   const hasInitializedServings = useRef(false);
@@ -573,8 +578,23 @@ export const RecipeDetailScreen = () => {
     },
   });
 
-  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const ensureFocusedInputVisible = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.assureFocusedInputVisible();
+    });
+  }, []);
   const scrollY = useSharedValue(0);
+
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const keyboardDidShow = Keyboard.addListener(
+      "keyboardDidShow",
+      ensureFocusedInputVisible,
+    );
+    return () => keyboardDidShow.remove();
+  }, [ensureFocusedInputVisible, isEditing]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -2638,8 +2658,10 @@ export const RecipeDetailScreen = () => {
 
   return (
     <View style={styles.screen}>
-      <Animated.ScrollView
+      <KeyboardAwareScrollView
         ref={scrollRef}
+        enabled={isEditing}
+        bottomOffset={isEditing ? editFooterHeight : 0}
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -3015,7 +3037,7 @@ export const RecipeDetailScreen = () => {
             </>
           ) : null}
         </View>
-      </Animated.ScrollView>
+      </KeyboardAwareScrollView>
 
       <AdjustRecipeSheet
         ref={adjustRecipeSheetRef}
@@ -3070,6 +3092,9 @@ export const RecipeDetailScreen = () => {
             styles.editFooter,
             { paddingBottom: insets.bottom + 12 },
           ]}
+          onLayout={(event) => {
+            setEditFooterHeight(event.nativeEvent.layout.height);
+          }}
         >
           {visibleDraftErrors.length > 0 ? (
             <Animated.View
