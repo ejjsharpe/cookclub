@@ -102,6 +102,10 @@ import { alertApiError } from "@/lib/apiErrorAlert";
 import { openExternalWebsite } from "@/lib/externalBrowser";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
 import { publicErrorDetails, resolvePublicError } from "@/lib/publicError";
+import {
+  getRecipeDraftValidationErrors,
+  type RecipeDraftValidationField,
+} from "@/lib/recipeDraftValidation";
 import { useSubscription } from "@/lib/subscription";
 import type { RootStackParamList } from "@/navigation/navigationRef";
 import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
@@ -378,27 +382,6 @@ function createBlankDraft(): RecipeDraft {
   };
 }
 
-function getDraftErrors(draft: RecipeDraft) {
-  const errors: string[] = [];
-
-  if (!draft.name.trim()) {
-    errors.push("Recipe title is required.");
-  }
-
-  const hasIngredients = draft.ingredientSections.some((section) =>
-    section.ingredients.some((ingredient) => ingredient.text.trim()),
-  );
-  if (!hasIngredients) {
-    errors.push("Add at least one ingredient.");
-  }
-
-  if (draft.servings < 1) {
-    errors.push("Servings must be at least 1.");
-  }
-
-  return errors;
-}
-
 function nutritionForMutation(nutrition: RecipeDraft["nutrition"]) {
   if (!nutrition) return undefined;
 
@@ -556,6 +539,7 @@ export const RecipeDetailScreen = () => {
       return draftFromParsedRecipe(parsedRecipe, generatedImage);
     return null;
   });
+  const [hasAttemptedSave, setHasAttemptedSave] = useState(false);
   const initialDraftRef = useRef<RecipeDraft | null>(draft);
   const draftSourceRef = useRef<string | null>(null);
   const hasInitializedServings = useRef(false);
@@ -570,6 +554,7 @@ export const RecipeDetailScreen = () => {
   const collectionSheetRef = useRef<CollectionSelectorSheetRef>(null);
   const cookingReviewSheetRef = useRef<CookingReviewSheetRef>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
+  const ingredientSectionYRef = useRef(0);
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [ratingOverride, setRatingOverride] = useState<number | null>(null);
@@ -637,6 +622,7 @@ export const RecipeDetailScreen = () => {
     if (!nextDraft) return;
 
     setDraft(nextDraft);
+    setHasAttemptedSave(false);
     initialDraftRef.current = nextDraft;
     draftSourceRef.current = sourceKey;
     setCurrentImageIndex(0);
@@ -769,7 +755,37 @@ export const RecipeDetailScreen = () => {
     updateRecipeMutation.isPending ||
     isUploadingImages ||
     generateRecipeImageMutation.isPending;
+  const draftErrors = useMemo(
+    () => (draft ? getRecipeDraftValidationErrors(draft) : []),
+    [draft],
+  );
+  const visibleDraftErrors = hasAttemptedSave ? draftErrors : [];
+  const hasVisibleDraftError = useCallback(
+    (field: RecipeDraftValidationField) =>
+      visibleDraftErrors.some((error) => error.field === field),
+    [visibleDraftErrors],
+  );
+  const validationSummary = visibleDraftErrors
+    .map((error) => error.message)
+    .join(" ");
+  const scrollToDraftError = useCallback(
+    (field: RecipeDraftValidationField) => {
+      const targetY =
+        field === "ingredients"
+          ? IMAGE_HEIGHT + ingredientSectionYRef.current - 24
+          : field === "servings"
+            ? IMAGE_HEIGHT
+            : 0;
 
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({
+          y: Math.max(0, targetY),
+          animated: true,
+        });
+      });
+    },
+    [scrollRef],
+  );
   const updateDraft = useCallback(
     (updater: (current: RecipeDraft) => RecipeDraft) => {
       setDraft((current) => (current ? updater(current) : current));
@@ -782,6 +798,7 @@ export const RecipeDetailScreen = () => {
     const nextDraft = draftFromRecipe(recipe);
     setDraft(nextDraft);
     initialDraftRef.current = nextDraft;
+    setHasAttemptedSave(false);
     setIsEditing(true);
   }, [recipe]);
 
@@ -1318,6 +1335,7 @@ export const RecipeDetailScreen = () => {
       JSON.stringify(draft) !== JSON.stringify(initialDraftRef.current);
 
     const cancel = () => {
+      setHasAttemptedSave(false);
       if (isCreateMode) {
         navigation.goBack();
         return;
@@ -1357,11 +1375,15 @@ export const RecipeDetailScreen = () => {
   const handleSaveDraft = useCallback(async () => {
     if (!draft) return;
 
-    const errors = getDraftErrors(draft);
+    const errors = getRecipeDraftValidationErrors(draft);
     if (errors.length > 0) {
-      Alert.alert("Cannot Save Recipe", errors.join("\n"));
+      setHasAttemptedSave(true);
+      const firstError = errors[0];
+      if (firstError) scrollToDraftError(firstError.field);
       return;
     }
+
+    setHasAttemptedSave(false);
 
     if (isUploadingImages) {
       Alert.alert("Please wait", "Recipe photos are still uploading.");
@@ -1413,6 +1435,7 @@ export const RecipeDetailScreen = () => {
     navigation,
     recipeId,
     saveRecipeMutation,
+    scrollToDraftError,
     updateRecipeMutation,
   ]);
 
@@ -1724,6 +1747,48 @@ export const RecipeDetailScreen = () => {
     );
   };
 
+  const renderValidationMessage = (
+    field: RecipeDraftValidationField,
+    onImage = false,
+    centered = false,
+  ) => {
+    const error = visibleDraftErrors.find((item) => item.field === field);
+    if (!error) return null;
+
+    return (
+      <Animated.View
+        entering={FadeIn.duration(160)}
+        exiting={FadeOut.duration(120)}
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        style={[
+          styles.validationMessage,
+          onImage && styles.heroValidationMessage,
+          centered && styles.centeredValidationMessage,
+        ]}
+      >
+        <View pointerEvents="none" style={styles.validationMessageTint} />
+        <Ionicons
+          name="alert-circle"
+          size={16}
+          style={[
+            styles.validationMessageIcon,
+            onImage && styles.heroValidationMessageIcon,
+          ]}
+        />
+        <Text
+          selectable
+          style={[
+            styles.validationMessageText,
+            onImage && styles.heroValidationMessageText,
+          ]}
+        >
+          {error.message}
+        </Text>
+      </Animated.View>
+    );
+  };
+
   const renderHero = () => {
     if (isEditing && draft) {
       if (draft.images.length === 0) {
@@ -1738,6 +1803,7 @@ export const RecipeDetailScreen = () => {
                 style={styles.emptyHeroIcon}
               />
               <Text style={styles.emptyHeroText}>Add recipe photo</Text>
+              {renderValidationMessage("images", false, true)}
               <View style={styles.emptyHeroActions}>
                 <TouchableOpacity
                   style={styles.emptyHeroButton}
@@ -1777,12 +1843,23 @@ export const RecipeDetailScreen = () => {
                 </TouchableOpacity>
               </View>
             </View>
-            <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.58)"]}
-              pointerEvents="box-none"
-              style={styles.imageOverlay}
-            >
-              <View style={styles.overlayTitleInputFrame}>
+            <View pointerEvents="box-none" style={styles.imageOverlay}>
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.58)"]}
+                pointerEvents="none"
+                style={[
+                  styles.editImageGradient,
+                  styles.emptyEditImageGradient,
+                ]}
+              />
+              {renderValidationMessage("name")}
+              <View
+                style={[
+                  styles.overlayTitleInputFrame,
+                  hasVisibleDraftError("name") &&
+                    styles.overlayTitleInputFrameError,
+                ]}
+              >
                 <TextInput
                   defaultValue={draft.name}
                   onChangeText={(name) =>
@@ -1795,7 +1872,7 @@ export const RecipeDetailScreen = () => {
                   textAlignVertical="top"
                 />
               </View>
-            </LinearGradient>
+            </View>
           </View>
         );
       }
@@ -1832,13 +1909,22 @@ export const RecipeDetailScreen = () => {
             currentPage={currentImageIndex + 1}
             totalPages={draft.images.length}
           />
-          <LinearGradient
-            colors={["transparent", "rgba(0,0,0,0.6)"]}
-            pointerEvents="box-none"
-            style={styles.imageOverlay}
-          >
+          <View pointerEvents="box-none" style={styles.imageOverlay}>
+            <LinearGradient
+              colors={["transparent", "rgba(0,0,0,0.6)"]}
+              pointerEvents="none"
+              style={styles.editImageGradient}
+            />
             {renderImageEditOverlay()}
-            <View style={styles.overlayTitleInputFrame}>
+            {renderValidationMessage("images", true, true)}
+            {renderValidationMessage("name")}
+            <View
+              style={[
+                styles.overlayTitleInputFrame,
+                hasVisibleDraftError("name") &&
+                  styles.overlayTitleInputFrameError,
+              ]}
+            >
               <TextInput
                 defaultValue={draft.name}
                 onChangeText={(name) =>
@@ -1851,7 +1937,7 @@ export const RecipeDetailScreen = () => {
                 textAlignVertical="top"
               />
             </View>
-          </LinearGradient>
+          </View>
         </View>
       );
     }
@@ -2052,7 +2138,7 @@ export const RecipeDetailScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {section.ingredients.map((ingredient) => (
+            {section.ingredients.map((ingredient, ingredientIndex) => (
               <Animated.View
                 key={ingredient.id}
                 layout={LinearTransition.duration(180)}
@@ -2067,7 +2153,13 @@ export const RecipeDetailScreen = () => {
                   }
                   placeholder="2 cups flour"
                   placeholderTextColor={styles.placeholderText.color}
-                  style={styles.editIngredientInput}
+                  style={[
+                    styles.editIngredientInput,
+                    sectionIndex === 0 &&
+                      ingredientIndex === 0 &&
+                      hasVisibleDraftError("ingredients") &&
+                      styles.editInputError,
+                  ]}
                   multiline
                   textAlignVertical="top"
                 />
@@ -2091,17 +2183,19 @@ export const RecipeDetailScreen = () => {
           </Animated.View>
         ))}
 
-        <TouchableOpacity
-          style={styles.addSectionButton}
-          onPress={addIngredientSection}
-        >
-          <Ionicons
-            name="add-circle-outline"
-            size={18}
-            style={styles.inlineAddIcon}
-          />
-          <Text style={styles.addSectionText}>Add ingredient section</Text>
-        </TouchableOpacity>
+        <Animated.View layout={LinearTransition.duration(180)}>
+          <TouchableOpacity
+            style={styles.addSectionButton}
+            onPress={addIngredientSection}
+          >
+            <Ionicons
+              name="add-circle-outline"
+              size={18}
+              style={styles.inlineAddIcon}
+            />
+            <Text style={styles.addSectionText}>Add ingredient section</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
     );
   };
@@ -2275,17 +2369,19 @@ export const RecipeDetailScreen = () => {
           </Animated.View>
         ))}
 
-        <TouchableOpacity
-          style={styles.addSectionButton}
-          onPress={addInstructionSection}
-        >
-          <Ionicons
-            name="add-circle-outline"
-            size={18}
-            style={styles.inlineAddIcon}
-          />
-          <Text style={styles.addSectionText}>Add method section</Text>
-        </TouchableOpacity>
+        <Animated.View layout={LinearTransition.duration(180)}>
+          <TouchableOpacity
+            style={styles.addSectionButton}
+            onPress={addInstructionSection}
+          >
+            <Ionicons
+              name="add-circle-outline"
+              size={18}
+              style={styles.inlineAddIcon}
+            />
+            <Text style={styles.addSectionText}>Add method section</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
     );
   };
@@ -2294,56 +2390,64 @@ export const RecipeDetailScreen = () => {
     if (!draft) return null;
 
     return (
-      <View style={styles.recipeMetaGroup}>
-        <View style={styles.recipeMetaInputItem}>
-          <Ionicons name="leaf-outline" size={16} style={styles.metaIcon} />
-          <Text style={styles.recipeMetaLabel}>Prep</Text>
-          <TextInput
-            defaultValue={draft.prepTime?.toString() ?? ""}
-            onChangeText={(value) =>
-              updateDraft((current) => ({
-                ...current,
-                prepTime: value ? Math.max(0, Number(value) || 0) : null,
-              }))
-            }
-            placeholder="min"
-            placeholderTextColor={styles.placeholderText.color}
-            keyboardType="number-pad"
-            style={styles.metaTextInput}
-          />
+      <View style={styles.metaEditor}>
+        <View style={styles.recipeMetaGroup}>
+          <View style={styles.recipeMetaInputItem}>
+            <Ionicons name="leaf-outline" size={16} style={styles.metaIcon} />
+            <Text style={styles.recipeMetaLabel}>Prep</Text>
+            <TextInput
+              defaultValue={draft.prepTime?.toString() ?? ""}
+              onChangeText={(value) =>
+                updateDraft((current) => ({
+                  ...current,
+                  prepTime: value ? Math.max(0, Number(value) || 0) : null,
+                }))
+              }
+              placeholder="min"
+              placeholderTextColor={styles.placeholderText.color}
+              keyboardType="number-pad"
+              style={styles.metaTextInput}
+            />
+          </View>
+          <View style={styles.recipeMetaInputItem}>
+            <Ionicons name="flame-outline" size={16} style={styles.metaIcon} />
+            <Text style={styles.recipeMetaLabel}>Cook</Text>
+            <TextInput
+              defaultValue={draft.cookTime?.toString() ?? ""}
+              onChangeText={(value) =>
+                updateDraft((current) => ({
+                  ...current,
+                  cookTime: value ? Math.max(0, Number(value) || 0) : null,
+                }))
+              }
+              placeholder="min"
+              placeholderTextColor={styles.placeholderText.color}
+              keyboardType="number-pad"
+              style={styles.metaTextInput}
+            />
+          </View>
+          <View
+            style={[
+              styles.recipeMetaInputItem,
+              hasVisibleDraftError("servings") && styles.metaInputError,
+            ]}
+          >
+            <Ionicons name="people-outline" size={16} style={styles.metaIcon} />
+            <Text style={styles.recipeMetaLabel}>Serves</Text>
+            <TextInput
+              defaultValue={draft.servings.toString()}
+              onChangeText={(value) =>
+                updateDraft((current) => ({
+                  ...current,
+                  servings: value ? Number(value) || 0 : 0,
+                }))
+              }
+              keyboardType="number-pad"
+              style={styles.metaTextInput}
+            />
+          </View>
         </View>
-        <View style={styles.recipeMetaInputItem}>
-          <Ionicons name="flame-outline" size={16} style={styles.metaIcon} />
-          <Text style={styles.recipeMetaLabel}>Cook</Text>
-          <TextInput
-            defaultValue={draft.cookTime?.toString() ?? ""}
-            onChangeText={(value) =>
-              updateDraft((current) => ({
-                ...current,
-                cookTime: value ? Math.max(0, Number(value) || 0) : null,
-              }))
-            }
-            placeholder="min"
-            placeholderTextColor={styles.placeholderText.color}
-            keyboardType="number-pad"
-            style={styles.metaTextInput}
-          />
-        </View>
-        <View style={styles.recipeMetaInputItem}>
-          <Ionicons name="people-outline" size={16} style={styles.metaIcon} />
-          <Text style={styles.recipeMetaLabel}>Serves</Text>
-          <TextInput
-            defaultValue={draft.servings.toString()}
-            onChangeText={(value) =>
-              updateDraft((current) => ({
-                ...current,
-                servings: Math.max(1, Number(value) || 1),
-              }))
-            }
-            keyboardType="number-pad"
-            style={styles.metaTextInput}
-          />
-        </View>
+        {renderValidationMessage("servings")}
       </View>
     );
   };
@@ -2863,7 +2967,12 @@ export const RecipeDetailScreen = () => {
 
               <View style={styles.pageDivider} />
 
-              <View style={styles.recipeSection}>
+              <View
+                style={styles.recipeSection}
+                onLayout={(event) => {
+                  ingredientSectionYRef.current = event.nativeEvent.layout.y;
+                }}
+              >
                 <View style={styles.sectionHeadingRow}>
                   <View>
                     <Text style={styles.sectionHeading}>Ingredients</Text>
@@ -2872,6 +2981,7 @@ export const RecipeDetailScreen = () => {
                     </Text>
                   </View>
                 </View>
+                {isEditing ? renderValidationMessage("ingredients") : null}
                 {isEditing ? renderEditableIngredients() : renderIngredients()}
               </View>
 
@@ -2893,7 +3003,13 @@ export const RecipeDetailScreen = () => {
 
               <VSpace
                 size={
-                  isEditing ? 120 : isPreviewMode || !isOwnRecipe ? 100 : 40
+                  isEditing
+                    ? visibleDraftErrors.length > 0
+                      ? 190
+                      : 120
+                    : isPreviewMode || !isOwnRecipe
+                      ? 100
+                      : 40
                 }
               />
             </>
@@ -2955,43 +3071,73 @@ export const RecipeDetailScreen = () => {
             { paddingBottom: insets.bottom + 12 },
           ]}
         >
-          {isImportReviewMode ? (
-            <TouchableOpacity
-              style={[styles.cancelButton, styles.dismissButton]}
-              onPress={handleDismissImportReview}
-              disabled={isSaving}
+          {visibleDraftErrors.length > 0 ? (
+            <Animated.View
+              entering={FadeIn.duration(160)}
+              exiting={FadeOut.duration(120)}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              style={styles.validationSummary}
             >
-              <Text style={[styles.cancelButtonText, styles.dismissButtonText]}>
-                Dismiss
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={handleCancelEdit}
-              disabled={isSaving}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[styles.saveButton, isSaving && styles.buttonDisabled]}
-            onPress={handleSaveDraft}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <Ionicons
+                name="alert-circle"
+                size={20}
+                style={styles.validationSummaryIcon}
+              />
+              <View style={styles.validationSummaryContent}>
+                <Text selectable style={styles.validationSummaryTitle}>
+                  {visibleDraftErrors.length === 1
+                    ? "1 thing needs attention"
+                    : `${visibleDraftErrors.length} things need attention`}
+                </Text>
+                <Text selectable style={styles.validationSummaryText}>
+                  {validationSummary}
+                </Text>
+              </View>
+            </Animated.View>
+          ) : null}
+
+          <View style={styles.editFooterButtons}>
+            {isImportReviewMode ? (
+              <TouchableOpacity
+                style={[styles.cancelButton, styles.dismissButton]}
+                onPress={handleDismissImportReview}
+                disabled={isSaving}
+              >
+                <Text
+                  style={[styles.cancelButtonText, styles.dismissButtonText]}
+                >
+                  Dismiss
+                </Text>
+              </TouchableOpacity>
             ) : (
-              <>
-                <Ionicons
-                  name="checkmark"
-                  size={20}
-                  style={styles.saveButtonIcon}
-                />
-                <Text style={styles.saveButtonText}>Save</Text>
-              </>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={handleCancelEdit}
+                disabled={isSaving}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, isSaving && styles.buttonDisabled]}
+              onPress={handleSaveDraft}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons
+                    name="checkmark"
+                    size={20}
+                    style={styles.saveButtonIcon}
+                  />
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       ) : null}
 
@@ -3078,6 +3224,41 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 15,
     fontFamily: theme.fonts.semiBold,
   },
+  validationMessage: {
+    minHeight: 32,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.destructive + "32",
+    backgroundColor: theme.colors.background,
+    overflow: "hidden",
+  },
+  validationMessageTint: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: theme.colors.destructive + "12",
+  },
+  validationMessageIcon: {
+    color: theme.colors.destructive,
+  },
+  validationMessageText: {
+    flexShrink: 1,
+    color: theme.colors.destructive,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: theme.fonts.semiBold,
+  },
+  centeredValidationMessage: {
+    alignSelf: "center",
+  },
   emptyHeroActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -3124,6 +3305,16 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: 70,
     paddingBottom: 20,
     paddingHorizontal: 20,
+  },
+  editImageGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+  },
+  emptyEditImageGradient: {
+    height: 130,
   },
   overlayTitle: {
     color: "white",
@@ -3191,6 +3382,22 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: "rgba(0,0,0,0.14)",
     paddingVertical: 4,
     paddingHorizontal: 12,
+  },
+  overlayTitleInputFrameError: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.destructive,
+    backgroundColor: "rgba(0,0,0,0.14)",
+  },
+  heroValidationMessage: {
+    marginBottom: 8,
+    borderColor: theme.colors.destructive + "32",
+  },
+  heroValidationMessageIcon: {
+    color: theme.colors.destructive,
+  },
+  heroValidationMessageText: {
+    color: theme.colors.destructive,
   },
   overlayTitleInput: {
     minHeight: 38,
@@ -3310,6 +3517,9 @@ const styles = StyleSheet.create((theme) => ({
     flexWrap: "wrap",
     gap: 8,
   },
+  metaEditor: {
+    gap: 8,
+  },
   recipeMetaItem: {
     minHeight: 34,
     flexDirection: "row",
@@ -3327,6 +3537,11 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 10,
     borderRadius: 17,
     backgroundColor: theme.colors.inputBackground,
+  },
+  metaInputError: {
+    borderWidth: 1,
+    borderColor: theme.colors.destructive,
+    backgroundColor: theme.colors.destructive + "12",
   },
   recipeMetaButtonIcon: {
     marginLeft: -1,
@@ -3700,6 +3915,11 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fonts.regular,
     textAlignVertical: "top",
   },
+  editInputError: {
+    borderWidth: 1,
+    borderColor: theme.colors.destructive,
+    backgroundColor: theme.colors.destructive + "12",
+  },
   editInstructionItem: {
     flexDirection: "row",
     gap: 10,
@@ -3793,8 +4013,42 @@ const styles = StyleSheet.create((theme) => ({
     borderTopColor: theme.colors.border,
   },
   editFooter: {
+    gap: 10,
+  },
+  editFooterButtons: {
     flexDirection: "row",
     gap: 12,
+  },
+  validationSummary: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.destructive + "32",
+    backgroundColor: theme.colors.destructive + "12",
+  },
+  validationSummaryIcon: {
+    marginTop: 1,
+    color: theme.colors.destructive,
+  },
+  validationSummaryContent: {
+    flex: 1,
+    gap: 1,
+  },
+  validationSummaryTitle: {
+    color: theme.colors.destructive,
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: theme.fonts.bold,
+  },
+  validationSummaryText: {
+    color: theme.colors.destructive,
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: theme.fonts.medium,
   },
   cancelButton: {
     flex: 1,
