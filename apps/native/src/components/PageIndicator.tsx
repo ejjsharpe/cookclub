@@ -26,7 +26,7 @@ export const PageIndicator = ({
 const styles = StyleSheet.create(() => ({
   container: {
     position: "absolute",
-    bottom: 32,
+    bottom: 20,
     right: 16,
     minHeight: 30,
     backgroundColor: "rgba(0,0,0,0.38)",
@@ -34,7 +34,8 @@ const styles = StyleSheet.create(() => ({
     borderColor: "rgba(255,255,255,0.24)",
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 15,
+    borderRadius: 999,
+    borderCurve: "continuous",
     zIndex: 20,
     elevation: 2,
   },

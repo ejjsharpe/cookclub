@@ -29,6 +29,7 @@ import {
   Keyboard,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Pressable,
   TextInput,
 } from "react-native";
 import {
@@ -112,7 +113,10 @@ import {
 } from "@/lib/recipeDraftValidation";
 import { useSubscription } from "@/lib/subscription";
 import type { RootStackParamList } from "@/navigation/navigationRef";
-import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
+import {
+  ensureCameraPermission,
+  ensureMediaLibraryPermission,
+} from "@/utils/imagePickerPermissions";
 import { getImageUrl, selectDetailImagePreset } from "@/utils/imageUrl";
 import {
   isCompactUnit,
@@ -120,6 +124,7 @@ import {
   convertParsedIngredient,
 } from "@/utils/measurementUtils";
 import { transformParsedRecipeForPreview } from "@/utils/recipeTransform";
+import { moveArrayItem } from "@/utils/reorder";
 import { formatMinutesShort } from "@/utils/timeUtils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -400,6 +405,13 @@ function draftToMutationInput(draft: RecipeDraft) {
   const imageUploadIds = draft.images
     .filter((image) => !image.isRemote && image.uploadKey)
     .map((image) => image.uploadKey!);
+  let imageIndex = 0;
+  let uploadIndex = 0;
+  const imageOrder = draft.images.map((image) =>
+    image.isRemote
+      ? { source: "image" as const, index: imageIndex++ }
+      : { source: "upload" as const, index: uploadIndex++ },
+  );
   const nutrition = nutritionForMutation(draft.nutrition);
 
   return {
@@ -435,6 +447,7 @@ function draftToMutationInput(draft: RecipeDraft) {
       .filter((section) => section.instructions.length > 0),
     ...(remoteImages.length > 0 && { images: remoteImages }),
     ...(imageUploadIds.length > 0 && { imageUploadIds }),
+    ...(imageOrder.length > 0 && { imageOrder }),
     ...(draft.sourceUrl && { sourceUrl: draft.sourceUrl }),
     sourceType: draft.sourceType,
     ...(nutrition && { nutrition }),
@@ -550,6 +563,7 @@ export const RecipeDetailScreen = () => {
   const hasInitializedServings = useRef(false);
   const draftImageListRef = useRef<FlatList<DraftImage>>(null);
   const pendingImageScrollIndexRef = useRef<number | null>(null);
+  const pendingImageScrollAnimatedRef = useRef(true);
   const nutritionRequestRecipeIdRef = useRef<number | null>(null);
   const isDismissingImportRef = useRef(false);
   const adjustRecipeSheetRef = useRef<AdjustRecipeSheetRef>(null);
@@ -721,11 +735,13 @@ export const RecipeDetailScreen = () => {
     }
 
     pendingImageScrollIndexRef.current = null;
+    const animated = pendingImageScrollAnimatedRef.current;
+    pendingImageScrollAnimatedRef.current = true;
     setCurrentImageIndex(index);
     requestAnimationFrame(() => {
       draftImageListRef.current?.scrollToIndex({
         index,
-        animated: true,
+        animated,
       });
     });
   }, [draft, isEditing]);
@@ -940,13 +956,56 @@ export const RecipeDetailScreen = () => {
     }
   };
 
-  const handlePickRecipeImage = useCallback(async () => {
+  const handleAddRecipeImage = useCallback(
+    async (pickedUri: string) => {
+      const imageId = createDraftId("image");
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              images: [
+                ...current.images,
+                { id: imageId, uri: pickedUri, isRemote: false },
+              ],
+            }
+          : current,
+      );
+
+      try {
+        const [uploadResult] = await uploadImages([pickedUri]);
+        if (!uploadResult) return;
+
+        setDraft((current) =>
+          current
+            ? {
+                ...current,
+                images: current.images.map((image) =>
+                  image.id === imageId
+                    ? { ...image, uploadKey: uploadResult.key }
+                    : image,
+                ),
+              }
+            : current,
+        );
+      } catch {
+        setDraft((current) =>
+          current
+            ? {
+                ...current,
+                images: current.images.filter((image) => image.id !== imageId),
+              }
+            : current,
+        );
+      }
+    },
+    [uploadImages],
+  );
+
+  const handleChooseRecipeImage = useCallback(async () => {
     const hasPermission = await ensureMediaLibraryPermission({
       message: "Please allow access to your photos to add a recipe image.",
     });
     if (!hasPermission) return;
-
-    let pickedUri: string | null = null;
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -957,53 +1016,48 @@ export const RecipeDetailScreen = () => {
 
       const pickedAsset = result.assets?.[0];
       if (result.canceled || !pickedAsset) return;
-      pickedUri = pickedAsset.uri;
+      await handleAddRecipeImage(pickedAsset.uri);
     } catch (error) {
       console.error("Failed to pick recipe image:", error);
       Alert.alert("Photo Error", "Unable to open your photo library.");
-      return;
     }
+  }, [handleAddRecipeImage]);
 
-    const imageId = createDraftId("image");
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            images: [
-              ...current.images,
-              { id: imageId, uri: pickedUri, isRemote: false },
-            ],
-          }
-        : current,
-    );
+  const handleTakeRecipePhoto = useCallback(async () => {
+    const hasPermission = await ensureCameraPermission({
+      message: "Please allow camera access to take a recipe photo.",
+    });
+    if (!hasPermission) return;
 
     try {
-      const [uploadResult] = await uploadImages([pickedUri]);
-      if (!uploadResult) return;
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 1,
+      });
 
-      setDraft((current) =>
-        current
-          ? {
-              ...current,
-              images: current.images.map((image) =>
-                image.id === imageId
-                  ? { ...image, uploadKey: uploadResult.key }
-                  : image,
-              ),
-            }
-          : current,
-      );
-    } catch {
-      setDraft((current) =>
-        current
-          ? {
-              ...current,
-              images: current.images.filter((image) => image.id !== imageId),
-            }
-          : current,
-      );
+      const capturedAsset = result.assets?.[0];
+      if (result.canceled || !capturedAsset) return;
+      await handleAddRecipeImage(capturedAsset.uri);
+    } catch (error) {
+      console.error("Failed to take recipe photo:", error);
+      Alert.alert("Camera Error", "Unable to take a photo.");
     }
-  }, [uploadImages]);
+  }, [handleAddRecipeImage]);
+
+  const handlePickRecipeImage = useCallback(() => {
+    Alert.alert("Add recipe image", undefined, [
+      {
+        text: "Take Photo",
+        onPress: handleTakeRecipePhoto,
+      },
+      {
+        text: "Choose from Library",
+        onPress: handleChooseRecipeImage,
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [handleChooseRecipeImage, handleTakeRecipePhoto]);
 
   const handleGenerateRecipeImage = useCallback(async () => {
     if (!draft) return;
@@ -1041,6 +1095,7 @@ export const RecipeDetailScreen = () => {
       const imageId = createDraftId("generated-image");
       const nextImageIndex = draft.images.length;
       pendingImageScrollIndexRef.current = nextImageIndex;
+      pendingImageScrollAnimatedRef.current = true;
       updateDraft((current) => ({
         ...current,
         images: [
@@ -1070,6 +1125,23 @@ export const RecipeDetailScreen = () => {
     });
     setCurrentImageIndex((index) => Math.max(0, index - 1));
   }, [currentImageIndex, updateDraft]);
+
+  const handleMoveCurrentImage = useCallback(
+    (offset: -1 | 1) => {
+      if (!draft) return;
+
+      const nextIndex = currentImageIndex + offset;
+      if (nextIndex < 0 || nextIndex >= draft.images.length) return;
+
+      pendingImageScrollIndexRef.current = nextIndex;
+      pendingImageScrollAnimatedRef.current = false;
+      updateDraft((current) => ({
+        ...current,
+        images: moveArrayItem(current.images, currentImageIndex, nextIndex),
+      }));
+    },
+    [currentImageIndex, draft, updateDraft],
+  );
 
   const addIngredient = useCallback(
     (sectionId: string) => {
@@ -1715,9 +1787,19 @@ export const RecipeDetailScreen = () => {
           style={styles.heroEditButton}
           onPress={handlePickRecipeImage}
           activeOpacity={0.78}
+          accessibilityLabel="Add recipe image"
+          accessibilityHint="Take a photo or choose one from your library"
+          hitSlop={4}
         >
-          <Ionicons name="camera-outline" size={17} color="white" />
-          <Text style={styles.heroEditButtonText}>Photo</Text>
+          <View style={styles.heroAddImageIcon}>
+            <Ionicons name="images-outline" size={19} color="white" />
+            <Ionicons
+              name="add-circle"
+              size={11}
+              color="white"
+              style={styles.heroAddImageBadge}
+            />
+          </View>
           <View style={styles.heroCountChip}>
             <Text style={styles.heroCountText}>{draft.images.length}</Text>
           </View>
@@ -1730,39 +1812,64 @@ export const RecipeDetailScreen = () => {
           onPress={handleGenerateRecipeImage}
           activeOpacity={0.78}
           disabled={isCreatingImage}
+          accessibilityLabel="Create image with AI"
         >
           {isCreatingImage ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
             <Ionicons name="sparkles" size={17} color="white" />
           )}
-          <Text style={styles.heroEditButtonText}>AI image</Text>
+          <Text numberOfLines={1} style={styles.heroEditButtonText}>
+            AI
+          </Text>
         </TouchableOpacity>
-        {draft.images.length > 0 ? (
-          <TouchableOpacity
-            style={styles.heroIconButton}
-            onPress={handleRemoveCurrentImage}
-            activeOpacity={0.78}
-            accessibilityLabel="Remove current photo"
-          >
-            <Ionicons name="trash-outline" size={17} color="white" />
-          </TouchableOpacity>
+        {draft.images.length > 1 ? (
+          <View style={styles.heroReorderControls}>
+            <Pressable
+              style={[
+                styles.heroReorderButton,
+                currentImageIndex === 0 && styles.heroButtonDisabled,
+              ]}
+              onPress={() => handleMoveCurrentImage(-1)}
+              disabled={currentImageIndex === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Move current photo earlier"
+              accessibilityHint="Changes the photo order; the first photo is the recipe cover"
+              accessibilityState={{ disabled: currentImageIndex === 0 }}
+              hitSlop={4}
+            >
+              <Ionicons name="chevron-back" size={17} color="white" />
+            </Pressable>
+            <View style={styles.heroReorderDivider} />
+            <Pressable
+              style={[
+                styles.heroReorderButton,
+                currentImageIndex === draft.images.length - 1 &&
+                  styles.heroButtonDisabled,
+              ]}
+              onPress={() => handleMoveCurrentImage(1)}
+              disabled={currentImageIndex === draft.images.length - 1}
+              accessibilityRole="button"
+              accessibilityLabel="Move current photo later"
+              accessibilityHint="Changes the photo order; the first photo is the recipe cover"
+              accessibilityState={{
+                disabled: currentImageIndex === draft.images.length - 1,
+              }}
+              hitSlop={4}
+            >
+              <Ionicons name="chevron-forward" size={17} color="white" />
+            </Pressable>
+          </View>
         ) : null}
-      </View>
-    );
-  };
-
-  const renderHeroImageCounter = (totalPages: number) => {
-    if (totalPages <= 1) return null;
-
-    return (
-      <View
-        pointerEvents="none"
-        style={[styles.heroMetaChip, styles.heroImageCounterChip]}
-      >
-        <Text style={styles.heroImageCounterText}>
-          {currentImageIndex + 1} / {totalPages}
-        </Text>
+        <TouchableOpacity
+          style={styles.heroIconButton}
+          onPress={handleRemoveCurrentImage}
+          activeOpacity={0.78}
+          accessibilityLabel="Remove current photo"
+          hitSlop={4}
+        >
+          <Ionicons name="trash-outline" size={17} color="white" />
+        </TouchableOpacity>
       </View>
     );
   };
@@ -1941,6 +2048,8 @@ export const RecipeDetailScreen = () => {
             <View
               style={[
                 styles.overlayTitleInputFrame,
+                draft.images.length > 1 &&
+                  styles.overlayTitleInputFrameWithCounter,
                 hasVisibleDraftError("name") &&
                   styles.overlayTitleInputFrameError,
               ]}
@@ -1985,6 +2094,10 @@ export const RecipeDetailScreen = () => {
                 })}
               />
             </Animated.View>
+            <PageIndicator
+              currentPage={currentImageIndex + 1}
+              totalPages={recipe.images.length}
+            />
             <LinearGradient
               colors={["transparent", "rgba(0,0,0,0.6)"]}
               pointerEvents="box-none"
@@ -1992,7 +2105,14 @@ export const RecipeDetailScreen = () => {
             >
               {shouldShowSourceChip && sourceWebsiteName ? (
                 <>
-                  <View pointerEvents="none">
+                  <View
+                    pointerEvents="none"
+                    style={
+                      recipe.images.length > 1
+                        ? styles.heroTitleCounterClearance
+                        : undefined
+                    }
+                  >
                     <Text
                       type="title1"
                       style={styles.overlayTitle}
@@ -2017,12 +2137,18 @@ export const RecipeDetailScreen = () => {
                         {sourceWebsiteName}
                       </Text>
                     </TouchableOpacity>
-                    {renderHeroImageCounter(recipe.images.length)}
                   </View>
                 </>
               ) : (
                 <View pointerEvents="box-none" style={styles.heroTitleRow}>
-                  <View pointerEvents="none" style={styles.heroTitleTextWrap}>
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.heroTitleTextWrap,
+                      recipe.images.length > 1 &&
+                        styles.heroTitleCounterClearance,
+                    ]}
+                  >
                     <Text
                       type="title1"
                       style={styles.overlayTitle}
@@ -2031,7 +2157,6 @@ export const RecipeDetailScreen = () => {
                       {recipe.name}
                     </Text>
                   </View>
-                  {renderHeroImageCounter(recipe.images.length)}
                 </View>
               )}
             </LinearGradient>
@@ -3354,6 +3479,9 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
   },
+  heroTitleCounterClearance: {
+    paddingRight: 64,
+  },
   heroMetaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -3387,16 +3515,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 13,
     fontFamily: theme.fonts.semiBold,
   },
-  heroImageCounterText: {
-    color: "rgba(255,255,255,0.88)",
-    fontSize: 13,
-    fontFamily: theme.fonts.semiBold,
-    fontVariant: ["tabular-nums"],
-  },
-  heroImageCounterChip: {
-    marginLeft: "auto",
-    flexShrink: 0,
-  },
   overlayTitleInputFrame: {
     marginTop: -5,
     marginBottom: -9,
@@ -3414,6 +3532,9 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.destructive,
     backgroundColor: "rgba(0,0,0,0.14)",
   },
+  overlayTitleInputFrameWithCounter: {
+    marginRight: 58,
+  },
   heroValidationMessage: {
     marginBottom: 8,
     borderColor: theme.colors.destructive + "32",
@@ -3429,6 +3550,7 @@ const styles = StyleSheet.create((theme) => ({
     maxHeight: 72,
     color: "white",
     fontSize: 28,
+    lineHeight: 34,
     fontFamily: theme.fonts.black,
     letterSpacing: -1,
     paddingTop: 0,
@@ -3437,24 +3559,39 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: "transparent",
   },
   heroEditRow: {
+    width: "100%",
     flexDirection: "row",
+    flexWrap: "nowrap",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     marginBottom: 10,
   },
   heroEditButton: {
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 17,
+    minWidth: 0,
+    height: 36,
+    paddingHorizontal: 8,
+    borderRadius: 18,
     backgroundColor: "rgba(0,0,0,0.45)",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
   },
   heroButtonDisabled: {
     opacity: 0.65,
   },
+  heroAddImageIcon: {
+    width: 21,
+    height: 21,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroAddImageBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -1,
+  },
   heroEditButtonText: {
+    flexShrink: 1,
     color: "white",
     fontSize: 13,
     fontFamily: theme.fonts.semiBold,
@@ -3477,12 +3614,32 @@ const styles = StyleSheet.create((theme) => ({
     includeFontPadding: false,
   },
   heroIconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  heroReorderControls: {
+    height: 36,
+    borderRadius: 18,
+    borderCurve: "continuous",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  heroReorderButton: {
+    width: 38,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroReorderDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 18,
+    backgroundColor: "rgba(255,255,255,0.24)",
   },
   whiteCard: {
     backgroundColor: theme.colors.background,

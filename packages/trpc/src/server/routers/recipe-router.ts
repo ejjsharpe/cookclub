@@ -61,6 +61,11 @@ const ImageAssetRecord = type({
 
 const ImageRecord = type.or(ImageAssetRecord, ImageUrlRecord);
 
+const ImageOrderItemRecord = type({
+  source: "'image' | 'upload'",
+  index: "number.integer >= 0",
+});
+
 // Support both unparsed and parsed ingredient formats for flexibility
 const IngredientRecordUnparsed = type({
   index: "number",
@@ -113,6 +118,7 @@ const RecipePostValidator = type({
   // Either images (direct URLs) or imageUploadIds (temp keys from upload)
   "images?": ImageRecord.array(),
   "imageUploadIds?": "string[]",
+  "imageOrder?": ImageOrderItemRecord.array(),
 
   "sourceUrl?": "string",
   "sourceType?": SourceTypeValidator,
@@ -134,6 +140,7 @@ const RecipeUpdateValidator = type({
   // Either images (direct URLs) or imageUploadIds (temp keys from upload)
   "images?": ImageRecord.array(),
   "imageUploadIds?": "string[]",
+  "imageOrder?": ImageOrderItemRecord.array(),
 
   "sourceUrl?": "string",
   "sourceType?": SourceTypeValidator,
@@ -198,6 +205,7 @@ interface RecipePayloadInput {
   name: string;
   images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
+  imageOrder?: { source: "image" | "upload"; index: number }[];
   ingredientSections: {
     name?: string | null;
     ingredients: (
@@ -620,8 +628,11 @@ const recipeHeadRouter = router({
           ownerId: ctx.user.id,
         });
         movedKeys = preparedImages.movedKeys;
-        const { imageUploadIds: _imageUploadIds, ...recipeInput } =
-          normalizedInput;
+        const {
+          imageUploadIds: _imageUploadIds,
+          imageOrder: _imageOrder,
+          ...recipeInput
+        } = normalizedInput;
 
         const { recipe, activityEvent } = await ctx.db.transaction(
           async (tx) => {
@@ -690,9 +701,14 @@ const recipeHeadRouter = router({
           ownerId: ctx.user.id,
         });
         movedKeys = preparedImages.movedKeys;
+        const {
+          imageUploadIds: _imageUploadIds,
+          imageOrder: _imageOrder,
+          ...recipeInput
+        } = normalizedInput;
 
         const recipe = await updateRecipe(ctx.db, ctx.user.id, {
-          ...normalizedInput,
+          ...recipeInput,
           images: preparedImages.images,
           instructionSections: preparedImages.instructionSections,
           nutrition: subscriptionStatus.isPro

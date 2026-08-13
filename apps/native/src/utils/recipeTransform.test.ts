@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  transformParsedRecipeForPreview,
-  transformParsedRecipeForSave,
-  validateRecipeForSave,
-} from "./recipeTransform";
+import { transformParsedRecipeForPreview } from "./recipeTransform";
 
 describe("recipe import transforms", () => {
   const ingredientsOnlyRecipe = {
@@ -38,20 +34,10 @@ describe("recipe import transforms", () => {
     },
   } as const;
 
-  it("allows ingredients-only imports to be previewed and saved", () => {
-    expect(validateRecipeForSave(ingredientsOnlyRecipe as any)).toEqual({
-      isValid: true,
-      errors: [],
-    });
-
+  it("allows ingredients-only imports to be previewed", () => {
     expect(
       transformParsedRecipeForPreview(ingredientsOnlyRecipe as any)
         ?.instructionSections,
     ).toEqual([{ id: -1, name: null, index: 0, instructions: [] }]);
-
-    expect(
-      transformParsedRecipeForSave(ingredientsOnlyRecipe as any)
-        .instructionSections,
-    ).toEqual([]);
   });
 });

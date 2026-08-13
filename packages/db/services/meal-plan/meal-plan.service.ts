@@ -359,6 +359,7 @@ export async function addRecipeToMealPlan(
     .select({ url: recipeImages.url })
     .from(recipeImages)
     .where(eq(recipeImages.recipeId, recipeId))
+    .orderBy(recipeImages.index)
     .limit(1)
     .then((rows) => rows[0]);
 

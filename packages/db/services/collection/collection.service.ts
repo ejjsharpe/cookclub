@@ -185,7 +185,7 @@ export async function getUserCollectionsWithMetadata(
       .innerJoin(recipes, eq(recipeCollections.recipeId, recipes.id))
       .innerJoin(recipeImages, eq(recipes.id, recipeImages.recipeId))
       .where(inArray(recipeCollections.collectionId, collectionIds))
-      .orderBy(desc(recipeCollections.createdAt), asc(recipeImages.id));
+      .orderBy(desc(recipeCollections.createdAt), asc(recipeImages.index));
 
     const seenRecipeIdsByCollection = new Map<number, Set<number>>();
 
@@ -300,7 +300,8 @@ export async function getCollectionDetail(
     allRecipeImages = await db
       .select()
       .from(recipeImages)
-      .where(inArray(recipeImages.recipeId, recipeIds));
+      .where(inArray(recipeImages.recipeId, recipeIds))
+      .orderBy(recipeImages.recipeId, recipeImages.index);
   }
 
   // Map recipes with their images

@@ -153,6 +153,83 @@ describe("recipe image service", () => {
     );
   });
 
+  it("preserves an explicit order across existing and uploaded images", async () => {
+    const imageService = createImageService();
+    const existingImage = createAsset("recipes/covers/existing/image.jpg");
+    imageService.move.mockResolvedValue({
+      success: true,
+      results: [
+        {
+          from: "temp/new.webp",
+          to: "recipes/covers/group/new.webp",
+          success: true,
+          asset: createAsset("recipes/covers/group/new.webp"),
+        },
+      ],
+    });
+
+    const result = await prepareRecipeImages(
+      {
+        images: [existingImage],
+        imageUploadIds: ["temp/new.webp"],
+        imageOrder: [
+          { source: "upload", index: 0 },
+          { source: "image", index: 0 },
+        ],
+      },
+      {
+        imageService,
+        imagePublicUrl: "https://images.example.com",
+        ownerId: "user-id",
+      },
+    );
+
+    expect(result.images.map((image) => image.storageKey)).toEqual([
+      "recipes/covers/group/new.webp",
+      "recipes/covers/existing/image.jpg",
+    ]);
+  });
+
+  it("rejects an image order that does not reference every image once", async () => {
+    const imageService = createImageService();
+    const existingImage = createAsset("recipes/covers/existing/image.jpg");
+
+    await expect(
+      prepareRecipeImages(
+        {
+          images: [existingImage],
+          imageOrder: [{ source: "image", index: 1 }],
+        },
+        {
+          imageService,
+          imagePublicUrl: "https://images.example.com",
+          ownerId: "user-id",
+        },
+      ),
+    ).rejects.toThrow("Image order contains an invalid image reference");
+  });
+
+  it("validates image order before moving uploaded images", async () => {
+    const imageService = createImageService();
+
+    await expect(
+      prepareRecipeImages(
+        {
+          imageUploadIds: ["temp/new.webp"],
+          imageOrder: [{ source: "upload", index: 1 }],
+        },
+        {
+          imageService,
+          imagePublicUrl: "https://images.example.com",
+          ownerId: "user-id",
+        },
+      ),
+    ).rejects.toThrow("Image order contains an invalid image reference");
+
+    expect(imageService.move).not.toHaveBeenCalled();
+    expect(imageService.delete).not.toHaveBeenCalled();
+  });
+
   it("throws when an image move fails", async () => {
     const imageService = createImageService();
     imageService.move.mockResolvedValue({

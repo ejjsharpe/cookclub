@@ -19,7 +19,13 @@ interface RecipeInstructionSectionInput {
 interface RecipeImageInput {
   images?: ({ url: string } | PublicImageAsset)[];
   imageUploadIds?: string[];
+  imageOrder?: RecipeImageOrderItem[];
   instructionSections?: RecipeInstructionSectionInput[];
+}
+
+export interface RecipeImageOrderItem {
+  source: "image" | "upload";
+  index: number;
 }
 
 interface PrepareRecipeImagesDeps {
@@ -32,6 +38,56 @@ export interface PreparedRecipeImages {
   images: PublicImageAsset[];
   instructionSections: RecipeInstructionSectionInput[];
   movedKeys: string[];
+}
+
+function validateImageOrder(input: RecipeImageInput): void {
+  const { imageOrder } = input;
+  if (!imageOrder) return;
+
+  const directImageCount = input.images?.length ?? 0;
+  const uploadedImageCount = input.imageUploadIds?.length ?? 0;
+  const totalImages = directImageCount + uploadedImageCount;
+  if (imageOrder.length !== totalImages) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Image order must include every recipe image",
+    });
+  }
+
+  const seen = new Set<string>();
+  for (const item of imageOrder) {
+    const key = `${item.source}:${item.index}`;
+    const sourceImageCount =
+      item.source === "image" ? directImageCount : uploadedImageCount;
+
+    if (
+      !Number.isInteger(item.index) ||
+      item.index < 0 ||
+      item.index >= sourceImageCount ||
+      seen.has(key)
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Image order contains an invalid image reference",
+      });
+    }
+
+    seen.add(key);
+  }
+}
+
+function applyImageOrder(
+  directImages: PublicImageAsset[],
+  uploadedImages: PublicImageAsset[],
+  imageOrder: RecipeImageOrderItem[] | undefined,
+): PublicImageAsset[] {
+  if (!imageOrder) return [...directImages, ...uploadedImages];
+
+  return imageOrder.map((item) => {
+    const sourceImages =
+      item.source === "image" ? directImages : uploadedImages;
+    return sourceImages[item.index]!;
+  });
 }
 
 function extensionFromKey(key: string) {
@@ -318,6 +374,8 @@ export async function prepareRecipeImages(
   input: RecipeImageInput,
   deps: PrepareRecipeImagesDeps,
 ): Promise<PreparedRecipeImages> {
+  validateImageOrder(input);
+
   const assetGroupId = crypto.randomUUID();
   const movedKeys: string[] = [];
 
@@ -340,7 +398,11 @@ export async function prepareRecipeImages(
     );
 
     return {
-      images: [...directImages.images, ...uploadedImages.images],
+      images: applyImageOrder(
+        directImages.images,
+        uploadedImages.images,
+        input.imageOrder,
+      ),
       instructionSections,
       movedKeys,
     };

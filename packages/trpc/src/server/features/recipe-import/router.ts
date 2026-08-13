@@ -54,6 +54,11 @@ const ImageAssetRecord = type({
   thumbhash: "string",
 });
 const ImageRecord = type.or(ImageAssetRecord, ImageUrlRecord);
+
+const ImageOrderItemRecord = type({
+  source: "'image' | 'upload'",
+  index: "number.integer >= 0",
+});
 const IngredientRecord = type.or(
   type({ index: "number", ingredient: "string" }),
   type({
@@ -101,6 +106,7 @@ const RecipeDraft = type({
   }).array(),
   "images?": ImageRecord.array(),
   "imageUploadIds?": "string[]",
+  "imageOrder?": ImageOrderItemRecord.array(),
   "sourceUrl?": "string",
   "sourceType?": "'url' | 'image' | 'text' | 'ai' | 'manual' | 'user'",
   "tagNames?": "string[]",
@@ -311,6 +317,7 @@ export const recipeImportRouter = router({
         const {
           images: _images,
           imageUploadIds: _imageUploadIds,
+          imageOrder: _imageOrder,
           nutrition,
           ...draft
         } = normalizedRecipe;

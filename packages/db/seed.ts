@@ -454,6 +454,7 @@ async function seedRecipes(
     // Add image
     await db.insert(schema.recipeImages).values({
       recipeId: recipe.id,
+      index: 0,
       ...seedImageAssetFields(r.imageUrl),
     });
 
@@ -568,6 +569,7 @@ async function seedSocialRecipes(
     // Add image
     await db.insert(schema.recipeImages).values({
       recipeId: recipe.id,
+      index: 0,
       ...seedImageAssetFields(r.imageUrl),
     });
 
@@ -759,6 +761,7 @@ async function seedMealPlans(
         .select({ url: schema.recipeImages.url })
         .from(schema.recipeImages)
         .where(eq(schema.recipeImages.recipeId, recipe.id))
+        .orderBy(schema.recipeImages.index)
         .limit(1);
 
       const createdAt = randomDateAfter(plan.createdAt, 7);
@@ -855,6 +858,7 @@ async function seedShoppingLists(
         .select({ url: schema.recipeImages.url })
         .from(schema.recipeImages)
         .where(eq(schema.recipeImages.recipeId, recipe.id))
+        .orderBy(schema.recipeImages.index)
         .limit(1);
 
       const addedAt = randomDateAfter(shoppingList.createdAt, 5);
@@ -1002,11 +1006,13 @@ async function seedImportedRecipes(
       const sourceImages = await db
         .select()
         .from(schema.recipeImages)
-        .where(eq(schema.recipeImages.recipeId, sourceRecipe.id));
+        .where(eq(schema.recipeImages.recipeId, sourceRecipe.id))
+        .orderBy(schema.recipeImages.index);
 
       for (const img of sourceImages) {
         await db.insert(schema.recipeImages).values({
           recipeId: importedRecipe.id,
+          index: img.index,
           url: img.url,
           storageKey: img.storageKey,
           width: img.width,

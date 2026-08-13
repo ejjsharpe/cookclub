@@ -144,6 +144,7 @@ export async function hydrateActivityIds(
           })
           .from(recipeImages)
           .where(inArray(recipeImages.recipeId, recipeIds))
+          .orderBy(recipeImages.recipeId, recipeImages.index)
       : [];
 
   const recipeImageMap = new Map<number, PublicImageAsset>();

@@ -290,6 +290,7 @@ export const shoppingRouter = router({
           .select({ url: recipeImages.url })
           .from(recipeImages)
           .where(eq(recipeImages.recipeId, recipeId))
+          .orderBy(recipeImages.index)
           .limit(1)
           .then((rows) => rows[0]);
 
@@ -929,6 +930,7 @@ export const shoppingRouter = router({
           .select({ url: recipeImages.url })
           .from(recipeImages)
           .where(eq(recipeImages.recipeId, recipeId))
+          .orderBy(recipeImages.index)
           .limit(1)
           .then((rows) => rows[0]);
 

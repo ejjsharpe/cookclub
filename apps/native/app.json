@@ -54,6 +54,7 @@
       [
         "expo-image-picker",
         {
+          "cameraPermission": "Allow cookclub to use your camera so you can take photos for your recipes.",
           "photosPermission": "Allow cookclub to access your photos so you can add images to your recipes and profile.",
           "microphonePermission": false
         }

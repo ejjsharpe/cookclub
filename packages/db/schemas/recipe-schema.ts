@@ -235,6 +235,7 @@ export const recipeImages = pgTable(
     recipeId: integer("recipe_id")
       .notNull()
       .references(() => recipes.id, { onDelete: "cascade" }),
+    index: integer("index").notNull(),
     url: text("url").notNull(),
     storageKey: text("storage_key").notNull(),
     width: integer("width").notNull(),
@@ -244,7 +245,10 @@ export const recipeImages = pgTable(
     thumbhash: text("thumbhash").notNull(),
   },
   (table) => [
-    index("recipe_images_recipe_id_idx").on(table.recipeId),
+    uniqueIndex("recipe_images_recipe_id_index_idx").on(
+      table.recipeId,
+      table.index,
+    ),
     index("recipe_images_storage_key_idx").on(table.storageKey),
     check(
       "recipe_images_content_type_check",

@@ -72,7 +72,7 @@ export async function loadRecipeListRelations(
       })
       .from(recipeImages)
       .where(inArray(recipeImages.recipeId, recipeIds))
-      .orderBy(recipeImages.recipeId, recipeImages.id),
+      .orderBy(recipeImages.recipeId, recipeImages.index),
   ]);
 
   for (const row of tagRows) {

@@ -254,9 +254,14 @@ function hasNutritionValue(
   ].some((value) => typeof value === "number" && Number.isFinite(value));
 }
 
-function recipeImageInsertValues(recipeId: number, image: CreateRecipeImage) {
+function recipeImageInsertValues(
+  recipeId: number,
+  image: CreateRecipeImage,
+  index: number,
+) {
   return {
     recipeId,
+    index,
     url: image.url,
     storageKey: image.storageKey,
     width: image.width,
@@ -597,13 +602,16 @@ export async function createRecipeInTransaction(
     input.instructionSections,
   );
 
-  const images = await tx
+  const insertedImages = await tx
     .insert(recipeImages)
     .values(
-      input.images!.map((image) => recipeImageInsertValues(recipe.id, image)),
+      input.images!.map((image, index) =>
+        recipeImageInsertValues(recipe.id, image, index),
+      ),
     )
     .returning({
       id: recipeImages.id,
+      index: recipeImages.index,
       url: recipeImages.url,
       storageKey: recipeImages.storageKey,
       width: recipeImages.width,
@@ -612,6 +620,9 @@ export async function createRecipeInTransaction(
       byteSize: recipeImages.byteSize,
       thumbhash: recipeImages.thumbhash,
     });
+  const images = insertedImages
+    .sort((left, right) => left.index - right.index)
+    .map(({ index: _index, ...image }) => image);
 
   await insertRecipeTagsForRecipe(tx, userId, recipe.id, input.tagNames);
 
@@ -773,16 +784,15 @@ export async function updateRecipe(
       }
     }
 
-    const insertedImages = await tx
+    await tx
       .insert(recipeImages)
       .values(
-        input.images!.map((image) =>
-          recipeImageInsertValues(input.recipeId, image),
+        input.images!.map((image, index) =>
+          recipeImageInsertValues(input.recipeId, image, index),
         ),
-      )
-      .returning({ url: recipeImages.url });
+      );
 
-    const firstImageUrl = insertedImages[0]?.url ?? null;
+    const firstImageUrl = input.images![0]?.url ?? null;
     const now = new Date();
 
     await tx
@@ -934,7 +944,8 @@ export async function getRecipeDetail(
         thumbhash: recipeImages.thumbhash,
       })
       .from(recipeImages)
-      .where(eq(recipeImages.recipeId, recipeId)),
+      .where(eq(recipeImages.recipeId, recipeId))
+      .orderBy(recipeImages.index),
 
     db
       .select({
@@ -1247,6 +1258,7 @@ export async function importRecipe(
     const sourceImages = await tx
       .select({
         url: recipeImages.url,
+        index: recipeImages.index,
         storageKey: recipeImages.storageKey,
         width: recipeImages.width,
         height: recipeImages.height,
@@ -1255,12 +1267,14 @@ export async function importRecipe(
         thumbhash: recipeImages.thumbhash,
       })
       .from(recipeImages)
-      .where(eq(recipeImages.recipeId, sourceRecipeId));
+      .where(eq(recipeImages.recipeId, sourceRecipeId))
+      .orderBy(recipeImages.index);
 
     if (sourceImages.length > 0) {
       await tx.insert(recipeImages).values(
         sourceImages.map((img) => ({
           recipeId: newRecipe.id,
+          index: img.index,
           url: img.url,
           storageKey: img.storageKey,
           width: img.width,
