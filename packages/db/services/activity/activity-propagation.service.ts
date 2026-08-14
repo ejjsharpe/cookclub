@@ -86,21 +86,6 @@ export async function hydrateActivityIds(
 
   if (activities.length === 0) return [];
 
-  // Batch fetch users
-  const userIds = [...new Set(activities.map((a) => a.userId))];
-  const users = await db
-    .select({
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      image: user.image,
-      banned: user.banned,
-      subscriptionTier: publicSubscriptionTierSqlForUserTable(),
-    })
-    .from(user)
-    .where(inArray(user.id, userIds));
-  const userMap = new Map(users.map((u) => [u.id, u]));
-
   // Batch fetch recipes
   const recipeIds = [
     ...new Set(
@@ -117,6 +102,7 @@ export async function hydrateActivityIds(
             name: recipes.name,
             sourceUrl: recipes.sourceUrl,
             sourceType: recipes.sourceType,
+            originalOwnerId: recipes.originalOwnerId,
           })
           .from(recipes)
           .where(
@@ -127,6 +113,28 @@ export async function hydrateActivityIds(
           )
       : [];
   const recipeMap = new Map(recipesData.map((r) => [r.id, r]));
+
+  // Batch fetch activity actors and original recipe owners
+  const userIds = [
+    ...new Set([
+      ...activities.map((activity) => activity.userId),
+      ...recipesData.flatMap((recipe) =>
+        recipe.originalOwnerId ? [recipe.originalOwnerId] : [],
+      ),
+    ]),
+  ];
+  const users = await db
+    .select({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      image: user.image,
+      banned: user.banned,
+      subscriptionTier: publicSubscriptionTierSqlForUserTable(),
+    })
+    .from(user)
+    .where(inArray(user.id, userIds));
+  const userMap = new Map(users.map((u) => [u.id, u]));
 
   // Batch fetch recipe images (first image per recipe)
   const recipeImagesData =
@@ -252,6 +260,29 @@ export async function hydrateActivityIds(
         sourceType: "url",
         sourceUrl: recipe.sourceUrl,
         sourceDomain: sourceDomain ?? recipe.sourceUrl,
+      };
+    } else if (sourceType === "user") {
+      const originalOwner = recipe.originalOwnerId
+        ? userMap.get(recipe.originalOwnerId)
+        : undefined;
+      const publicOriginalOwner =
+        originalOwner &&
+        !originalOwner.banned &&
+        !blockedUserIds.has(originalOwner.id)
+          ? {
+              id: originalOwner.id,
+              name: originalOwner.name,
+              username: originalOwner.username ?? null,
+            }
+          : null;
+
+      recipeMetadata = {
+        id: recipe.id,
+        ownerId: recipe.ownerId,
+        name: recipe.name,
+        image: recipeImage,
+        sourceType: "user",
+        originalOwner: publicOriginalOwner,
       };
     } else {
       recipeMetadata = {

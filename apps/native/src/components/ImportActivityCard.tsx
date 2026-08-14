@@ -1,6 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { memo, useMemo, useCallback } from "react";
-import { View, TouchableOpacity } from "react-native";
+import {
+  View,
+  TouchableOpacity,
+  type GestureResponderEvent,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Text } from "./Text";
@@ -11,6 +15,10 @@ import { Avatar } from "@/components/Avatar";
 import { OptimizedImage } from "@/components/OptimizedImage";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
 import { openExternalWebsite } from "@/lib/externalBrowser";
+import {
+  formatRecipeImportActivityDescription,
+  RECIPE_IMPORT_SOURCE_PREFIX,
+} from "@/utils/activityDescription";
 import type { ImagePreset } from "@/utils/imageUrl";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
@@ -32,49 +40,91 @@ interface Props {
   imagePriority?: "low" | "normal" | "high";
 }
 
+interface SourceUser {
+  id: string;
+  name: string;
+  username: string | null;
+}
+
 const ImportUserHeader = memo(
   ({
     actor,
     timeAgo,
-    sourceDescription,
+    activityDescription,
+    sourceUser,
     onPress,
+    onSourceUserPress,
   }: {
     actor: RecipeImportFeedItem["actor"];
     timeAgo: string;
-    sourceDescription: string;
+    activityDescription: string;
+    sourceUser: SourceUser | null;
     onPress: () => void;
-  }) => (
-    <TouchableOpacity
-      style={styles.userHeader}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Avatar
-        imageUrl={actor.image}
-        name={actor.name}
-        size={44}
-        subscriptionTier={actor.subscriptionTier}
-      />
-      <View style={styles.userInfo}>
-        <View style={styles.titleRow}>
-          <Text type="headline" numberOfLines={1} style={styles.userName}>
-            {actor.name}
-          </Text>
-          {actor.username ? (
-            <Text type="footnote" numberOfLines={1} style={styles.username}>
-              @{actor.username}
+    onSourceUserPress: () => void;
+  }) => {
+    const handleSourceUserPress = useCallback(
+      (event: GestureResponderEvent) => {
+        event.stopPropagation();
+        onSourceUserPress();
+      },
+      [onSourceUserPress],
+    );
+
+    return (
+      <TouchableOpacity
+        style={styles.userHeader}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        <Avatar
+          imageUrl={actor.image}
+          name={actor.name}
+          size={44}
+          subscriptionTier={actor.subscriptionTier}
+        />
+        <View style={styles.userInfo}>
+          <View style={styles.titleRow}>
+            <Text type="headline" numberOfLines={1} style={styles.userName}>
+              {actor.name}
             </Text>
-          ) : null}
-          <Text type="footnote" style={styles.timeAgo}>
-            · {timeAgo}
+            {actor.username ? (
+              <Text type="footnote" numberOfLines={1} style={styles.username}>
+                @{actor.username}
+              </Text>
+            ) : null}
+            <Text type="footnote" style={styles.timeAgo}>
+              · {timeAgo}
+            </Text>
+          </View>
+          <Text
+            type="subheadline"
+            numberOfLines={2}
+            style={styles.activityText}
+          >
+            {sourceUser ? (
+              <>
+                {RECIPE_IMPORT_SOURCE_PREFIX}{" "}
+                <Text
+                  type="subheadline"
+                  style={styles.sourceUser}
+                  onPress={handleSourceUserPress}
+                  suppressHighlighting
+                  accessibilityRole="link"
+                  accessibilityLabel={`View ${sourceUser.name}'s profile`}
+                >
+                  {sourceUser.username
+                    ? `@${sourceUser.username}`
+                    : sourceUser.name}
+                </Text>
+              </>
+            ) : (
+              activityDescription
+            )}
           </Text>
         </View>
-        <Text type="subheadline" numberOfLines={2} style={styles.activityText}>
-          imported from {sourceDescription}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  ),
+      </TouchableOpacity>
+    );
+  },
 );
 
 const ImportRecipeHero = memo(
@@ -173,6 +223,17 @@ export const ImportActivityCard = memo(
       onUserPress?.(activity.actor.id);
     }, [activity.actor.id, onUserPress]);
 
+    const sourceUser =
+      activity.recipe.sourceType === "user"
+        ? activity.recipe.originalOwner
+        : null;
+
+    const handleSourceUserPress = useCallback(() => {
+      if (sourceUser) {
+        onUserPress?.(sourceUser.id);
+      }
+    }, [onUserPress, sourceUser]);
+
     const handleImport = useCallback(() => {
       if (isCurrentUserRecipe) {
         onRecipePress?.(activity.recipe.id);
@@ -191,34 +252,24 @@ export const ImportActivityCard = memo(
       onRecipePress,
     ]);
 
-    const sourceDescription = useMemo(() => {
-      if (providedSourceDescription) return providedSourceDescription;
-      if (activity.recipe.sourceType === "url") {
-        return activity.recipe.sourceDomain;
-      }
-      switch (activity.recipe.sourceType) {
-        case "text":
-          return "text";
-        case "image":
-          return "an image";
-        case "ai":
-          return "AI";
-        case "user":
-          return "another user";
-        case "manual":
-          return "scratch";
-        default:
-          return "their collection";
-      }
-    }, [activity.recipe, providedSourceDescription]);
+    const activityDescription = useMemo(
+      () =>
+        formatRecipeImportActivityDescription(
+          activity.recipe,
+          providedSourceDescription,
+        ),
+      [activity.recipe, providedSourceDescription],
+    );
 
     return (
       <View style={styles.card}>
         <ImportUserHeader
           actor={activity.actor}
           timeAgo={timeAgo}
-          sourceDescription={sourceDescription}
+          activityDescription={activityDescription}
+          sourceUser={sourceUser}
           onPress={handleUserPress}
+          onSourceUserPress={handleSourceUserPress}
         />
 
         <ImportRecipeHero
@@ -288,6 +339,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   activityText: {
     color: theme.colors.textSecondary,
+  },
+  sourceUser: {
+    color: theme.colors.textSecondary,
+    fontFamily: theme.fonts.bold,
   },
   imageContainer: {
     marginHorizontal: 20,

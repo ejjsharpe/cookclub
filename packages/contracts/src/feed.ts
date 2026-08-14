@@ -18,11 +18,21 @@ interface UrlSourcedRecipe extends BaseRecipeMetadata {
   sourceDomain: string;
 }
 
-interface AppSourcedRecipe extends BaseRecipeMetadata {
-  sourceType: Exclude<FeedSourceType, "url">;
+interface UserSourcedRecipe extends BaseRecipeMetadata {
+  sourceType: "user";
+  originalOwner: {
+    id: string;
+    name: string;
+    username: string | null;
+  } | null;
 }
 
-export type RecipeMetadata = UrlSourcedRecipe | AppSourcedRecipe;
+interface AppSourcedRecipe extends BaseRecipeMetadata {
+  sourceType: Exclude<FeedSourceType, "url" | "user">;
+}
+
+export type RecipeMetadata =
+  UrlSourcedRecipe | UserSourcedRecipe | AppSourcedRecipe;
 
 interface Actor {
   id: string;

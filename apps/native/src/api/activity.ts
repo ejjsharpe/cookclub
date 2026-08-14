@@ -9,6 +9,7 @@ import {
 import { useRef } from "react";
 
 import { useSessionContext } from "@/lib/sessionContext";
+import { getRecipeImportSourceDescription } from "@/utils/activityDescription";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
 // API Response Types
@@ -46,23 +47,7 @@ type ActivityPage = { items: FeedItem[] };
 
 const getSourceDescription = (item: FeedItem): string | undefined => {
   if (item.type !== "recipe_import") return undefined;
-  if (item.recipe.sourceType === "url") {
-    return item.recipe.sourceDomain;
-  }
-  switch (item.recipe.sourceType) {
-    case "text":
-      return "text";
-    case "image":
-      return "an image";
-    case "ai":
-      return "AI";
-    case "user":
-      return "another user";
-    case "manual":
-      return "scratch";
-    default:
-      return "their collection";
-  }
+  return getRecipeImportSourceDescription(item.recipe);
 };
 
 function useActivityItemsSelector<TPage extends ActivityPage>() {
