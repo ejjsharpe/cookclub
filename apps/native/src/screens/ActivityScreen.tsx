@@ -3,6 +3,7 @@ import {
   useRoute,
   type RouteProp,
 } from "@react-navigation/native";
+import { findActiveMention, replaceActiveMention } from "@repo/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,13 +15,17 @@ import {
   View,
   useWindowDimensions,
   type ListRenderItemInfo,
+  type TextInputSelectionChangeEvent,
 } from "react-native";
 import {
   KeyboardAvoidingView,
+  useKeyboardHandler,
   useReanimatedKeyboardAnimation,
 } from "react-native-keyboard-controller";
 import Animated, {
   interpolate,
+  scrollTo,
+  useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -34,6 +39,7 @@ import {
 
 import { useActivity, useToggleActivityLike } from "@/api/activity";
 import {
+  useCommentMentionSuggestions,
   useComments,
   useCreateComment,
   useDeleteComment,
@@ -42,6 +48,7 @@ import {
 import { useBlockUser } from "@/api/moderation";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser } from "@/api/user";
+import { Avatar } from "@/components/Avatar";
 import { CommentCard } from "@/components/CommentCard";
 import { ImportActivityCard } from "@/components/ImportActivityCard";
 import { Ionicons } from "@/components/Ionicons";
@@ -57,6 +64,7 @@ import {
   createRecipeImportId,
   useRecipeImport,
 } from "@/features/recipe-import/RecipeImportProvider";
+import { useDebounce } from "@/hooks/useDebounce";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
@@ -66,6 +74,8 @@ import { selectFeedImagePreset } from "@/utils/imageUrl";
 const MAX_SCROLL_RETRIES = 2;
 const SCROLL_RETRY_DELAY_MS = 150;
 const NAVIGATION_HEADER_HEIGHT = 60;
+const MAX_MENTION_SUGGESTIONS = 10;
+const MENTION_SEARCH_DEBOUNCE_MS = 300;
 
 type ActivityScreenRoute = RouteProp<RootStackParamList, "Activity">;
 
@@ -95,7 +105,7 @@ export const ActivityScreen = () => {
   const { theme } = useUnistyles();
   const insets = UnistylesRuntime.insets;
   const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
-  const listRef = useRef<FlatList<CommentListItem>>(null);
+  const listRef = useAnimatedRef<FlatList<CommentListItem>>();
   const inputRef = useRef<TextInput>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
   const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -106,9 +116,50 @@ export const ActivityScreen = () => {
   const sourceImportIdsRef = useRef(new Map<string, string>());
   const headerOpacity = useSharedValue(1);
   const headerHidden = useSharedValue(false);
+  const listScrollOffset = useSharedValue(0);
+  const listScrollBase = useSharedValue(0);
+  const listKeyboardOffset = useSharedValue(0);
 
   const [commentText, setCommentText] = useState("");
+  const [commentSelection, setCommentSelection] = useState({
+    start: 0,
+    end: 0,
+  });
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+  const activeMention = useMemo(
+    () => findActiveMention(commentText, commentSelection),
+    [commentSelection, commentText],
+  );
+  const mentionQuery = activeMention?.query ?? "";
+  const debouncedMentionQuery = useDebounce(
+    mentionQuery,
+    MENTION_SEARCH_DEBOUNCE_MS,
+  );
+  const {
+    data: mentionSuggestionData,
+    isFetching: areMentionSuggestionsFetching,
+    isError: areMentionSuggestionsError,
+  } = useCommentMentionSuggestions(
+    debouncedMentionQuery,
+    MAX_MENTION_SUGGESTIONS,
+    activeMention !== null,
+  );
+  const mentionSuggestions = useMemo(
+    () =>
+      (mentionSuggestionData ?? []).flatMap((suggestion) =>
+        suggestion.username
+          ? [{ ...suggestion, username: suggestion.username }]
+          : [],
+      ),
+    [mentionSuggestionData],
+  );
+  const areMentionSuggestionsLoading =
+    debouncedMentionQuery !== mentionQuery || areMentionSuggestionsFetching;
+  const showMentionSelector =
+    activeMention !== null &&
+    (areMentionSuggestionsLoading ||
+      areMentionSuggestionsError ||
+      mentionSuggestions.length > 0);
 
   const feedImageWidth = Math.max(windowWidth - 40, 1);
   const feedImagePreset = useMemo(
@@ -123,8 +174,52 @@ export const ActivityScreen = () => {
     ),
   }));
 
+  // Height avoidance shrinks the list but does not preserve its lower visible
+  // edge. Compensate the scroll offset so the same content moves upward.
+  const syncListWithKeyboard = useCallback(
+    (keyboardHeight: number, keyboardAnimationProgress: number) => {
+      "worklet";
+
+      const keyboardOffset = Math.max(
+        0,
+        keyboardHeight - insets.bottom * keyboardAnimationProgress,
+      );
+      listKeyboardOffset.set(keyboardOffset);
+      scrollTo(
+        listRef,
+        0,
+        Math.max(0, listScrollBase.get() + keyboardOffset),
+        false,
+      );
+    },
+    [insets.bottom],
+  );
+
+  useKeyboardHandler(
+    {
+      onStart: () => {
+        "worklet";
+        listScrollBase.set(listScrollOffset.get() - listKeyboardOffset.get());
+      },
+      onMove: (event) => {
+        "worklet";
+        syncListWithKeyboard(event.height, event.progress);
+      },
+      onInteractive: (event) => {
+        "worklet";
+        syncListWithKeyboard(event.height, event.progress);
+      },
+      onEnd: (event) => {
+        "worklet";
+        syncListWithKeyboard(event.height, event.progress);
+      },
+    },
+    [syncListWithKeyboard],
+  );
+
   const handleScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
+      listScrollOffset.set(event.contentOffset.y);
       const nextHeaderHidden = event.contentOffset.y > 5;
       if (headerHidden.get() !== nextHeaderHidden) {
         headerHidden.set(nextHeaderHidden);
@@ -188,6 +283,7 @@ export const ActivityScreen = () => {
 
   useEffect(() => {
     setCommentText("");
+    setCommentSelection({ start: 0, end: 0 });
     setReplyingTo(null);
     Keyboard.dismiss();
   }, [activityEventId]);
@@ -391,6 +487,32 @@ export const ActivityScreen = () => {
     inputRef.current?.focus();
   }, []);
 
+  const handleCommentSelectionChange = useCallback(
+    (event: TextInputSelectionChangeEvent) => {
+      setCommentSelection(event.nativeEvent.selection);
+    },
+    [],
+  );
+
+  const handleMentionSelect = useCallback(
+    (username: string) => {
+      if (!activeMention) return;
+
+      const replacement = replaceActiveMention(
+        commentText,
+        activeMention,
+        username,
+      );
+      setCommentText(replacement.content);
+      setCommentSelection({
+        start: replacement.cursor,
+        end: replacement.cursor,
+      });
+      inputRef.current?.focus();
+    },
+    [activeMention, commentText],
+  );
+
   const handleDelete = useCallback(
     async (targetCommentId: number) => {
       try {
@@ -419,6 +541,7 @@ export const ActivityScreen = () => {
         content,
       });
       setCommentText("");
+      setCommentSelection({ start: 0, end: 0 });
       setReplyingTo(null);
     } catch (error) {
       alertApiError("Couldn’t Post Comment", error, {
@@ -449,6 +572,7 @@ export const ActivityScreen = () => {
           onDelete={handleDelete}
           onReport={handleReportComment}
           onBlock={handleBlock}
+          onMentionPress={handleUserPress}
         />
       </View>
     ),
@@ -459,6 +583,7 @@ export const ActivityScreen = () => {
       handleDelete,
       handleReply,
       handleReportComment,
+      handleUserPress,
     ],
   );
 
@@ -560,13 +685,15 @@ export const ActivityScreen = () => {
   const commentsHeader = (
     <>
       {activityCard}
-      <View style={styles.sectionHeader}>
-        <Text type="title3">Comments</Text>
-        <Text type="footnote" style={styles.commentCount}>
-          {activity.commentCount}
-        </Text>
-      </View>
-      {focusedCommentUnavailable ? (
+      {!showMentionSelector ? (
+        <View style={styles.sectionHeader}>
+          <Text type="title3">Comments</Text>
+          <Text type="footnote" style={styles.commentCount}>
+            {activity.commentCount}
+          </Text>
+        </View>
+      ) : null}
+      {!showMentionSelector && focusedCommentUnavailable ? (
         <View style={styles.notice}>
           <Ionicons
             name="information-circle-outline"
@@ -578,7 +705,7 @@ export const ActivityScreen = () => {
           </Text>
         </View>
       ) : null}
-      {areCommentsError ? (
+      {!showMentionSelector && areCommentsError ? (
         <View style={styles.commentsError}>
           <Text type="headline">Comments unavailable</Text>
           <Text type="subheadline" style={styles.stateMessage}>
@@ -596,11 +723,75 @@ export const ActivityScreen = () => {
           </Pressable>
         </View>
       ) : null}
-      {areCommentsLoading ? (
+      {!showMentionSelector && areCommentsLoading ? (
         <ActivityIndicator style={styles.commentsLoader} />
       ) : null}
     </>
   );
+
+  const mentionSelector = showMentionSelector ? (
+    <View style={styles.mentionSuggestions}>
+      {mentionSuggestions.map((suggestion) => (
+        <Pressable
+          key={suggestion.id}
+          accessibilityLabel={`Tag ${suggestion.name}, @${suggestion.username}`}
+          accessibilityRole="button"
+          onPress={() => handleMentionSelect(suggestion.username)}
+          style={({ pressed }) => [
+            styles.mentionSuggestion,
+            pressed && styles.mentionSuggestionPressed,
+          ]}
+        >
+          <View style={styles.mentionSuggestionIdentity}>
+            <Avatar
+              imageUrl={suggestion.image}
+              name={suggestion.name}
+              size={34}
+              subscriptionTier={suggestion.subscriptionTier}
+            />
+            <View style={styles.mentionSuggestionText}>
+              <Text
+                type="headline"
+                numberOfLines={1}
+                style={styles.mentionSuggestionName}
+              >
+                {suggestion.name}
+              </Text>
+              <Text
+                type="footnote"
+                numberOfLines={1}
+                style={styles.mentionSuggestionUsername}
+              >
+                @{suggestion.username}
+              </Text>
+            </View>
+          </View>
+        </Pressable>
+      ))}
+      {areMentionSuggestionsLoading ? (
+        <View accessibilityLiveRegion="polite" style={styles.mentionSuggestion}>
+          <View style={styles.mentionSuggestionIdentity}>
+            <View style={styles.mentionSuggestionLoadingAvatar}>
+              <ActivityIndicator size="small" />
+            </View>
+            <View style={styles.mentionSuggestionText}>
+              <Text type="footnote" style={styles.mentionSuggestionLoadingText}>
+                {mentionQuery
+                  ? `Searching for "${mentionQuery}"`
+                  : "Searching for suggestions"}
+              </Text>
+            </View>
+          </View>
+        </View>
+      ) : areMentionSuggestionsError ? (
+        <View style={styles.mentionSuggestionState}>
+          <Text type="footnote" style={styles.mentionSuggestionHint}>
+            Couldn’t load tag suggestions.
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  ) : null;
 
   const canSubmit = commentText.trim().length > 0 && !isCreatingComment;
 
@@ -608,20 +799,23 @@ export const ActivityScreen = () => {
     <View style={styles.screen}>
       <KeyboardAvoidingView
         style={styles.keyboardArea}
-        behavior="padding"
+        behavior="height"
         keyboardVerticalOffset={0}
-        automaticOffset
       >
         <ReanimatedFlatList
           ref={listRef}
-          data={areCommentsError ? [] : flattenedComments}
+          data={
+            showMentionSelector || areCommentsError ? [] : flattenedComments
+          }
           renderItem={renderComment}
           keyExtractor={keyExtractor}
           ListHeaderComponent={commentsHeader}
           ListEmptyComponent={
-            !areCommentsLoading &&
-            !areCommentsError &&
-            !focusedCommentUnavailable ? (
+            showMentionSelector ? (
+              mentionSelector
+            ) : !areCommentsLoading &&
+              !areCommentsError &&
+              !focusedCommentUnavailable ? (
               <View style={styles.emptyComments}>
                 <Text type="body" style={styles.stateMessage}>
                   No comments yet. Be the first to comment.
@@ -638,7 +832,7 @@ export const ActivityScreen = () => {
           onScroll={handleScroll}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={showMentionSelector}
         />
 
         {!areCommentsError ? (
@@ -667,6 +861,8 @@ export const ActivityScreen = () => {
                 accessibilityLabel="Comment"
                 value={commentText}
                 onChangeText={setCommentText}
+                selection={commentSelection}
+                onSelectionChange={handleCommentSelectionChange}
                 placeholder={replyingTo ? "Write a reply…" : "Add a comment…"}
                 placeholderTextColor={theme.colors.placeholderText}
                 style={styles.input}
@@ -836,6 +1032,61 @@ const styles = StyleSheet.create((theme, rt) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  mentionSuggestions: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  mentionSuggestion: {
+    minHeight: 52,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  mentionSuggestionPressed: {
+    backgroundColor: theme.colors.inputBackground,
+  },
+  mentionSuggestionIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  mentionSuggestionText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mentionSuggestionName: {
+    textAlign: "left",
+  },
+  mentionSuggestionUsername: {
+    color: theme.colors.textSecondary,
+    textAlign: "left",
+  },
+  mentionSuggestionState: {
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  mentionSuggestionLoadingAvatar: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mentionSuggestionLoadingText: {
+    color: theme.colors.textSecondary,
+    textAlign: "left",
+  },
+  mentionSuggestionHint: {
+    color: theme.colors.textSecondary,
+    textAlign: "center",
   },
   input: {
     flex: 1,

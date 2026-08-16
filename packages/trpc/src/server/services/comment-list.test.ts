@@ -32,8 +32,16 @@ describe("buildCommentThreads", () => {
     ];
 
     expect(buildCommentThreads([...baseRows, ...focusedRows])).toEqual([
-      { ...baseRows[0], replies: [baseRows[1]] },
-      { ...focusedRows[0], replies: [focusedRows[1]] },
+      {
+        ...baseRows[0],
+        mentions: [],
+        replies: [{ ...baseRows[1], mentions: [] }],
+      },
+      {
+        ...focusedRows[0],
+        mentions: [],
+        replies: [{ ...focusedRows[1], mentions: [] }],
+      },
     ]);
   });
 
@@ -42,7 +50,37 @@ describe("buildCommentThreads", () => {
     const reply = comment(2, 1, "2026-01-01T00:01:00Z");
 
     expect(buildCommentThreads([parent, reply, parent, reply])).toEqual([
-      { ...parent, replies: [reply] },
+      {
+        ...parent,
+        mentions: [],
+        replies: [{ ...reply, mentions: [] }],
+      },
+    ]);
+  });
+
+  it("attaches resolved mentions to roots and replies", () => {
+    const parent = comment(1, null, "2026-01-01T00:00:00Z");
+    const reply = comment(2, 1, "2026-01-01T00:01:00Z");
+
+    expect(
+      buildCommentThreads(
+        [parent, reply],
+        [
+          { commentId: 1, userId: "alice-id", username: "alice" },
+          { commentId: 2, userId: "bob-id", username: "bob" },
+        ],
+      ),
+    ).toEqual([
+      {
+        ...parent,
+        mentions: [{ userId: "alice-id", username: "alice" }],
+        replies: [
+          {
+            ...reply,
+            mentions: [{ userId: "bob-id", username: "bob" }],
+          },
+        ],
+      },
     ]);
   });
 });

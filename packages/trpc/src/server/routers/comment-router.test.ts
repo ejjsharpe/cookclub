@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   assertInteractionAllowed: vi.fn(),
+  createAndSendNotificationInBackground: vi.fn(),
+  getBlockedUserIds: vi.fn().mockResolvedValue([]),
+  notInArray: vi.fn(),
 }));
 
 vi.mock("@repo/db/schemas", () => ({
@@ -12,6 +15,7 @@ vi.mock("@repo/db/schemas", () => ({
     moderationState: "activity_events.moderation_state",
   },
   comments: {
+    _name: "comments",
     id: "comments.id",
     userId: "comments.user_id",
     activityEventId: "comments.activity_event_id",
@@ -20,15 +24,24 @@ vi.mock("@repo/db/schemas", () => ({
     moderationState: "comments.moderation_state",
     createdAt: "comments.created_at",
   },
+  commentMentions: {
+    _name: "comment_mentions",
+    commentId: "comment_mentions.comment_id",
+    userId: "comment_mentions.user_id",
+    username: "comment_mentions.username",
+  },
   user: {
     id: "user.id",
     name: "user.name",
+    username: "user.username",
     image: "user.image",
+    emailVerified: "user.email_verified",
+    onboardingCompleted: "user.onboarding_completed",
   },
 }));
 
 vi.mock("@repo/db/services", () => ({
-  getBlockedUserIds: vi.fn().mockResolvedValue([]),
+  getBlockedUserIds: mocks.getBlockedUserIds,
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -37,7 +50,8 @@ vi.mock("drizzle-orm", () => ({
   desc: vi.fn(),
   eq: vi.fn(),
   inArray: vi.fn(),
-  notInArray: vi.fn(),
+  isNotNull: vi.fn(),
+  notInArray: mocks.notInArray,
   or: vi.fn(),
   sql: vi.fn(),
 }));
@@ -47,7 +61,8 @@ vi.mock("../legal", () => ({
 }));
 
 vi.mock("../services/push-notification.service", () => ({
-  createAndSendNotificationInBackground: vi.fn(),
+  createAndSendNotificationInBackground:
+    mocks.createAndSendNotificationInBackground,
 }));
 
 vi.mock("./moderation-router", () => ({
@@ -104,9 +119,73 @@ function createSelectQuery(rows: unknown[]) {
   return query;
 }
 
+function createMentionMutationDb(parentAuthorId?: string) {
+  const parentCommentId = parentAuthorId ? 51 : null;
+  const insertedMentionValues: unknown[] = [];
+  const newComment = {
+    id: 73,
+    userId: "commenter",
+    activityEventId: 42,
+    parentCommentId,
+    content: "Nice one @jamie",
+    moderationState: "visible",
+    createdAt: new Date("2026-08-16T10:00:00Z"),
+    updatedAt: new Date("2026-08-16T10:00:00Z"),
+  };
+  const insert = vi
+    .fn()
+    .mockReturnValueOnce({
+      values: vi.fn(() => ({
+        returning: vi.fn().mockResolvedValue([newComment]),
+      })),
+    })
+    .mockReturnValueOnce({
+      values: vi.fn((values: unknown[]) => {
+        insertedMentionValues.push(...values);
+        return Promise.resolve();
+      }),
+    });
+  const updateQuery = {
+    set: vi.fn(),
+    where: vi.fn().mockResolvedValue(undefined),
+  };
+  updateQuery.set.mockReturnValue(updateQuery);
+  const tx = { insert, update: vi.fn().mockReturnValue(updateQuery) };
+  const selectedRows = [
+    [{ userId: "activity-owner", moderationState: "visible" }],
+    ...(parentAuthorId
+      ? [
+          [
+            {
+              userId: parentAuthorId,
+              activityEventId: 42,
+              parentCommentId: null,
+              moderationState: "visible",
+            },
+          ],
+        ]
+      : []),
+    [{ id: "mentioned-user", username: "jamie" }],
+  ];
+  const select = vi.fn();
+  for (const rows of selectedRows) {
+    select.mockReturnValueOnce(createSelectQuery(rows));
+  }
+
+  return {
+    db: {
+      select,
+      transaction: vi.fn((callback) => callback(tx)),
+    },
+    insertedMentionValues,
+  };
+}
+
 describe("commentRouter.getComments", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertInteractionAllowed.mockResolvedValue(undefined);
+    mocks.getBlockedUserIds.mockResolvedValue([]);
   });
 
   it("includes a focused thread outside the base comment window", async () => {
@@ -134,7 +213,12 @@ describe("commentRouter.getComments", () => {
         )
         .mockReturnValueOnce(createSelectQuery([]))
         .mockReturnValueOnce(createSelectQuery([reply]))
-        .mockReturnValueOnce(createSelectQuery([parent, reply])),
+        .mockReturnValueOnce(createSelectQuery([parent, reply]))
+        .mockReturnValueOnce(
+          createSelectQuery([
+            { commentId: 502, userId: "mentioned-user", username: "jamie" },
+          ]),
+        ),
     };
     const caller = commentRouter.createCaller({
       ...createContext(),
@@ -150,8 +234,45 @@ describe("commentRouter.getComments", () => {
     expect(result.comments).toEqual([
       expect.objectContaining({
         id: 501,
-        replies: [expect.objectContaining({ id: 502 })],
+        replies: [
+          expect.objectContaining({
+            id: 502,
+            mentions: [{ userId: "mentioned-user", username: "jamie" }],
+          }),
+        ],
       }),
+    ]);
+  });
+
+  it("filters mention links for users blocked by the viewer", async () => {
+    mocks.getBlockedUserIds.mockResolvedValue(["blocked-mentioned-user"]);
+    const comment = {
+      id: 1,
+      content: "Hello @blocked_user",
+      parentCommentId: null,
+      createdAt: new Date("2026-01-02T00:00:00Z"),
+      user: { id: "comment-author", name: "Commenter", image: null },
+    };
+    const db = {
+      select: vi
+        .fn()
+        .mockReturnValueOnce(
+          createSelectQuery([
+            { userId: "activity-owner", moderationState: "visible" },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectQuery([comment]))
+        .mockReturnValueOnce(createSelectQuery([])),
+    };
+    const caller = commentRouter.createCaller({
+      ...createContext(),
+      db,
+    } as never);
+
+    await caller.getComments({ activityEventId: 42 });
+
+    expect(mocks.notInArray).toHaveBeenCalledWith("comment_mentions.user_id", [
+      "blocked-mentioned-user",
     ]);
   });
 });
@@ -159,6 +280,8 @@ describe("commentRouter.getComments", () => {
 describe("commentRouter.createComment", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.assertInteractionAllowed.mockResolvedValue(undefined);
+    mocks.getBlockedUserIds.mockResolvedValue([]);
   });
 
   it("preserves the typed interaction error when either user has blocked the other", async () => {
@@ -171,4 +294,80 @@ describe("commentRouter.createComment", () => {
       caller.createComment({ activityEventId: 42, content: "Looks great" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("persists resolved mentions and notifies the tagged user", async () => {
+    const { db, insertedMentionValues } = createMentionMutationDb();
+    const caller = commentRouter.createCaller({
+      ...createContext(),
+      db,
+    } as never);
+
+    const result = await caller.createComment({
+      activityEventId: 42,
+      content: "Nice one @jamie",
+    });
+
+    expect(insertedMentionValues).toEqual([
+      { commentId: 73, userId: "mentioned-user", username: "jamie" },
+    ]);
+    expect(result.mentions).toEqual([
+      { userId: "mentioned-user", username: "jamie" },
+    ]);
+    expect(mocks.createAndSendNotificationInBackground).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        recipientId: "mentioned-user",
+        type: "comment_mention",
+        activityEventId: 42,
+        commentId: 73,
+      }),
+      "Error creating comment mention notification:",
+    );
+  });
+
+  it.each([
+    {
+      inaccessibleAuthorId: "activity-owner",
+      parentAuthorId: undefined,
+      target: "activity",
+    },
+    {
+      inaccessibleAuthorId: "root-author",
+      parentAuthorId: "root-author",
+      target: "focused thread",
+    },
+  ])(
+    "does not notify a mention recipient who cannot access the $target",
+    async ({ inaccessibleAuthorId, parentAuthorId }) => {
+      mocks.getBlockedUserIds.mockImplementation(async (_db, userId) =>
+        userId === inaccessibleAuthorId ? ["mentioned-user"] : [],
+      );
+      const { db, insertedMentionValues } =
+        createMentionMutationDb(parentAuthorId);
+      const caller = commentRouter.createCaller({
+        ...createContext(),
+        db,
+      } as never);
+
+      await caller.createComment({
+        activityEventId: 42,
+        ...(parentAuthorId ? { parentCommentId: 51 } : {}),
+        content: "Nice one @jamie",
+      });
+
+      expect(insertedMentionValues).toEqual([
+        { commentId: 73, userId: "mentioned-user", username: "jamie" },
+      ]);
+      expect(
+        mocks.createAndSendNotificationInBackground,
+      ).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          recipientId: "mentioned-user",
+          type: "comment_mention",
+        }),
+        expect.anything(),
+      );
+    },
+  );
 });

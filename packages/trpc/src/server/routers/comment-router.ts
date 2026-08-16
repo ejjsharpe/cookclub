@@ -1,8 +1,24 @@
-import { activityEvents, comments, user } from "@repo/db/schemas";
+import {
+  activityEvents,
+  commentMentions,
+  comments,
+  user,
+} from "@repo/db/schemas";
 import { getBlockedUserIds } from "@repo/db/services";
+import { extractMentionUsernames } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { assertInteractionAllowed } from "./moderation-router";
 import { filterPublicText } from "../moderation/text-filter";
@@ -16,6 +32,7 @@ import { router, authedProcedure, publicUgcProcedure } from "../trpc";
 const MAX_COMMENTS_PER_ACTIVITY = 500;
 const MAX_COMMENTS_PER_FOCUSED_THREAD = 500;
 const MAX_COMMENT_LENGTH = 2_000;
+const MAX_MENTIONS_PER_COMMENT = 10;
 
 const commentSelection = {
   id: comments.id,
@@ -156,8 +173,31 @@ export const commentRouter = router({
           }
         }
 
+        const commentsForResponse = [...allComments, ...focusedThread];
+        const commentIds = [
+          ...new Set(commentsForResponse.map((comment) => comment.id)),
+        ];
+        const mentions =
+          commentIds.length > 0
+            ? await ctx.db
+                .select({
+                  commentId: commentMentions.commentId,
+                  userId: commentMentions.userId,
+                  username: commentMentions.username,
+                })
+                .from(commentMentions)
+                .where(
+                  and(
+                    inArray(commentMentions.commentId, commentIds),
+                    ...(blockedUserIds.length > 0
+                      ? [notInArray(commentMentions.userId, blockedUserIds)]
+                      : []),
+                  ),
+                )
+            : [];
+
         return {
-          comments: buildCommentThreads([...allComments, ...focusedThread]),
+          comments: buildCommentThreads(commentsForResponse, mentions),
           focusedCommentStatus,
         };
       } catch (error) {
@@ -192,6 +232,14 @@ export const commentRouter = router({
         throw new TRPCError({
           code: "PAYLOAD_TOO_LARGE",
           message: "Comment is too large",
+        });
+      }
+
+      const mentionUsernames = extractMentionUsernames(content);
+      if (mentionUsernames.length > MAX_MENTIONS_PER_COMMENT) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Comments can mention up to ${MAX_MENTIONS_PER_COMMENT} users`,
         });
       }
 
@@ -247,6 +295,58 @@ export const commentRouter = router({
           );
         }
 
+        const blockedUserIds =
+          mentionUsernames.length > 0
+            ? await getBlockedUserIds(ctx.db, ctx.user.id)
+            : [];
+        const mentionedUsers =
+          mentionUsernames.length > 0
+            ? (
+                await ctx.db
+                  .select({ id: user.id, username: user.username })
+                  .from(user)
+                  .where(
+                    and(
+                      inArray(user.username, mentionUsernames),
+                      eq(user.emailVerified, true),
+                      eq(user.onboardingCompleted, true),
+                      isNotNull(user.username),
+                      ...(blockedUserIds.length > 0
+                        ? [notInArray(user.id, blockedUserIds)]
+                        : []),
+                    ),
+                  )
+              ).flatMap((mentionedUser) =>
+                mentionedUser.username
+                  ? [
+                      {
+                        id: mentionedUser.id,
+                        username: mentionedUser.username,
+                      },
+                    ]
+                  : [],
+              )
+            : [];
+        const requiredVisibleAuthorIds = new Set([
+          activity.userId,
+          ctx.user.id,
+          ...(parentCommentAuthorId ? [parentCommentAuthorId] : []),
+        ]);
+        const blockedRecipientIdsByAuthor = await Promise.all(
+          [...requiredVisibleAuthorIds].map((authorId) =>
+            authorId === ctx.user.id
+              ? blockedUserIds
+              : getBlockedUserIds(ctx.db, authorId),
+          ),
+        );
+        const mentionNotificationRecipients = mentionedUsers.filter(
+          (mentionedUser) =>
+            blockedRecipientIdsByAuthor.every(
+              (authorBlockedUserIds) =>
+                !authorBlockedUserIds.includes(mentionedUser.id),
+            ),
+        );
+
         const newComment = await ctx.db.transaction(async (tx) => {
           const [insertedComment] = await tx
             .insert(comments)
@@ -275,11 +375,22 @@ export const commentRouter = router({
               .where(eq(activityEvents.id, activityEventId));
           }
 
+          if (mentionedUsers.length > 0) {
+            await tx.insert(commentMentions).values(
+              mentionedUsers.map((mentionedUser) => ({
+                commentId: insertedComment.id,
+                userId: mentionedUser.id,
+                username: mentionedUser.username,
+              })),
+            );
+          }
+
           return insertedComment;
         });
 
         // Create notifications
         if (newComment) {
+          const notifiedUserIds = new Set<string>();
           if (parentCommentId !== undefined && parentCommentAuthorId) {
             // Reply notification to the parent comment author
             createAndSendNotificationInBackground(
@@ -293,6 +404,7 @@ export const commentRouter = router({
               },
               "Error creating comment reply notification:",
             );
+            notifiedUserIds.add(parentCommentAuthorId);
           } else if (activity) {
             // Comment notification to the activity owner
             createAndSendNotificationInBackground(
@@ -306,6 +418,23 @@ export const commentRouter = router({
               },
               "Error creating comment notification:",
             );
+            notifiedUserIds.add(activity.userId);
+          }
+
+          for (const mentionedUser of mentionNotificationRecipients) {
+            if (notifiedUserIds.has(mentionedUser.id)) continue;
+
+            createAndSendNotificationInBackground(
+              ctx,
+              {
+                recipientId: mentionedUser.id,
+                actorId: ctx.user.id,
+                type: "comment_mention",
+                activityEventId,
+                commentId: newComment.id,
+              },
+              "Error creating comment mention notification:",
+            );
           }
         }
 
@@ -316,6 +445,10 @@ export const commentRouter = router({
             name: ctx.user.name,
             image: ctx.user.image,
           },
+          mentions: mentionedUsers.map(({ id, username }) => ({
+            userId: id,
+            username,
+          })),
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;

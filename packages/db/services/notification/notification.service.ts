@@ -76,7 +76,7 @@ export type CreateNotificationParams = CreateNotificationBase &
         commentId?: never;
       }
     | {
-        type: "activity_comment" | "comment_reply";
+        type: "activity_comment" | "comment_reply" | "comment_mention";
         activityEventId: number;
         commentId: number;
         mealPlanId?: never;
@@ -149,7 +149,9 @@ export async function createNotification(
   }
 
   const commentPreview =
-    type === "activity_comment" || type === "comment_reply"
+    type === "activity_comment" ||
+    type === "comment_reply" ||
+    type === "comment_mention"
       ? await db
           .select({ source: commentPreviewSource })
           .from(comments)
@@ -164,7 +166,9 @@ export async function createNotification(
       : null;
 
   if (
-    (type === "activity_comment" || type === "comment_reply") &&
+    (type === "activity_comment" ||
+      type === "comment_reply" ||
+      type === "comment_mention") &&
     !commentPreview
   ) {
     return null;

@@ -20,3 +20,11 @@ export {
   normalizeUnit,
 } from "./src/unitNormalizer";
 export { MIN_RECIPE_SEARCH_LENGTH } from "./src/recipeSearch";
+export {
+  extractMentionUsernames,
+  findActiveMention,
+  parseMentionTokens,
+  replaceActiveMention,
+  type ActiveMention,
+  type MentionToken,
+} from "./src/commentMentions";

@@ -1,6 +1,7 @@
+import { parseMentionTokens } from "@repo/shared";
 import { formatDistanceToNow } from "date-fns";
 import { Image } from "expo-image";
-import { memo, useMemo } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import { View, TouchableOpacity, Alert } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -17,6 +18,7 @@ interface Props {
   onDelete: (commentId: number) => void;
   onReport: (commentId: number) => void;
   onBlock: (userId: string, name: string) => void;
+  onMentionPress: (userId: string) => void;
 }
 
 const getInitials = (name: string): string => {
@@ -44,6 +46,7 @@ export const CommentCard = memo(
     onDelete,
     onReport,
     onBlock,
+    onMentionPress,
   }: Props) => {
     const timeAgo = useMemo(
       () =>
@@ -55,6 +58,40 @@ export const CommentCard = memo(
       () => getInitials(comment.user.name),
       [comment.user.name],
     );
+
+    const renderedContent = useMemo(() => {
+      const mentionByUsername = new Map(
+        (comment.mentions ?? []).map((mention) => [mention.username, mention]),
+      );
+      const nodes: ReactNode[] = [];
+      let cursor = 0;
+
+      for (const token of parseMentionTokens(comment.content)) {
+        const mention = mentionByUsername.get(token.username);
+        if (!mention) continue;
+
+        if (token.start > cursor) {
+          nodes.push(comment.content.slice(cursor, token.start));
+        }
+        nodes.push(
+          <Text
+            key={`${mention.userId}-${token.start}`}
+            accessibilityRole="link"
+            onPress={() => onMentionPress(mention.userId)}
+            style={styles.mentionText}
+          >
+            {comment.content.slice(token.start, token.end)}
+          </Text>,
+        );
+        cursor = token.end;
+      }
+
+      if (cursor < comment.content.length) {
+        nodes.push(comment.content.slice(cursor));
+      }
+
+      return nodes.length > 0 ? nodes : comment.content;
+    }, [comment.content, comment.mentions, onMentionPress]);
 
     const handleDelete = () => {
       Alert.alert(
@@ -114,7 +151,7 @@ export const CommentCard = memo(
           </View>
 
           <Text type="body" style={styles.commentText}>
-            {comment.content}
+            {renderedContent}
           </Text>
 
           {/* Actions */}
@@ -233,6 +270,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   commentText: {
     lineHeight: 20,
+  },
+  mentionText: {
+    color: theme.colors.primary,
+    fontFamily: theme.fonts.semiBold,
   },
   actions: {
     flexDirection: "row",

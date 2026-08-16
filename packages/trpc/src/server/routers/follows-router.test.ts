@@ -258,6 +258,25 @@ describe("followsRouter - user discovery", () => {
     });
   });
 
+  it("accepts a one-character query for inline mention suggestions", async () => {
+    const ctx = createMockContext();
+    const caller = followsRouter.createCaller(ctx as any);
+
+    await expect(caller.searchUsers({ query: "a", limit: 5 })).resolves.toEqual(
+      [],
+    );
+  });
+
+  it("returns recently tagged and relationship-ranked suggestions for a bare mention trigger", async () => {
+    const ctx = createMockContext();
+    const caller = followsRouter.createCaller(ctx as any);
+
+    await expect(caller.searchUsers({ query: "", limit: 20 })).resolves.toEqual(
+      [],
+    );
+    expect(ctx.db.orderBy).toHaveBeenCalled();
+  });
+
   it("only suggests fully onboarded users with a verified email and username", async () => {
     const ctx = createMockContext();
     const caller = followsRouter.createCaller(ctx as any);

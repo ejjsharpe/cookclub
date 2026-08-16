@@ -70,6 +70,8 @@ const getNotificationMessage = (
       return "commented on your activity";
     case "comment_reply":
       return "replied to your comment";
+    case "comment_mention":
+      return "mentioned you in a comment";
     default:
       return "interacted with you";
   }
@@ -90,6 +92,7 @@ const getNotificationIcon = (
       return "heart";
     case "activity_comment":
     case "comment_reply":
+    case "comment_mention":
       return "chatbubble";
     default:
       return "notifications";
@@ -129,7 +132,8 @@ export const NotificationCard = memo(
     const isPending = isAccepting || isDeclining;
     const commentPreview =
       notification.type === "activity_comment" ||
-      notification.type === "comment_reply"
+      notification.type === "comment_reply" ||
+      notification.type === "comment_mention"
         ? notification.commentPreview
         : null;
 

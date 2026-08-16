@@ -10,23 +10,53 @@ export type CommentListRow = {
   };
 };
 
-export type CommentThread = CommentListRow & {
-  replies: CommentListRow[];
+export type CommentMentionRow = {
+  commentId: number;
+  userId: string;
+  username: string;
 };
 
-export function buildCommentThreads(rows: CommentListRow[]): CommentThread[] {
+export type CommentListItem = CommentListRow & {
+  mentions: Omit<CommentMentionRow, "commentId">[];
+};
+
+export type CommentThread = CommentListItem & {
+  replies: CommentListItem[];
+};
+
+export function buildCommentThreads(
+  rows: CommentListRow[],
+  mentionRows: CommentMentionRow[] = [],
+): CommentThread[] {
   const rowsById = new Map<number, CommentListRow>();
+  const mentionsByCommentId = new Map<
+    number,
+    Omit<CommentMentionRow, "commentId">[]
+  >();
 
   for (const row of rows) {
     rowsById.set(row.id, row);
   }
 
-  const orderedRows = [...rowsById.values()].sort(
-    (left, right) =>
-      left.createdAt.getTime() - right.createdAt.getTime() ||
-      left.id - right.id,
-  );
-  const repliesByParentId = new Map<number, CommentListRow[]>();
+  for (const { commentId, userId, username } of mentionRows) {
+    const mentions = mentionsByCommentId.get(commentId) ?? [];
+    if (!mentions.some((mention) => mention.userId === userId)) {
+      mentions.push({ userId, username });
+      mentionsByCommentId.set(commentId, mentions);
+    }
+  }
+
+  const orderedRows: CommentListItem[] = [...rowsById.values()]
+    .sort(
+      (left, right) =>
+        left.createdAt.getTime() - right.createdAt.getTime() ||
+        left.id - right.id,
+    )
+    .map((row) => ({
+      ...row,
+      mentions: mentionsByCommentId.get(row.id) ?? [],
+    }));
+  const repliesByParentId = new Map<number, CommentListItem[]>();
 
   for (const row of orderedRows) {
     if (row.parentCommentId === null) continue;

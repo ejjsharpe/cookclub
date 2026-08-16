@@ -25,7 +25,9 @@ export function getActivityNotificationTarget(
   }
 
   if (
-    (data.type === "activity_comment" || data.type === "comment_reply") &&
+    (data.type === "activity_comment" ||
+      data.type === "comment_reply" ||
+      data.type === "comment_mention") &&
     isPositiveInteger(data.commentId)
   ) {
     return {

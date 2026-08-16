@@ -134,6 +134,13 @@
       "when": 1786626268117,
       "tag": "0018_good_luminals",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786875727909,
+      "tag": "0019_skinny_dakota_north",
+      "breakpoints": true
     }
   ]
 }

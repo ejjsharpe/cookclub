@@ -31,17 +31,36 @@ describe("push notification mapping", () => {
     ["meal_plan_invite", "Alex invited you to a meal plan"],
     ["shopping_list_invite", "Alex invited you to a shopping list"],
     ["activity_like", "Alex liked your activity"],
-    ["activity_comment", "Alex commented on your activity"],
-    ["comment_reply", "Alex replied to your comment"],
   ] as const)("maps %s body text", (type, expected) => {
-    expect(getPushNotificationBody({ actorName: "Alex", type })).toBe(expected);
+    expect(
+      getPushNotificationBody({
+        actorName: "Alex",
+        type,
+        commentPreview: null,
+      }),
+    ).toBe(expected);
   });
 
-  it("does not expose comment previews in lock-screen notification bodies", () => {
+  it.each([
+    ["activity_comment", "Alex commented on your activity"],
+    ["comment_reply", "Alex replied to your comment"],
+    ["comment_mention", "Alex mentioned you in a comment"],
+  ] as const)("includes the comment preview in %s bodies", (type, action) => {
+    expect(
+      getPushNotificationBody({
+        actorName: "Alex",
+        type,
+        commentPreview: "This looks delicious!",
+      }),
+    ).toBe(`${action}: “This looks delicious!”`);
+  });
+
+  it("falls back to the action when a comment preview is unavailable", () => {
     expect(
       getPushNotificationBody({
         actorName: "Alex",
         type: "activity_comment",
+        commentPreview: null,
       }),
     ).toBe("Alex commented on your activity");
   });

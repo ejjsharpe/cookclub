@@ -77,15 +77,25 @@ function getNotificationActionText(type: NotificationItem["type"]): string {
       return "commented on your activity";
     case "comment_reply":
       return "replied to your comment";
+    case "comment_mention":
+      return "mentioned you in a comment";
     default:
       return "interacted with you";
   }
 }
 
 export function getPushNotificationBody(
-  notification: Pick<NotificationItem, "actorName" | "type">,
+  notification: Pick<NotificationItem, "actorName" | "type" | "commentPreview">,
 ): string {
-  return `${notification.actorName} ${getNotificationActionText(notification.type)}`;
+  const action = `${notification.actorName} ${getNotificationActionText(notification.type)}`;
+  const isCommentNotification =
+    notification.type === "activity_comment" ||
+    notification.type === "comment_reply" ||
+    notification.type === "comment_mention";
+
+  return isCommentNotification && notification.commentPreview
+    ? `${action}: “${notification.commentPreview}”`
+    : action;
 }
 
 export function getPushNotificationData(

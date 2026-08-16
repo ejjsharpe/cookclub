@@ -150,12 +150,6 @@ export const followsRouter = router({
       const query = input.query.trim();
       const limit = normalizeUserSearchLimit(input.limit);
 
-      if (query.length < 2) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Search query must be at least 2 characters",
-        });
-      }
       if (query.length > MAX_USER_SEARCH_QUERY_LENGTH) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -183,11 +177,39 @@ export const followsRouter = router({
               ...(blockedUserIds.length > 0
                 ? [notInArray(user.id, blockedUserIds)]
                 : []),
-              or(
-                like(user.name, `%${query}%`),
-                like(user.username, `%${query}%`),
-              ),
+              ...(query.length > 0
+                ? [
+                    or(
+                      like(user.name, `%${query}%`),
+                      like(user.username, `%${query}%`),
+                    ),
+                  ]
+                : []),
             ),
+          )
+          .orderBy(
+            sql`(
+              SELECT MAX(recent_comments.created_at)
+              FROM comment_mentions AS recent_mentions
+              INNER JOIN comments AS recent_comments
+                ON recent_comments.id = recent_mentions.comment_id
+              WHERE recent_comments.user_id = ${ctx.user.id}
+                AND recent_mentions.user_id = "user"."id"
+            ) DESC NULLS LAST`,
+            desc(sql`(
+              SELECT COUNT(*) FROM follows
+              WHERE follower_id = ${ctx.user.id}
+                AND following_id = "user"."id"
+            )`),
+            desc(sql`(
+              SELECT COUNT(*) FROM follows
+              WHERE follower_id = "user"."id"
+                AND following_id = ${ctx.user.id}
+            )`),
+            desc(sql`(
+              SELECT COUNT(*) FROM follows
+              WHERE following_id = "user"."id"
+            )`),
           )
           .limit(limit);
 

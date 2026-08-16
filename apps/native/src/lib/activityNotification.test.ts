@@ -12,7 +12,7 @@ describe("getActivityNotificationTarget", () => {
     ).toEqual({ activityEventId: 42 });
   });
 
-  it.each(["activity_comment", "comment_reply"])(
+  it.each(["activity_comment", "comment_reply", "comment_mention"])(
     "targets the activity and comment for %s notifications",
     (type) => {
       expect(

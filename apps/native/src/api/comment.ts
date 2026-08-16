@@ -5,7 +5,25 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // API Response Types
 export type CommentWithReplies =
   Outputs["comment"]["getComments"]["comments"][number];
-export type Comment = Omit<CommentWithReplies, "replies">;
+type CurrentComment = Omit<CommentWithReplies, "replies">;
+export type Comment = Omit<CurrentComment, "mentions"> & {
+  // Persisted v1 query data predates mention metadata.
+  mentions?: CurrentComment["mentions"];
+};
+
+export const useCommentMentionSuggestions = (
+  query: string,
+  limit = 5,
+  enabled = query.length >= 1,
+) => {
+  const trpc = useTRPC();
+
+  return useQuery({
+    ...trpc.follows.searchUsers.queryOptions({ query, limit }),
+    enabled,
+    placeholderData: (previousData) => previousData,
+  });
+};
 
 // Get comments for an activity event
 export const useComments = (

@@ -29,7 +29,7 @@ export const notifications = pgTable(
     actorId: text("actor_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    // "follow" | "meal_plan_share" | "activity_like" | "activity_comment" | "comment_reply"
+    // "follow" | "meal_plan_share" | "activity_like" | "activity_comment" | "comment_reply" | "comment_mention"
     type: text("type").notNull(),
 
     // Entity references (nullable based on type)
@@ -67,7 +67,7 @@ export const notifications = pgTable(
     ),
     check(
       "notifications_type_check",
-      sql`${table.type} IN ('follow', 'meal_plan_share', 'meal_plan_invite', 'shopping_list_invite', 'activity_like', 'activity_comment', 'comment_reply')`,
+      sql`${table.type} IN ('follow', 'meal_plan_share', 'meal_plan_invite', 'shopping_list_invite', 'activity_like', 'activity_comment', 'comment_reply', 'comment_mention')`,
     ),
   ],
 );
@@ -80,7 +80,8 @@ export type NotificationType =
   | "shopping_list_invite"
   | "activity_like"
   | "activity_comment"
-  | "comment_reply";
+  | "comment_reply"
+  | "comment_mention";
 
 // ─── Expo Push Tokens ────────────────────────────────────────────────────────
 export const pushTokens = pgTable(

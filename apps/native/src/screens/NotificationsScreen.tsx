@@ -261,6 +261,7 @@ export const NotificationsScreen = () => {
         case "activity_like":
         case "activity_comment":
         case "comment_reply":
+        case "comment_mention":
           break;
         default:
           break;
