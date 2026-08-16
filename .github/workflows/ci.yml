@@ -109,6 +109,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: bunx nx run cookclub-recipe-ai:deploy:prod --outputStyle=static
 
+      - name: Apply database migrations
+        if: contains(fromJSON(needs.checks.outputs.deployables), 'cookclub-api')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: bun run --cwd packages/db migrate
+
       - name: Deploy API
         if: contains(fromJSON(needs.checks.outputs.deployables), 'cookclub-api')
         env:
