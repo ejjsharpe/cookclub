@@ -4,7 +4,14 @@ import {
   type RouteProp,
 } from "@react-navigation/native";
 import { findActiveMention, replaceActiveMention } from "@repo/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -52,13 +59,13 @@ import { Avatar } from "@/components/Avatar";
 import { CommentCard } from "@/components/CommentCard";
 import { ImportActivityCard } from "@/components/ImportActivityCard";
 import { Ionicons } from "@/components/Ionicons";
+import { MentionTextInput } from "@/components/MentionTextInput";
 import { NavigationHeader } from "@/components/NavigationHeader";
 import {
   ReportContentSheet,
   type ReportContentSheetRef,
 } from "@/components/ReportContentSheet";
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
-import { SEARCH_BAR_HEIGHT } from "@/components/SearchBar";
 import { Text } from "@/components/Text";
 import {
   createRecipeImportId,
@@ -114,6 +121,8 @@ export const ActivityScreen = () => {
   const scrollRetryCountRef = useRef(0);
   const completedFocusRef = useRef<number | null>(null);
   const sourceImportIdsRef = useRef(new Map<string, string>());
+  const commentsScrollBaseOffsetRef = useRef<number | null>(null);
+  const shouldRestoreCommentsScrollRef = useRef(false);
   const headerOpacity = useSharedValue(1);
   const headerHidden = useSharedValue(false);
   const listScrollOffset = useSharedValue(0);
@@ -125,6 +134,9 @@ export const ActivityScreen = () => {
     start: 0,
     end: 0,
   });
+  const [taggedUsernames, setTaggedUsernames] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const activeMention = useMemo(
     () => findActiveMention(commentText, commentSelection),
@@ -160,6 +172,26 @@ export const ActivityScreen = () => {
     (areMentionSuggestionsLoading ||
       areMentionSuggestionsError ||
       mentionSuggestions.length > 0);
+
+  // Suggestions temporarily replace the comment rows. Capture a
+  // keyboard-independent offset before that shorter content can clamp the
+  // list, then restore it once the comments have been laid out again.
+  useLayoutEffect(() => {
+    if (showMentionSelector) {
+      if (commentsScrollBaseOffsetRef.current === null) {
+        commentsScrollBaseOffsetRef.current = Math.max(
+          0,
+          listScrollOffset.get() - listKeyboardOffset.get(),
+        );
+      }
+      shouldRestoreCommentsScrollRef.current = false;
+      return;
+    }
+
+    if (commentsScrollBaseOffsetRef.current !== null) {
+      shouldRestoreCommentsScrollRef.current = true;
+    }
+  }, [showMentionSelector]);
 
   const feedImageWidth = Math.max(windowWidth - 40, 1);
   const feedImagePreset = useMemo(
@@ -284,7 +316,10 @@ export const ActivityScreen = () => {
   useEffect(() => {
     setCommentText("");
     setCommentSelection({ start: 0, end: 0 });
+    setTaggedUsernames(new Set());
     setReplyingTo(null);
+    commentsScrollBaseOffsetRef.current = null;
+    shouldRestoreCommentsScrollRef.current = false;
     Keyboard.dismiss();
   }, [activityEventId]);
 
@@ -364,6 +399,26 @@ export const ActivityScreen = () => {
     },
     [],
   );
+
+  const handleListContentSizeChange = useCallback(() => {
+    const savedBaseOffset = commentsScrollBaseOffsetRef.current;
+    if (!shouldRestoreCommentsScrollRef.current || savedBaseOffset === null) {
+      return;
+    }
+
+    const restoredOffset = Math.max(
+      0,
+      savedBaseOffset + listKeyboardOffset.get(),
+    );
+    shouldRestoreCommentsScrollRef.current = false;
+    commentsScrollBaseOffsetRef.current = null;
+    listScrollBase.set(savedBaseOffset);
+    listScrollOffset.set(restoredOffset);
+    listRef.current?.scrollToOffset({
+      offset: restoredOffset,
+      animated: false,
+    });
+  }, []);
 
   const handleRecipePress = useCallback(
     (recipeId: number) => {
@@ -508,6 +563,13 @@ export const ActivityScreen = () => {
         start: replacement.cursor,
         end: replacement.cursor,
       });
+      setTaggedUsernames((currentUsernames) => {
+        if (currentUsernames.has(username)) return currentUsernames;
+
+        const nextUsernames = new Set(currentUsernames);
+        nextUsernames.add(username);
+        return nextUsernames;
+      });
       inputRef.current?.focus();
     },
     [activeMention, commentText],
@@ -542,6 +604,7 @@ export const ActivityScreen = () => {
       });
       setCommentText("");
       setCommentSelection({ start: 0, end: 0 });
+      setTaggedUsernames(new Set());
       setReplyingTo(null);
     } catch (error) {
       alertApiError("Couldn’t Post Comment", error, {
@@ -829,6 +892,7 @@ export const ActivityScreen = () => {
           ]}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
+          onContentSizeChange={handleListContentSizeChange}
           onScroll={handleScroll}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           scrollEventThrottle={16}
@@ -856,16 +920,18 @@ export const ActivityScreen = () => {
               </View>
             ) : null}
             <View style={styles.inputRow}>
-              <TextInput
+              <MentionTextInput
                 ref={inputRef}
                 accessibilityLabel="Comment"
                 value={commentText}
+                taggedUsernames={taggedUsernames}
                 onChangeText={setCommentText}
                 selection={commentSelection}
                 onSelectionChange={handleCommentSelectionChange}
                 placeholder={replyingTo ? "Write a reply…" : "Add a comment…"}
                 placeholderTextColor={theme.colors.placeholderText}
-                style={styles.input}
+                cursorColor={theme.colors.primary}
+                selectionColor={theme.colors.primary}
                 multiline
                 maxLength={500}
               />
@@ -1087,21 +1153,6 @@ const styles = StyleSheet.create((theme, rt) => ({
   mentionSuggestionHint: {
     color: theme.colors.textSecondary,
     textAlign: "center",
-  },
-  input: {
-    flex: 1,
-    maxHeight: 110,
-    minHeight: SEARCH_BAR_HEIGHT,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: SEARCH_BAR_HEIGHT / 2,
-    backgroundColor: theme.colors.inputBackground,
-    color: theme.colors.text,
-    fontFamily: theme.fonts.regular,
-    fontSize: 17,
-    lineHeight: 22,
-    includeFontPadding: false,
-    textAlignVertical: "center",
   },
   sendButton: {
     width: 44,
