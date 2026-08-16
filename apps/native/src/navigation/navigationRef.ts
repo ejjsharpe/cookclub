@@ -14,6 +14,10 @@ export type TabParamList = {
   "Shopping List": undefined;
 };
 
+type ActivityScreenParams = ActivityNotificationTarget & {
+  focusCommentInput?: boolean;
+};
+
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
   Start: undefined;
@@ -21,7 +25,7 @@ export type RootStackParamList = {
   Settings: undefined;
   BlockedUsers: undefined;
   Notifications: undefined;
-  Activity: ActivityNotificationTarget;
+  Activity: ActivityScreenParams;
   GenerateRecipe: undefined;
   UserProfile: { userId: string };
   FollowsList: {

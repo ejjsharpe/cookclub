@@ -3,6 +3,7 @@ import {
   useRoute,
   type RouteProp,
 } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { findActiveMention, replaceActiveMention } from "@repo/shared";
 import {
   useCallback,
@@ -85,6 +86,10 @@ const MAX_MENTION_SUGGESTIONS = 10;
 const MENTION_SEARCH_DEBOUNCE_MS = 300;
 
 type ActivityScreenRoute = RouteProp<RootStackParamList, "Activity">;
+type ActivityScreenNavigation = NativeStackNavigationProp<
+  RootStackParamList,
+  "Activity"
+>;
 
 type CommentListItem = {
   comment: Comment;
@@ -96,7 +101,7 @@ const ReanimatedFlatList = Animated.createAnimatedComponent(
 );
 
 export const ActivityScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<ActivityScreenNavigation>();
   const route = useRoute<ActivityScreenRoute>();
   const activityEventId =
     Number.isInteger(route.params.activityEventId) &&
@@ -108,6 +113,7 @@ export const ActivityScreen = () => {
     (route.params.commentId ?? 0) > 0
       ? route.params.commentId
       : undefined;
+  const shouldFocusCommentInput = route.params.focusCommentInput === true;
   const { width: windowWidth } = useWindowDimensions();
   const { theme } = useUnistyles();
   const insets = UnistylesRuntime.insets;
@@ -123,6 +129,8 @@ export const ActivityScreen = () => {
   const sourceImportIdsRef = useRef(new Map<string, string>());
   const commentsScrollBaseOffsetRef = useRef<number | null>(null);
   const shouldRestoreCommentsScrollRef = useRef(false);
+  const hasFinishedEntryTransitionRef = useRef(false);
+  const completedCommentFocusRef = useRef<number | null>(null);
   const headerOpacity = useSharedValue(1);
   const headerHidden = useSharedValue(false);
   const listScrollOffset = useSharedValue(0);
@@ -322,6 +330,42 @@ export const ActivityScreen = () => {
     shouldRestoreCommentsScrollRef.current = false;
     Keyboard.dismiss();
   }, [activityEventId]);
+
+  useEffect(() => {
+    hasFinishedEntryTransitionRef.current = false;
+    if (!shouldFocusCommentInput) return;
+
+    return navigation.addListener("transitionEnd", (event) => {
+      if (event.data.closing) return;
+
+      hasFinishedEntryTransitionRef.current = true;
+      if (completedCommentFocusRef.current === activityEventId) return;
+
+      const input = inputRef.current;
+      if (!input) return;
+
+      input.focus();
+      completedCommentFocusRef.current = activityEventId;
+    });
+  }, [activityEventId, navigation, shouldFocusCommentInput]);
+
+  useEffect(() => {
+    if (
+      !shouldFocusCommentInput ||
+      !activity ||
+      areCommentsError ||
+      !hasFinishedEntryTransitionRef.current ||
+      completedCommentFocusRef.current === activityEventId
+    ) {
+      return;
+    }
+
+    const input = inputRef.current;
+    if (!input) return;
+
+    input.focus();
+    completedCommentFocusRef.current = activityEventId;
+  }, [activity, activityEventId, areCommentsError, shouldFocusCommentInput]);
 
   useEffect(() => {
     if (

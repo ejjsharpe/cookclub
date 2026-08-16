@@ -581,7 +581,10 @@ export const HomeScreen = () => {
 
   const handleCommentPress = useCallback(
     (activityEventId: number) => {
-      navigation.navigate("Activity", { activityEventId });
+      navigation.navigate("Activity", {
+        activityEventId,
+        focusCommentInput: true,
+      });
     },
     [navigation],
   );
