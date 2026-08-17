@@ -760,6 +760,18 @@ export const RecipeDetailScreen = () => {
     !isEditing &&
     !isPreviewMode &&
     Boolean(recipeSourceUrl && sourceWebsiteName);
+  const shouldShowCreatorChip =
+    !isEditing &&
+    !isPreviewMode &&
+    !isOwnRecipe &&
+    !shouldShowSourceChip &&
+    Boolean(recipe);
+  const ownerAvatarUrl = recipe?.owner.image
+    ? getImageUrl(recipe.owner.image, "avatar-sm")
+    : undefined;
+  const ownerUsername = recipe?.owner.username
+    ? `@${recipe.owner.username}`
+    : recipe?.owner.name;
   const servingMultiplier = recipe?.servings ? servings / recipe.servings : 1;
   const shoppingListIngredientSections = useMemo(
     () =>
@@ -2103,25 +2115,27 @@ export const RecipeDetailScreen = () => {
               pointerEvents="box-none"
               style={styles.imageOverlay}
             >
-              {shouldShowSourceChip && sourceWebsiteName ? (
-                <>
-                  <View
-                    pointerEvents="none"
-                    style={
-                      recipe.images.length > 1
-                        ? styles.heroTitleCounterClearance
-                        : undefined
-                    }
+              <View pointerEvents="box-none" style={styles.heroTitleRow}>
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.heroTitleTextWrap,
+                    recipe.images.length > 1 &&
+                      styles.heroTitleCounterClearance,
+                  ]}
+                >
+                  <Text
+                    type="title1"
+                    style={styles.overlayTitle}
+                    numberOfLines={2}
                   >
-                    <Text
-                      type="title1"
-                      style={styles.overlayTitle}
-                      numberOfLines={2}
-                    >
-                      {recipe.name}
-                    </Text>
-                  </View>
-                  <View pointerEvents="box-none" style={styles.heroMetaRow}>
+                    {recipe.name}
+                  </Text>
+                </View>
+              </View>
+              {shouldShowSourceChip || shouldShowCreatorChip ? (
+                <View pointerEvents="box-none" style={styles.heroMetaRow}>
+                  {shouldShowSourceChip && sourceWebsiteName ? (
                     <TouchableOpacity
                       style={[styles.heroMetaChip, styles.heroSourceButton]}
                       onPress={handleViewSource}
@@ -2137,28 +2151,41 @@ export const RecipeDetailScreen = () => {
                         {sourceWebsiteName}
                       </Text>
                     </TouchableOpacity>
-                  </View>
-                </>
-              ) : (
-                <View pointerEvents="box-none" style={styles.heroTitleRow}>
-                  <View
-                    pointerEvents="none"
-                    style={[
-                      styles.heroTitleTextWrap,
-                      recipe.images.length > 1 &&
-                        styles.heroTitleCounterClearance,
-                    ]}
-                  >
-                    <Text
-                      type="title1"
-                      style={styles.overlayTitle}
-                      numberOfLines={2}
+                  ) : null}
+                  {shouldShowCreatorChip && ownerUsername ? (
+                    <TouchableOpacity
+                      style={[styles.heroMetaChip, styles.heroCreatorButton]}
+                      onPress={() =>
+                        navigation.navigate("UserProfile", {
+                          userId: recipe.owner.id,
+                        })
+                      }
+                      activeOpacity={0.76}
+                      accessibilityLabel={`View ${ownerUsername}'s profile`}
                     >
-                      {recipe.name}
-                    </Text>
-                  </View>
+                      {ownerAvatarUrl ? (
+                        <Image
+                          source={{ uri: ownerAvatarUrl }}
+                          style={styles.heroCreatorAvatar}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View style={styles.heroCreatorAvatarPlaceholder}>
+                          <Text style={styles.heroCreatorAvatarText}>
+                            {ownerUsername
+                              .replace(/^@/, "")
+                              .charAt(0)
+                              .toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.heroCreatorText} numberOfLines={1}>
+                        {ownerUsername}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
-              )}
+              ) : null}
             </LinearGradient>
           </>
         ) : (
@@ -2777,10 +2804,6 @@ export const RecipeDetailScreen = () => {
   const expandedStepImageUrl = expandedImageUrl
     ? getImageUrl(expandedImageUrl, "step-full")
     : undefined;
-  const ownerAvatarUrl = recipe?.owner.image
-    ? getImageUrl(recipe.owner.image, "avatar-sm")
-    : undefined;
-
   return (
     <View style={styles.screen}>
       <KeyboardAwareScrollView
@@ -3039,78 +3062,98 @@ export const RecipeDetailScreen = () => {
                   ) : (
                     <>
                       <TouchableOpacity
-                        style={styles.importActionButton}
+                        style={[
+                          styles.communityActionButton,
+                          styles.importActionButton,
+                        ]}
+                        onPress={handleImportRecipe}
+                        disabled={importMutation.isPending}
+                        activeOpacity={0.82}
+                        accessibilityLabel="Import recipe"
+                        accessibilityState={{
+                          disabled: importMutation.isPending,
+                          busy: importMutation.isPending,
+                        }}
+                      >
+                        {importMutation.isPending ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <Ionicons
+                            name="download-outline"
+                            size={20}
+                            color="white"
+                          />
+                        )}
+                        <Text style={styles.cookActionText}>
+                          {importMutation.isPending ? "Importing" : "Import"}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.communityActionButton,
+                          styles.personaliseActionButton,
+                        ]}
                         onPress={handleOpenPersonaliseSheet}
                         activeOpacity={0.82}
+                        accessibilityLabel="Personalise recipe with AI"
                       >
                         <Ionicons
                           name="sparkles-outline"
                           size={20}
-                          color="white"
+                          style={styles.recipeActionIcon}
                         />
-                        <Text style={styles.cookActionText}>Personalise</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.recipeActionButton}
-                        onPress={handleImportRecipe}
-                        disabled={importMutation.isPending}
-                        activeOpacity={0.78}
-                        accessibilityLabel="Import recipe"
-                      >
-                        {importMutation.isPending ? (
-                          <ActivityIndicator size="small" />
-                        ) : (
-                          <Ionicons
-                            name="download-outline"
-                            size={21}
-                            style={styles.recipeActionIcon}
-                          />
-                        )}
+                        <Text style={styles.personaliseActionText}>
+                          Personalise
+                        </Text>
                       </TouchableOpacity>
                     </>
                   )}
                 </Animated.View>
               )}
 
-              {!isEditing && !isPreviewMode && !isOwnRecipe && recipe && (
-                <Animated.View
-                  entering={FadeIn.duration(180)}
-                  exiting={FadeOut.duration(120)}
-                  layout={LinearTransition.duration(200)}
-                  style={styles.actionRail}
-                >
-                  <TouchableOpacity
-                    style={styles.authorCompact}
-                    onPress={() =>
-                      navigation.navigate("UserProfile", {
-                        userId: recipe.owner.id,
-                      })
-                    }
-                    activeOpacity={0.7}
+              {!isEditing &&
+                !isPreviewMode &&
+                !isOwnRecipe &&
+                !shouldShowCreatorChip &&
+                recipe && (
+                  <Animated.View
+                    entering={FadeIn.duration(180)}
+                    exiting={FadeOut.duration(120)}
+                    layout={LinearTransition.duration(200)}
+                    style={styles.actionRail}
                   >
-                    {ownerAvatarUrl ? (
-                      <Image
-                        source={{
-                          uri: ownerAvatarUrl,
-                        }}
-                        style={styles.authorAvatarImage}
-                      />
-                    ) : (
-                      <View style={styles.authorAvatarPlaceholder}>
-                        <Text style={styles.authorAvatarText}>
-                          {recipe.owner.name.charAt(0).toUpperCase()}
+                    <TouchableOpacity
+                      style={styles.authorCompact}
+                      onPress={() =>
+                        navigation.navigate("UserProfile", {
+                          userId: recipe.owner.id,
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      {ownerAvatarUrl ? (
+                        <Image
+                          source={{
+                            uri: ownerAvatarUrl,
+                          }}
+                          style={styles.authorAvatarImage}
+                        />
+                      ) : (
+                        <View style={styles.authorAvatarPlaceholder}>
+                          <Text style={styles.authorAvatarText}>
+                            {recipe.owner.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.authorInfo}>
+                        <Text style={styles.authorLabel}>By</Text>
+                        <Text style={styles.authorName} numberOfLines={1}>
+                          {recipe.owner.name}
                         </Text>
                       </View>
-                    )}
-                    <View style={styles.authorInfo}>
-                      <Text style={styles.authorLabel}>By</Text>
-                      <Text style={styles.authorName} numberOfLines={1}>
-                        {recipe.owner.name}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </Animated.View>
-              )}
+                    </TouchableOpacity>
+                  </Animated.View>
+                )}
 
               <View style={styles.pageDivider} />
 
@@ -3515,6 +3558,42 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 13,
     fontFamily: theme.fonts.semiBold,
   },
+  heroCreatorButton: {
+    maxWidth: "72%",
+    flexShrink: 1,
+    paddingLeft: 4,
+    paddingRight: 10,
+    gap: 7,
+  },
+  heroCreatorAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.32)",
+  },
+  heroCreatorAvatarPlaceholder: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroCreatorAvatarText: {
+    color: "white",
+    fontSize: 10,
+    lineHeight: 13,
+    fontFamily: theme.fonts.semiBold,
+    includeFontPadding: false,
+  },
+  heroCreatorText: {
+    flexShrink: 1,
+    minWidth: 0,
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 13,
+    fontFamily: theme.fonts.semiBold,
+  },
   overlayTitleInputFrame: {
     marginTop: -5,
     marginBottom: -9,
@@ -3874,15 +3953,27 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     gap: 8,
   },
-  importActionButton: {
-    flex: 1,
+  communityActionButton: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     minHeight: 50,
     borderRadius: 25,
-    backgroundColor: theme.colors.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+  },
+  importActionButton: {
+    backgroundColor: theme.colors.primary,
+  },
+  personaliseActionButton: {
+    backgroundColor: theme.colors.inputBackground,
+  },
+  personaliseActionText: {
+    color: theme.colors.text,
+    fontSize: 17,
+    fontFamily: theme.fonts.semiBold,
   },
   cookActionText: {
     color: "white",
