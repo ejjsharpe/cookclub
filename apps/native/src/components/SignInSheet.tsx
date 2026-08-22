@@ -1,7 +1,7 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { useNavigation } from "@react-navigation/native";
 import { forwardRef, useState, useImperativeHandle, useRef } from "react";
-import { Platform, View } from "react-native";
+import { Keyboard, Platform, Pressable } from "react-native";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
 import {
@@ -153,7 +153,11 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
         grabber={false}
         backgroundColor={theme.colors.background}
       >
-        <View style={styles.content}>
+        <Pressable
+          accessible={false}
+          onPress={Keyboard.dismiss}
+          style={styles.content}
+        >
           <VSpace size={24} />
           <Text type="title1">Sign in</Text>
           <VSpace size={12} />
@@ -212,7 +216,8 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
               Don't have an account yet? <Text type="highlight">Sign up</Text>
             </Text>
           </BaseButton>
-        </View>
+          {Platform.OS === "android" && <VSpace size={32} />}
+        </Pressable>
       </TrueSheet>
     );
   },

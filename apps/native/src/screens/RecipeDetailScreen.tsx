@@ -4,6 +4,7 @@ import {
   useNavigation,
   type RouteProp,
 } from "@react-navigation/native";
+import type { NativeStackHeaderItemProps } from "@react-navigation/native-stack";
 import type { PublicImageAsset } from "@repo/contracts/images";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery } from "@tanstack/react-query";
@@ -29,6 +30,7 @@ import {
   Keyboard,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Platform,
   Pressable,
   TextInput,
 } from "react-native";
@@ -1571,6 +1573,83 @@ export const RecipeDetailScreen = () => {
     );
   }, [blockUserMutation, navigation, recipe?.owner]);
 
+  const handleDeleteRecipe = useCallback(() => {
+    if (recipeId === null) return;
+
+    Alert.alert(
+      "Delete Recipe",
+      "Are you sure you want to delete this recipe? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteMutation.mutateAsync({ recipeId });
+              navigation.goBack();
+            } catch (error: unknown) {
+              alertApiError("Delete Failed", error, {
+                operation: "recipe.delete",
+                fallback: "Failed to delete recipe. Please try again.",
+              });
+            }
+          },
+        },
+      ],
+    );
+  }, [deleteMutation, navigation, recipeId]);
+
+  const handleOpenAndroidRecipeMenu = useCallback(() => {
+    if (isOwnRecipe) {
+      // Android alerts support at most three actions. The dialog remains
+      // dismissible with the system back action or by tapping outside it.
+      Alert.alert(
+        "Recipe Options",
+        undefined,
+        [
+          { text: "Edit Recipe", onPress: handleEnterEditMode },
+          {
+            text: "Manage Collections",
+            onPress: () => collectionSheetRef.current?.present(),
+          },
+          {
+            text: "Delete Recipe",
+            style: "destructive",
+            onPress: handleDeleteRecipe,
+          },
+        ],
+        { cancelable: true },
+      );
+      return;
+    }
+
+    if (recipeId !== null) {
+      Alert.alert("Recipe Options", undefined, [
+        {
+          text: "Report Recipe",
+          onPress: () =>
+            reportSheetRef.current?.present({
+              targetType: "recipe",
+              targetId: String(recipeId),
+            }),
+        },
+        {
+          text: "Block Recipe Author",
+          style: "destructive",
+          onPress: handleBlockRecipeOwner,
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }, [
+    handleBlockRecipeOwner,
+    handleDeleteRecipe,
+    handleEnterEditMode,
+    isOwnRecipe,
+    recipeId,
+  ]);
+
   useLayoutEffect(() => {
     const headerRightItems: any[] = [];
 
@@ -1614,33 +1693,7 @@ export const RecipeDetailScreen = () => {
                 name: "trash",
               },
               destructive: true,
-              onPress: () => {
-                if (recipeId === null) return;
-                const id = recipeId;
-                Alert.alert(
-                  "Delete Recipe",
-                  "Are you sure you want to delete this recipe? This cannot be undone.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Delete",
-                      style: "destructive",
-                      onPress: async () => {
-                        try {
-                          await deleteMutation.mutateAsync({ recipeId: id });
-                          navigation.goBack();
-                        } catch (error: unknown) {
-                          alertApiError("Delete Failed", error, {
-                            operation: "recipe.delete",
-                            fallback:
-                              "Failed to delete recipe. Please try again.",
-                          });
-                        }
-                      },
-                    },
-                  ],
-                );
-              },
+              onPress: handleDeleteRecipe,
             },
           ],
         },
@@ -1676,12 +1729,35 @@ export const RecipeDetailScreen = () => {
 
     navigation.setOptions({
       headerTitle: "",
-      unstable_headerRightItems: () => headerRightItems,
+      unstable_headerRightItems:
+        Platform.OS === "ios" ? () => headerRightItems : undefined,
+      headerRight:
+        Platform.OS === "android" && headerRightItems.length > 0
+          ? ({ tintColor }: NativeStackHeaderItemProps) => (
+              <Pressable
+                accessibilityLabel="Recipe options"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={handleOpenAndroidRecipeMenu}
+                style={({ pressed }) => [
+                  styles.androidHeaderMenuButton,
+                  pressed && styles.androidHeaderMenuButtonPressed,
+                ]}
+              >
+                <Ionicons
+                  color={tintColor}
+                  name="ellipsis-horizontal"
+                  size={24}
+                />
+              </Pressable>
+            )
+          : undefined,
     });
   }, [
-    deleteMutation,
     handleBlockRecipeOwner,
+    handleDeleteRecipe,
     handleEnterEditMode,
+    handleOpenAndroidRecipeMenu,
     isEditing,
     isOwnRecipe,
     isPreviewMode,
@@ -3371,6 +3447,16 @@ const styles = StyleSheet.create((theme) => ({
   screen: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  androidHeaderMenuButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  androidHeaderMenuButtonPressed: {
+    opacity: 0.55,
   },
   scrollView: {
     flex: 1,

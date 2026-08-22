@@ -110,30 +110,8 @@ export default function StartScreen() {
         </View>
         <View style={styles.actions}>
           <PrimaryButton onPress={onPressGetStarted}>Get started</PrimaryButton>
-          {__DEV__ && (
-            <BaseButton onPress={() => setIsPreviewingAuthTransition(true)}>
-              <Text type="caption">Preview auth transition</Text>
-            </BaseButton>
-          )}
         </View>
       </SafeAreaView>
-
-      {__DEV__ && (
-        <Modal
-          visible={isPreviewingAuthTransition}
-          animationType="fade"
-          presentationStyle="fullScreen"
-          onRequestClose={() => setIsPreviewingAuthTransition(false)}
-        >
-          <AuthTransitionScreen />
-          <View style={styles.previewDismiss}>
-            <BaseButton onPress={() => setIsPreviewingAuthTransition(false)}>
-              <Text type="caption">Close preview</Text>
-            </BaseButton>
-          </View>
-        </Modal>
-      )}
-
       {/* Auth Sheets */}
       <SignInSheet
         ref={signInSheetRef}

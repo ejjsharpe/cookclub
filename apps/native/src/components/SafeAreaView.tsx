@@ -1,4 +1,4 @@
-import { View, ViewProps } from "react-native";
+import { Platform, View, ViewProps } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 type Edge = "top" | "bottom" | "left" | "right";
@@ -31,7 +31,12 @@ const styles = StyleSheet.create((_theme, rt) => ({
         false: {},
       },
       bottom: {
-        true: { paddingBottom: rt.insets.bottom },
+        true: {
+          paddingBottom:
+            Platform.OS === "android"
+              ? rt.insets.bottom + 16
+              : rt.insets.bottom,
+        },
         false: {},
       },
       left: {

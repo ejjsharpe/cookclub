@@ -2,7 +2,7 @@ import { TrueSheet } from "@lodev09/react-native-true-sheet";
 import { useNavigation } from "@react-navigation/native";
 import { LEGAL_URLS, MINIMUM_ACCOUNT_AGE } from "@repo/contracts";
 import { forwardRef, useState, useImperativeHandle, useRef } from "react";
-import { Platform, View } from "react-native";
+import { Keyboard, Platform, Pressable } from "react-native";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
 import {
@@ -181,7 +181,11 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
         grabber={false}
         backgroundColor={theme.colors.background}
       >
-        <View style={styles.content}>
+        <Pressable
+          accessible={false}
+          onPress={Keyboard.dismiss}
+          style={styles.content}
+        >
           <VSpace size={24} />
           <Text type="title1">Sign up</Text>
           <VSpace size={12} />
@@ -263,7 +267,8 @@ export const SignUpSheet = forwardRef<SignUpSheetRef, SignUpSheetProps>(
               Already have an account? <Text type="highlight">Sign in</Text>
             </Text>
           </BaseButton>
-        </View>
+          {Platform.OS === "android" && <VSpace size={32} />}
+        </Pressable>
       </TrueSheet>
     );
   },

@@ -361,7 +361,9 @@ export const ShoppingListScreen = () => {
   const clearButtonOpacity = useSharedValue(1);
 
   // Base padding for when keyboard is closed and tab bar is visible
-  const basePadding = TAB_BAR_HEIGHT + 12;
+  const bottomSystemInset =
+    process.env.EXPO_OS === "android" ? insets.bottom : 0;
+  const basePadding = TAB_BAR_HEIGHT + bottomSystemInset + 12;
 
   const inputTransformAnimatedStyle = useAnimatedStyle(() => {
     // Animate padding from basePadding (keyboard closed) to 0 (keyboard open)
