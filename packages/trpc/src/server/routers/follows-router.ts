@@ -234,11 +234,6 @@ export const followsRouter = router({
 
       try {
         const blockedUserIds = await getBlockedUserIds(ctx.db, ctx.user.id);
-        // Get IDs of users the current user already follows
-        const followedIds = ctx.db
-          .select({ id: follows.followingId })
-          .from(follows)
-          .where(eq(follows.followerId, ctx.user.id));
 
         const suggestedUsers = await ctx.db
           .select({
@@ -261,7 +256,6 @@ export const followsRouter = router({
               eq(user.emailVerified, true),
               eq(user.onboardingCompleted, true),
               isNotNull(user.username),
-              notInArray(user.id, followedIds),
               ...(blockedUserIds.length > 0
                 ? [notInArray(user.id, blockedUserIds)]
                 : []),

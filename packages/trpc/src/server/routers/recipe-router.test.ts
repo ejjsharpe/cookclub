@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { recipeAiRouter, recipeRouter } from "./recipe-router";
 import { createMockEnv } from "../__mocks__/env";
+import { recipeImportRouter } from "../features/recipe-import/router";
 
 const mocks = vi.hoisted(() => ({
   propagateActivityToFollowersInBackground: vi.fn(),
@@ -156,6 +157,7 @@ vi.mock("arktype", () => {
     validator.array = () => createValidator();
     validator.atLeastLength = () => createValidator();
     validator.optional = () => createValidator();
+    validator.or = () => createValidator();
     return validator;
   };
 
@@ -185,6 +187,9 @@ function createMockDb() {
     orderBy: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     offset: vi.fn().mockReturnThis(),
+    for: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    set: vi.fn().mockReturnThis(),
     then: vi.fn(
       (
         resolve?: (rows: unknown[]) => unknown,
@@ -408,6 +413,14 @@ describe("recipeRouter - activity integration", () => {
         "test-user-id",
         123,
       );
+      const insert = mockDb.insert.mock.results[0]?.value;
+      expect(insert.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "test-user-id",
+          type: "recipe_import",
+          recipeId: 2,
+        }),
+      );
       expect(
         mocks.propagateActivityToFollowersInBackground,
       ).toHaveBeenCalledWith(
@@ -463,17 +476,71 @@ describe("recipeRouter - activity integration", () => {
       tagNames: [],
     };
 
-    it("creates activity event on recipe import", async () => {
-      mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);
+    it.each(["url", "image", "text", "ai", "manual"] as const)(
+      "creates an activity event for a %s recipe",
+      async (sourceType) => {
+        mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);
 
-      const ctx = createMockContext(mockDb, { env: mockEnv });
-      const caller = recipeRouter.createCaller(ctx as any);
+        const ctx = createMockContext(mockDb, { env: mockEnv });
+        const caller = recipeRouter.createCaller(ctx as any);
 
-      await caller.postRecipe(validRecipeInput);
+        await caller.postRecipe({ ...validRecipeInput, sourceType });
 
-      // Verify insert was called for activity event
-      expect(mockDb.insert).toHaveBeenCalled();
-    });
+        expect(mockDb.insert).toHaveBeenCalled();
+        const insert = mockDb.insert.mock.results[0]?.value;
+        expect(insert.values).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: "test-user-id",
+            type: "recipe_import",
+            recipeId: 1,
+          }),
+        );
+      },
+    );
+
+    it.each(["url", "image", "text"] as const)(
+      "creates and propagates an activity when a %s import job is completed",
+      async (sourceType) => {
+        const createdAt = new Date("2026-08-20T12:00:00.000Z");
+        mockDb._setSelectResult([
+          {
+            status: "ready",
+            completionFingerprint: null,
+            recipeId: null,
+          },
+        ]);
+        mockDb._setInsertReturning([{ id: 101, createdAt }]);
+
+        const ctx = createMockContext(mockDb, { env: mockEnv });
+        const caller = recipeImportRouter.createCaller(ctx as any);
+
+        await caller.complete({
+          id: "11111111-1111-4111-8111-111111111111",
+          recipe: {
+            ...validRecipeInput,
+            sourceType,
+          },
+        });
+
+        const insert = mockDb.insert.mock.results[0]?.value;
+        expect(insert.values).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: "test-user-id",
+            type: "recipe_import",
+            recipeId: 1,
+          }),
+        );
+        expect(
+          mocks.propagateActivityToFollowersInBackground,
+        ).toHaveBeenCalledWith(
+          ctx,
+          101,
+          "test-user-id",
+          createdAt,
+          "Error propagating recipe import activity:",
+        );
+      },
+    );
 
     it("schedules propagation to followers", async () => {
       mockDb._setInsertReturning([{ id: 100, createdAt: new Date() }]);

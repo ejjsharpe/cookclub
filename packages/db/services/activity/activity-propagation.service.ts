@@ -241,9 +241,6 @@ export async function hydrateActivityIds(
     const recipe = recipeMap.get(activity.recipeId);
     if (!recipe) continue;
 
-    // Filter out image-sourced recipes from feed
-    if (recipe.sourceType === "image") continue;
-
     const recipeImage = recipeImageMap.get(recipe.id) ?? null;
 
     // Build recipe metadata

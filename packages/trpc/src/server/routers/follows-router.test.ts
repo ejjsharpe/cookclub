@@ -303,4 +303,21 @@ describe("followsRouter - user discovery", () => {
       ]),
     });
   });
+
+  it("keeps users the current user already follows in discovery suggestions", async () => {
+    const ctx = createMockContext();
+    const caller = followsRouter.createCaller(ctx as any);
+
+    await caller.getSuggestedUsers({ limit: 10 });
+
+    const whereCondition = ctx.db.where.mock.calls.at(-1)?.[0];
+    expect(whereCondition.conditions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "notInArray",
+          field: "user.id",
+        }),
+      ]),
+    );
+  });
 });
