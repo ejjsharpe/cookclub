@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
-import { useRef, useCallback, useState } from "react";
-import { Modal, View } from "react-native";
+import { useRef, useCallback } from "react";
+import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import startImage1 from "@/assets/images/start-food-1.jpg";
@@ -21,9 +21,7 @@ import { SignInSheet, type SignInSheetRef } from "@/components/SignInSheet";
 import { SignUpSheet, type SignUpSheetRef } from "@/components/SignUpSheet";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import { BaseButton } from "@/components/buttons/BaseButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
-import { AuthTransitionScreen } from "@/lib/signedInContext";
 
 const row1Images = [startImage1, startImage2, startImage3, startImage4];
 const row2Images = [startImage5, startImage6, startImage7, startImage8];
@@ -41,8 +39,6 @@ const getImageRow = (imageArr: string[]) =>
 export default function StartScreen() {
   const signInSheetRef = useRef<SignInSheetRef>(null);
   const signUpSheetRef = useRef<SignUpSheetRef>(null);
-  const [isPreviewingAuthTransition, setIsPreviewingAuthTransition] =
-    useState(false);
 
   const onPressGetStarted = () => signUpSheetRef.current?.present();
 
