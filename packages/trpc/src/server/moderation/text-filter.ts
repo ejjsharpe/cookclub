@@ -21,9 +21,20 @@ export function normalizePublicText(value: string): string {
     .trim();
 }
 
+function textForProfanityCheck(value: string): string {
+  // Leetspeak normalization can interpret standalone measurements such as
+  // "85" and "455" as profanity. Pure numeric tokens carry no textual
+  // meaning, so exclude them without weakening checks for mixed tokens such as
+  // "f4ck" or "a55".
+  return value.replace(
+    /(^|[^\p{L}\p{N}])\p{N}+(?:[.,/]\p{N}+)*(?=$|[^\p{L}\p{N}])/gu,
+    "$1 ",
+  );
+}
+
 export function containsObjectionablePublicText(value: string): boolean {
   return checkProfanity(
-    normalizePublicText(value),
+    textForProfanityCheck(normalizePublicText(value)),
     PUBLIC_TEXT_PROFANITY_CONFIG,
   ).containsProfanity;
 }

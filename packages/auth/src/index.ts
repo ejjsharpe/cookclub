@@ -11,6 +11,7 @@ import { Resend } from "resend";
 const FROM_EMAIL = "Cook Club <noreply@cookclub.app>";
 const REPLY_TO_EMAIL = "help@cookclub.app";
 const AUTH_BASE_PATH = "/auth";
+const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30;
 type SocialProvider = "google" | "apple";
 
 function privateErrorStack(error: unknown): string {
@@ -172,6 +173,9 @@ export function getAuth(
       provider: "pg",
       schema,
     }),
+    session: {
+      expiresIn: SESSION_EXPIRES_IN_SECONDS,
+    },
     databaseHooks: {
       user: {
         create: {

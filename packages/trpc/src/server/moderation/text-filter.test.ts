@@ -30,6 +30,25 @@ describe("public text moderation", () => {
     );
   });
 
+  it.each([
+    "85 milliliter Vegetable Oil (or any neutral oil)",
+    "455 g sugar",
+    "1/2 teaspoon salt",
+  ])(
+    "does not interpret numeric recipe measurements as leetspeak: %s",
+    (text) => {
+      expect(containsObjectionablePublicText(text)).toBe(false);
+      expect(filterPublicText(text, "Ingredient")).toBe(text);
+    },
+  );
+
+  it.each(["f4ck", "a55"])(
+    "still rejects mixed alphanumeric leetspeak: %s",
+    (text) => {
+      expect(containsObjectionablePublicText(text)).toBe(true);
+    },
+  );
+
   it("preserves null and undefined optional fields", () => {
     expect(filterOptionalPublicText(null, "Bio")).toBeNull();
     expect(filterOptionalPublicText(undefined, "Bio")).toBeUndefined();

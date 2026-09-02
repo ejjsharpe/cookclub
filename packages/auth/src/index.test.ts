@@ -31,6 +31,9 @@ vi.mock("resend", () => ({
 
 type AuthConfig = {
   trustedOrigins: string[];
+  session: {
+    expiresIn: number;
+  };
   emailAndPassword: {
     requireEmailVerification: boolean;
   };
@@ -101,6 +104,12 @@ describe("auth configuration", () => {
     expect(local.emailVerification.sendOnSignUp).toBe(false);
     expect(deployed.emailAndPassword.requireEmailVerification).toBe(true);
     expect(deployed.emailVerification.sendOnSignUp).toBe(true);
+  });
+
+  it("keeps sessions valid for 30 days", () => {
+    const config = captureConfig();
+
+    expect(config.session.expiresIn).toBe(60 * 60 * 24 * 30);
   });
 
   it("deduplicates configured origins and builds provider callbacks", () => {
