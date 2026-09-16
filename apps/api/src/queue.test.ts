@@ -85,6 +85,7 @@ describe("recipe import queue", () => {
       errorCode: "IMPORT_SOURCE_UNAVAILABLE" as const,
       event: "recipe_import_terminal_failure" as const,
       sourceHost: "instagram.com",
+      sourceUrl: "https://instagram.com/p/recipe-post/?img_index=1",
     };
     mocks.processRecipeImportJob.mockImplementation(async (context) => {
       context.reportFailure(failure);

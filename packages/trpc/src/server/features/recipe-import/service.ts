@@ -82,6 +82,7 @@ export type RecipeImportFailureEvent = {
   errorCode?: RecipeImportErrorCode;
   retryAfterSeconds?: number;
   sourceHost?: string;
+  sourceUrl?: string;
 };
 
 export type RecipeImportJobContext = {
@@ -716,7 +717,9 @@ export async function processRecipeImportJob(
         ...(result.error.retryAfterSeconds !== undefined
           ? { retryAfterSeconds: result.error.retryAfterSeconds }
           : {}),
-        ...(host ? { sourceHost: host } : {}),
+        ...(host && job.sourceData
+          ? { sourceHost: host, sourceUrl: job.sourceData }
+          : {}),
       });
 
       if (result.error.disposition === "retry") {

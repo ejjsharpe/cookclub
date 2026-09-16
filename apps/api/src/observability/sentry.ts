@@ -141,6 +141,7 @@ export function captureImportFailure(
       event: failure.event,
       retryAfterSeconds: failure.retryAfterSeconds,
       sourceHost: failure.sourceHost,
+      sourceUrl: failure.sourceUrl,
     });
     Sentry.captureMessage("Recipe import failed");
   });

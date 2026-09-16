@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { RecipeAI } from "../../src/index";
 import { RECIPE_AI_INFERENCE_CLIENT } from "../../src/utils/ai-response-parser";
+import {
+  goustoApiUrl,
+  goustoResponse,
+  goustoShell,
+  goustoUrl,
+} from "../fixtures/gousto";
 
 type TestRecipeAI = Omit<RecipeAI, "parse"> & {
   parse(
@@ -251,6 +257,88 @@ describe("RecipeAI.parse()", () => {
   });
 
   describe("URL parsing flow", () => {
+    it.each(["deterministic", "ai-assisted"] as const)(
+      "imports a Gousto cookbook app shell using its recipe data (%s)",
+      async (strategy) => {
+        global.fetch = vi.fn(async (input) => {
+          if (String(input) === goustoUrl) return new Response(goustoShell);
+          if (String(input) === goustoApiUrl) {
+            return Response.json(goustoResponse);
+          }
+          return new Response("Not found", { status: 404 });
+        });
+
+        const result = await parser.parse({
+          type: "url",
+          data: goustoUrl,
+          strategy,
+        });
+
+        expect(result).toMatchObject({
+          success: true,
+          data: {
+            name: goustoResponse.data.entry.title,
+            sourceUrl: goustoUrl,
+            servings: 2,
+            totalTime: 50,
+          },
+          metadata: {
+            provenance: "deterministic",
+            parseMethod: "structured_data",
+          },
+        });
+        expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
+        expect(browserFetcherMocks.fetchHtmlWithBrowser).not.toHaveBeenCalled();
+        expect(mockEnv.IMAGE_SERVICE.uploadFromUrl).toHaveBeenCalledWith(
+          "https://production-media.gousto.co.uk/step-1-x700.jpg",
+          expect.any(String),
+        );
+
+        // A second import should use the normal recipe cache.
+        vi.mocked(global.fetch).mockClear();
+        const cached = await parser.parse({
+          type: "url",
+          data: goustoUrl,
+          strategy,
+        });
+        expect(cached).toMatchObject({
+          success: true,
+          metadata: { cached: true },
+        });
+        expect(global.fetch).not.toHaveBeenCalled();
+      },
+    );
+
+    it("continues with HTML extraction if Gousto's API is unavailable", async () => {
+      global.fetch = vi.fn(async (input) =>
+        String(input) === goustoApiUrl
+          ? new Response(null, { status: 503 })
+          : new Response(sampleHtml),
+      );
+
+      const result = await parser.parse({
+        type: "url",
+        data: goustoUrl,
+        strategy: "deterministic",
+      });
+
+      expect(result).toMatchObject({
+        success: true,
+        data: { name: "Recipe Title", sourceUrl: goustoUrl },
+        metadata: {
+          diagnostics: {
+            stageTimings: expect.arrayContaining([
+              expect.objectContaining({
+                status: "error",
+                detail: "gousto_api",
+              }),
+            ]),
+          },
+        },
+      });
+      expect(mockEnv.aiClient.complete).not.toHaveBeenCalled();
+    });
+
     it("returns cached result on cache hit", async () => {
       const cachedRecipe = {
         name: "Cached Recipe",

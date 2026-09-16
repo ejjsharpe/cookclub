@@ -10,17 +10,14 @@ import {
   deterministicHtmlCandidates,
 } from "./candidates";
 import { fetchHtml, isLikelyBotBlockedError } from "./fetch";
+import { collectGoustoRecipeCandidates } from "./gousto";
 import {
   cleanHtml,
   extractImageUrls,
   extractStepImageContext,
   focusRecipeContent,
 } from "./html-cleaner";
-import {
-  evaluateRecipeCandidates,
-  type RecipeCandidate,
-  selectBestRecipeCandidate,
-} from "./parse";
+import { evaluateRecipeCandidates, selectBestRecipeCandidate } from "./parse";
 import { ParsedRecipeSchema } from "../../schema";
 import {
   parseRecipeFromHtml,
@@ -231,12 +228,35 @@ export async function parseUrl(
     }
   }
 
+  // Gousto's cookbook returns an empty app shell, with the recipe served by
+  // its public API. Try that structured source before the HTML fallbacks.
+  const goustoStart = Date.now();
+  const candidates = await collectGoustoRecipeCandidates(sourceUrl);
+  if (candidates.length > 0) {
+    diagnostics = recordDiagnosticsStage(
+      appendFallbackPath(diagnostics, "gousto_api"),
+      "deterministic_parse",
+      goustoStart,
+      candidates[0]?.error ? "error" : "success",
+      "gousto_api",
+    );
+    const goustoResult = await selectBestRecipeCandidate(
+      env,
+      sourceUrl,
+      candidates,
+      {
+        canonicalUrl: sourceUrl,
+        diagnostics,
+      },
+    );
+    if (goustoResult) return goustoResult;
+  }
+
   // Check if this URL requires browser rendering (Instagram, TikTok, etc.)
   const needsBrowser = requiresBrowserRendering(sourceUrl);
 
   // Fetch HTML (use browser for JS-heavy sites, regular fetch otherwise)
   let html: string;
-  const candidates: RecipeCandidate[] = [];
   const fetchStart = Date.now();
   try {
     if (needsBrowser) {

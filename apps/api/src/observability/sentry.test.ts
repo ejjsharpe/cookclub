@@ -1,12 +1,67 @@
-import { describe, expect, it } from "vitest";
+import * as Sentry from "@sentry/hono/cloudflare";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  captureImportFailure,
   getSentryOptions,
   redactSentryEvent,
   shouldCaptureImportFailure,
 } from "./sentry";
 
+vi.mock("@sentry/hono/cloudflare", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/hono/cloudflare")>()),
+  captureMessage: vi.fn(),
+}));
+
 describe("Sentry observability", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("includes the full recipe URL in captured context and preserves it through redaction", () => {
+    const sourceUrl = "https://example.com/cookbook/recipes/ragu?servings=2";
+    let capturedEvent: Sentry.Event | undefined;
+    vi.mocked(Sentry.captureMessage).mockImplementation(() => {
+      const scope = Sentry.getCurrentScope().getScopeData();
+      capturedEvent = redactSentryEvent({
+        contexts: scope.contexts,
+        tags: scope.tags,
+        fingerprint: scope.fingerprint,
+        request: {
+          url: "https://api.cookclub.app/trpc/recipe.import?token=secret",
+          data: { private: "request data" },
+        },
+      });
+      return "event-id";
+    });
+
+    captureImportFailure(
+      {
+        event: "recipe_import_terminal_failure",
+        jobId: "job-1",
+        userId: "user-1",
+        importType: "basic",
+        mode: "url",
+        errorCode: "IMPORT_RECIPE_NOT_FOUND",
+        sourceHost: "example.com",
+        sourceUrl,
+      },
+      "recipe-import-basic",
+    );
+
+    expect(Sentry.captureMessage).toHaveBeenCalledWith("Recipe import failed");
+    expect(capturedEvent).toMatchObject({
+      contexts: { recipe_import: { sourceHost: "example.com", sourceUrl } },
+      tags: { source_host: "example.com" },
+      fingerprint: [
+        "recipe-import",
+        "IMPORT_RECIPE_NOT_FOUND",
+        "url",
+        "example.com",
+      ],
+      request: { url: "https://api.cookclub.app/trpc/recipe.import" },
+    });
+    expect(capturedEvent?.request).not.toHaveProperty("data");
+  });
+
   it("removes request bodies, query strings, cookies, and sensitive headers", () => {
     const event = redactSentryEvent({
       type: undefined,

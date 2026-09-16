@@ -439,8 +439,11 @@ describe("recipe import processing outcomes", () => {
     expect(env.IMAGE_SERVICE.deleteImportImages).not.toHaveBeenCalled();
   });
 
-  it("marks a terminal parse failed and cleans staging once", async () => {
+  it("reports the full URL before clearing a terminal failure's source and staging", async () => {
     const { db, state } = createProcessDb("basic");
+    const sourceUrl = "https://example.com/cookbook/recipes/ragu?servings=2";
+    state.job.sourceData = sourceUrl;
+    const reportFailure = vi.fn();
     const env = {
       ...createEnvironment(),
       RECIPE_AI: {
@@ -460,15 +463,61 @@ describe("recipe import processing outcomes", () => {
     };
 
     await expect(
-      processRecipeImportJob({ db, env } as never, {
+      processRecipeImportJob({ db, env, reportFailure } as never, {
         jobId: JOB_ID,
         userId: "user-1",
       }),
     ).resolves.toEqual({ outcome: "ready" });
+    expect(reportFailure).toHaveBeenCalledWith({
+      event: "recipe_import_terminal_failure",
+      jobId: JOB_ID,
+      userId: "user-1",
+      importType: "basic",
+      mode: "url",
+      errorCode: "IMPORT_RECIPE_NOT_FOUND",
+      sourceHost: "example.com",
+      sourceUrl,
+    });
     expect(state.job.status).toBe("failed");
+    expect(state.job.sourceData).toBeNull();
     expect(state.job.errorCode).toBe("IMPORT_RECIPE_NOT_FOUND");
     expect(env.IMAGE_SERVICE.deleteImportImages).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ["text", "Private pasted recipe text"],
+    ["image", "2"],
+    ["url", "invalid-url"],
+  ])(
+    "omits source URLs for %s imports without a valid URL",
+    async (mode, sourceData) => {
+      const { db, state } = createProcessDb();
+      state.job.mode = mode;
+      state.job.sourceData = sourceData;
+      const reportFailure = vi.fn();
+      const env = {
+        ...createEnvironment(),
+        RECIPE_AI: {
+          parse: vi.fn().mockResolvedValue({
+            success: false,
+            error: {
+              code: "IMPORT_RECIPE_NOT_FOUND",
+              disposition: "terminal",
+            },
+          }),
+        },
+      };
+
+      await processRecipeImportJob({ db, env, reportFailure } as never, {
+        jobId: JOB_ID,
+        userId: "user-1",
+      });
+
+      expect(reportFailure).toHaveBeenCalledOnce();
+      expect(reportFailure.mock.calls[0]?.[0]).not.toHaveProperty("sourceUrl");
+      expect(reportFailure.mock.calls[0]?.[0]).not.toHaveProperty("sourceHost");
+    },
+  );
 
   it("recovers stale jobs without requiring a user poll", async () => {
     const { db, state } = createProcessDb("basic");
