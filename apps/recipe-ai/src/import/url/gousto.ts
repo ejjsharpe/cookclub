@@ -182,7 +182,9 @@ export async function collectGoustoRecipeCandidates(
   try {
     const response = await fetch(apiUrl, {
       signal: AbortSignal.timeout(8_000),
-      redirect: "error",
+      // Workers only supports follow/manual. Reject redirects via response.ok
+      // below so this fixed API endpoint never follows an unexpected location.
+      redirect: "manual",
       headers: {
         Accept: "application/json",
         "x-gousto-request-source": "content-webclient",

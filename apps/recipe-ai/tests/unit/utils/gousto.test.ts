@@ -20,7 +20,7 @@ describe("Gousto cookbook import", () => {
 
     expect(fetch).toHaveBeenCalledWith(goustoApiUrl, {
       signal: expect.any(AbortSignal),
-      redirect: "error",
+      redirect: "manual",
       headers: {
         Accept: "application/json",
         "x-gousto-request-source": "content-webclient",

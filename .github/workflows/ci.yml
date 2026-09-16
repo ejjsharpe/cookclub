@@ -51,6 +51,9 @@ jobs:
       - name: Test
         run: bunx nx affected -t test --nxBail --outputStyle=static
 
+      - name: Test Workers runtime integration
+        run: bunx nx affected -t test:integration --nxBail --outputStyle=static
+
       - name: Build
         run: bunx nx affected -t build --nxBail --outputStyle=static
 
