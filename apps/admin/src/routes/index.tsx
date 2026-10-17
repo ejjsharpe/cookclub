@@ -12,21 +12,18 @@ import {
   CircleSlash,
   LogOut,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   RefreshCw,
   Search,
-  ShieldAlert,
   ShieldCheck,
   Sun,
   Trash2,
   UserCog,
-  Users,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { AdminShell } from "../components/admin-shell";
 import { authClient } from "../lib/auth";
 
 export const Route = createFileRoute("/")({
@@ -387,14 +384,7 @@ function AdminDashboard({
   const [offset, setOffset] = useState(0);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const limit = 25;
-
-  useEffect(() => {
-    if (window.matchMedia("(max-width: 920px)").matches) {
-      setIsSidebarOpen(false);
-    }
-  }, []);
 
   const queryInput = useMemo(
     () => ({
@@ -485,64 +475,7 @@ function AdminDashboard({
   };
 
   return (
-    <main
-      className={`admin-shell ${
-        isSidebarOpen ? "sidebar-open" : "sidebar-collapsed"
-      }`}
-    >
-      <aside
-        aria-hidden={!isSidebarOpen}
-        aria-label="Admin navigation"
-        className="side-rail"
-        id="admin-sidebar"
-      >
-        <div className="brand-lockup">
-          <img alt="" className="brand-mark" src="/icons/icon.png" />
-          <div>
-            <strong>cookclub</strong>
-            <span>Admin</span>
-          </div>
-        </div>
-        <nav className="side-nav">
-          <span className="active">
-            <Users size={18} />
-            Users
-          </span>
-          <a href="/moderation">
-            <ShieldAlert size={18} />
-            Moderation
-          </a>
-        </nav>
-        <div className="side-footer">
-          <span>Console</span>
-          <strong>Workspace</strong>
-        </div>
-      </aside>
-
-      <button
-        aria-controls="admin-sidebar"
-        aria-expanded={isSidebarOpen}
-        aria-label={isSidebarOpen ? "Hide sidebar" : "Show sidebar"}
-        className="icon-button sidebar-toggle"
-        onClick={() => setIsSidebarOpen((isOpen) => !isOpen)}
-        title={isSidebarOpen ? "Hide sidebar" : "Show sidebar"}
-        type="button"
-      >
-        {isSidebarOpen ? (
-          <PanelLeftClose size={18} />
-        ) : (
-          <PanelLeftOpen size={18} />
-        )}
-      </button>
-
-      <button
-        aria-label="Close sidebar"
-        className="sidebar-scrim"
-        hidden={!isSidebarOpen}
-        onClick={() => setIsSidebarOpen(false)}
-        type="button"
-      />
-
+    <AdminShell activePage="users">
       <div className="dashboard-main">
         <header className="topbar">
           <div className="topbar-title-row">
@@ -901,7 +834,7 @@ function AdminDashboard({
           onClose={() => setSelectedUser(null)}
         />
       ) : null}
-    </main>
+    </AdminShell>
   );
 }
 

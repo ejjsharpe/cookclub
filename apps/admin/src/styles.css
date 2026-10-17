@@ -341,7 +341,7 @@ h3 {
 }
 
 .brand-lockup,
-.side-nav span,
+.side-nav a,
 .topbar-actions,
 .button-row,
 .pagination div,
@@ -399,7 +399,6 @@ h3 {
   margin-top: 28px;
 }
 
-.side-nav span,
 .side-nav a {
   border-radius: var(--radius-control);
   color: var(--ink-soft);
@@ -407,11 +406,11 @@ h3 {
   font-weight: 700;
   min-height: 40px;
   padding: 0 12px;
+  text-decoration: none;
 }
 
-.side-nav a {
-  color: inherit;
-  text-decoration: none;
+.side-nav svg {
+  flex-shrink: 0;
 }
 
 .moderation-layout {
@@ -494,7 +493,7 @@ h3 {
   }
 }
 
-.side-nav span.active {
+.side-nav a[aria-current="page"] {
   background: rgba(255, 0, 39, 0.1);
   color: var(--primary);
 }

@@ -8,11 +8,10 @@ import {
   EyeOff,
   LogOut,
   RefreshCw,
-  ShieldAlert,
-  Users,
 } from "lucide-react";
 import { useState } from "react";
 
+import { AdminShell } from "../components/admin-shell";
 import { authClient } from "../lib/auth";
 
 export const Route = createFileRoute("/moderation")({
@@ -102,34 +101,16 @@ function ModerationQueue({
   };
 
   return (
-    <main className="admin-shell sidebar-open">
-      <aside aria-label="Admin navigation" className="side-rail">
-        <div className="brand-lockup">
-          <img alt="" className="brand-mark" src="/icons/icon.png" />
-          <div>
-            <strong>cookclub</strong>
-            <span>Admin</span>
-          </div>
-        </div>
-        <nav className="side-nav">
-          <a href="/">
-            <Users size={18} />
-            Users
-          </a>
-          <span className="active">
-            <ShieldAlert size={18} />
-            Moderation
-          </span>
-        </nav>
-      </aside>
-
+    <AdminShell activePage="moderation">
       <div className="dashboard-main">
         <header className="topbar">
-          <div>
-            <h1>Moderation queue</h1>
-            <p className="topbar-copy">
-              {reportsQuery.data?.total ?? 0} {status} reports
-            </p>
+          <div className="topbar-title-row">
+            <div>
+              <h1>Moderation queue</h1>
+              <p className="topbar-copy">
+                {reportsQuery.data?.total ?? 0} {status} reports
+              </p>
+            </div>
           </div>
           <div className="topbar-actions">
             <span className="account-chip">
@@ -250,7 +231,7 @@ function ModerationQueue({
           />
         </section>
       </div>
-    </main>
+    </AdminShell>
   );
 }
 
