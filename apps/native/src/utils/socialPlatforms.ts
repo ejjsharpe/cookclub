@@ -1,3 +1,4 @@
+import { FACEBOOK_IMPORT_HOSTS } from "@repo/contracts/recipe-import";
 import type { ComponentProps } from "react";
 
 import type { Ionicons } from "@/components/Ionicons";
@@ -37,7 +38,7 @@ const SOCIAL_PLATFORMS: Record<
     displayName: "Facebook",
     icon: "logo-facebook",
     color: "#1877F2",
-    domains: ["facebook.com", "fb.com", "fb.watch"],
+    domains: [...FACEBOOK_IMPORT_HOSTS],
   },
   youtube: {
     id: "youtube",
@@ -58,7 +59,7 @@ export function getRecipeImportSocialPlatform(
   source: string,
 ): RecipeImportSocialPlatform | null {
   try {
-    const hostname = new URL(source).hostname.toLowerCase();
+    const hostname = new URL(source).hostname.toLowerCase().replace(/\.$/, "");
     const match = SOCIAL_PLATFORM_NAMES.find((platform) =>
       platform.domains.some((domain) => hostnameMatches(hostname, domain)),
     );

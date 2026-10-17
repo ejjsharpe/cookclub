@@ -5,6 +5,21 @@ import { extractSocialRecipeLinks } from "../../../src/import/social/links";
 describe("extractSocialRecipeLinks", () => {
   const sourceUrl = "https://www.instagram.com/reel/ABC123/";
 
+  it("unwraps Facebook links, deduplicates destinations and rejects private targets", () => {
+    const recipe = "https://example.com/soup?utm_source=facebook";
+    expect(
+      extractSocialRecipeLinks(
+        [
+          `https://l.facebook.com/l.php?u=${encodeURIComponent(recipe)}&h=tracking`,
+          "https://example.com/soup",
+          `https://lm.facebook.com/l.php?u=${encodeURIComponent("https://127.0.0.1/recipe")}`,
+          "https://fb.watch/another-video/",
+        ],
+        "https://www.facebook.com/reel/123/",
+      ),
+    ).toEqual(["https://example.com/soup"]);
+  });
+
   it("extracts direct external recipe links from social text", () => {
     expect(
       extractSocialRecipeLinks(

@@ -13,6 +13,19 @@ function makeIntent(overrides: Partial<ShareIntent> = {}): ShareIntent {
 }
 
 describe("detectPendingShareIntent", () => {
+  it.each([
+    "https://www.facebook.com/reel/973273425043117",
+    "https://www.facebook.com/reel/1789858525376832",
+    "https://www.facebook.com/share/r/1GNKTPHWS9/",
+  ])("preserves shared Facebook URL %s", (url) => {
+    expect(detectPendingShareIntent(makeIntent({ webUrl: url }))).toEqual({
+      type: "url",
+      content: url,
+    });
+    expect(
+      detectPendingShareIntent(makeIntent({ text: `Try this recipe: ${url}` })),
+    ).toEqual({ type: "url", content: url });
+  });
   it("prefers a platform web URL over files and text", () => {
     expect(
       detectPendingShareIntent(

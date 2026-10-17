@@ -12,12 +12,17 @@ import {
 } from "./recipe-import";
 
 describe("recipe import source validation", () => {
-  it.each(["instagram.com", "WWW.TIKTOK.COM.", "m.youtube.com"])(
-    "blocks unsupported host %s",
-    (hostname) => {
-      expect(isBasicImportUnsupportedHost(hostname)).toBe(true);
-    },
-  );
+  it.each([
+    "instagram.com",
+    "WWW.TIKTOK.COM.",
+    "m.youtube.com",
+    "facebook.com",
+    "m.facebook.com",
+    "fb.com",
+    "fb.watch",
+  ])("blocks unsupported host %s", (hostname) => {
+    expect(isBasicImportUnsupportedHost(hostname)).toBe(true);
+  });
 
   it.each(["notyoutube.com", "youtube.com.evil.test", "example.com"])(
     "does not over-block host %s",

@@ -8,6 +8,19 @@ import {
 } from "./socialPlatforms";
 
 describe("social platform import utilities", () => {
+  it.each([
+    "https://www.facebook.com/reel/973273425043117",
+    "https://www.facebook.com/reel/1789858525376832",
+    "https://www.facebook.com/share/r/1GNKTPHWS9/",
+    "https://fb.watch/recipe/",
+    "https://m.facebook.com/chef/posts/pfbidABC/",
+  ])("routes Facebook source %s to Smart Import", (url) => {
+    expect(getRecipeImportSocialPlatform(url)).toBe("facebook");
+    expect(getRecipeImportSourceTitle(url)).toBe(
+      "Importing recipe from Facebook",
+    );
+    expect(isBasicImportUnsupportedUrl(url)).toBe(true);
+  });
   it("detects and labels YouTube sources", () => {
     expect(
       getRecipeImportSocialPlatform(

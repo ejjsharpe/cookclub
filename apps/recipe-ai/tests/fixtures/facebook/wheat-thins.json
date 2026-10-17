@@ -1,0 +1,178 @@
+{
+  "sourceUrl": "https://www.facebook.com/reel/973273425043117",
+  "id": "973273425043117",
+  "meta": {
+    "og:title": "9.3K views · 98 reactions | Homemade Wheat Thins that are thin, crisp, and lightly sweet with a hint of paprika. Made with whole wheat flour and baked until golden for a delicious crunchy snack! | Crowded Kitchen",
+    "og:description": "Homemade Wheat Thins that are thin, crisp, and lightly sweet with a hint of paprika. Made with whole wheat flour and baked until golden for a delicious crunchy snack!",
+    "og:url": "https://www.facebook.com/reel/973273425043117/",
+    "og:image": "https://scontent.xx.fbcdn.net/fixtures/wheat-thins/cover.jpg"
+  },
+  "payload": {
+    "__bbox": {
+      "result": {
+        "data": [
+          {
+            "story": {
+              "attachments": [
+                {
+                  "media": {
+                    "__typename": "Video",
+                    "preferred_thumbnail": {
+                      "image": {
+                        "uri": "https://scontent.xx.fbcdn.net/fixtures/wheat-thins/cover.jpg"
+                      },
+                      "id": "1429294289269627"
+                    },
+                    "id": "973273425043117",
+                    "permalink_url": "https://www.facebook.com/crowdedkitchen1/videos/973273425043117/",
+                    "captions_url": "https://scontent.xx.fbcdn.net/fixtures/wheat-thins/captions.srt",
+                    "videoDeliveryLegacyFields": {
+                      "dash_manifest_xml_string": "<MPD><Period><AdaptationSet contentType=\"audio\"><Representation mimeType=\"audio/mp4\"><BaseURL>https://video.xx.fbcdn.net/fixtures/wheat-thins/audio.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>",
+                      "id": "973273425043117"
+                    },
+                    "owner": {
+                      "__typename": "User",
+                      "id": "100063647587146"
+                    },
+                    "playable_duration_in_ms": 27519,
+                    "url": "https://www.facebook.com/crowdedkitchen1/videos/973273425043117/"
+                  }
+                }
+              ],
+              "id": "UzpfSTEwMDA2MzY0NzU4NzE0NjpWSzo5NzMyNzM0MjUwNDMxMTc="
+            },
+            "id": "973273425043117"
+          },
+          {
+            "__typename": "Video",
+            "preferred_thumbnail": {
+              "image": {
+                "uri": "https://scontent.xx.fbcdn.net/fixtures/wheat-thins/cover.jpg"
+              },
+              "id": "1429294289269627"
+            },
+            "id": "973273425043117",
+            "permalink_url": "https://www.facebook.com/crowdedkitchen1/videos/973273425043117/",
+            "captions_url": "https://scontent.xx.fbcdn.net/fixtures/wheat-thins/captions.srt",
+            "videoDeliveryLegacyFields": {
+              "dash_manifest_xml_string": "<MPD><Period><AdaptationSet contentType=\"audio\"><Representation mimeType=\"audio/mp4\"><BaseURL>https://video.xx.fbcdn.net/fixtures/wheat-thins/audio.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>",
+              "id": "973273425043117"
+            },
+            "owner": {
+              "__typename": "User",
+              "id": "100063647587146"
+            },
+            "playable_duration_in_ms": 27519,
+            "url": "https://www.facebook.com/crowdedkitchen1/videos/973273425043117/"
+          },
+          {
+            "dash_manifest_xml_string": "<MPD><Period><AdaptationSet contentType=\"audio\"><Representation mimeType=\"audio/mp4\"><BaseURL>https://video.xx.fbcdn.net/fixtures/wheat-thins/audio.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>",
+            "id": "973273425043117"
+          },
+          {
+            "__typename": "Video",
+            "title": {
+              "ranges": [],
+              "text": ""
+            },
+            "creation_story": {
+              "attachments": [{}],
+              "comet_sections": {
+                "message": {
+                  "__typename": "CometFeedStoryDefaultMessageRenderingStrategy",
+                  "story": {
+                    "message": {
+                      "text": "Homemade Wheat Thins that are thin, crisp, and lightly sweet with a hint of paprika. Made with whole wheat flour and baked until golden for a delicious crunchy snack!",
+                      "ranges": []
+                    },
+                    "id": "UzpfSTEwMDA2MzY0NzU4NzE0NjpWSzo5NzMyNzM0MjUwNDMxMTc="
+                  }
+                },
+                "title": {
+                  "__typename": "CometFeedStoryTitleWithActorStrategy",
+                  "story": {
+                    "id": "UzpfSTEwMDA2MzY0NzU4NzE0NjpWSzo5NzMyNzM0MjUwNDMxMTc=",
+                    "post_id": "1752378626893707",
+                    "actors": [
+                      {
+                        "__typename": "User",
+                        "name": "Crowded Kitchen",
+                        "id": "100063647587146",
+                        "url": "https://www.facebook.com/crowdedkitchen1/"
+                      }
+                    ],
+                    "title": null,
+                    "comet_sections": {}
+                  }
+                }
+              },
+              "id": "UzpfSTEwMDA2MzY0NzU4NzE0NjpWSzo5NzMyNzM0MjUwNDMxMTc="
+            },
+            "owner": {
+              "__typename": "User",
+              "id": "100063647587146",
+              "name": "Crowded Kitchen",
+              "owner_as_page": {
+                "id": "439942289529290",
+                "name": "Crowded Kitchen"
+              }
+            },
+            "id": "973273425043117"
+          },
+          {
+            "creation_story": {
+              "comet_sections": {
+                "message": {
+                  "__typename": "CometFeedStoryDefaultMessageRenderingStrategy",
+                  "story": {
+                    "message": {
+                      "ranges": []
+                    },
+                    "id": "UzpfSTEwMDA2MzY0NzU4NzE0NjpWSzo5NzMyNzM0MjUwNDMxMTc="
+                  }
+                }
+              },
+              "id": "UzpfSTEwMDA2MzY0NzU4NzE0NjpWSzo5NzMyNzM0MjUwNDMxMTc="
+            },
+            "id": "973273425043117"
+          },
+          {
+            "__typename": "Video",
+            "id": "973273425043117",
+            "owner": {
+              "__typename": "User",
+              "name": "Crowded Kitchen",
+              "id": "100063647587146"
+            }
+          },
+          {
+            "id": "973273425043117",
+            "title": {
+              "ranges": [],
+              "text": ""
+            },
+            "feedback": {
+              "id": "ZmVlZGJhY2s6MTc1MjM3ODYyNjg5MzcwNw=="
+            },
+            "creation_story": {
+              "message": {
+                "text": "Homemade Wheat Thins that are thin, crisp, and lightly sweet with a hint of paprika. Made with whole wheat flour and baked until golden for a delicious crunchy snack!",
+                "ranges": []
+              },
+              "id": "UzpfSTEwMDA2MzY0NzU4NzE0NjpWSzo5NzMyNzM0MjUwNDMxMTc="
+            },
+            "owner": {
+              "__typename": "User",
+              "owner_as_page": {
+                "name": "Crowded Kitchen",
+                "id": "439942289529290"
+              },
+              "id": "100063647587146"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "subtitles": "1\n00:00:00,000 --> 00:00:03,041\nMaking homemade crackers is way\neasier than you think. These\n\n2\n00:00:03,041 --> 00:00:06,161\ncrispy buttery wheat crackers\nare super simple and they're so\n\n3\n00:00:06,161 --> 00:00:08,801\nmuch better than what you get\nat the store. Welcome back to\n\n4\n00:00:08,801 --> 00:00:11,601\nepisode twenty-four of better\nthan store bought. They're made\n\n5\n00:00:11,601 --> 00:00:15,201\nwith whole wheat flour for rich\nnutty flavor plus salt, brown\n\n6\n00:00:15,201 --> 00:00:18,481\nsugar, paprika, butter, and\nwater. Just let the dough rest\n\n7\n00:00:18,481 --> 00:00:21,761\nand roll it out very thinly cut\ninto squares. Sprinkle with\n\n8\n00:00:21,761 --> 00:00:24,641\nsalt and bake. They're perfect\nfor snacking, dipping, and\n\n9\n00:00:24,641 --> 00:00:29,201\nentertaining and you can find\nthe full recipe below."
+}

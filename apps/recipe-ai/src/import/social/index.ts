@@ -1,6 +1,15 @@
+import { FACEBOOK_IMPORT_HOSTS } from "@repo/contracts/recipe-import";
 import * as cheerio from "cheerio";
 
 import { buildEnrichedSocialRecipeText } from "./enrichment";
+import {
+  extractFacebookContent,
+  FacebookSourceError,
+  fetchFacebookMedia,
+  hasFacebookRecipeEvidence,
+  hasWrittenFacebookRecipe,
+  parseFacebookSubtitles,
+} from "./facebook";
 import {
   extractInstagramCrawlerContent,
   extractInstagramContent as extractInstagramContentOembed,
@@ -21,7 +30,10 @@ import {
   type YouTubeVideoMetadata,
 } from "./youtube";
 import { transcribeGroqAudio } from "../../services/groq-audio-client";
-import { providerFailureFields } from "../../services/provider-response";
+import {
+  providerFailureFields,
+  providerTransportError,
+} from "../../services/provider-response";
 import type { Env, ParseMetadata, ParseResult } from "../../types";
 import type { AiClient } from "../../utils/ai-response-parser";
 import {
@@ -50,7 +62,7 @@ export type SocialPlatform =
 const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
   instagram: ["instagram.com"],
   tiktok: ["tiktok.com"],
-  facebook: ["facebook.com", "fb.com"],
+  facebook: [...FACEBOOK_IMPORT_HOSTS],
   youtube: ["youtube.com", "youtu.be"],
   pinterest: ["pinterest.com", "pin.it"],
   threads: ["threads.net"],
@@ -140,7 +152,7 @@ function hostnameMatches(hostname: string, domain: string): boolean {
 
 export function getSocialPlatform(url: string): SocialPlatform | null {
   try {
-    const hostname = new URL(url).hostname.toLowerCase();
+    const hostname = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
 
     for (const [platform, domains] of Object.entries(
       SOCIAL_PLATFORM_DOMAINS,
@@ -946,6 +958,150 @@ async function parseYouTubeUrl(
   });
 }
 
+async function parseFacebookUrl(
+  env: Env,
+  url: string,
+  options: SocialParseOptions,
+): Promise<ParseResult> {
+  let diagnostics = options.diagnostics;
+  const start = Date.now();
+  let content;
+  try {
+    content = await extractFacebookContent(url);
+    url = content.canonicalUrl;
+    diagnostics = recordDiagnosticsStage(
+      { ...diagnostics, canonicalUrl: url, platform: "facebook" },
+      "facebook_fetch",
+      start,
+    );
+  } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "facebook_fetch",
+      start,
+      "error",
+      "source_unavailable",
+    );
+    return failSocialParse(
+      url,
+      diagnostics,
+      error instanceof FacebookSourceError
+        ? error.code
+        : "FACEBOOK_SOURCE_UNAVAILABLE",
+      error instanceof FacebookSourceError
+        ? error.message
+        : providerTransportError(error, "Facebook").message,
+      error,
+    );
+  }
+
+  const writtenText = [content.caption, ...content.comments]
+    .filter(Boolean)
+    .join("\n\n");
+  const linked = await tryLinkedRecipeUrls(
+    extractSocialRecipeLinks([writtenText, ...content.links], url),
+    diagnostics,
+    options,
+  );
+  diagnostics = linked.diagnostics;
+  if (linked.result?.success) return linked.result;
+
+  let transcript: string | null = null;
+  let enrichmentError: unknown;
+  if (content.kind === "video" && !hasWrittenFacebookRecipe(writtenText)) {
+    if (content.captionsUrl) {
+      const stageStart = Date.now();
+      try {
+        const media = await fetchFacebookMedia(content.captionsUrl, "captions");
+        const text = parseFacebookSubtitles(new TextDecoder().decode(media));
+        transcript = hasFacebookRecipeEvidence(text) ? text : null;
+        diagnostics = recordDiagnosticsStage(
+          diagnostics,
+          "facebook_subtitles",
+          stageStart,
+          transcript ? "success" : "skipped",
+          transcript ? "recipe_evidence" : "no_recipe_evidence",
+        );
+      } catch (error) {
+        enrichmentError = error;
+        diagnostics = recordDiagnosticsStage(
+          diagnostics,
+          "facebook_subtitles",
+          stageStart,
+          "error",
+          "subtitles_unavailable",
+        );
+      }
+    }
+    if (!transcript && content.audioUrl) {
+      const stageStart = Date.now();
+      try {
+        const media = await fetchFacebookMedia(content.audioUrl, "audio");
+        const text = await transcribeGroqAudio({
+          apiKey: env.GROQ_API_KEY,
+          audio: media,
+          prompt:
+            "Transcribe the speech accurately. The recording may contain cooking instructions, music or silence. Do not invent speech or recipe details.",
+        });
+        transcript = hasFacebookRecipeEvidence(text) ? text : null;
+        enrichmentError = undefined;
+        diagnostics = recordDiagnosticsStage(
+          appendFallbackPath(diagnostics, "facebook_audio"),
+          "facebook_audio",
+          stageStart,
+          transcript ? "success" : "skipped",
+          transcript ? "recipe_evidence" : "no_recipe_evidence",
+        );
+      } catch (error) {
+        enrichmentError = error;
+        diagnostics = recordDiagnosticsStage(
+          diagnostics,
+          "facebook_audio",
+          stageStart,
+          "error",
+          "audio_unavailable",
+        );
+      }
+    }
+  }
+  if (!hasFacebookRecipeEvidence(writtenText) && !transcript) {
+    if (enrichmentError) {
+      return failSocialParse(
+        url,
+        diagnostics,
+        "FACEBOOK_SOURCE_UNAVAILABLE",
+        providerTransportError(enrichmentError, "Facebook").message,
+        enrichmentError,
+      );
+    }
+    return failSocialParse(
+      url,
+      diagnostics,
+      "NO_RECIPE",
+      "This public Facebook post did not expose enough recipe information.",
+    );
+  }
+  const evidence = buildEnrichedSocialRecipeText({
+    caption: content.caption,
+    pageText: content.comments.join("\n\n"),
+    transcript,
+  });
+  return parseSocialAi(env, {
+    url,
+    platform: "facebook",
+    content: evidence,
+    images: content.images.slice(0, 3),
+    parseMethod:
+      transcript || content.comments.length ? "media_enriched" : "ai_only",
+    diagnostics,
+    aiClient: options.aiClient,
+    selectedAttempt: transcript ? "facebook_transcript" : "facebook_caption",
+    noContentMessage:
+      "Could not extract recipe information from this Facebook post.",
+    aiErrorCode: "FACEBOOK_PARSE_FAILED",
+  });
+}
+
 async function parseGenericSocialUrl(
   env: Env,
   url: string,
@@ -1010,5 +1166,6 @@ export function parseSocialUrl(
   if (platform === "instagram") return parseInstagramUrl(env, url, options);
   if (platform === "tiktok") return parseTikTokUrl(env, url, options);
   if (platform === "youtube") return parseYouTubeUrl(env, url, options);
+  if (platform === "facebook") return parseFacebookUrl(env, url, options);
   return parseGenericSocialUrl(env, url, platform, options);
 }

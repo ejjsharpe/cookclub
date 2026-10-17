@@ -12,7 +12,6 @@ const SHORT_LINK_HOSTS = new Set([
   "tinyurl.com",
   "pin.it",
   "youtu.be",
-  "fb.watch",
 ]);
 
 export interface SourceSnapshot {

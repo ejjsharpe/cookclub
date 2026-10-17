@@ -14,6 +14,7 @@ const EXCLUDED_HOST_DOMAINS = [
   "ttwstatic.com",
   "facebook.com",
   "fb.com",
+  "fb.watch",
   "fbcdn.net",
   "youtube.com",
   "youtu.be",
@@ -73,6 +74,20 @@ function normalizeCandidate(
   try {
     source = validateFetchUrl(sourceUrl);
     candidate = validateFetchUrl(ensureUrlProtocol(trimmed));
+    // Facebook wraps external recipe links in its outbound redirector.
+    if (
+      [
+        "l.facebook.com",
+        "lm.facebook.com",
+        "www.facebook.com",
+        "facebook.com",
+      ].includes(candidate.hostname) &&
+      candidate.pathname === "/l.php"
+    ) {
+      const destination = candidate.searchParams.get("u");
+      if (!destination) return null;
+      candidate = validateFetchUrl(destination);
+    }
   } catch {
     return null;
   }

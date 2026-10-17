@@ -62,11 +62,16 @@ export const RECIPE_IMPORT_SOURCE_IMAGE_TYPES = [
 export type RecipeImportSourceImageType =
   (typeof RECIPE_IMPORT_SOURCE_IMAGE_TYPES)[number];
 
+export const FACEBOOK_IMPORT_HOSTS = [
+  "facebook.com",
+  "fb.com",
+  "fb.watch",
+] as const;
+
 export const BASIC_IMPORT_UNSUPPORTED_HOSTS = [
   "instagram.com",
   "tiktok.com",
-  "facebook.com",
-  "fb.com",
+  ...FACEBOOK_IMPORT_HOSTS,
   "youtube.com",
   "youtu.be",
 ] as const;

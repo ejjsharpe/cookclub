@@ -78,6 +78,7 @@ function normalizeImportFailure(
       break;
     case "UNSUPPORTED_URL":
     case "YOUTUBE_UNSUPPORTED_URL":
+    case "FACEBOOK_UNSUPPORTED_URL":
     case "INVALID_INPUT_TYPE":
       code = "IMPORT_UNSUPPORTED_SOURCE";
       disposition = "terminal";
@@ -103,6 +104,7 @@ function normalizeImportFailure(
       break;
     case "FETCH_FAILED":
     case "YOUTUBE_METADATA_FAILED":
+    case "FACEBOOK_SOURCE_UNAVAILABLE":
       code = timedOut ? "IMPORT_TIMED_OUT" : "IMPORT_SOURCE_UNAVAILABLE";
       disposition = result.error.disposition ?? "retry";
       break;
