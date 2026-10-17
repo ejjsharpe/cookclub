@@ -23,6 +23,9 @@ describe("recipe import source validation", () => {
     "pinterest.com",
     "UK.PINTEREST.COM.",
     "pin.it",
+    "reddit.com",
+    "OLD.REDDIT.COM.",
+    "redd.it",
   ])("blocks unsupported host %s", (hostname) => {
     expect(isBasicImportUnsupportedHost(hostname)).toBe(true);
   });
@@ -34,6 +37,9 @@ describe("recipe import source validation", () => {
     "notpinterest.com",
     "pinterest.com.evil.test",
     "pin.it.evil.test",
+    "notreddit.com",
+    "reddit.com.evil.test",
+    "redd.it.evil.test",
   ])("does not over-block host %s", (hostname) => {
     expect(isBasicImportUnsupportedHost(hostname)).toBe(false);
   });

@@ -1,6 +1,7 @@
 import {
   FACEBOOK_IMPORT_HOSTS,
   PINTEREST_IMPORT_HOSTS,
+  REDDIT_IMPORT_HOSTS,
 } from "@repo/contracts/recipe-import";
 import * as cheerio from "cheerio";
 
@@ -26,6 +27,13 @@ import {
   hasPinterestRecipeEvidence,
   PinterestSourceError,
 } from "./pinterest";
+import {
+  extractRedditContent,
+  hasRedditRecipeEvidence,
+  hasWrittenRedditRecipe,
+  RedditSourceError,
+} from "./reddit";
+import { extractRedditImageText, fetchRedditAudio } from "./reddit-media";
 import { extractTikTokContent, type TikTokContent } from "./tiktok";
 import {
   extractYouTubeVideoId,
@@ -75,7 +83,7 @@ const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
   pinterest: [...PINTEREST_IMPORT_HOSTS],
   threads: ["threads.net"],
   x: ["x.com", "twitter.com"],
-  reddit: ["reddit.com"],
+  reddit: [...REDDIT_IMPORT_HOSTS],
 };
 
 const INSTAGRAM_AUDIO_PROMPT =
@@ -1194,6 +1202,165 @@ async function parsePinterestUrl(
   });
 }
 
+async function parseRedditUrl(
+  env: Env,
+  url: string,
+  options: SocialParseOptions,
+): Promise<ParseResult> {
+  let diagnostics = options.diagnostics;
+  const start = Date.now();
+  let content;
+  try {
+    content = await extractRedditContent(url);
+    url = content.canonicalUrl;
+    diagnostics = recordDiagnosticsStage(
+      { ...diagnostics, canonicalUrl: url, platform: "reddit" },
+      "reddit_fetch",
+      start,
+    );
+  } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "reddit_fetch",
+      start,
+      "error",
+      "source_unavailable",
+    );
+    return failSocialParse(
+      url,
+      diagnostics,
+      error instanceof RedditSourceError
+        ? error.code
+        : "REDDIT_SOURCE_UNAVAILABLE",
+      error instanceof RedditSourceError
+        ? error.message
+        : providerTransportError(error, "Reddit").message,
+      error,
+    );
+  }
+  const written = [content.body, ...content.comments]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 40_000);
+  const linked = await tryLinkedRecipeUrls(
+    extractSocialRecipeLinks([written, ...content.links], url),
+    diagnostics,
+    options,
+  );
+  diagnostics = linked.diagnostics;
+  if (linked.result?.success) return linked.result;
+
+  let transcript: string | null = null;
+  let imageText: string | null = null;
+  let enrichmentError: unknown;
+  if (!hasWrittenRedditRecipe(written)) {
+    if (content.videoManifestUrl) {
+      const mediaStart = Date.now();
+      try {
+        const audio = await fetchRedditAudio(content.videoManifestUrl);
+        if (audio) {
+          transcript = await transcribeGroqAudio({
+            apiKey: env.GROQ_API_KEY,
+            audio,
+            prompt:
+              "Transcribe the speech accurately, including cooking quantities and steps. The recording may contain music or silence. Do not invent speech or recipe details.",
+          });
+          transcript = transcript.slice(0, 30_000);
+        }
+        diagnostics = recordDiagnosticsStage(
+          appendFallbackPath(diagnostics, "reddit_audio"),
+          "reddit_audio",
+          mediaStart,
+          transcript ? "success" : "skipped",
+        );
+      } catch (error) {
+        enrichmentError = error;
+        diagnostics = recordDiagnosticsStage(
+          diagnostics,
+          "reddit_audio",
+          mediaStart,
+          "error",
+          "audio_unavailable",
+        );
+      }
+    } else if (content.images.length) {
+      const imageStart = Date.now();
+      try {
+        imageText = await extractRedditImageText(
+          content.images,
+          options.aiClient,
+          env.IMAGE_SERVICE,
+        );
+        diagnostics = recordDiagnosticsStage(
+          appendFallbackPath(diagnostics, "reddit_images"),
+          "reddit_images",
+          imageStart,
+          imageText ? "success" : "skipped",
+        );
+      } catch (error) {
+        enrichmentError = error;
+        diagnostics = recordDiagnosticsStage(
+          diagnostics,
+          "reddit_images",
+          imageStart,
+          "error",
+          "images_unavailable",
+        );
+      }
+    }
+  }
+  const evidence = [written, transcript, imageText]
+    .filter(Boolean)
+    .join("\n\n");
+  if (!hasRedditRecipeEvidence(evidence)) {
+    if (enrichmentError)
+      return failSocialParse(
+        url,
+        diagnostics,
+        "REDDIT_SOURCE_UNAVAILABLE",
+        providerTransportError(enrichmentError, "Reddit").message,
+        enrichmentError,
+      );
+    if (linked.failure)
+      return withDiagnostics(linked.failure, "url", diagnostics ?? {});
+    return failSocialParse(
+      url,
+      diagnostics,
+      "NO_RECIPE",
+      "This Reddit post did not expose a written recipe, a usable recipe link, or a recipe transcript.",
+    );
+  }
+  return parseSocialAi(env, {
+    url,
+    platform: "reddit",
+    content: [
+      `Post title: ${content.title}`,
+      written && `Post and recipe comment text:\n${written}`,
+      transcript && `Audio transcript:\n${transcript}`,
+      imageText && `Written recipe from images:\n${imageText}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    images: content.images.slice(0, 3),
+    parseMethod:
+      content.comments.length || transcript || imageText
+        ? "media_enriched"
+        : "ai_only",
+    diagnostics,
+    aiClient: options.aiClient,
+    selectedAttempt: transcript
+      ? "reddit_audio"
+      : imageText
+        ? "reddit_images"
+        : content.comments.length
+          ? "reddit_comments"
+          : "reddit_post",
+    noContentMessage:
+      "Could not extract recipe information from this Reddit post.",
+    aiErrorCode: "REDDIT_PARSE_FAILED",
+  });
+}
+
 async function parseGenericSocialUrl(
   env: Env,
   url: string,
@@ -1260,5 +1427,6 @@ export function parseSocialUrl(
   if (platform === "youtube") return parseYouTubeUrl(env, url, options);
   if (platform === "facebook") return parseFacebookUrl(env, url, options);
   if (platform === "pinterest") return parsePinterestUrl(env, url, options);
+  if (platform === "reddit") return parseRedditUrl(env, url, options);
   return parseGenericSocialUrl(env, url, platform, options);
 }

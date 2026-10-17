@@ -26,6 +26,9 @@ const EXCLUDED_HOST_DOMAINS = [
   "x.com",
   "twitter.com",
   "reddit.com",
+  "redd.it",
+  "redditmedia.com",
+  "redditstatic.com",
 ];
 
 const NON_PAGE_PATH_PATTERN =

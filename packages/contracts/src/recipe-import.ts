@@ -69,6 +69,7 @@ export const FACEBOOK_IMPORT_HOSTS = [
 ] as const;
 
 export const PINTEREST_IMPORT_HOSTS = ["pinterest.com", "pin.it"] as const;
+export const REDDIT_IMPORT_HOSTS = ["reddit.com", "redd.it"] as const;
 
 export const BASIC_IMPORT_UNSUPPORTED_HOSTS = [
   "instagram.com",
@@ -77,6 +78,7 @@ export const BASIC_IMPORT_UNSUPPORTED_HOSTS = [
   "youtube.com",
   "youtu.be",
   ...PINTEREST_IMPORT_HOSTS,
+  ...REDDIT_IMPORT_HOSTS,
 ] as const;
 
 export type RecipeImportSource =

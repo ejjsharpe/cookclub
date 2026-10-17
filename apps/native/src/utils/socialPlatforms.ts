@@ -1,13 +1,14 @@
 import {
   FACEBOOK_IMPORT_HOSTS,
   PINTEREST_IMPORT_HOSTS,
+  REDDIT_IMPORT_HOSTS,
 } from "@repo/contracts/recipe-import";
 import type { ComponentProps } from "react";
 
 import type { Ionicons } from "@/components/Ionicons";
 
 export type RecipeImportSocialPlatform =
-  "tiktok" | "instagram" | "facebook" | "youtube" | "pinterest";
+  "tiktok" | "instagram" | "facebook" | "youtube" | "pinterest" | "reddit";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -56,6 +57,13 @@ const SOCIAL_PLATFORMS: Record<
     icon: "logo-pinterest",
     color: "#E60023",
     domains: [...PINTEREST_IMPORT_HOSTS],
+  },
+  reddit: {
+    id: "reddit",
+    displayName: "Reddit",
+    icon: "logo-reddit",
+    color: "#FF4500",
+    domains: [...REDDIT_IMPORT_HOSTS],
   },
 };
 

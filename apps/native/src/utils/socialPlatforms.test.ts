@@ -9,6 +9,22 @@ import {
 
 describe("social platform import utilities", () => {
   it.each([
+    "https://www.reddit.com/r/recipes/comments/abc123/recipe/",
+    "https://old.reddit.com/comments/abc123/",
+    "https://www.reddit.com/r/recipes/s/Share123",
+    "https://redd.it/abc123",
+  ])("routes Reddit source %s to Smart Import", (url) => {
+    expect(getRecipeImportSocialPlatform(url)).toBe("reddit");
+    expect(getRecipeImportSourceTitle(url)).toBe(
+      "Importing recipe from Reddit",
+    );
+    expect(isBasicImportUnsupportedUrl(url)).toBe(true);
+    expect(getRecipeImportSocialPlatformInfo("reddit")).toMatchObject({
+      displayName: "Reddit",
+      icon: "logo-reddit",
+    });
+  });
+  it.each([
     "https://uk.pinterest.com/pin/1970393584794073/",
     "https://www.pinterest.com/pin/pecan-pie--1970393584794073/",
     "https://pin.it/abc123",

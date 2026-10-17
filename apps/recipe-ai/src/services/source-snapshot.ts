@@ -4,7 +4,7 @@ import type { ParseMetadata } from "../types";
 import { normalizeRecipeUrl } from "../utils/recipe-quality";
 
 const SHORT_LINK_HOSTS = new Set([
-  // Pinterest resolves pin.it inside its bounded, Pinterest-only fetch chain.
+  // Pinterest and Reddit handle their own share links with platform-only redirects.
   "vm.tiktok.com",
   "vt.tiktok.com",
   "m.tiktok.com",

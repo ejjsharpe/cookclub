@@ -15,6 +15,7 @@ const BROWSER_REQUIRED_DOMAINS = [
   "x.com",
   "twitter.com",
   "reddit.com",
+  "redd.it",
 ];
 const MAX_BROWSER_HTML_BYTES = 2 * 1024 * 1024;
 

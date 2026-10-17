@@ -14,6 +14,19 @@ function makeIntent(overrides: Partial<ShareIntent> = {}): ShareIntent {
 
 describe("detectPendingShareIntent", () => {
   it.each([
+    "https://www.reddit.com/r/recipes/comments/abc123/recipe/?share_id=tracking",
+    "https://www.reddit.com/r/recipes/s/Share123",
+    "https://redd.it/abc123",
+  ])("preserves shared Reddit URL %s", (url) => {
+    expect(detectPendingShareIntent(makeIntent({ webUrl: url }))).toEqual({
+      type: "url",
+      content: url,
+    });
+    expect(
+      detectPendingShareIntent(makeIntent({ text: `Found on Reddit: ${url}` })),
+    ).toEqual({ type: "url", content: url });
+  });
+  it.each([
     "https://uk.pinterest.com/pin/1970393584794073/",
     "https://pin.it/abc123",
   ])("preserves shared Pinterest URL %s", (url) => {
