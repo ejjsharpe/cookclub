@@ -1,0 +1,30 @@
+{
+  "sourceUrl": "https://uk.pinterest.com/pin/1970393584793163/",
+  "meta": {
+    "og:url": "https://www.pinterest.com/pin/1970393584793163/",
+    "og:title": "Pin on Dinner Ideas",
+    "og:description": "This Pin was discovered by Allrecipes. Discover (and save!) your own Pins on Pinterest.",
+    "og:image": "https://i.pinimg.com/736x/63/ef/69/63ef69b42e6fd8a9340acafd8a622204.jpg",
+    "pinterestapp:source": "https://www.allrecipes.com/recipe/233570/spicy-beef-and-bean-enchilada-pie/?utm_campaign=allrecipes_6ad2c896d4547600013ec1f0&utm_medium=social&utm_source=pinterest.com",
+    "og:see_also": "https://www.allrecipes.com/recipe/233570/spicy-beef-and-bean-enchilada-pie/?utm_campaign=allrecipes_6ad2c896d4547600013ec1f0&utm_medium=social&utm_source=pinterest.com"
+  },
+  "structured": [
+    {
+      "@type": "SocialMediaPosting",
+      "headline": "Spicy Beef and Bean Enchilada Pie",
+      "articleBody": "Discover (and save!) your own Pins on Pinterest.",
+      "image": "https://i.pinimg.com/originals/63/ef/69/63ef69b42e6fd8a9340acafd8a622204.jpg",
+      "datePublished": "2026-10-17T01:00:07.000Z",
+      "sharedContent": {
+        "@type": "WebPage",
+        "headline": "Spicy Beef and Bean Enchilada Pie",
+        "url": "https://www.allrecipes.com/recipe/233570/spicy-beef-and-bean-enchilada-pie/?utm_campaign=allrecipes_6ad2c896d4547600013ec1f0&utm_medium=social&utm_source=pinterest.com"
+      },
+      "@context": "http://schema.org/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://www.pinterest.com/pin/1970393584793163/"
+      }
+    }
+  ]
+}

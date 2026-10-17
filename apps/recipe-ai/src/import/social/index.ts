@@ -1,4 +1,7 @@
-import { FACEBOOK_IMPORT_HOSTS } from "@repo/contracts/recipe-import";
+import {
+  FACEBOOK_IMPORT_HOSTS,
+  PINTEREST_IMPORT_HOSTS,
+} from "@repo/contracts/recipe-import";
 import * as cheerio from "cheerio";
 
 import { buildEnrichedSocialRecipeText } from "./enrichment";
@@ -18,6 +21,11 @@ import {
   type InstagramCrawlerContent,
 } from "./instagram";
 import { extractSocialRecipeLinks } from "./links";
+import {
+  extractPinterestContent,
+  hasPinterestRecipeEvidence,
+  PinterestSourceError,
+} from "./pinterest";
 import { extractTikTokContent, type TikTokContent } from "./tiktok";
 import {
   extractYouTubeVideoId,
@@ -64,7 +72,7 @@ const SOCIAL_PLATFORM_DOMAINS: Record<SocialPlatform, string[]> = {
   tiktok: ["tiktok.com"],
   facebook: [...FACEBOOK_IMPORT_HOSTS],
   youtube: ["youtube.com", "youtu.be"],
-  pinterest: ["pinterest.com", "pin.it"],
+  pinterest: [...PINTEREST_IMPORT_HOSTS],
   threads: ["threads.net"],
   x: ["x.com", "twitter.com"],
   reddit: ["reddit.com"],
@@ -81,6 +89,7 @@ interface SocialParseOptions {
 
 interface LinkedRecipeAttempt {
   result: ParseResult | null;
+  failure?: Extract<ParseResult, { success: false }>;
   diagnostics: ParseMetadata["diagnostics"];
 }
 
@@ -299,12 +308,14 @@ async function tryLinkedRecipeUrls(
 
   const linkedStart = Date.now();
   let lastError: unknown = null;
+  let failure: Extract<ParseResult, { success: false }> | undefined;
 
   for (const [index, url] of urls.entries()) {
     try {
       console.log(`[social] Trying linked recipe URL: ${url}`);
       const result = await options.parseLinkedRecipeUrl(url);
       if (!result.success) {
+        failure = result;
         lastError = result.error.message;
         console.log("[social] Linked recipe URL did not parse:", {
           url,
@@ -332,6 +343,15 @@ async function tryLinkedRecipeUrls(
       };
     } catch (error) {
       lastError = error;
+      failure = {
+        success: false,
+        error: {
+          code: "FETCH_FAILED",
+          message: providerTransportError(error, "Recipe source").message,
+          ...providerFailureFields(error),
+        },
+        metadata: baseMetadata(url, diagnostics),
+      };
       console.log(
         "[social] Linked recipe URL parse failed:",
         error instanceof Error ? error.message : error,
@@ -341,6 +361,7 @@ async function tryLinkedRecipeUrls(
 
   return {
     result: null,
+    failure,
     diagnostics: recordDiagnosticsStage(
       appendFallbackPath(diagnostics, "linked_url"),
       "linked_url",
@@ -1102,6 +1123,77 @@ async function parseFacebookUrl(
   });
 }
 
+async function parsePinterestUrl(
+  env: Env,
+  url: string,
+  options: SocialParseOptions,
+): Promise<ParseResult> {
+  let diagnostics = options.diagnostics;
+  const start = Date.now();
+  let content;
+  try {
+    content = await extractPinterestContent(url);
+    url = content.canonicalUrl;
+    diagnostics = recordDiagnosticsStage(
+      { ...diagnostics, canonicalUrl: url, platform: "pinterest" },
+      "pinterest_fetch",
+      start,
+    );
+  } catch (error) {
+    diagnostics = recordDiagnosticsStage(
+      diagnostics,
+      "pinterest_fetch",
+      start,
+      "error",
+      "source_unavailable",
+    );
+    return failSocialParse(
+      url,
+      diagnostics,
+      error instanceof PinterestSourceError
+        ? error.code
+        : "PINTEREST_SOURCE_UNAVAILABLE",
+      error instanceof PinterestSourceError
+        ? error.message
+        : providerTransportError(error, "Pinterest").message,
+      error,
+    );
+  }
+
+  const linked = await tryLinkedRecipeUrls(
+    extractSocialRecipeLinks([...content.links, content.description], url),
+    diagnostics,
+    options,
+  );
+  diagnostics = linked.diagnostics;
+  if (linked.result?.success) return linked.result;
+
+  // Titles and promotional previews alone must not become invented recipes.
+  if (!hasPinterestRecipeEvidence(content.description)) {
+    if (linked.failure)
+      return withDiagnostics(linked.failure, "url", diagnostics ?? {});
+    return failSocialParse(
+      url,
+      diagnostics,
+      "NO_RECIPE",
+      "This Pinterest pin did not expose a recipe or a usable recipe link.",
+    );
+  }
+  return parseSocialAi(env, {
+    url,
+    platform: "pinterest",
+    content: [content.title, content.description].filter(Boolean).join("\n\n"),
+    images: content.images,
+    parseMethod: "ai_only",
+    diagnostics,
+    aiClient: options.aiClient,
+    selectedAttempt: "pinterest_description",
+    noContentMessage:
+      "Could not extract recipe information from this Pinterest pin.",
+    aiErrorCode: "PINTEREST_PARSE_FAILED",
+  });
+}
+
 async function parseGenericSocialUrl(
   env: Env,
   url: string,
@@ -1167,5 +1259,6 @@ export function parseSocialUrl(
   if (platform === "tiktok") return parseTikTokUrl(env, url, options);
   if (platform === "youtube") return parseYouTubeUrl(env, url, options);
   if (platform === "facebook") return parseFacebookUrl(env, url, options);
+  if (platform === "pinterest") return parsePinterestUrl(env, url, options);
   return parseGenericSocialUrl(env, url, platform, options);
 }

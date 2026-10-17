@@ -9,6 +9,22 @@ import {
 
 describe("social platform import utilities", () => {
   it.each([
+    "https://uk.pinterest.com/pin/1970393584794073/",
+    "https://www.pinterest.com/pin/pecan-pie--1970393584794073/",
+    "https://pin.it/abc123",
+  ])("routes Pinterest source %s to Smart Import", (url) => {
+    expect(getRecipeImportSocialPlatform(url)).toBe("pinterest");
+    expect(getRecipeImportSourceTitle(url)).toBe(
+      "Importing recipe from Pinterest",
+    );
+    expect(isBasicImportUnsupportedUrl(url)).toBe(true);
+    expect(getRecipeImportSocialPlatformInfo("pinterest")).toMatchObject({
+      displayName: "Pinterest",
+      icon: "logo-pinterest",
+    });
+  });
+
+  it.each([
     "https://www.facebook.com/reel/973273425043117",
     "https://www.facebook.com/reel/1789858525376832",
     "https://www.facebook.com/share/r/1GNKTPHWS9/",

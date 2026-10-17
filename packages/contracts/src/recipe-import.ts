@@ -68,12 +68,15 @@ export const FACEBOOK_IMPORT_HOSTS = [
   "fb.watch",
 ] as const;
 
+export const PINTEREST_IMPORT_HOSTS = ["pinterest.com", "pin.it"] as const;
+
 export const BASIC_IMPORT_UNSUPPORTED_HOSTS = [
   "instagram.com",
   "tiktok.com",
   ...FACEBOOK_IMPORT_HOSTS,
   "youtube.com",
   "youtu.be",
+  ...PINTEREST_IMPORT_HOSTS,
 ] as const;
 
 export type RecipeImportSource =

@@ -20,16 +20,23 @@ describe("recipe import source validation", () => {
     "m.facebook.com",
     "fb.com",
     "fb.watch",
+    "pinterest.com",
+    "UK.PINTEREST.COM.",
+    "pin.it",
   ])("blocks unsupported host %s", (hostname) => {
     expect(isBasicImportUnsupportedHost(hostname)).toBe(true);
   });
 
-  it.each(["notyoutube.com", "youtube.com.evil.test", "example.com"])(
-    "does not over-block host %s",
-    (hostname) => {
-      expect(isBasicImportUnsupportedHost(hostname)).toBe(false);
-    },
-  );
+  it.each([
+    "notyoutube.com",
+    "youtube.com.evil.test",
+    "example.com",
+    "notpinterest.com",
+    "pinterest.com.evil.test",
+    "pin.it.evil.test",
+  ])("does not over-block host %s", (hostname) => {
+    expect(isBasicImportUnsupportedHost(hostname)).toBe(false);
+  });
 
   it("extracts the hostname from URLs and treats malformed input separately", () => {
     expect(isBasicImportUnsupportedUrl("https://youtu.be/recipe")).toBe(true);

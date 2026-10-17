@@ -4,13 +4,13 @@ import type { ParseMetadata } from "../types";
 import { normalizeRecipeUrl } from "../utils/recipe-quality";
 
 const SHORT_LINK_HOSTS = new Set([
+  // Pinterest resolves pin.it inside its bounded, Pinterest-only fetch chain.
   "vm.tiktok.com",
   "vt.tiktok.com",
   "m.tiktok.com",
   "t.co",
   "bit.ly",
   "tinyurl.com",
-  "pin.it",
   "youtu.be",
 ]);
 

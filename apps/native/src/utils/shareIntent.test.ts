@@ -14,6 +14,21 @@ function makeIntent(overrides: Partial<ShareIntent> = {}): ShareIntent {
 
 describe("detectPendingShareIntent", () => {
   it.each([
+    "https://uk.pinterest.com/pin/1970393584794073/",
+    "https://pin.it/abc123",
+  ])("preserves shared Pinterest URL %s", (url) => {
+    expect(detectPendingShareIntent(makeIntent({ webUrl: url }))).toEqual({
+      type: "url",
+      content: url,
+    });
+    expect(
+      detectPendingShareIntent(
+        makeIntent({ text: `Look at this recipe! 📌 ${url}` }),
+      ),
+    ).toEqual({ type: "url", content: url });
+  });
+
+  it.each([
     "https://www.facebook.com/reel/973273425043117",
     "https://www.facebook.com/reel/1789858525376832",
     "https://www.facebook.com/share/r/1GNKTPHWS9/",

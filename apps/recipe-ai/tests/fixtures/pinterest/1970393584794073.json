@@ -1,0 +1,30 @@
+{
+  "sourceUrl": "https://uk.pinterest.com/pin/1970393584794073/",
+  "meta": {
+    "og:url": "https://www.pinterest.com/pin/1970393584794073/",
+    "og:title": "Pin on Thanksgiving Desserts",
+    "og:description": "This Pin was discovered by Allrecipes. Discover (and save!) your own Pins on Pinterest.",
+    "og:image": "https://i.pinimg.com/736x/14/61/bd/1461bdaf1ec613c13f30f805ed9a3ae1.jpg",
+    "pinterestapp:source": "https://www.allrecipes.com/recipe/12170/southern-pecan-pie-i/?utm_source=pinterest&utm_medium=social&utm_campaign=dhpinterest&utm_content=app.dashsocial.com/allrecipes/library/media/732948823",
+    "og:see_also": "https://www.allrecipes.com/recipe/12170/southern-pecan-pie-i/?utm_source=pinterest&utm_medium=social&utm_campaign=dhpinterest&utm_content=app.dashsocial.com/allrecipes/library/media/732948823"
+  },
+  "structured": [
+    {
+      "@type": "SocialMediaPosting",
+      "headline": "Pecan Pie",
+      "articleBody": "Discover (and save!) your own Pins on Pinterest.",
+      "image": "https://i.pinimg.com/originals/14/61/bd/1461bdaf1ec613c13f30f805ed9a3ae1.jpg",
+      "datePublished": "2026-10-17T15:02:43.000Z",
+      "sharedContent": {
+        "@type": "WebPage",
+        "headline": "Pecan Pie",
+        "url": "https://www.allrecipes.com/recipe/12170/southern-pecan-pie-i/?utm_source=pinterest&utm_medium=social&utm_campaign=dhpinterest&utm_content=app.dashsocial.com/allrecipes/library/media/732948823"
+      },
+      "@context": "http://schema.org/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://www.pinterest.com/pin/1970393584794073/"
+      }
+    }
+  ]
+}

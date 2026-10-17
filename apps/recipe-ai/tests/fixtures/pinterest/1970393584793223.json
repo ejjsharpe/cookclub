@@ -1,0 +1,30 @@
+{
+  "sourceUrl": "https://uk.pinterest.com/pin/1970393584793223/",
+  "meta": {
+    "og:url": "https://www.pinterest.com/pin/1970393584793223/",
+    "og:title": "Pin on Best Recipes",
+    "og:description": "This Pin was discovered by Allrecipes. Discover (and save!) your own Pins on Pinterest.",
+    "og:image": "https://i.pinimg.com/736x/e8/be/12/e8be1250a35d9c24c1be61beda609214.jpg",
+    "pinterestapp:source": "https://www.allrecipes.com/almond-croissant-ooey-gooey-butter-cake-recipe-11811360?utm_campaign=allrecipes_6ad2d6a6d4547600013ec1f1&utm_medium=social&utm_source=pinterest.com&utm_term=202610",
+    "og:see_also": "https://www.allrecipes.com/almond-croissant-ooey-gooey-butter-cake-recipe-11811360?utm_campaign=allrecipes_6ad2d6a6d4547600013ec1f1&utm_medium=social&utm_source=pinterest.com&utm_term=202610"
+  },
+  "structured": [
+    {
+      "@type": "SocialMediaPosting",
+      "headline": "Almond Croissant Ooey Gooey Butter Cake",
+      "articleBody": "Discover (and save!) your own Pins on Pinterest.",
+      "image": "https://i.pinimg.com/originals/e8/be/12/e8be1250a35d9c24c1be61beda609214.jpg",
+      "datePublished": "2026-10-17T02:00:07.000Z",
+      "sharedContent": {
+        "@type": "WebPage",
+        "headline": "Almond Croissant Ooey Gooey Butter Cake",
+        "url": "https://www.allrecipes.com/almond-croissant-ooey-gooey-butter-cake-recipe-11811360?utm_campaign=allrecipes_6ad2d6a6d4547600013ec1f1&utm_medium=social&utm_source=pinterest.com&utm_term=202610"
+      },
+      "@context": "http://schema.org/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://www.pinterest.com/pin/1970393584793223/"
+      }
+    }
+  ]
+}

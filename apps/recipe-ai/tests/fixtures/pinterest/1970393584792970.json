@@ -1,0 +1,30 @@
+{
+  "sourceUrl": "https://uk.pinterest.com/pin/1970393584792970/",
+  "meta": {
+    "og:url": "https://www.pinterest.com/pin/1970393584792970/",
+    "og:title": "Pin on Cozy Fall Favorites",
+    "og:description": "This Pin was discovered by Allrecipes. Discover (and save!) your own Pins on Pinterest.",
+    "og:image": "https://i.pinimg.com/736x/8d/68/a9/8d68a9f5958e74e9869e64654793c526.jpg",
+    "pinterestapp:source": "https://www.allrecipes.com/recipe/92359/bat-cupcakes/?utm_campaign=allrecipes_6ad2ac77eefd120001088570&utm_medium=social&utm_source=pinterest.com",
+    "og:see_also": "https://www.allrecipes.com/recipe/92359/bat-cupcakes/?utm_campaign=allrecipes_6ad2ac77eefd120001088570&utm_medium=social&utm_source=pinterest.com"
+  },
+  "structured": [
+    {
+      "@type": "SocialMediaPosting",
+      "headline": "Bat Cupcakes",
+      "articleBody": "Discover (and save!) your own Pins on Pinterest.",
+      "image": "https://i.pinimg.com/originals/8d/68/a9/8d68a9f5958e74e9869e64654793c526.jpg",
+      "datePublished": "2026-10-16T23:00:07.000Z",
+      "sharedContent": {
+        "@type": "WebPage",
+        "headline": "Bat Cupcakes",
+        "url": "https://www.allrecipes.com/recipe/92359/bat-cupcakes/?utm_campaign=allrecipes_6ad2ac77eefd120001088570&utm_medium=social&utm_source=pinterest.com"
+      },
+      "@context": "http://schema.org/",
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://www.pinterest.com/pin/1970393584792970/"
+      }
+    }
+  ]
+}

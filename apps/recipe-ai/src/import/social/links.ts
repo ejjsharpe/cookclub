@@ -22,6 +22,7 @@ const EXCLUDED_HOST_DOMAINS = [
   "googlevideo.com",
   "pinterest.com",
   "pin.it",
+  "pinimg.com",
   "x.com",
   "twitter.com",
   "reddit.com",

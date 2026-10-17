@@ -1,10 +1,13 @@
-import { FACEBOOK_IMPORT_HOSTS } from "@repo/contracts/recipe-import";
+import {
+  FACEBOOK_IMPORT_HOSTS,
+  PINTEREST_IMPORT_HOSTS,
+} from "@repo/contracts/recipe-import";
 import type { ComponentProps } from "react";
 
 import type { Ionicons } from "@/components/Ionicons";
 
 export type RecipeImportSocialPlatform =
-  "tiktok" | "instagram" | "facebook" | "youtube";
+  "tiktok" | "instagram" | "facebook" | "youtube" | "pinterest";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -46,6 +49,13 @@ const SOCIAL_PLATFORMS: Record<
     icon: "logo-youtube",
     color: "#FF0000",
     domains: ["youtube.com", "youtu.be"],
+  },
+  pinterest: {
+    id: "pinterest",
+    displayName: "Pinterest",
+    icon: "logo-pinterest",
+    color: "#E60023",
+    domains: [...PINTEREST_IMPORT_HOSTS],
   },
 };
 
