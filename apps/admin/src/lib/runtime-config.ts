@@ -20,3 +20,17 @@ export function getTrpcUrl() {
 
   return `${getApiBaseUrl()}/trpc`;
 }
+
+export function getPasswordResetUrl() {
+  const configured = import.meta.env.VITE_PASSWORD_RESET_URL;
+  const api = new URL(getApiBaseUrl());
+  api.port = "4321";
+  const url = new URL(
+    configured ||
+      (api.protocol === "http:"
+        ? new URL("/reset-password", api).toString()
+        : "https://cookclub.app/reset-password"),
+  );
+  url.searchParams.set("source", "admin");
+  return url.toString();
+}

@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/hono/cloudflare";
 import type { CloudflareOptions, Event } from "@sentry/hono/cloudflare";
 
 import type { Env } from "../types";
+import { getLogRoute } from "./route";
 
 type ErrorContext = {
   operation: string;
@@ -29,13 +30,26 @@ function requestUrlWithoutQuery(url: string | undefined) {
 
   try {
     const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`;
+    return `${parsed.origin}${getLogRoute(url)}`;
   } catch {
     return undefined;
   }
 }
 
 export function redactSentryEvent<T extends Event>(event: T): T {
+  // The SDK also copies raw URLs into root and child span attributes.
+  for (const data of [
+    event.contexts?.trace?.data,
+    ...(event.spans?.map((span) => span.data) ?? []),
+  ]) {
+    if (!data) continue;
+    delete data["url.full"];
+    delete data["url.path"];
+    delete data["url.query"];
+    delete data["url.fragment"];
+    delete data["http.url"];
+  }
+
   if (!event.request) return event;
 
   const safeHeaders = Object.fromEntries(

@@ -2,6 +2,7 @@ import { getAuth } from "@repo/auth";
 import { getPublicErrorMessage } from "@repo/trpc/server";
 import type { Hono } from "hono";
 
+import { getLogRoute } from "../observability/route";
 import type { AppHonoEnv } from "../types";
 
 function createMutableRequest(request: Request): Request {
@@ -48,7 +49,8 @@ export function registerAuthRoutes(app: Hono<AppHonoEnv>) {
     const requestId = c.get("requestId");
     const response = await getAuth(c.env, {
       requestId,
-      route: new URL(c.req.url).pathname,
+      route: getLogRoute(c.req.url),
+      waitUntil: (promise) => c.executionCtx.waitUntil(promise),
     }).handler(createMutableRequest(c.req.raw));
     return withSafeAuthErrorBody(response, requestId);
   });

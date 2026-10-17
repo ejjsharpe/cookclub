@@ -269,6 +269,17 @@ h3 {
   height: 1px;
 }
 
+.password-reset-link {
+  display: block;
+  margin: 12px auto 0;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .signin-panel .primary-button,
 .google-signin-button {
   min-height: var(--field-height);

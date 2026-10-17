@@ -24,6 +24,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AdminShell } from "../components/admin-shell";
+import { ForgotPasswordForm } from "../components/forgot-password-form";
 import { authClient } from "../lib/auth";
 
 export const Route = createFileRoute("/")({
@@ -186,6 +187,7 @@ function SignInScreen({
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [forgotPassword, setForgotPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<
     "email" | "google" | null
@@ -221,105 +223,126 @@ function SignInScreen({
           </div>
           <ThemeToggle onToggleTheme={onToggleTheme} theme={theme} />
         </div>
-        <form
-          className="form-stack"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            setError(null);
-            setSubmittingAction("email");
+        {forgotPassword ? (
+          <ForgotPasswordForm
+            initialEmail={email}
+            onBack={() => setForgotPassword(false)}
+          />
+        ) : (
+          <>
+            <form
+              className="form-stack"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setError(null);
+                setSubmittingAction("email");
 
-            try {
-              const result = await authClient.signIn.email({
-                email,
-                password,
-              });
+                try {
+                  const result = await authClient.signIn.email({
+                    email,
+                    password,
+                  });
 
-              if (result.error) {
-                setError(result.error.message ?? "Sign in failed.");
-                return;
-              }
+                  if (result.error) {
+                    setError(result.error.message ?? "Sign in failed.");
+                    return;
+                  }
 
-              onSignedIn();
-            } catch (cause) {
-              setError(getErrorMessage(cause));
-            } finally {
-              setSubmittingAction(null);
-            }
-          }}
-        >
-          <label>
-            <span>Email</span>
-            <input
-              autoComplete="email"
-              inputMode="email"
-              onChange={(event) => setEmail(event.target.value)}
-              required
-              type="email"
-              value={email}
-            />
-          </label>
-          <label>
-            <span>Password</span>
-            <input
-              autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              type="password"
-              value={password}
-            />
-          </label>
-          {error ? <p className="form-error">{error}</p> : null}
-          <button
-            className="primary-button"
-            disabled={Boolean(submittingAction)}
-            type="submit"
-          >
-            <ShieldCheck size={18} />
-            {isEmailSubmitting ? "Signing in" : "Sign in"}
-          </button>
-        </form>
-        <div className="signin-divider" aria-hidden="true">
-          <span>or</span>
-        </div>
-        <button
-          className="secondary-button google-signin-button"
-          disabled={Boolean(submittingAction)}
-          onClick={async () => {
-            setError(null);
-            setSubmittingAction("google");
+                  onSignedIn();
+                } catch (cause) {
+                  setError(getErrorMessage(cause));
+                } finally {
+                  setSubmittingAction(null);
+                }
+              }}
+            >
+              <label>
+                <span>Email</span>
+                <input
+                  autoComplete="email"
+                  inputMode="email"
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                  type="email"
+                  value={email}
+                />
+              </label>
+              <label>
+                <span>Password</span>
+                <input
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  type="password"
+                  value={password}
+                />
+              </label>
+              {error ? <p className="form-error">{error}</p> : null}
+              <button
+                className="primary-button"
+                disabled={Boolean(submittingAction)}
+                type="submit"
+              >
+                <ShieldCheck size={18} />
+                {isEmailSubmitting ? "Signing in" : "Sign in"}
+              </button>
+            </form>
+            <button
+              className="password-reset-link"
+              type="button"
+              disabled={Boolean(submittingAction)}
+              onClick={() => {
+                setPassword("");
+                setError(null);
+                setForgotPassword(true);
+              }}
+            >
+              Forgot password?
+            </button>
+            <div className="signin-divider" aria-hidden="true">
+              <span>or</span>
+            </div>
+            <button
+              className="secondary-button google-signin-button"
+              disabled={Boolean(submittingAction)}
+              onClick={async () => {
+                setError(null);
+                setSubmittingAction("google");
 
-            try {
-              const callbackURL = getAdminCallbackUrl();
-              const result = await authClient.signIn.social({
-                provider: "google",
-                callbackURL,
-                errorCallbackURL: callbackURL,
-                disableRedirect: true,
-              });
+                try {
+                  const callbackURL = getAdminCallbackUrl();
+                  const result = await authClient.signIn.social({
+                    provider: "google",
+                    callbackURL,
+                    errorCallbackURL: callbackURL,
+                    disableRedirect: true,
+                  });
 
-              if (result.error) {
-                setError(result.error.message ?? "Google sign in failed.");
+                  if (result.error) {
+                    setError(result.error.message ?? "Google sign in failed.");
+                    setSubmittingAction(null);
+                    return;
+                  }
+
+                  if (result.data?.url) {
+                    window.location.assign(result.data.url);
+                    return;
+                  }
+
+                  setError("Google sign in did not return a redirect URL.");
+                } catch (cause) {
+                  setError(getErrorMessage(cause));
+                }
+
                 setSubmittingAction(null);
-                return;
-              }
-
-              if (result.data?.url) {
-                window.location.assign(result.data.url);
-                return;
-              }
-
-              setError("Google sign in did not return a redirect URL.");
-            } catch (cause) {
-              setError(getErrorMessage(cause));
-            }
-
-            setSubmittingAction(null);
-          }}
-          type="button"
-        >
-          <GoogleLogo />
-          {isGoogleSubmitting ? "Opening Google" : "Sign in with Google"}
-        </button>
+              }}
+              type="button"
+            >
+              <GoogleLogo />
+              {isGoogleSubmitting ? "Opening Google" : "Sign in with Google"}
+            </button>
+          </>
+        )}
       </section>
     </main>
   );

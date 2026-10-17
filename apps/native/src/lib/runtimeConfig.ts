@@ -44,6 +44,18 @@ export function getApiUrl(): string {
   return `${getAuthBaseUrl()}/trpc`;
 }
 
+export function getPasswordResetUrl(): string {
+  const configured = process.env.EXPO_PUBLIC_PASSWORD_RESET_URL;
+  if (configured) return configured;
+
+  const api = new URL(getAuthBaseUrl());
+  if (api.protocol === "http:") {
+    api.port = "4321";
+    return new URL("/reset-password", api).toString();
+  }
+  return "https://cookclub.app/reset-password";
+}
+
 export function getImagePublicUrl(): string {
   const configured = process.env.EXPO_PUBLIC_IMAGE_PUBLIC_URL;
   if (configured) {

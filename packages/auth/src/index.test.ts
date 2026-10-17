@@ -36,6 +36,13 @@ type AuthConfig = {
   };
   emailAndPassword: {
     requireEmailVerification: boolean;
+    resetPasswordTokenExpiresIn: number;
+    revokeSessionsOnPasswordReset: boolean;
+    sendResetPassword(input: {
+      user: { email: string };
+      url: string;
+      token: string;
+    }): Promise<void>;
   };
   emailVerification: {
     sendOnSignUp: boolean;
@@ -79,7 +86,7 @@ const baseEnv: AuthEnv = {
 
 function captureConfig(
   env: AuthEnv = baseEnv,
-  runtime?: { requestId?: string; route?: string },
+  runtime?: Parameters<typeof getAuth>[1],
 ) {
   getAuth(env, runtime);
   return mocks.betterAuth.mock.calls.at(-1)?.[0] as AuthConfig;
@@ -225,6 +232,54 @@ describe("auth emails and error handling", () => {
         url: "https://api.example.com/verify",
       }),
     ).rejects.toThrow("Email provider request failed");
+  });
+
+  it("sends reset links in fragments and finishes delivery using the Worker context", async () => {
+    const waitUntil = vi.fn();
+    const config = captureConfig(baseEnv, { waitUntil });
+    await config.emailAndPassword.sendResetPassword({
+      user: { email: "review@example.com" },
+      url:
+        "https://api.cookclub.app/auth/reset-password/test-token?callbackURL=" +
+        encodeURIComponent(
+          "https://cookclub.app/reset-password?source=admin&test=1",
+        ),
+      token: "test-token",
+    });
+    expect(config.emailAndPassword.resetPasswordTokenExpiresIn).toBe(3600);
+    expect(config.emailAndPassword.revokeSessionsOnPasswordReset).toBe(true);
+    expect(waitUntil).toHaveBeenCalledOnce();
+    await waitUntil.mock.calls[0]![0];
+    expect(mocks.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "review@example.com",
+        html: expect.stringContaining(
+          "https://cookclub.app/reset-password?source=admin&amp;test=1#token=test-token",
+        ),
+      }),
+    );
+  });
+
+  it("logs background email delivery failures without exposing the recipient or token", async () => {
+    const waitUntil = vi.fn();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.sendEmail.mockResolvedValue({
+      error: { message: "private-provider-details" },
+    });
+    const config = captureConfig(baseEnv, {
+      waitUntil,
+      requestId: "reset-request",
+    });
+    await config.emailAndPassword.sendResetPassword({
+      user: { email: "private@example.com" },
+      url: "https://api.cookclub.app/auth/reset-password/private-token?callbackURL=https%3A%2F%2Fcookclub.app%2Freset-password",
+      token: "private-token",
+    });
+    await waitUntil.mock.calls[0]![0];
+    expect(log).toHaveBeenCalledOnce();
+    expect(log.mock.calls[0]![0]).toContain("reset-request");
+    expect(log.mock.calls[0]![0]).not.toContain("private");
+    log.mockRestore();
   });
 
   it("logs unexpected server errors with request metadata but ignores 4xx", () => {

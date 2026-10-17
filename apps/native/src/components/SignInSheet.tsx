@@ -10,6 +10,7 @@ import {
   useSignInWithSocial,
   AuthError,
 } from "@/api/auth";
+import { ForgotPasswordForm } from "@/components/ForgotPasswordForm";
 import { Input } from "@/components/Input";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
@@ -43,6 +44,7 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
     const [emailError, setEmailError] = useState<string>();
     const [passwordError, setPasswordError] = useState<string>();
     const [credentialError, setCredentialError] = useState<string>();
+    const [forgotPassword, setForgotPassword] = useState(false);
     const { mutate: signInWithEmail, isPending: isSigningInWithEmail } =
       useSignInWithEmail();
     const { mutate: signInWithSocial } = useSignInWithSocial();
@@ -152,6 +154,7 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
         detents={["auto"]}
         grabber={false}
         backgroundColor={theme.colors.background}
+        onDidDismiss={() => setForgotPassword(false)}
       >
         <Pressable
           accessible={false}
@@ -159,64 +162,89 @@ export const SignInSheet = forwardRef<SignInSheetRef, SignInSheetProps>(
           style={styles.content}
         >
           <VSpace size={24} />
-          <Text type="title1">Sign in</Text>
-          <VSpace size={12} />
-          <Text style={styles.textAlignCenter} type="bodyFaded">
-            Lets get cooking! Your next meal is only minutes away...
-          </Text>
-          <VSpace size={32} />
-          <Input
-            label="Email"
-            value={email}
-            onChangeText={onChangeEmail}
-            onBlur={() => setEmailError(getEmailError(email))}
-            error={emailError}
-            placeholder="gordon@superchef.com"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            autoComplete="email"
-          />
-          <Input
-            label="Password"
-            value={password}
-            onChangeText={onChangePassword}
-            onBlur={() => setPasswordError(getSignInPasswordError(password))}
-            onSubmitEditing={onPressSignInWithEmail}
-            error={passwordError ?? credentialError}
-            placeholder="••••••••••••"
-            secureTextEntry
-            autoComplete="password"
-            returnKeyType="go"
-          />
-          <PrimaryButton
-            disabled={isSigningInWithEmail}
-            onPress={onPressSignInWithEmail}
-          >
-            {isSigningInWithEmail ? "Signing in…" : "Sign in"}
-          </PrimaryButton>
-          <VSpace size={12} />
-          <Text type="bodyFaded" style={styles.textAlignCenter}>
-            or
-          </Text>
-          <VSpace size={12} />
-          {Platform.OS === "ios" && (
-            <SignInWithAppleButton
-              disabled={isSigningInWithApple}
-              onPress={onPressSignInWithApple}
+          {forgotPassword ? (
+            <ForgotPasswordForm
+              initialEmail={email}
+              onBack={() => setForgotPassword(false)}
             />
+          ) : (
+            <>
+              <Text type="title1">Sign in</Text>
+              <VSpace size={12} />
+              <Text style={styles.textAlignCenter} type="bodyFaded">
+                Lets get cooking! Your next meal is only minutes away...
+              </Text>
+              <VSpace size={32} />
+              <Input
+                label="Email"
+                value={email}
+                onChangeText={onChangeEmail}
+                onBlur={() => setEmailError(getEmailError(email))}
+                error={emailError}
+                placeholder="gordon@superchef.com"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                autoComplete="email"
+              />
+              <Input
+                label="Password"
+                value={password}
+                onChangeText={onChangePassword}
+                onBlur={() =>
+                  setPasswordError(getSignInPasswordError(password))
+                }
+                onSubmitEditing={onPressSignInWithEmail}
+                error={passwordError ?? credentialError}
+                placeholder="••••••••••••"
+                secureTextEntry
+                autoComplete="password"
+                returnKeyType="go"
+              />
+              <PrimaryButton
+                disabled={isSigningInWithEmail}
+                onPress={onPressSignInWithEmail}
+              >
+                {isSigningInWithEmail ? "Signing in…" : "Sign in"}
+              </PrimaryButton>
+              <VSpace size={16} />
+              <BaseButton
+                disabled={isSigningInWithEmail || isSigningInWithApple}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPassword("");
+                  setPasswordError(undefined);
+                  setCredentialError(undefined);
+                  setForgotPassword(true);
+                }}
+              >
+                <Text type="highlight">Forgot password?</Text>
+              </BaseButton>
+              <VSpace size={12} />
+              <Text type="bodyFaded" style={styles.textAlignCenter}>
+                or
+              </Text>
+              <VSpace size={12} />
+              {Platform.OS === "ios" && (
+                <SignInWithAppleButton
+                  disabled={isSigningInWithApple}
+                  onPress={onPressSignInWithApple}
+                />
+              )}
+              {Platform.OS === "ios" && <VSpace size={12} />}
+              <SignInWithGoogleButton
+                onPress={() => onPressSignInWithSocial("google")}
+              />
+              <VSpace size={32} />
+              <BaseButton onPress={onPressSignUp}>
+                <Text>
+                  Don't have an account yet?{" "}
+                  <Text type="highlight">Sign up</Text>
+                </Text>
+              </BaseButton>
+              {Platform.OS === "android" && <VSpace size={32} />}
+            </>
           )}
-          {Platform.OS === "ios" && <VSpace size={12} />}
-          <SignInWithGoogleButton
-            onPress={() => onPressSignInWithSocial("google")}
-          />
-          <VSpace size={32} />
-          <BaseButton onPress={onPressSignUp}>
-            <Text>
-              Don't have an account yet? <Text type="highlight">Sign up</Text>
-            </Text>
-          </BaseButton>
-          {Platform.OS === "android" && <VSpace size={32} />}
         </Pressable>
       </TrueSheet>
     );

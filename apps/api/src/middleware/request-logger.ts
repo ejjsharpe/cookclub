@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 
+import { getLogRoute } from "../observability/route";
 import type { AppHonoEnv } from "../types";
 
 export const requestLogger: MiddlewareHandler<AppHonoEnv> = async (c, next) => {
@@ -13,12 +14,11 @@ export const requestLogger: MiddlewareHandler<AppHonoEnv> = async (c, next) => {
   } finally {
     c.header("x-request-id", requestId);
 
-    const url = new URL(c.req.url);
     console.log(
       JSON.stringify({
         requestId,
         method: c.req.method,
-        path: url.pathname,
+        path: getLogRoute(c.req.url),
         status: c.res.status,
         durationMs: Date.now() - start,
       }),

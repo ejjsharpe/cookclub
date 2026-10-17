@@ -86,6 +86,8 @@ function getTrustedOrigins(env: AuthEnv): string[] {
       "https://admin.cookclub.app",
       "http://localhost:3000",
       "http://127.0.0.1:3000",
+      "http://localhost:4321",
+      "http://127.0.0.1:4321",
       "https://appleid.apple.com",
       env.BETTER_AUTH_URL,
       ...configured,
@@ -103,7 +105,11 @@ function getCallbackUrl(env: AuthEnv, provider: SocialProvider): string {
 
 export function getAuth(
   env: AuthEnv,
-  runtime: { requestId?: string; route?: string } = {},
+  runtime: {
+    requestId?: string;
+    route?: string;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  } = {},
 ) {
   const db = getDb(env);
   const requireEmailVerification = shouldRequireEmailVerification(env);
@@ -196,6 +202,43 @@ export function getAuth(
     emailAndPassword: {
       enabled: true,
       requireEmailVerification,
+      resetPasswordTokenExpiresIn: 60 * 60,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url, token }) => {
+        // Better Auth has already checked this callback against trustedOrigins.
+        // A fragment keeps the bearer token out of HTTP access logs/referrers.
+        const callback = new URL(url).searchParams.get("callbackURL");
+        // Relative callbacks use the same public site as the default link.
+        const resetUrl = new URL(
+          callback || "/reset-password",
+          "https://cookclub.app",
+        );
+        resetUrl.hash = new URLSearchParams({ token }).toString();
+        const delivery = sendEmail(env, {
+          to: user.email,
+          subject: "Reset your password - Cook Club",
+          html: `<p>You requested a new password for your Cook Club account.</p><p><a href="${escapeHtml(resetUrl.toString())}">Reset password</a></p><p>This link expires in one hour and can only be used once.</p><p>If you didn't request this, you can ignore this email. Your password will stay the same.</p>`,
+        });
+
+        // Keep email delivery out of the response timing, while allowing the
+        // Worker to finish sending after the request has returned.
+        if (runtime.waitUntil) {
+          runtime.waitUntil(
+            delivery.catch(() => {
+              console.error(
+                JSON.stringify({
+                  requestId: runtime.requestId ?? "unknown",
+                  route: "/auth/request-password-reset",
+                  publicCode: "SERVICE_UNAVAILABLE",
+                  message: "Password reset email delivery failed",
+                }),
+              );
+            }),
+          );
+        } else {
+          await delivery;
+        }
+      },
       customSyntheticUser: ({ coreFields, additionalFields, id }) => ({
         ...coreFields,
         role: "user",

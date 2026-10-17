@@ -2,7 +2,7 @@
 DATABASE_URL=
 BETTER_AUTH_SECRET=
 
-# Required for email/password sign-up and verification emails
+# Required for email verification and password reset emails
 RESEND_API_KEY=
 
 # Required only if testing Google sign-in locally

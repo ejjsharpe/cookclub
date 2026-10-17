@@ -4,6 +4,7 @@ import {
   getApiUrl,
   getAuthBaseUrl,
   getImagePublicUrl,
+  getPasswordResetUrl,
   shouldShowEmailVerificationAfterSignUp,
 } from "./runtimeConfig";
 
@@ -22,6 +23,7 @@ describe("native runtime configuration", () => {
     vi.stubEnv("EXPO_PUBLIC_API_URL", "");
     vi.stubEnv("EXPO_PUBLIC_AUTH_BASE_URL", "");
     vi.stubEnv("EXPO_PUBLIC_IMAGE_PUBLIC_URL", "");
+    vi.stubEnv("EXPO_PUBLIC_PASSWORD_RESET_URL", "");
     mocks.constants.expoConfig = { hostUri: "192.168.1.20:8081" };
   });
 
@@ -44,6 +46,9 @@ describe("native runtime configuration", () => {
     expect(getAuthBaseUrl()).toBe("http://192.168.1.20:8787");
     expect(getApiUrl()).toBe("http://192.168.1.20:8787/trpc");
     expect(getImagePublicUrl()).toBe("http://192.168.1.20:8789");
+    expect(getPasswordResetUrl()).toBe(
+      "http://192.168.1.20:4321/reset-password",
+    );
     expect(shouldShowEmailVerificationAfterSignUp()).toBe(false);
   });
 
@@ -60,6 +65,19 @@ describe("native runtime configuration", () => {
     expect(getAuthBaseUrl()).toBe("https://api.cookclub.app");
     expect(getApiUrl()).toBe("https://api.cookclub.app/trpc");
     expect(getImagePublicUrl()).toBe("https://images.cookclub.app");
+    expect(getPasswordResetUrl()).toBe("https://cookclub.app/reset-password");
     expect(shouldShowEmailVerificationAfterSignUp()).toBe(true);
+  });
+
+  it("uses the production reset page with a production API, or an explicit override", () => {
+    vi.stubEnv("EXPO_PUBLIC_AUTH_BASE_URL", "https://api.cookclub.app");
+    expect(getPasswordResetUrl()).toBe("https://cookclub.app/reset-password");
+    vi.stubEnv(
+      "EXPO_PUBLIC_PASSWORD_RESET_URL",
+      "https://preview.cookclub.app/reset-password",
+    );
+    expect(getPasswordResetUrl()).toBe(
+      "https://preview.cookclub.app/reset-password",
+    );
   });
 });

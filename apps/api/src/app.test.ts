@@ -14,6 +14,26 @@ function createEnv() {
 }
 
 describe("API CORS", () => {
+  it.each(["http://localhost:4321", "https://cookclub.app"])(
+    "allows password recovery from %s",
+    async (origin) => {
+      const response = await createApp().request(
+        "http://localhost:8787/auth/reset-password",
+        {
+          method: "OPTIONS",
+          headers: {
+            Origin: origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+          },
+        },
+        createEnv() as any,
+      );
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+    },
+  );
+
   it("allows credentialed admin preflight requests for tRPC", async () => {
     const response = await createApp().request(
       "http://localhost:8787/trpc/admin.listUsers",

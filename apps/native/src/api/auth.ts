@@ -8,6 +8,7 @@ import {
   type ResolvedPublicError,
 } from "@/lib/publicError";
 import { getCurrentExpoPushToken } from "@/lib/pushNotifications";
+import { getPasswordResetUrl } from "@/lib/runtimeConfig";
 import { clearLocalSessionState } from "@/lib/sessionCleanup";
 
 export class AuthError extends Error {
@@ -44,6 +45,25 @@ export const useSignInWithEmail = () => {
     },
   });
 };
+
+export const useRequestPasswordReset = () =>
+  useMutation({
+    mutationFn: async (email: string) => {
+      const result = await authClient.requestPasswordReset({
+        email: email.trim(),
+        redirectTo: getPasswordResetUrl(),
+      });
+      if (result.error) {
+        throw new AuthError(
+          resolvePublicError(
+            result.error,
+            "We couldn't request a reset link. Please try again.",
+          ),
+        );
+      }
+      return result.data;
+    },
+  });
 
 export const useSignUpWithEmail = () => {
   const queryClient = useQueryClient();

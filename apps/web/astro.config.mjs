@@ -5,5 +5,11 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   site: "https://cookclub.app",
   output: "static",
-  integrations: [react(), sitemap()],
+  vite: { resolve: { dedupe: ["react", "react-dom"] } },
+  integrations: [
+    react(),
+    sitemap({
+      filter: (page) => !new URL(page).pathname.startsWith("/reset-password"),
+    }),
+  ],
 });

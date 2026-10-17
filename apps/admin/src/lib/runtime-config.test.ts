@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getApiBaseUrl, getTrpcUrl } from "./runtime-config";
+import {
+  getApiBaseUrl,
+  getPasswordResetUrl,
+  getTrpcUrl,
+} from "./runtime-config";
 
 describe("admin runtime configuration", () => {
   beforeEach(() => {
     vi.stubEnv("PROD", false);
     vi.stubEnv("VITE_API_BASE_URL", "");
     vi.stubEnv("VITE_TRPC_URL", "");
+    vi.stubEnv("VITE_PASSWORD_RESET_URL", "");
   });
 
   afterEach(() => {
@@ -24,6 +29,9 @@ describe("admin runtime configuration", () => {
   it("uses the local API and derived tRPC endpoint during development", () => {
     expect(getApiBaseUrl()).toBe("http://localhost:8787");
     expect(getTrpcUrl()).toBe("http://localhost:8787/trpc");
+    expect(getPasswordResetUrl()).toBe(
+      "http://localhost:4321/reset-password?source=admin",
+    );
   });
 
   it("uses the production API when no endpoint override is configured", () => {
@@ -31,5 +39,18 @@ describe("admin runtime configuration", () => {
 
     expect(getApiBaseUrl()).toBe("https://api.cookclub.app");
     expect(getTrpcUrl()).toBe("https://api.cookclub.app/trpc");
+    expect(getPasswordResetUrl()).toBe(
+      "https://cookclub.app/reset-password?source=admin",
+    );
+  });
+
+  it("keeps the admin return destination when overriding the reset page", () => {
+    vi.stubEnv(
+      "VITE_PASSWORD_RESET_URL",
+      "https://preview.cookclub.app/reset-password",
+    );
+    expect(getPasswordResetUrl()).toBe(
+      "https://preview.cookclub.app/reset-password?source=admin",
+    );
   });
 });

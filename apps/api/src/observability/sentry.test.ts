@@ -103,6 +103,55 @@ describe("Sentry observability", () => {
     });
   });
 
+  it.each([true, false])(
+    "removes reset tokens from root and child spans (request present: %s)",
+    (hasRequest) => {
+      const url =
+        "https://api.cookclub.app/auth/reset-password/secret-token?token=secret-query";
+      const attributes = {
+        "url.full": url,
+        "url.path": "/auth/reset-password/secret-token",
+        "url.query": "?token=secret-query",
+        "url.fragment": "token=secret-fragment",
+        "http.url": url,
+        "http.request.method": "GET",
+        "http.route": "/auth/*",
+      };
+      const event = redactSentryEvent({
+        type: "transaction",
+        transaction: "GET /auth/*",
+        request: hasRequest ? { url } : undefined,
+        contexts: {
+          trace: {
+            span_id: "fedcba9876543210",
+            trace_id: "0123456789abcdef0123456789abcdef",
+            data: { ...attributes },
+          },
+        },
+        spans: [
+          {
+            span_id: "0123456789abcdef",
+            trace_id: "0123456789abcdef0123456789abcdef",
+            start_timestamp: 1,
+            data: { ...attributes },
+          },
+        ],
+      });
+
+      expect(JSON.stringify(event)).not.toContain("secret-");
+      expect(event.request?.url).toBe(
+        hasRequest
+          ? "https://api.cookclub.app/auth/reset-password/:token"
+          : undefined,
+      );
+      expect(event.contexts.trace.data).toEqual({
+        "http.request.method": "GET",
+        "http.route": "/auth/*",
+      });
+      expect(event.spans[0]!.data).toEqual(event.contexts.trace.data);
+    },
+  );
+
   it.each([
     ["IMPORT_SOURCE_UNAVAILABLE", true],
     ["IMPORT_RECIPE_NOT_FOUND", true],

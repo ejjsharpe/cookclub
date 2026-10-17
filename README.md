@@ -138,6 +138,33 @@ bun run --cwd packages/db seed:reset  # Clear and reseed development data
 
 ## Deployment
 
+### Password recovery
+
+The mobile and admin sign-in screens offer **Forgot password?**. Both send a
+one-hour, single-use email link through the existing Resend integration. The
+shared `https://cookclub.app/reset-password` page lets the account owner choose
+a new password, then return to the app or admin sign-in. Resetting revokes all
+existing sessions and preserves the account's role and data. Request responses
+do not disclose whether an email is registered.
+
+Deploy the API, public web app, and admin app together for this feature, and
+include the native change in the next mobile release. No database migration or
+new secret is required; `RESEND_API_KEY` must be configured and email delivery
+must work. Accounts must have access to their registered email inbox.
+
+For local testing, also run `bun run --cwd apps/web dev`. The reset page defaults
+to the API host on port 4321 for HTTP development APIs and to `cookclub.app` for
+HTTPS APIs. Override `EXPO_PUBLIC_PASSWORD_RESET_URL` (native) or
+`VITE_PASSWORD_RESET_URL` (admin) when using a different web host. The public
+site supports `PUBLIC_API_BASE_URL` and `PUBLIC_ADMIN_URL` overrides at build
+time. For a physical phone, use a reachable LAN address for the web/API URLs and
+add the web origin (for example `http://192.168.1.20:4321`) to the API's
+`TRUSTED_ORIGINS`. The reset link keeps the token in a URL fragment; the page
+removes it from the address bar and keeps it only in memory. Reopen the email
+link if the reset page is reloaded before submitting.
+
+### Release pipeline
+
 Successful pushes to `main` use Nx's last-successful-run baseline to validate
 affected projects and deploy only affected Cloudflare applications. Production
 deployments run serially in this order: images, recipe AI, API, admin, and the

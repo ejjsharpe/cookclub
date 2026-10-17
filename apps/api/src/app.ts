@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 
 import { enforceApiRateLimit } from "./middleware/rate-limit";
 import { requestLogger } from "./middleware/request-logger";
+import { getLogRoute } from "./observability/route";
 import { getSentryOptions } from "./observability/sentry";
 import { registerAdaptyWebhookRoutes } from "./routes/adapty-webhook";
 import { registerAuthRoutes } from "./routes/auth";
@@ -37,6 +38,8 @@ function getCorsOrigins(env: Env): Set<string> {
     "https://admin.cookclub.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:4321",
+    "http://127.0.0.1:4321",
     env.BETTER_AUTH_URL,
     ...configured,
   ]);
@@ -73,7 +76,7 @@ export function createApp() {
     console.error(
       JSON.stringify({
         requestId,
-        route: new URL(c.req.url).pathname,
+        route: getLogRoute(c.req.url),
         status: 500,
         publicCode: "UNEXPECTED_ERROR",
         errorStack: privateErrorStack(error),
