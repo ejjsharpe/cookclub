@@ -14,6 +14,9 @@ export const writtenRecipe =
 export const reportedShareUrl = "https://www.reddit.com/r/recipes/s/ISXgVFSJa3";
 export const reportedPostUrl =
   "https://www.reddit.com/r/recipes/comments/1x71123/creamy_mushroom_and_wild_rice_soup/";
+export const galleryShareUrl = "https://www.reddit.com/r/recipes/s/xoUgenRWxT";
+export const galleryPostUrl =
+  "https://www.reddit.com/r/recipes/comments/1x8sssh/taiwan_double_ninth_festival_ancestral_worship/";
 
 export function feedEntry({
   id = "t3_abc123",

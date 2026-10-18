@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RecipeAI } from "../../../src/index";
@@ -7,12 +8,12 @@ import {
   type AiClient,
 } from "../../../src/utils/ai-response-parser";
 import {
-  comment,
   feedEntry,
+  galleryPostUrl,
+  galleryShareUrl,
   postUrl,
   recipeDraft,
   redditFeed,
-  redditPost,
   reportedPostUrl,
   reportedShareUrl,
   writtenRecipe,
@@ -62,6 +63,62 @@ function setup() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Reddit Smart Import", () => {
+  it.each([galleryPostUrl, galleryShareUrl])(
+    "imports %s with staged gallery images and source diagnostics",
+    async (url) => {
+      const { parser, uploadFromUrl } = setup();
+      const post = galleryPostUrl;
+      const embed = readFileSync(
+        new URL("../../fixtures/reddit-gallery-embed.html", import.meta.url),
+        "utf8",
+      );
+      const fetch = vi.fn();
+      if (url === galleryShareUrl) {
+        fetch.mockResolvedValueOnce(
+          new Response(null, { status: 301, headers: { location: post } }),
+        );
+      }
+      fetch
+        .mockResolvedValueOnce(
+          new Response(
+            redditFeed([
+              feedEntry({
+                id: "t3_1x8sssh",
+                url: post,
+                html: `<div class="md"><p>${writtenRecipe}</p></div><a href="https://www.reddit.com/gallery/1x8sssh">[link]</a>`,
+              }),
+            ]),
+          ),
+        )
+        .mockResolvedValueOnce(new Response(embed));
+      vi.stubGlobal("fetch", fetch);
+      const result = await parser.parse({
+        type: "url",
+        data: url,
+        strategy: "ai-assisted",
+        imageStagingId: "2d4976e7-c19b-46de-b893-dc18013097de",
+      });
+      expect(result.success).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(url === galleryShareUrl ? 3 : 2);
+      expect(uploadFromUrl).toHaveBeenCalled();
+      expect(uploadFromUrl.mock.calls[0]?.[0]).toContain("mlya5a9x85wh1.jpg");
+      if (result.success) {
+        expect(result.data.sourceUrl).toBe(post);
+        expect(result.metadata.diagnostics?.originalUrl).toBe(url);
+        expect(result.data.images?.[0]).toContain("/imports/");
+        expect(result.metadata.diagnostics?.fallbackPath).toEqual(
+          expect.arrayContaining(["reddit_embed_images"]),
+        );
+        expect(result.metadata.diagnostics?.stageTimings).toContainEqual(
+          expect.objectContaining({
+            name: "reddit_fetch",
+            detail: "feed;images:3",
+          }),
+        );
+      }
+    },
+  );
+
   it("imports the reported app share through the public feed and existing image pipeline", async () => {
     const { parser, complete, uploadFromUrl } = setup();
     const fetch = vi
@@ -72,7 +129,6 @@ describe("Reddit Smart Import", () => {
           headers: { location: reportedPostUrl },
         }),
       )
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
       .mockResolvedValueOnce(
         new Response(
           redditFeed([
@@ -107,20 +163,17 @@ describe("Reddit Smart Import", () => {
     expect(uploadFromUrl.mock.calls[0]?.[0]).toBe(
       "https://i.redd.it/bread.jpg",
     );
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the public feed's rate-limit reset in the import retry result", async () => {
     const { parser, complete } = setup();
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
-      .mockResolvedValueOnce(
-        new Response("", {
-          status: 429,
-          headers: { "x-ratelimit-reset": "20" },
-        }),
-      );
+    const fetch = vi.fn().mockResolvedValueOnce(
+      new Response("", {
+        status: 429,
+        headers: { "x-ratelimit-reset": "20" },
+      }),
+    );
     vi.stubGlobal("fetch", fetch);
     expect(
       await parser.parse({
@@ -137,12 +190,12 @@ describe("Reddit Smart Import", () => {
       },
     });
     expect(complete).not.toHaveBeenCalled();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("preserves a short shared URL in diagnostics without generic redirect fetching", async () => {
     const { parser } = setup();
-    const fetch = vi.fn().mockResolvedValue(Response.json(redditPost()));
+    const fetch = vi.fn().mockResolvedValue(new Response(redditFeed()));
     vi.stubGlobal("fetch", fetch);
     expect(
       await parser.parse({
@@ -173,11 +226,12 @@ describe("Reddit Smart Import", () => {
       vi
         .fn()
         .mockResolvedValueOnce(
-          Response.json(
-            redditPost({
-              selftext: "Recipe in the image",
-              url: "https://i.redd.it/card.webp",
-            }),
+          new Response(
+            redditFeed([
+              feedEntry({
+                html: '<div class="md">Recipe in the image<img src="https://i.redd.it/card.webp"></div>',
+              }),
+            ]),
           ),
         )
         .mockResolvedValueOnce(
@@ -210,11 +264,12 @@ describe("Reddit Smart Import", () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
-        Response.json(
-          redditPost({
-            selftext: "Recipe card",
-            url: "https://i.redd.it/card.jpg",
-          }),
+        new Response(
+          redditFeed([
+            feedEntry({
+              html: '<div class="md">Recipe card<img src="https://i.redd.it/card.jpg"></div>',
+            }),
+          ]),
         ),
       )
       .mockResolvedValueOnce(
@@ -240,52 +295,64 @@ describe("Reddit Smart Import", () => {
   it.each([
     {
       label: "post body",
-      payload: redditPost({ url: "https://i.redd.it/bread.jpg" }),
+      payload: redditFeed([
+        feedEntry({ thumbnail: "https://i.redd.it/bread.jpg" }),
+      ]),
       selectedAttempt: "reddit_post",
     },
     {
       label: "author comment",
-      payload: redditPost(
-        { selftext: "Recipe in comments", url: "https://i.redd.it/bread.jpg" },
-        [comment()],
-      ),
+      payload: redditFeed([
+        feedEntry({
+          html: '<div class="md">Recipe in comments</div>',
+          thumbnail: "https://i.redd.it/bread.jpg",
+        }),
+        feedEntry({ id: "t1_recipe1", url: `${postUrl}recipe1/` }),
+      ]),
       selectedAttempt: "reddit_comments",
     },
     {
-      label: "Spotlight recipe",
-      payload: redditPost(
-        { selftext: "", url: "https://i.redd.it/bread.jpg" },
-        [
-          comment({
-            author: "spotlight-app",
-            stickied: true,
-            body: `OP has pinned a [comment](${postUrl}original1/):\n${writtenRecipe
-              .split("\n")
-              .map((line) => `> ${line}`)
-              .join("\n")}`,
-          }),
-        ],
-      ),
+      label: "specifically shared comment from another author",
+      sourceUrl: `${postUrl}recipe1/`,
+      canonicalUrl: "https://www.reddit.com/comments/abc123/_/recipe1/",
+      payload: redditFeed([
+        feedEntry({ html: '<div class="md">Parent post</div>' }),
+        feedEntry({
+          id: "t1_recipe1",
+          url: `${postUrl}recipe1/`,
+          author: "anothercook",
+          thumbnail: "https://i.redd.it/bread.jpg",
+        }),
+      ]),
       selectedAttempt: "reddit_comments",
     },
   ])(
     "imports a $label through the existing AI and staged image pipeline",
-    async ({ payload, selectedAttempt }) => {
+    async ({
+      payload,
+      selectedAttempt,
+      sourceUrl = postUrl,
+      canonicalUrl = postUrl,
+    }) => {
       const { parser, complete, uploadFromUrl } = setup();
-      const fetch = vi.fn().mockResolvedValue(Response.json(payload));
+      const fetch = vi.fn().mockResolvedValue(new Response(payload));
       vi.stubGlobal("fetch", fetch);
       const result = await parser.parse({
         type: "url",
-        data: postUrl,
+        data: sourceUrl,
         strategy: "ai-assisted",
         imageStagingId: "2d4976e7-c19b-46de-b893-dc18013097de",
       });
       expect(result).toMatchObject({
         success: true,
-        data: { name: "Test flatbread", sourceType: "url", sourceUrl: postUrl },
+        data: {
+          name: "Test flatbread",
+          sourceType: "url",
+          sourceUrl: canonicalUrl,
+        },
         metadata: {
           diagnostics: {
-            originalUrl: postUrl,
+            originalUrl: sourceUrl,
             platform: "reddit",
             selectedAttempt,
           },
@@ -307,11 +374,12 @@ describe("Reddit Smart Import", () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
-        Response.json(
-          redditPost({
-            selftext: "Recipe here",
-            url_overridden_by_dest: target,
-          }),
+        new Response(
+          redditFeed([
+            feedEntry({
+              html: `<div class="md">Recipe here</div><a href="${target}">[link]</a>`,
+            }),
+          ]),
         ),
       )
       .mockResolvedValueOnce(
@@ -346,23 +414,12 @@ describe("Reddit Smart Import", () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
-        Response.json(
-          redditPost({
-            selftext: "Grandma's recipe cards",
-            gallery_data: { items: [{ media_id: "one" }, { media_id: "two" }] },
-            media_metadata: {
-              one: {
-                e: "Image",
-                status: "valid",
-                s: { u: "https://i.redd.it/one.jpg" },
-              },
-              two: {
-                e: "Image",
-                status: "valid",
-                s: { u: "https://i.redd.it/two.jpg" },
-              },
-            },
-          }),
+        new Response(
+          redditFeed([
+            feedEntry({
+              html: '<div class="md">Grandma’s recipe cards<img src="https://i.redd.it/one.jpg"><img src="https://i.redd.it/two.jpg"></div>',
+            }),
+          ]),
         ),
       )
       .mockImplementation(
@@ -401,11 +458,12 @@ describe("Reddit Smart Import", () => {
       vi
         .fn()
         .mockResolvedValueOnce(
-          Response.json(
-            redditPost({
-              selftext: "Dinner tonight!",
-              url: "https://i.redd.it/food.jpg",
-            }),
+          new Response(
+            redditFeed([
+              feedEntry({
+                html: '<div class="md">Dinner tonight!<img src="https://i.redd.it/food.jpg"></div>',
+              }),
+            ]),
           ),
         )
         .mockResolvedValueOnce(
@@ -428,67 +486,24 @@ describe("Reddit Smart Import", () => {
     expect(complete.mock.calls[0]?.[0]).toBe("vision");
   });
 
-  it("combines a video's ingredient caption with its audio transcript", async () => {
-    const { parser, complete } = setup();
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        Response.json(
-          redditPost({
-            selftext: "Ingredients:\n- 2 cups flour\n- 1 cup water",
-            secure_media: {
-              reddit_video: {
-                has_audio: true,
-                dash_url: "https://v.redd.it/video1/DASHPlaylist.mpd",
-              },
-            },
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          '<MPD><Period><AdaptationSet mimeType="audio/mp4"><Representation><BaseURL>DASH_AUDIO_128.mp4</BaseURL></Representation></AdaptationSet></Period></MPD>',
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(new Uint8Array([1, 2]), {
-          headers: { "content-type": "audio/mp4" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          text: "Mix flour and water in a bowl, then bake in the oven.",
-        }),
-      );
-    vi.stubGlobal("fetch", fetch);
-    expect(
-      await parser.parse({
-        type: "url",
-        data: postUrl,
-        strategy: "ai-assisted",
-      }),
-    ).toMatchObject({
-      success: true,
-      metadata: { diagnostics: { selectedAttempt: "reddit_audio" } },
-    });
-    expect(String(fetch.mock.calls[3]?.[0])).toContain("/audio/transcriptions");
-    expect(JSON.stringify(complete.mock.calls)).toContain("Audio transcript:");
-    expect(JSON.stringify(complete.mock.calls)).toContain("2 cups flour");
-  });
-
   it("rejects questions and unrelated commenters' recipes without calling AI", async () => {
     const { parser, complete } = setup();
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          Response.json(
-            redditPost({ selftext: "Any good soup suggestions?" }, [
-              comment({ author: "reader" }),
-            ]),
-          ),
+      vi.fn().mockResolvedValue(
+        new Response(
+          redditFeed([
+            feedEntry({
+              html: '<div class="md">Any good soup suggestions?</div>',
+            }),
+            feedEntry({
+              id: "t1_recipe1",
+              url: `${postUrl}recipe1/`,
+              author: "reader",
+            }),
+          ]),
         ),
+      ),
     );
     expect(
       await parser.parse({

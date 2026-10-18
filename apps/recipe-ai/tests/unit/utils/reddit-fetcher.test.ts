@@ -5,7 +5,6 @@ import {
   extractRedditContent,
   hasRedditRecipeEvidence,
   normalizeRedditUrl,
-  parseRedditHtml,
   parseRedditJson,
 } from "../../../src/import/social/reddit";
 import { redditAudioUrl } from "../../../src/import/social/reddit-media";
@@ -14,6 +13,7 @@ import {
   listing,
   postUrl,
   redditPost,
+  redditFeed,
   writtenRecipe,
 } from "../../fixtures/reddit";
 
@@ -184,23 +184,6 @@ describe("Reddit sources", () => {
     expect(() => parseRedditJson(redditPost(overrides), postUrl)).toThrow();
   });
 
-  it("scopes public HTML to the post and author comments", () => {
-    const html = `<shreddit-post id="t3_abc123" author="testcook" post-title="Test flatbread"><div slot="text-body"><p>Ingredients:</p><ul><li>2 cups flour</li><li>1 cup water</li></ul></div><img src="https://i.redd.it/bread.jpg"></shreddit-post>
-      <shreddit-comment thingid="t1_recipe1" postid="t3_abc123" author="testcook"><div slot="comment">Mix flour and water, then bake.</div></shreddit-comment>
-      <shreddit-comment thingid="t1_other" postid="t3_abc123" author="reader"><div slot="comment">Wrong recipe</div></shreddit-comment>
-      <shreddit-post id="t3_other"><div slot="text-body">Unrelated recipe</div></shreddit-post>`;
-    const content = parseRedditHtml(html, postUrl);
-    expect(content.body).toContain("- 2 cups flour");
-    expect(content.comments).toEqual(["Mix flour and water, then bake."]);
-    expect(content.images).toEqual(["https://i.redd.it/bread.jpg"]);
-    expect(JSON.stringify(content)).not.toMatch(
-      /Wrong recipe|Unrelated recipe/,
-    );
-    expect(() =>
-      parseRedditHtml("<h1>Log in to Reddit</h1>", postUrl),
-    ).toThrow();
-  });
-
   it("accepts recipe prose without headings or quantities", () => {
     expect(
       hasRedditRecipeEvidence(
@@ -236,31 +219,13 @@ describe("Reddit sources", () => {
     expect(result.videoManifestUrl).toBeNull();
   });
 
-  it("never follows a public HTML redirect to another post", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
-      .mockResolvedValueOnce(
-        new Response(null, {
-          status: 302,
-          headers: { location: "https://www.reddit.com/comments/other/" },
-        }),
-      );
-    vi.stubGlobal("fetch", fetch);
-    await expect(extractRedditContent(postUrl)).rejects.toThrow(
-      /different post/,
-    );
-    expect(fetch).toHaveBeenCalledTimes(3);
-  });
-
   it("resolves an app share link within Reddit before requesting the post", async () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(null, { status: 302, headers: { location: postUrl } }),
       )
-      .mockResolvedValueOnce(Response.json(redditPost()));
+      .mockResolvedValueOnce(new Response(redditFeed()));
     vi.stubGlobal("fetch", fetch);
     expect(
       (
@@ -271,7 +236,7 @@ describe("Reddit sources", () => {
     ).toBe("abc123");
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(String(fetch.mock.calls[1]?.[0])).toContain(
-      "/comments/abc123.json?raw_json=1&limit=100&sort=old",
+      "/comments/abc123/.rss?limit=100&sort=old",
     );
   });
 
@@ -304,23 +269,6 @@ describe("Reddit sources", () => {
       extractRedditContent("https://www.reddit.com/r/recipes/s/Share123"),
     ).rejects.toThrow(/too many redirects/);
     expect(fetch).toHaveBeenCalledTimes(5);
-  });
-
-  it("uses public HTML when JSON and the feed are blocked, validating its redirect identity", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
-      .mockResolvedValueOnce(
-        new Response(null, { status: 302, headers: { location: postUrl } }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          '<shreddit-post id="t3_abc123" author="testcook"><div slot="text-body">Recipe text</div></shreddit-post>',
-        ),
-      );
-    vi.stubGlobal("fetch", fetch);
-    expect((await extractRedditContent(postUrl)).body).toBe("Recipe text");
   });
 
   it("selects audio from a Reddit DASH manifest without fetching arbitrary hosts", () => {

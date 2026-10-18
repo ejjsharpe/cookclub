@@ -1213,10 +1213,20 @@ async function parseRedditUrl(
   try {
     content = await extractRedditContent(url);
     url = content.canonicalUrl;
+    if (content.galleryImageRecovery) {
+      diagnostics = appendFallbackPath(
+        diagnostics,
+        content.galleryImageRecovery === "recovered"
+          ? "reddit_embed_images"
+          : "reddit_embed_images_unavailable",
+      );
+    }
     diagnostics = recordDiagnosticsStage(
       { ...diagnostics, canonicalUrl: url, platform: "reddit" },
       "reddit_fetch",
       start,
+      "success",
+      `${content.representation};images:${content.images.length}`,
     );
   } catch (error) {
     diagnostics = recordDiagnosticsStage(

@@ -25,6 +25,8 @@ export class RedditSourceError extends ProviderRequestError {
 class RedditRepresentationUnavailableError extends RedditSourceError {}
 
 export interface RedditContent {
+  representation: "json" | "feed";
+  galleryImageRecovery?: "recovered" | "unavailable";
   id: string;
   canonicalUrl: string;
   title: string;
@@ -285,6 +287,7 @@ function commentImages(data: Record<string, unknown>): string[] {
 }
 
 /** Only the requested submission and its comments, never recommendations or other posts. */
+// Retained for a future approved OAuth integration; the public importer uses RSS.
 export function parseRedditJson(
   payload: unknown,
   sourceUrl: string,
@@ -336,6 +339,7 @@ export function parseRedditJson(
     ? `https://www.reddit.com${permalink}`
     : normalizeRedditUrl(sourceUrl);
   return {
+    representation: "json",
     id: identity.id,
     canonicalUrl: identity.commentId
       ? normalizeRedditUrl(sourceUrl)
@@ -382,81 +386,6 @@ function htmlText(html: string): string {
     .replace(/[ \t]+/g, " ")
     .replace(/\n\s*\n/g, "\n\n")
     .trim();
-}
-
-/** Public HTML fallback when Reddit does not expose its JSON representation. */
-export function parseRedditHtml(
-  html: string,
-  sourceUrl: string,
-): RedditContent {
-  const identity = redditPostIdentity(sourceUrl);
-  if (!identity)
-    throw new RedditSourceError("Reddit did not resolve to a post.");
-  const $ = cheerio.load(html);
-  const post = $(`shreddit-post[id="t3_${identity.id}"]`).first();
-  if (!post.length)
-    throw new RedditRepresentationUnavailableError(
-      "This Reddit post is unavailable or requires login.",
-    );
-  const body = post.find('[slot="text-body"]').first();
-  const comments: Comment[] = [];
-  $(`shreddit-comment[postid="t3_${identity.id}"]`).each((_, el) => {
-    const comment = $(el);
-    const content = comment.find('[slot="comment"]').first();
-    // Preserve Markdown quote markers for Spotlight's copied recipe.
-    const copy = content.clone();
-    copy.find("blockquote").each((_, quote) => {
-      $(quote).replaceWith(
-        htmlText($(quote).html() ?? "")
-          .split("\n")
-          .map((line) => `> ${line}`)
-          .join("\n"),
-      );
-    });
-    comments.push({
-      id: (comment.attr("thingid") ?? "").replace(/^t1_/, ""),
-      author: comment.attr("author") ?? "",
-      body: htmlText(copy.html() ?? ""),
-      stickied:
-        comment.attr("stickied") !== undefined &&
-        comment.attr("stickied") !== "false",
-      images: content
-        .find("img[src]")
-        .toArray()
-        .map((image) => redditMediaUrl($(image).attr("src"), "image"))
-        .filter((value): value is string => Boolean(value)),
-    });
-  });
-  const selected = selectComments(
-    comments,
-    post.attr("author") ?? "",
-    identity.id,
-    identity.commentId,
-  );
-  const images = post
-    .find("img[src]")
-    .toArray()
-    .map((el) => redditMediaUrl($(el).attr("src"), "image"))
-    .filter((value): value is string => Boolean(value));
-  return {
-    id: identity.id,
-    canonicalUrl: normalizeRedditUrl(sourceUrl),
-    title: post.attr("post-title") ?? post.find('[slot="title"]').text().trim(),
-    body: identity.commentId
-      ? ""
-      : htmlText(body.html() ?? "").slice(0, MAX_TEXT_CHARACTERS),
-    comments: selected
-      .map((comment) => availableText(comment.body))
-      .filter(Boolean),
-    links: identity.commentId ? [] : [post.attr("content-href") ?? ""],
-    images: [
-      ...new Set([
-        ...(identity.commentId ? [] : images),
-        ...selected.flatMap((comment) => comment.images),
-      ]),
-    ],
-    videoManifestUrl: null,
-  };
 }
 
 /** Reddit's public Atom feed includes post text and comments even when JSON is blocked. */
@@ -547,6 +476,7 @@ export function parseRedditFeed(xml: string, sourceUrl: string): RedditContent {
     identity.commentId,
   );
   return {
+    representation: "feed",
     id: identity.id,
     canonicalUrl: identity.commentId
       ? normalizeRedditUrl(sourceUrl)
@@ -567,6 +497,77 @@ export function parseRedditFeed(xml: string, sourceUrl: string): RedditContent {
   };
 }
 
+/** The public embed has a different DOM from the main Reddit post page. */
+export function parseRedditGalleryEmbed(
+  html: string,
+  sourceUrl: string,
+): string[] {
+  const identity = redditPostIdentity(sourceUrl);
+  if (!identity || identity.commentId) return [];
+  const $ = cheerio.load(html);
+  const post = $(`embed-event-handler[id="t3_${identity.id}"]`)
+    .filter((_, element) => {
+      const linked = redditPostIdentity($(element).attr("link") ?? "");
+      return linked?.id === identity.id && !linked.commentId;
+    })
+    .first()
+    .closest(`[id="t3_${identity.id}-embed-wrapper"]`);
+  const images = post
+    .find(`gallery-carousel[post-id="t3_${identity.id}"] img[src]`)
+    .toArray()
+    .map((element) => redditMediaUrl($(element).attr("src"), "image"))
+    .filter((image): image is string => Boolean(image));
+  return [...new Set(images)].slice(0, 3);
+}
+
+async function recoverFeedGalleryImages(
+  content: RedditContent,
+  signal: AbortSignal,
+): Promise<RedditContent> {
+  const identity = redditPostIdentity(content.canonicalUrl);
+  if (
+    content.images.length ||
+    identity?.commentId ||
+    !content.links.some((link) => {
+      const linked = redditPostIdentity(link);
+      return (
+        linked?.id === content.id &&
+        new URL(link).pathname.replace(/\/$/, "") === `/gallery/${content.id}`
+      );
+    })
+  )
+    return content;
+
+  const endpoint = new URL(content.canonicalUrl);
+  endpoint.protocol = "https:";
+  endpoint.hostname = "embed.reddit.com";
+  endpoint.search = "";
+  endpoint.hash = "";
+  try {
+    const response = await fetchRedditPage(
+      endpoint.toString(),
+      AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
+    );
+    // This optional enrichment must never turn a usable text import into a failure.
+    // Do not follow redirects out of the verified post's public embed.
+    if (!response.ok) {
+      await response.body?.cancel();
+      return { ...content, galleryImageRecovery: "unavailable" };
+    }
+    const images = parseRedditGalleryEmbed(
+      await readLimitedText(response, MAX_PAGE_BYTES),
+      content.canonicalUrl,
+    );
+    return {
+      ...content,
+      images,
+      galleryImageRecovery: images.length ? "recovered" : "unavailable",
+    };
+  } catch {
+    return { ...content, galleryImageRecovery: "unavailable" };
+  }
+}
+
 async function fetchRedditPage(
   url: string,
   signal: AbortSignal,
@@ -576,37 +577,6 @@ async function fetchRedditPage(
     signal,
     headers: { "User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9" },
   });
-}
-
-async function fetchPostHtml(
-  url: string,
-  signal: AbortSignal,
-): Promise<RedditContent> {
-  const identity = redditPostIdentity(url)!;
-  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
-    const response = await fetchRedditPage(url, signal);
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      await response.body?.cancel();
-      if (!location)
-        throw new RedditSourceError("Reddit returned an invalid redirect.");
-      const next = new URL(location, url).toString();
-      const nextIdentity = redditPostIdentity(next);
-      if (
-        nextIdentity?.id !== identity.id ||
-        (identity.commentId && nextIdentity.commentId !== identity.commentId)
-      )
-        throw new RedditSourceError("Reddit redirected to a different post.");
-      url = redditUrl(next).toString();
-      continue;
-    }
-    if (!response.ok) throw await providerResponseError(response, "Reddit");
-    return parseRedditHtml(
-      await readLimitedText(response, MAX_PAGE_BYTES),
-      url,
-    );
-  }
-  throw new RedditSourceError("Reddit returned too many redirects.");
 }
 
 async function fetchPostFeed(
@@ -653,28 +623,13 @@ async function fetchPostFeed(
         });
       throw error;
     }
-    return parseRedditFeed(
+    const content = parseRedditFeed(
       await readLimitedText(response, MAX_PAGE_BYTES),
       url,
     );
+    return recoverFeedGalleryImages(content, signal);
   }
   throw new RedditSourceError("Reddit returned too many redirects.");
-}
-
-async function fetchPostFallback(
-  url: string,
-  signal: AbortSignal,
-): Promise<RedditContent> {
-  try {
-    return await fetchPostFeed(url, signal);
-  } catch (error) {
-    if (
-      !(error instanceof RedditRepresentationUnavailableError) &&
-      !(error instanceof ProviderRequestError && error.status === 403)
-    )
-      throw error;
-    return fetchPostHtml(url, signal);
-  }
 }
 
 export async function extractRedditContent(
@@ -704,33 +659,8 @@ export async function extractRedditContent(
       );
     }
   }
-  const identity = redditPostIdentity(url)!;
-  const endpoint = new URL(
-    `https://www.reddit.com/comments/${identity.id}.json`,
-  );
-  endpoint.search = "raw_json=1&limit=100&sort=old";
-  if (identity.commentId)
-    endpoint.searchParams.set("comment", identity.commentId);
-  const response = await fetchRedditPage(endpoint.toString(), signal);
-  if (response.ok) {
-    const body = await readLimitedText(response, MAX_PAGE_BYTES);
-    let payload: unknown;
-    try {
-      payload = JSON.parse(body);
-    } catch {
-      try {
-        return parseRedditHtml(body, url);
-      } catch (error) {
-        if (!(error instanceof RedditRepresentationUnavailableError))
-          throw error;
-        return fetchPostFallback(url, signal);
-      }
-    }
-    return parseRedditJson(payload, url);
-  }
-  // Do not retry rate limits or missing posts through another endpoint.
-  if (response.status !== 403)
-    throw await providerResponseError(response, "Reddit");
-  await response.body?.cancel();
-  return fetchPostFallback(url, signal);
+  // Full browser permalinks and resolved share links use the same public feed.
+  // Unauthenticated JSON and ordinary HTML were blocked in live checks; do not
+  // spend extra requests on them or retry rate limits through another endpoint.
+  return fetchPostFeed(url, signal);
 }

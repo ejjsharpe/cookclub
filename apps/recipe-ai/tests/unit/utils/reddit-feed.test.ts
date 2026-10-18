@@ -112,7 +112,7 @@ describe("Reddit public feeds", () => {
     );
   });
 
-  it("recovers the reported share link through its public feed when JSON is blocked", async () => {
+  it("resolves the reported share link and requests its public feed directly", async () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
@@ -121,7 +121,6 @@ describe("Reddit public feeds", () => {
           headers: { location: `${reportedPostUrl}?utm_source=share` },
         }),
       )
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
       .mockResolvedValueOnce(
         new Response(
           redditFeed([feedEntry({ id: "t3_1x71123", url: reportedPostUrl })]),
@@ -132,31 +131,36 @@ describe("Reddit public feeds", () => {
     expect(content.id).toBe("1x71123");
     expect(content.body).toBe(writtenRecipe);
     expect(content.canonicalUrl).toBe(reportedPostUrl);
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(fetch.mock.calls[2]?.[0]).toBe(
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1]?.[0]).toBe(
       "https://www.reddit.com/comments/1x71123/.rss?limit=100&sort=old",
     );
   });
 
-  it("uses the feed when the JSON endpoint returns a successful JavaScript interstitial", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
+  it.each([
+    { status: 403, body: "blocked" },
+    {
+      status: 200,
+      body: '<html><form><input name="js_challenge" value="1"></form></html>',
+    },
+  ])(
+    "stops when the feed is unavailable ($status), without JSON, HTML or browser retries",
+    async ({ status, body }) => {
+      const fetch = vi
         .fn()
-        .mockResolvedValueOnce(
-          new Response(
-            '<html><form><input name="js_challenge" value="1"></form></html>',
-          ),
-        )
-        .mockResolvedValueOnce(new Response(redditFeed())),
-    );
-    expect((await extractRedditContent(postUrl)).body).toBe(writtenRecipe);
-  });
+        .mockResolvedValueOnce(new Response(body, { status }));
+      vi.stubGlobal("fetch", fetch);
+      await expect(extractRedditContent(postUrl)).rejects.toThrow();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0]?.[0]).toBe(
+        "https://www.reddit.com/comments/abc123/.rss?limit=100&sort=old",
+      );
+    },
+  );
 
   it("follows a feed redirect only to the same post", async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
       .mockResolvedValueOnce(
         new Response(null, {
           status: 302,
@@ -166,7 +170,7 @@ describe("Reddit public feeds", () => {
       .mockResolvedValueOnce(new Response(redditFeed()));
     vi.stubGlobal("fetch", fetch);
     expect((await extractRedditContent(postUrl)).body).toBe(writtenRecipe);
-    expect(fetch.mock.calls[2]?.[0]).toBe(`${postUrl}.rss`);
+    expect(fetch.mock.calls[1]?.[0]).toBe(`${postUrl}.rss`);
   });
 
   it.each([
@@ -178,31 +182,27 @@ describe("Reddit public feeds", () => {
   ])("rejects an unsafe or different feed redirect to %s", async (location) => {
     const fetch = vi
       .fn()
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
       .mockResolvedValueOnce(
         new Response(null, { status: 302, headers: { location } }),
       );
     vi.stubGlobal("fetch", fetch);
     await expect(extractRedditContent(postUrl)).rejects.toThrow();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("bounds looping feed redirects", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
-      .mockImplementation(
-        async () =>
-          new Response(null, {
-            status: 302,
-            headers: { location: `${postUrl}.rss` },
-          }),
-      );
+    const fetch = vi.fn().mockImplementation(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: `${postUrl}.rss` },
+        }),
+    );
     vi.stubGlobal("fetch", fetch);
     await expect(extractRedditContent(postUrl)).rejects.toThrow(
       /too many redirects/,
     );
-    expect(fetch).toHaveBeenCalledTimes(7);
+    expect(fetch).toHaveBeenCalledTimes(6);
   });
 
   it("rejects oversized feeds before parsing", async () => {
@@ -210,7 +210,6 @@ describe("Reddit public feeds", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
         .mockResolvedValueOnce(new Response("x".repeat(2 * 1024 * 1024 + 1))),
     );
     await expect(extractRedditContent(postUrl)).rejects.toThrow(
@@ -227,7 +226,6 @@ describe("Reddit public feeds", () => {
     async ({ headers, delay }) => {
       const fetch = vi
         .fn()
-        .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
         .mockResolvedValueOnce(new Response("", { status: 429, headers }));
       vi.stubGlobal("fetch", fetch);
       await expect(extractRedditContent(postUrl)).rejects.toMatchObject({
@@ -235,7 +233,7 @@ describe("Reddit public feeds", () => {
         retryable: true,
         retryAfterSeconds: delay,
       });
-      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenCalledTimes(1);
     },
   );
 });
