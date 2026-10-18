@@ -1,5 +1,5 @@
 {
-  "name": "cook-club-app",
+  "name": "cookclub-native",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {

@@ -8,7 +8,7 @@ import { admin } from "better-auth/plugins";
 import type { AppleProfile } from "better-auth/social-providers";
 import { Resend } from "resend";
 
-const FROM_EMAIL = "Cook Club <noreply@cookclub.app>";
+const FROM_EMAIL = "cookclub <noreply@cookclub.app>";
 const REPLY_TO_EMAIL = "help@cookclub.app";
 const AUTH_BASE_PATH = "/auth";
 const SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 30;
@@ -216,8 +216,8 @@ export function getAuth(
         resetUrl.hash = new URLSearchParams({ token }).toString();
         const delivery = sendEmail(env, {
           to: user.email,
-          subject: "Reset your password - Cook Club",
-          html: `<p>You requested a new password for your Cook Club account.</p><p><a href="${escapeHtml(resetUrl.toString())}">Reset password</a></p><p>This link expires in one hour and can only be used once.</p><p>If you didn't request this, you can ignore this email. Your password will stay the same.</p>`,
+          subject: "Reset your password - cookclub",
+          html: `<p>You requested a new password for your cookclub account.</p><p><a href="${escapeHtml(resetUrl.toString())}">Reset password</a></p><p>This link expires in one hour and can only be used once.</p><p>If you didn't request this, you can ignore this email. Your password will stay the same.</p>`,
         });
 
         // Keep email delivery out of the response timing, while allowing the
@@ -258,8 +258,8 @@ export function getAuth(
 
         return sendEmail(env, {
           to: user.email,
-          subject: "Verify your email - Cook Club",
-          html: `<p>Hi ${safeName},</p><p>Welcome to Cook Club! Please verify your email by clicking the link below:</p><p><a href="${safeUrl}">Verify Email</a></p><p>If you didn't create an account, you can ignore this email.</p>`,
+          subject: "Verify your email - cookclub",
+          html: `<p>Hi ${safeName},</p><p>Welcome to cookclub! Please verify your email by clicking the link below:</p><p><a href="${safeUrl}">Verify Email</a></p><p>If you didn't create an account, you can ignore this email.</p>`,
         });
       },
     },
@@ -272,7 +272,7 @@ export function getAuth(
 
           return sendEmail(env, {
             to: newEmail,
-            subject: "Verify your new email - Cook Club",
+            subject: "Verify your new email - cookclub",
             html: `<p>Hi ${safeName},</p><p>You requested to change your email address. Please verify your new email by clicking the link below:</p><p><a href="${safeUrl}">Verify Email</a></p><p>If you didn't request this change, you can ignore this email.</p>`,
           });
         },

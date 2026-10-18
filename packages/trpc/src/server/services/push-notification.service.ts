@@ -131,7 +131,7 @@ export function buildExpoPushMessages(
   return tokens.map((token) => ({
     to: token.expoPushToken,
     sound: "default",
-    title: "Cook Club",
+    title: "cookclub",
     body,
     data,
     ...(token.platform === "android" ? { channelId: "default" } : {}),

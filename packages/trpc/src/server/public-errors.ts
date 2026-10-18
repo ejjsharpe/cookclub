@@ -11,7 +11,7 @@ const PUBLIC_ERROR_MESSAGES: Record<PublicErrorCode, string> = {
   RATE_LIMITED: "Too many requests. Please try again later.",
   TERMS_ACCEPTANCE_REQUIRED:
     "Accept the current Terms of Service before sharing publicly.",
-  PRO_REQUIRED: "This feature requires Cook Club Pro.",
+  PRO_REQUIRED: "This feature requires cookclub Pro.",
   SMART_IMPORT_LIMIT_REACHED:
     "You have used your free Smart Imports for this month.",
   IMPORT_ACTIVE_LIMIT_REACHED:
@@ -26,8 +26,7 @@ const PUBLIC_ERROR_MESSAGES: Record<PublicErrorCode, string> = {
   IMPORT_IMAGE_INVALID: "Choose a valid recipe image and try again.",
   IMPORT_TIMED_OUT: "The import timed out. Please try again.",
   IMPORT_FAILED: "Something went wrong while importing. Please try again.",
-  SERVICE_UNAVAILABLE:
-    "Cook Club is temporarily unavailable. Please try again.",
+  SERVICE_UNAVAILABLE: "cookclub is temporarily unavailable. Please try again.",
   UNEXPECTED_ERROR: "Something went wrong. Please try again.",
 };
 

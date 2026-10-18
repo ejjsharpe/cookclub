@@ -342,7 +342,7 @@ export const UserProfileScreen = () => {
 
     try {
       await Share.share({
-        message: `Check out ${profile.user.name}'s profile on Cook Club!`,
+        message: `Check out ${profile.user.name}'s profile on cookclub!`,
         url: `cookclub://profile/${userId}`,
       });
     } catch {

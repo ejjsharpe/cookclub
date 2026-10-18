@@ -149,13 +149,13 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       });
 
       if (hasActiveAdaptyAccess(profile) || refreshedStatus?.isPro) {
-        Alert.alert("Purchases restored", "Cook Club Pro is active.");
+        Alert.alert("Purchases restored", "cookclub Pro is active.");
         return;
       }
 
       Alert.alert(
         "No active subscription",
-        "We couldn't find an active Cook Club Pro subscription.",
+        "We couldn't find an active cookclub Pro subscription.",
       );
     } catch (error: any) {
       Alert.alert(

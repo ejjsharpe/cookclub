@@ -298,14 +298,14 @@ export const ProPaywallSheet = forwardRef<
         });
 
         if (hasActiveAdaptyAccess(profile) || refreshedStatus?.isPro) {
-          Alert.alert("Purchases restored", "Cook Club Pro is active.");
+          Alert.alert("Purchases restored", "cookclub Pro is active.");
           completeAndDismiss(true);
           return;
         }
 
         Alert.alert(
           "No active subscription",
-          "We couldn't find an active Cook Club Pro subscription.",
+          "We couldn't find an active cookclub Pro subscription.",
         );
       } catch (error) {
         Alert.alert(
@@ -353,7 +353,7 @@ export const ProPaywallSheet = forwardRef<
     return (
       <AppSheet
         ref={sheetRef}
-        title="Cook Club Pro"
+        title="cookclub Pro"
         subtitle={
           isPro
             ? "Active subscription"
@@ -393,7 +393,7 @@ export const ProPaywallSheet = forwardRef<
               Cook with fewer limits.
             </Text>
             <Text type="bodyFaded" style={styles.subtitle}>
-              Upgrade for the recipe tools that make Cook Club feel effortless.
+              Upgrade for the recipe tools that make cookclub feel effortless.
             </Text>
           </View>
 
@@ -437,7 +437,7 @@ export const ProPaywallSheet = forwardRef<
               </View>
               <View style={styles.activeCopy}>
                 <Text type="headline" style={styles.activeTitle}>
-                  Cook Club Pro is active
+                  cookclub Pro is active
                 </Text>
                 <Text type="caption" style={styles.activeSubtitle}>
                   Your account has access to all Pro tools.
@@ -510,7 +510,7 @@ export const ProPaywallSheet = forwardRef<
                         </Text>
                       ) : (
                         <Text type="caption" style={styles.planMeta}>
-                          {product.localizedDescription || "Cook Club Pro"}
+                          {product.localizedDescription || "cookclub Pro"}
                         </Text>
                       )}
                     </View>

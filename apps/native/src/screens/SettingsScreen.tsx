@@ -120,7 +120,7 @@ const ProStatusCard = () => {
         <Ionicons name="sparkles" size={18} style={styles.proStatusIconGlyph} />
       </View>
       <View style={styles.proStatusText}>
-        <Text type="heading">Cook Club Pro</Text>
+        <Text type="heading">cookclub Pro</Text>
         <Text type="bodyFaded" style={styles.proStatusSubtitle}>
           Active
         </Text>
@@ -199,7 +199,7 @@ export const SettingsScreen = () => {
   const handleDeleteAccount = () => {
     Alert.alert(
       "Delete Account",
-      "This permanently deletes your Cook Club account and app data. It does not cancel any App Store or Google Play subscription.",
+      "This permanently deletes your cookclub account and app data. It does not cancel any App Store or Google Play subscription.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -331,7 +331,7 @@ export const SettingsScreen = () => {
         {/* Subscription Section */}
         <VSpace size={32} />
         <Text type="heading" style={styles.sectionTitle}>
-          Cook Club Pro
+          cookclub Pro
         </Text>
         <VSpace size={12} />
         {isPro && (

@@ -24,7 +24,7 @@ export const ProBadge = memo(function ProBadge({
   return (
     <View
       accessible
-      accessibilityLabel="Cook Club Pro"
+      accessibilityLabel="cookclub Pro"
       style={[
         styles.badge,
         isCompact ? styles.compactBadge : styles.regularBadge,

@@ -26,9 +26,9 @@ const fixedMessages: Partial<Record<PublicErrorCode, string>> = {
   RATE_LIMITED: "Too many requests. Please try again later.",
   TERMS_ACCEPTANCE_REQUIRED:
     "Review and accept the current Terms of Service in Settings to continue.",
-  PRO_REQUIRED: "This feature requires Cook Club Pro.",
+  PRO_REQUIRED: "This feature requires cookclub Pro.",
   SMART_IMPORT_LIMIT_REACHED:
-    "You have used your free Smart Imports for this month. Upgrade to Cook Club Pro for unlimited Smart Imports.",
+    "You have used your free Smart Imports for this month. Upgrade to cookclub Pro for unlimited Smart Imports.",
   IMPORT_ACTIVE_LIMIT_REACHED:
     "You can have up to five imports in progress at once.",
   EXTERNAL_RECIPE_SOURCE:
@@ -40,8 +40,7 @@ const fixedMessages: Partial<Record<PublicErrorCode, string>> = {
   IMPORT_RECIPE_NOT_FOUND: "We could not find a recipe at that source.",
   IMPORT_IMAGE_INVALID: "Choose a valid recipe image and try again.",
   IMPORT_TIMED_OUT: "The import timed out. Please try again.",
-  SERVICE_UNAVAILABLE:
-    "Cook Club is temporarily unavailable. Please try again.",
+  SERVICE_UNAVAILABLE: "cookclub is temporarily unavailable. Please try again.",
 };
 
 const authMessages: Record<AuthErrorCode, string> = {

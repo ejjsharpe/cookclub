@@ -189,7 +189,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const HORIZONTAL_PADDING = 20;
 const BACK_BUTTON_WIDTH = 44;
 const HEADER_GAP = 6;
-const HEADER_HEIGHT = 52; // Height of the cook club title + avatar row
+const HEADER_HEIGHT = 52; // Height of the cookclub title + avatar row
 const SEARCH_START_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2;
 const SEARCH_END_WIDTH =
   SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - BACK_BUTTON_WIDTH - HEADER_GAP;

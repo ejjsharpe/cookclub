@@ -98,7 +98,7 @@ describe("safe API errors", () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
       code: "SERVICE_UNAVAILABLE",
-      message: "Cook Club is temporarily unavailable. Please try again.",
+      message: "cookclub is temporarily unavailable. Please try again.",
       requestId: "request-1",
     });
   });

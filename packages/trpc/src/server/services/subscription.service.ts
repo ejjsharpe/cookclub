@@ -61,7 +61,7 @@ function smartImportLimitError() {
     code: "FORBIDDEN",
     appCode: "SMART_IMPORT_LIMIT_REACHED",
     message:
-      "You've used your 5 free Smart Imports this month. Upgrade to Cook Club Pro for unlimited Smart Imports.",
+      "You've used your 5 free Smart Imports this month. Upgrade to cookclub Pro for unlimited Smart Imports.",
   });
 }
 

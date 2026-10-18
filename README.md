@@ -124,7 +124,7 @@ needed:
 
 ```sh
 bunx nx run cookclub-api:test
-bunx nx run cook-club-app:check-types
+bunx nx run cookclub-native:check-types
 ```
 
 Database commands are scoped to `packages/db`:

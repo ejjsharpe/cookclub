@@ -268,7 +268,7 @@ const ImportQueueSummary = ({
       <View style={styles.importSummaryText}>
         <Text type="subheadline" style={styles.importSummarySubtitle}>
           {active
-            ? "You can keep using Cook Club. Your recipe will appear here when it is ready."
+            ? "You can keep using cookclub. Your recipe will appear here when it is ready."
             : `${readyCount} recipe${readyCount === 1 ? "" : "s"} ready to review.`}
         </Text>
       </View>
@@ -595,7 +595,7 @@ export const AddRecipeScreen = () => {
             subtitle={
               isPro
                 ? "Describe what you want and AI will create a recipe."
-                : "Cook Club Pro feature."
+                : "cookclub Pro feature."
             }
             onPress={onPressAIChef}
           />
@@ -606,7 +606,7 @@ export const AddRecipeScreen = () => {
             subtitle={
               isPro
                 ? "Make it vegan, cheaper, healthier, kid-friendly, or meal-prep ready."
-                : "Cook Club Pro feature."
+                : "cookclub Pro feature."
             }
             onPress={onPressPersonalise}
           />

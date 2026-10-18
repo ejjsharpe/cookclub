@@ -105,13 +105,13 @@ describe("push notification mapping", () => {
     expect(messages).toEqual([
       expect.objectContaining({
         to: "ExponentPushToken[android]",
-        title: "Cook Club",
+        title: "cookclub",
         body: "Alex started following you",
         channelId: "default",
       }),
       expect.objectContaining({
         to: "ExponentPushToken[ios]",
-        title: "Cook Club",
+        title: "cookclub",
         body: "Alex started following you",
       }),
     ]);

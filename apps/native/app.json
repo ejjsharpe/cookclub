@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Cook Club",
+    "name": "cookclub",
     "slug": "cookclub",
     "owner": "shakyhand",
     "version": "1.0.0",
@@ -54,8 +54,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow Cook Club to use your camera so you can take photos for your recipes.",
-          "photosPermission": "Allow Cook Club to access your photos so you can add images to your recipes and profile.",
+          "cameraPermission": "Allow cookclub to use your camera so you can take photos for your recipes.",
+          "photosPermission": "Allow cookclub to access your photos so you can add images to your recipes and profile.",
           "microphonePermission": false
         }
       ],
@@ -79,7 +79,7 @@
       "bundleIdentifier": "com.shakyhand.cookclub",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSPhotoLibraryUsageDescription": "Allow Cook Club to access your photos so you can choose a profile picture."
+        "NSPhotoLibraryUsageDescription": "Allow cookclub to access your photos so you can choose a profile picture."
       },
       "icon": "./assets/cookclub.icon",
       "usesAppleSignIn": true

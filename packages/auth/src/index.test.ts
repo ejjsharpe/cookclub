@@ -192,7 +192,7 @@ describe("auth emails and error handling", () => {
 
     expect(mocks.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: "Cook Club <noreply@cookclub.app>",
+        from: "cookclub <noreply@cookclub.app>",
         replyTo: "help@cookclub.app",
         to: "chef@example.com",
         html: expect.stringContaining("&lt;Chef &amp; &quot;Friend&quot;&gt;"),
@@ -215,7 +215,7 @@ describe("auth emails and error handling", () => {
     expect(mocks.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "new@example.com",
-        subject: "Verify your new email - Cook Club",
+        subject: "Verify your new email - cookclub",
       }),
     );
   });

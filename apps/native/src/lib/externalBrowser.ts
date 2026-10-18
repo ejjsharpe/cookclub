@@ -57,7 +57,7 @@ function promptForExternalBrowserPreference(): Promise<
 
     Alert.alert(
       "Choose How to Open Websites",
-      "Open websites inside Cook Club or in your device's default browser? We’ll remember your choice.",
+      "Open websites inside cookclub or in your device's default browser? We’ll remember your choice.",
       [
         { text: "Cancel", style: "cancel", onPress: () => finish() },
         { text: "In App", onPress: () => finish("in_app") },

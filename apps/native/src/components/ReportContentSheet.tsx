@@ -65,7 +65,7 @@ export const ReportContentSheet = forwardRef<ReportContentSheetRef>(
         await sheetRef.current?.dismiss();
         Alert.alert(
           "Report received",
-          "Thank you. Cook Club will review this report.",
+          "Thank you. cookclub will review this report.",
         );
       } catch (error) {
         alertApiError("Report Failed", error, {

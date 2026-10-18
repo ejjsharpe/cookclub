@@ -80,7 +80,7 @@
       },
     },
     "apps/native": {
-      "name": "cook-club-app",
+      "name": "cookclub-native",
       "version": "1.0.0",
       "dependencies": {
         "@better-auth/expo": "1.6.26",
@@ -1585,13 +1585,13 @@
 
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 
-    "cook-club-app": ["cook-club-app@workspace:apps/native"],
-
     "cookclub-admin": ["cookclub-admin@workspace:apps/admin"],
 
     "cookclub-api": ["cookclub-api@workspace:apps/api"],
 
     "cookclub-images": ["cookclub-images@workspace:apps/images"],
+
+    "cookclub-native": ["cookclub-native@workspace:apps/native"],
 
     "cookclub-recipe-ai": ["cookclub-recipe-ai@workspace:apps/recipe-ai"],
 
