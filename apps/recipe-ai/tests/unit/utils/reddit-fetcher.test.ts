@@ -240,6 +240,7 @@ describe("Reddit sources", () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
       .mockResolvedValueOnce(
         new Response(null, {
           status: 302,
@@ -250,7 +251,7 @@ describe("Reddit sources", () => {
     await expect(extractRedditContent(postUrl)).rejects.toThrow(
       /different post/,
     );
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("resolves an app share link within Reddit before requesting the post", async () => {
@@ -305,9 +306,10 @@ describe("Reddit sources", () => {
     expect(fetch).toHaveBeenCalledTimes(5);
   });
 
-  it("uses public HTML when JSON is blocked, validating its redirect identity", async () => {
+  it("uses public HTML when JSON and the feed are blocked, validating its redirect identity", async () => {
     const fetch = vi
       .fn()
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
       .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
       .mockResolvedValueOnce(
         new Response(null, { status: 302, headers: { location: postUrl } }),

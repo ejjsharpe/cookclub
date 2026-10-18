@@ -8,9 +8,13 @@ import {
 } from "../../../src/utils/ai-response-parser";
 import {
   comment,
+  feedEntry,
   postUrl,
   recipeDraft,
+  redditFeed,
   redditPost,
+  reportedPostUrl,
+  reportedShareUrl,
   writtenRecipe,
 } from "../../fixtures/reddit";
 
@@ -58,6 +62,84 @@ function setup() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Reddit Smart Import", () => {
+  it("imports the reported app share through the public feed and existing image pipeline", async () => {
+    const { parser, complete, uploadFromUrl } = setup();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 301,
+          headers: { location: reportedPostUrl },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
+      .mockResolvedValueOnce(
+        new Response(
+          redditFeed([
+            feedEntry({
+              id: "t3_1x71123",
+              url: reportedPostUrl,
+              html: `<div class="md"><p>${writtenRecipe}</p></div> submitted by <a href="https://reddit.com/user/testcook">testcook</a> <a href="https://i.redd.it/bread.jpg">[link]</a>`,
+            }),
+          ]),
+        ),
+      );
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await parser.parse({
+        type: "url",
+        data: reportedShareUrl,
+        strategy: "ai-assisted",
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { name: "Test flatbread", sourceUrl: reportedPostUrl },
+      metadata: {
+        diagnostics: {
+          originalUrl: reportedShareUrl,
+          platform: "reddit",
+          selectedAttempt: "reddit_post",
+        },
+      },
+    });
+    expect(JSON.stringify(complete.mock.calls)).toContain("2 cups flour");
+    expect(uploadFromUrl).toHaveBeenCalledTimes(1);
+    expect(uploadFromUrl.mock.calls[0]?.[0]).toBe(
+      "https://i.redd.it/bread.jpg",
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the public feed's rate-limit reset in the import retry result", async () => {
+    const { parser, complete } = setup();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
+      .mockResolvedValueOnce(
+        new Response("", {
+          status: 429,
+          headers: { "x-ratelimit-reset": "20" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await parser.parse({
+        type: "url",
+        data: postUrl,
+        strategy: "ai-assisted",
+      }),
+    ).toMatchObject({
+      success: false,
+      error: {
+        code: "IMPORT_SOURCE_UNAVAILABLE",
+        disposition: "retry",
+        retryAfterSeconds: 20,
+      },
+    });
+    expect(complete).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("preserves a short shared URL in diagnostics without generic redirect fetching", async () => {
     const { parser } = setup();
     const fetch = vi.fn().mockResolvedValue(Response.json(redditPost()));

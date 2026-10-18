@@ -22,6 +22,8 @@ export class RedditSourceError extends ProviderRequestError {
   }
 }
 
+class RedditRepresentationUnavailableError extends RedditSourceError {}
+
 export interface RedditContent {
   id: string;
   canonicalUrl: string;
@@ -393,7 +395,7 @@ export function parseRedditHtml(
   const $ = cheerio.load(html);
   const post = $(`shreddit-post[id="t3_${identity.id}"]`).first();
   if (!post.length)
-    throw new RedditSourceError(
+    throw new RedditRepresentationUnavailableError(
       "This Reddit post is unavailable or requires login.",
     );
   const body = post.find('[slot="text-body"]').first();
@@ -457,6 +459,114 @@ export function parseRedditHtml(
   };
 }
 
+/** Reddit's public Atom feed includes post text and comments even when JSON is blocked. */
+export function parseRedditFeed(xml: string, sourceUrl: string): RedditContent {
+  const identity = redditPostIdentity(sourceUrl);
+  const $ = cheerio.load(xml, { xmlMode: true });
+  if (!$("feed").length)
+    throw new RedditRepresentationUnavailableError(
+      "Reddit did not return a public feed.",
+    );
+  const entries = $("feed > entry").toArray().slice(0, 500);
+  const post = entries.find(
+    (entry) => $(entry).children("id").text() === `t3_${identity?.id}`,
+  );
+  if (!identity || !post)
+    throw new RedditSourceError(
+      "This Reddit post is unavailable or has been removed.",
+    );
+  const entryUrl = (entry: (typeof entries)[number]) =>
+    $(entry)
+      .children('link:not([rel]), link[rel="alternate"]')
+      .first()
+      .attr("href") ?? "";
+  const canonicalUrl = entryUrl(post);
+  if (redditPostIdentity(canonicalUrl)?.id !== identity.id)
+    throw new RedditSourceError("Reddit returned a feed for a different post.");
+  const author = (entry: (typeof entries)[number]) =>
+    $(entry)
+      .children("author")
+      .children("name")
+      .text()
+      .trim()
+      .replace(/^\/?u\//, "");
+  const entryContent = (entry: (typeof entries)[number]) => {
+    const html = cheerio.load($(entry).children('content[type="html"]').text());
+    // Exclude the feed's submission attribution and navigation links from recipe text.
+    const body = htmlText(html(".md").first().html() ?? "");
+    const links = html("a[href]")
+      .toArray()
+      .map((el) => html(el).attr("href") ?? "");
+    const imageUrls = [
+      ...html("img[src]")
+        .toArray()
+        .map((el) => html(el).attr("src")),
+      ...$(entry)
+        .find("media\\:thumbnail")
+        .toArray()
+        .map((el) => $(el).attr("url")),
+      ...links,
+    ];
+    return {
+      body,
+      links,
+      images: imageUrls
+        .map((url) => redditMediaUrl(url, "image"))
+        .filter((url): url is string => Boolean(url)),
+    };
+  };
+  const content = entryContent(post);
+  if (/^\[(?:removed|deleted)\]$/i.test(content.body))
+    throw new RedditSourceError(
+      "This Reddit post is unavailable or has been removed.",
+    );
+  const comments: Comment[] = [];
+  for (const entry of entries) {
+    const id = $(entry).children("id").text();
+    const linked = redditPostIdentity(entryUrl(entry));
+    if (
+      !linked?.commentId ||
+      linked.id !== identity.id ||
+      id !== `t1_${linked.commentId}`
+    )
+      continue;
+    const comment = entryContent(entry);
+    comments.push({
+      id: linked.commentId,
+      author: author(entry),
+      body: comment.body,
+      images: comment.images,
+      // Atom does not expose pinned status, so it cannot establish a Spotlight copy.
+      stickied: false,
+    });
+  }
+  const selected = selectComments(
+    comments,
+    author(post),
+    identity.id,
+    identity.commentId,
+  );
+  return {
+    id: identity.id,
+    canonicalUrl: identity.commentId
+      ? normalizeRedditUrl(sourceUrl)
+      : canonicalUrl,
+    title: $(post).children("title").text().trim(),
+    body: identity.commentId ? "" : content.body.slice(0, MAX_TEXT_CHARACTERS),
+    comments: selected
+      .map((comment) => availableText(comment.body))
+      .filter(Boolean),
+    links: identity.commentId ? [] : content.links,
+    images: [
+      ...new Set([
+        ...(identity.commentId ? [] : content.images),
+        ...selected.flatMap((comment) => comment.images),
+      ]),
+    ],
+    videoManifestUrl: null,
+  };
+}
+
 async function fetchRedditPage(
   url: string,
   signal: AbortSignal,
@@ -497,6 +607,74 @@ async function fetchPostHtml(
     );
   }
   throw new RedditSourceError("Reddit returned too many redirects.");
+}
+
+async function fetchPostFeed(
+  url: string,
+  signal: AbortSignal,
+): Promise<RedditContent> {
+  const identity = redditPostIdentity(url)!;
+  let endpoint = new URL(`${normalizeRedditUrl(url)}.rss`);
+  endpoint.search = "limit=100&sort=old";
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+    const response = await fetchRedditPage(endpoint.toString(), signal);
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      await response.body?.cancel();
+      if (!location)
+        throw new RedditSourceError("Reddit returned an invalid redirect.");
+      const next = redditUrl(new URL(location, endpoint).toString());
+      const postUrl = new URL(next);
+      postUrl.pathname = postUrl.pathname.replace(/\/\.rss$/, "/");
+      const nextIdentity = redditPostIdentity(postUrl.toString());
+      if (
+        !next.pathname.endsWith("/.rss") ||
+        nextIdentity?.id !== identity.id ||
+        nextIdentity.commentId !== identity.commentId
+      )
+        throw new RedditSourceError("Reddit redirected to a different post.");
+      endpoint = next;
+      continue;
+    }
+    if (!response.ok) {
+      const error = await providerResponseError(response, "Reddit");
+      const reset = response.headers.get("x-ratelimit-reset");
+      // Public feeds report their retry delay with x-ratelimit-reset rather than Retry-After.
+      if (
+        response.status === 429 &&
+        error.retryAfterSeconds === undefined &&
+        reset &&
+        Number.isFinite(Number(reset)) &&
+        Number(reset) >= 0
+      )
+        throw new ProviderRequestError(error.message, {
+          ...error,
+          retryAfterSeconds: Math.ceil(Number(reset)),
+        });
+      throw error;
+    }
+    return parseRedditFeed(
+      await readLimitedText(response, MAX_PAGE_BYTES),
+      url,
+    );
+  }
+  throw new RedditSourceError("Reddit returned too many redirects.");
+}
+
+async function fetchPostFallback(
+  url: string,
+  signal: AbortSignal,
+): Promise<RedditContent> {
+  try {
+    return await fetchPostFeed(url, signal);
+  } catch (error) {
+    if (
+      !(error instanceof RedditRepresentationUnavailableError) &&
+      !(error instanceof ProviderRequestError && error.status === 403)
+    )
+      throw error;
+    return fetchPostHtml(url, signal);
+  }
 }
 
 export async function extractRedditContent(
@@ -540,7 +718,13 @@ export async function extractRedditContent(
     try {
       payload = JSON.parse(body);
     } catch {
-      return parseRedditHtml(body, url);
+      try {
+        return parseRedditHtml(body, url);
+      } catch (error) {
+        if (!(error instanceof RedditRepresentationUnavailableError))
+          throw error;
+        return fetchPostFallback(url, signal);
+      }
     }
     return parseRedditJson(payload, url);
   }
@@ -548,5 +732,5 @@ export async function extractRedditContent(
   if (response.status !== 403)
     throw await providerResponseError(response, "Reddit");
   await response.body?.cancel();
-  return fetchPostHtml(url, signal);
+  return fetchPostFallback(url, signal);
 }

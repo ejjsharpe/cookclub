@@ -68,13 +68,18 @@ and comments outside the fetched window are not fully supported. Sharing the
 specific recipe comment or importing recipe photos can help with those cases.
 
 Requests and redirects are bounded and validated. Reddit JSON is tried first,
-with a public HTML fallback for a blocked JSON endpoint; HTML supports visible
-post/comment text and images. Both endpoints may be blocked by Reddit, including
-from hosting providers. Blocked/private/deleted posts return source-unavailable;
-rate limits retain retry-after and timeouts remain retryable.
+with the post's public Atom (`.rss`) feed as a fallback when JSON is blocked or
+returns a JavaScript interstitial. The feed includes post text, author comments,
+recipe links and images. If the feed is also blocked, public HTML is tried.
+Feeds cannot establish Spotlight's pinned status or supply video audio manifests.
+Blocked/private/deleted posts return source-unavailable; rate limits retain
+Retry-After or the feed's X-Ratelimit-Reset delay, and timeouts remain retryable.
 
 The Reddit tests use synthetic fixtures based on formats observed in r/recipes;
 see `tests/fixtures/reddit.ts` for example posts. They verify extraction, routing,
 media handling and failure behaviour, not live Reddit availability or model
-accuracy. Live direct requests returned HTTP 403 during development, so production
-access still needs verification before treating Reddit imports as reliable.
+accuracy. On 2026-10-18, local live extraction of the reported share link
+`https://www.reddit.com/r/recipes/s/ISXgVFSJa3` succeeded through the public feed,
+including recipe text and its cover image, while JSON returned HTTP 403.
+Access from the deployed Worker still needs verification because Reddit can
+block requests from hosting providers.

@@ -9,6 +9,43 @@ export const postUrl =
 export const writtenRecipe =
   "Ingredients:\n- 2 cups flour\n- 1 cup water\nDirections:\nMix flour and water in a bowl, then bake in the oven.";
 
+// Synthetic Atom entries follow the public feed observed for the reported share:
+// /r/recipes/s/ISXgVFSJa3 -> /comments/1x71123/creamy_mushroom_and_wild_rice_soup/
+export const reportedShareUrl = "https://www.reddit.com/r/recipes/s/ISXgVFSJa3";
+export const reportedPostUrl =
+  "https://www.reddit.com/r/recipes/comments/1x71123/creamy_mushroom_and_wild_rice_soup/";
+
+export function feedEntry({
+  id = "t3_abc123",
+  url = postUrl,
+  author = "testcook",
+  title = "Test flatbread",
+  html = `<div class="md"><p>${writtenRecipe}</p></div>`,
+  thumbnail = "",
+}: {
+  id?: string;
+  url?: string;
+  author?: string;
+  title?: string;
+  html?: string;
+  thumbnail?: string;
+} = {}) {
+  const escape = (value: string) =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll('"', "&quot;");
+  return `<entry><id>${escape(id)}</id><title>${escape(title)}</title>
+    <author><name>/u/${escape(author)}</name></author><link href="${escape(url)}"/>
+    <content type="html">${escape(html)}</content>
+    ${thumbnail ? `<media:thumbnail url="${escape(thumbnail)}"/>` : ""}</entry>`;
+}
+
+export function redditFeed(entries = [feedEntry()]) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">${entries.join("")}</feed>`;
+}
+
 export function listing(children: unknown[]) {
   return { kind: "Listing", data: { children } };
 }
