@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "cook-club",
+      "name": "cookclub",
       "devDependencies": {
         "eas-cli": "21.5.0",
         "eslint": "9.39.5",
