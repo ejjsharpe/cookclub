@@ -21,10 +21,22 @@ page for both image and video pins; it can also parse written pin descriptions
 with recipe evidence. It does not transcribe Pinterest videos or read image-only
 recipe cards.
 
+The `1085719422756328161.json` fixture captures selected public metadata from
+the reported [Marry Me Chicken Pasta share](https://pin.it/6yNaaUV80) on
+2026-10-18. Its redirect chain passes through `pinterest.co.uk` and `/sent/`.
+The saved pin's Relay data identifies its original pin, `18436679720775782`,
+which supplies the page's canonical metadata. Only the selected pin's recipe
+fields and canonical relationship are retained; account data and share invite
+parameters are omitted. Tests also cover deferred Relay data carrying only the
+canonical SEO path. The fixed importer was run against the live short URL and
+its linked Domestic Spoon page, returning Marry Me Chicken Pasta via Schema.org
+with 22 ingredient entries and 12 instructions. Image upload and device UI were
+not part of that live check.
+
 Linked-page HTML and AI responses in the import tests use explicitly synthetic
-recipe data. Embedded-state, short-link and failure cases are synthetic too.
+recipe data. Other embedded-state, short-link and failure cases are synthetic.
 Tests verify routing, isolation, attribution, image staging and failure handling;
 they do not establish recipe accuracy, device share-sheet behavior or live
 availability. Direct Allrecipes requests returned HTTP 403 in the development
 environment, and the existing reader fallback returned HTTP 451, so a live
-end-to-end import could not be verified here.
+end-to-end Allrecipes import could not be verified here.

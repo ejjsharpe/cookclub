@@ -68,7 +68,11 @@ export const FACEBOOK_IMPORT_HOSTS = [
   "fb.watch",
 ] as const;
 
-export const PINTEREST_IMPORT_HOSTS = ["pinterest.com", "pin.it"] as const;
+export const PINTEREST_IMPORT_HOSTS = [
+  "pinterest.com",
+  "pinterest.co.uk",
+  "pin.it",
+] as const;
 export const REDDIT_IMPORT_HOSTS = ["reddit.com", "redd.it"] as const;
 
 export const BASIC_IMPORT_UNSUPPORTED_HOSTS = [

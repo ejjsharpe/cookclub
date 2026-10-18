@@ -1,3 +1,5 @@
+import { PINTEREST_IMPORT_HOSTS } from "@repo/contracts/recipe-import";
+
 import { normalizeRecipeUrl } from "../../utils/recipe-quality";
 import { validateFetchUrl } from "../url/fetch";
 
@@ -20,8 +22,7 @@ const EXCLUDED_HOST_DOMAINS = [
   "youtu.be",
   "ytimg.com",
   "googlevideo.com",
-  "pinterest.com",
-  "pin.it",
+  ...PINTEREST_IMPORT_HOSTS,
   "pinimg.com",
   "x.com",
   "twitter.com",

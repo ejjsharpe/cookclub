@@ -11,6 +11,7 @@ import {
   chiliRoundup,
   pinterestHtml,
   recipePins,
+  sharedPastaPin,
 } from "../../fixtures/pinterest";
 
 class TestParser extends RecipeAI {
@@ -98,6 +99,62 @@ function linkedRecipeHtml(name: string) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Pinterest Smart Import", () => {
+  it.each([
+    sharedPastaPin.shareUrl,
+    "https://www.pinterest.co.uk/pin/1085719422756328161/sent/?sfo=1",
+  ])("imports the saved recipe shared at %s", async (url) => {
+    const { parser, complete, uploadFromUrl } = setup();
+    const target = sharedPastaPin.meta["pinterestapp:source"];
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const requested = String(input);
+      if (requested === sharedPastaPin.shareUrl)
+        return new Response(null, {
+          status: 308,
+          headers: {
+            location:
+              "https://api.pinterest.com/url_shortener/6yNaaUV80/redirect/",
+          },
+        });
+      if (
+        requested ===
+        "https://api.pinterest.com/url_shortener/6yNaaUV80/redirect/"
+      )
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location:
+              "https://www.pinterest.co.uk/pin/1085719422756328161/sent/?sfo=1",
+          },
+        });
+      if (
+        requested === "https://www.pinterest.co.uk/pin/1085719422756328161/" ||
+        requested === "https://www.pinterest.com/pin/1085719422756328161/"
+      )
+        return new Response(null, {
+          status: 308,
+          headers: { location: sharedPastaPin.sourceUrl },
+        });
+      if (requested === sharedPastaPin.sourceUrl)
+        return htmlResponse(pinterestHtml(sharedPastaPin));
+      if (requested === target)
+        return htmlResponse(linkedRecipeHtml("Marry Me Chicken Pasta"));
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await parser.parse({ type: "url", data: url, strategy: "ai-assisted" }),
+    ).toMatchObject({
+      success: true,
+      data: { name: "Marry Me Chicken Pasta", sourceUrl: target },
+      metadata: {
+        parseMethod: "schema_org",
+        diagnostics: { originalUrl: url, platform: "pinterest" },
+      },
+    });
+    expect(complete).not.toHaveBeenCalled();
+    expect(uploadFromUrl).toHaveBeenCalledTimes(1);
+  });
+
   it.each(recipePins)(
     "imports the recipe linked from $sourceUrl through the existing website pipeline",
     async (fixture) => {

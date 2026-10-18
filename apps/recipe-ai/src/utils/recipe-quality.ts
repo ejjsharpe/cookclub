@@ -1,3 +1,5 @@
+import { PINTEREST_IMPORT_HOSTS } from "@repo/contracts/recipe-import";
+
 import type {
   ParsedRecipe,
   IngredientSection,
@@ -100,7 +102,7 @@ const SOCIAL_SOURCE_DOMAINS = [
   "fb.com",
   "youtube.com",
   "youtu.be",
-  "pinterest.com",
+  ...PINTEREST_IMPORT_HOSTS,
   "threads.net",
   "x.com",
   "twitter.com",

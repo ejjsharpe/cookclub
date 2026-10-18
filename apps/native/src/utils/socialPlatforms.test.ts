@@ -28,6 +28,8 @@ describe("social platform import utilities", () => {
     "https://uk.pinterest.com/pin/1970393584794073/",
     "https://www.pinterest.com/pin/pecan-pie--1970393584794073/",
     "https://pin.it/abc123",
+    "https://pin.it/6yNaaUV80",
+    "https://www.pinterest.co.uk/pin/1085719422756328161/sent/?sfo=1",
   ])("routes Pinterest source %s to Smart Import", (url) => {
     expect(getRecipeImportSocialPlatform(url)).toBe("pinterest");
     expect(getRecipeImportSourceTitle(url)).toBe(

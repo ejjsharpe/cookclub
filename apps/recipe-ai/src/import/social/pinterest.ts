@@ -56,8 +56,11 @@ function pinterestUrl(value: string): URL {
 export function extractPinterestPinId(value: string): string | null {
   try {
     const url = pinterestUrl(value);
-    if (!hostnameMatches(url.hostname, "pinterest.com")) return null;
-    return url.pathname.match(/^\/pin\/(?:[^/]+--)?(\d+)\/?$/)?.[1] ?? null;
+    if (hostnameMatches(url.hostname, "pin.it")) return null;
+    return (
+      url.pathname.match(/^\/pin\/(?:[^/]+--)?(\d+)(?:\/sent)?\/?$/)?.[1] ??
+      null
+    );
   } catch {
     return null;
   }
@@ -118,6 +121,16 @@ function pinImage(value: unknown): string | null {
   return null;
 }
 
+function parseRelayPayload(script: string): unknown {
+  // Decode the JSON arguments without evaluating any page JavaScript.
+  const match = script
+    .trim()
+    .match(/^window\.__PWS_RELAY_REGISTER_COMPLETED_REQUEST__\(([\s\S]*)\);?$/);
+  if (!match) return null;
+  const args: unknown[] = JSON.parse(`[${match[1]}]`);
+  return args.length === 2 && typeof args[0] === "string" ? args[1] : null;
+}
+
 /** Read only the selected pin's metadata and data records, never its related feed. */
 export function parsePinterestHtml(
   html: string,
@@ -136,7 +149,54 @@ export function parsePinterestHtml(
     meta("og:url"),
     $('link[rel="canonical"]').attr("href"),
   ].filter((value): value is string => Boolean(value));
-  if (pageUrls.some((value) => extractPinterestPinId(value) !== id)) {
+  const selectedPins: Record<string, unknown>[] = [];
+  const structuredData: unknown[] = [];
+  const pinIds = new Set([id]);
+  for (const element of $(
+    'script[type="application/ld+json"], script[type="application/json"], script[data-relay-completed-request="true"]',
+  ).toArray()) {
+    let data: unknown;
+    try {
+      data =
+        $(element).attr("data-relay-completed-request") === "true"
+          ? parseRelayPayload($(element).text())
+          : JSON.parse($(element).text());
+    } catch {
+      continue;
+    }
+    if ($(element).attr("type") === "application/ld+json") {
+      structuredData.push(data);
+      continue;
+    }
+    for (const item of walkRecords(data)) {
+      const legacyPin = item.id === id && (!item.type || item.type === "pin");
+      const relayPin = item.entityId === id && item.__typename === "Pin";
+      if (!legacyPin && !relayPin) continue;
+      selectedPins.push(item);
+      // Saved pins can advertise the original pin's SEO metadata. Only trust
+      // this alias when the requested pin itself identifies its canonical pin.
+      const pinJoin = record(item.pinJoin);
+      const canonicalId = record(pinJoin?.canonicalPin)?.entityId;
+      if (typeof canonicalId === "string" && /^\d+$/.test(canonicalId)) {
+        pinIds.add(canonicalId);
+      }
+      // Pinterest's deferred payload can omit canonicalPin while still
+      // identifying the original pin by its relative SEO path.
+      const canonicalPath = pinJoin?.seoCanonicalUrl;
+      if (
+        typeof canonicalPath === "string" &&
+        canonicalPath.startsWith("/pin/")
+      ) {
+        const seoId = extractPinterestPinId(
+          `https://www.pinterest.com${canonicalPath}`,
+        );
+        if (seoId) pinIds.add(seoId);
+      }
+    }
+  }
+  if (
+    pageUrls.some((value) => !pinIds.has(extractPinterestPinId(value) ?? ""))
+  ) {
     throw new PinterestSourceError(
       "Pinterest returned a different page.",
       "PINTEREST_SOURCE_UNAVAILABLE",
@@ -154,56 +214,43 @@ export function parsePinterestHtml(
     const url = pinImage(value);
     if (url) images.add(url);
   };
-  let foundPin = false;
-  for (const element of $(
-    'script[type="application/ld+json"], script[type="application/json"]',
-  ).toArray()) {
-    let data: unknown;
-    try {
-      data = JSON.parse($(element).text());
-    } catch {
-      continue;
+  let foundPin = selectedPins.length > 0;
+  for (const data of structuredData) {
+    const entries = Array.isArray(data) ? data : [data];
+    const nodes = entries.flatMap((entry) => {
+      const graph = record(entry)?.["@graph"];
+      return Array.isArray(graph) ? graph : [entry];
+    });
+    for (const node of nodes) {
+      const item = record(node);
+      if (item?.["@type"] !== "SocialMediaPosting") continue;
+      const page = item.mainEntityOfPage;
+      const identity = typeof page === "string" ? page : record(page)?.["@id"];
+      if (
+        typeof identity === "string"
+          ? !pinIds.has(extractPinterestPinId(identity) ?? "")
+          : !verifiedMeta
+      )
+        continue;
+      foundPin = true;
+      addText(titles, item.headline);
+      addText(descriptions, item.articleBody);
+      addText(links, record(item.sharedContent)?.url);
+      addImage(
+        typeof item.image === "string" ? item.image : record(item.image)?.url,
+      );
     }
-    if ($(element).attr("type") === "application/ld+json") {
-      const entries = Array.isArray(data) ? data : [data];
-      const nodes = entries.flatMap((entry) => {
-        const graph = record(entry)?.["@graph"];
-        return Array.isArray(graph) ? graph : [entry];
-      });
-      for (const node of nodes) {
-        const item = record(node);
-        if (item?.["@type"] !== "SocialMediaPosting") continue;
-        const page = item.mainEntityOfPage;
-        const identity =
-          typeof page === "string" ? page : record(page)?.["@id"];
-        if (
-          typeof identity === "string"
-            ? extractPinterestPinId(identity) !== id
-            : !verifiedMeta
-        )
-          continue;
-        foundPin = true;
-        addText(titles, item.headline);
-        addText(descriptions, item.articleBody);
-        addText(links, record(item.sharedContent)?.url);
-        addImage(
-          typeof item.image === "string" ? item.image : record(item.image)?.url,
-        );
-      }
-    } else {
-      for (const item of walkRecords(data)) {
-        if (item.id !== id || (item.type && item.type !== "pin")) continue;
-        foundPin = true;
-        addText(titles, item.title);
-        addText(titles, item.grid_title);
-        addText(descriptions, item.description);
-        addText(links, item.link);
-        const image = record(item.images);
-        addImage(record(image?.orig)?.url ?? record(image?.["736x"])?.url);
-        const rich = record(item.rich_summary);
-        addText(links, rich?.url);
-      }
-    }
+  }
+  for (const item of selectedPins) {
+    addText(titles, item.title);
+    addText(titles, item.grid_title);
+    addText(descriptions, item.description);
+    addText(links, item.link);
+    const image = record(item.images);
+    addImage(record(image?.orig)?.url ?? record(image?.["736x"])?.url);
+    addImage(item.imageLargeUrl);
+    const rich = record(item.rich_summary);
+    addText(links, rich?.url);
   }
   if (!verifiedMeta && !foundPin) {
     throw new PinterestSourceError(

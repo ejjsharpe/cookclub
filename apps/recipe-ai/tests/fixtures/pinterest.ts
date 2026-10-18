@@ -1,3 +1,4 @@
+import sharedPastaPin from "./pinterest/1085719422756328161.json";
 import batCupcakes from "./pinterest/1970393584792970.json";
 import chiliRoundup from "./pinterest/1970393584793065.json";
 import enchiladaPie from "./pinterest/1970393584793163.json";
@@ -12,12 +13,13 @@ export const recipePins = [
   enchiladaPie,
   batCupcakes,
 ];
-export { chiliRoundup };
+export { chiliRoundup, sharedPastaPin };
 
 export function pinterestHtml(fixture: {
   meta?: Record<string, string>;
   structured?: unknown[];
   payload?: unknown;
+  relay?: unknown;
 }): string {
   const escape = (value: string) =>
     value
@@ -33,5 +35,5 @@ export function pinterestHtml(fixture: {
     )
     .join(
       "",
-    )}</head><body>${(fixture.structured ?? []).map((data) => `<script type="application/ld+json">${json(data)}</script>`).join("")}<script type="application/json">${json(fixture.payload ?? {})}</script></body></html>`;
+    )}</head><body>${(fixture.structured ?? []).map((data) => `<script type="application/ld+json">${json(data)}</script>`).join("")}<script type="application/json">${json(fixture.payload ?? {})}</script>${fixture.relay ? `<script data-relay-completed-request="true" type="text/javascript">window.__PWS_RELAY_REGISTER_COMPLETED_REQUEST__("request-key", ${json(fixture.relay)});</script>` : ""}</body></html>`;
 }

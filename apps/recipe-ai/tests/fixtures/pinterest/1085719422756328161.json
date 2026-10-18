@@ -1,0 +1,52 @@
+{
+  "shareUrl": "https://pin.it/6yNaaUV80",
+  "sourceUrl": "https://uk.pinterest.com/pin/1085719422756328161/",
+  "meta": {
+    "og:image": "https://i.pinimg.com/736x/dd/47/b4/dd47b45457c4d411a935fc27bc5a1d84.jpg",
+    "og:url": "https://www.pinterest.com/pin/18436679720775782/",
+    "og:title": "Easy Marry Me Chicken Pasta | Perfect Potluck Dish | Recipe | Marry me chicken pasta easy, Marry me chicken with rigatoni, Things to bring for lunch",
+    "og:description": "Aug 29, 2026 \u2014 Need an easy pasta dish everyone will rave about? This Marry Me Chicken Pasta is a creamy pasta that's perfect for potlucks, family dinners, and gatherings. Made with chicken breast, rigatoni, and sun-dried tomatoes, it's hearty, flavorful, and easy to transport. Save this easy Marry Me Chicken Pasta recipe for your ne\u2026",
+    "og:see_also": "https://thedomesticspoon.com/marry-me-chicken-pasta/",
+    "pinterestapp:source": "https://thedomesticspoon.com/marry-me-chicken-pasta/"
+  },
+  "structured": [
+    {
+      "@type": "SocialMediaPosting",
+      "headline": "Easy Marry Me Chicken Pasta | Perfect Potluck Dish",
+      "articleBody": "Aug 29, 2026 \u2014 Need an easy pasta dish everyone will rave about? This Marry Me Chicken Pasta is a creamy pasta that's perfect for potlucks, family dinners, and gatherings. Made with chicken breast, rigatoni, and sun-dried tomatoes, it's hearty, flavorful, and easy to transport. Save this easy Marry Me Chicken Pasta recipe for your ne\u2026",
+      "image": "https://i.pinimg.com/originals/dd/47/b4/dd47b45457c4d411a935fc27bc5a1d84.png",
+      "sharedContent": {
+        "@type": "WebPage",
+        "headline": "Easy Marry Me Chicken Pasta | Perfect Potluck Dish",
+        "url": "https://thedomesticspoon.com/marry-me-chicken-pasta/"
+      },
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": "https://www.pinterest.com/pin/18436679720775782/"
+      }
+    }
+  ],
+  "relay": {
+    "data": {
+      "v3GetPinQueryv2": {
+        "__typename": "PinResponse",
+        "data": {
+          "__typename": "Pin",
+          "entityId": "1085719422756328161",
+          "title": "Easy Marry Me Chicken Pasta | Perfect Potluck Dish",
+          "description": "Need an easy pasta dish everyone will rave about? This Marry Me Chicken Pasta is a creamy pasta that's perfect for potlucks, family dinners, and gatherings. Made with chicken breast, rigatoni, and sun-dried tomatoes, it's hearty, flavorful, and easy to transport. Save this easy Marry Me Chicken Pasta recipe for your next potluck!",
+          "link": "https://thedomesticspoon.com/marry-me-chicken-pasta/",
+          "imageLargeUrl": "https://i.pinimg.com/1200x/dd/47/b4/dd47b45457c4d411a935fc27bc5a1d84.jpg",
+          "pinJoin": {
+            "canonicalPin": {
+              "entityId": "18436679720775782",
+              "id": "UGluOjE4NDM2Njc5NzIwNzc1Nzgy"
+            },
+            "seoCanonicalDomain": "www.pinterest.com",
+            "seoCanonicalUrl": "/pin/18436679720775782/"
+          }
+        }
+      }
+    }
+  }
+}

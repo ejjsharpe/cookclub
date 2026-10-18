@@ -1,4 +1,5 @@
 import puppeteer from "@cloudflare/puppeteer";
+import { PINTEREST_IMPORT_HOSTS } from "@repo/contracts/recipe-import";
 
 import { validateFetchUrl } from "./fetch";
 
@@ -9,8 +10,7 @@ const BROWSER_REQUIRED_DOMAINS = [
   "fb.com",
   "youtube.com",
   "youtu.be",
-  "pinterest.com",
-  "pin.it",
+  ...PINTEREST_IMPORT_HOSTS,
   "threads.net",
   "x.com",
   "twitter.com",
