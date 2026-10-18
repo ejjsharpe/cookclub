@@ -217,7 +217,7 @@ function SignInScreen({
           <div className="signin-brand">
             <img alt="" className="signin-mark" src="/icons/icon.png" />
             <div>
-              <p className="eyebrow">Cook Club</p>
+              <p className="eyebrow">cookclub</p>
               <h1>Admin</h1>
             </div>
           </div>

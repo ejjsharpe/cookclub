@@ -55,7 +55,7 @@ export function ForgotPasswordForm({
               }
             } catch {
               setError(
-                "Couldn't connect to Cook Club. Check your connection and try again.",
+                "Couldn't connect to cookclub. Check your connection and try again.",
               );
             } finally {
               setPending(false);

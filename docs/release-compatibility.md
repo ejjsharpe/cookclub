@@ -1,6 +1,6 @@
 # Release compatibility matrix
 
-Cook Club 1.0 uses Bun 1.3.14 and Node 22.13 or newer. Dependencies are
+cookclub 1.0 uses Bun 1.3.14 and Node 22.13 or newer. Dependencies are
 exactly pinned in workspace manifests and `bun.lock`.
 
 ## Intentional compatibility holds

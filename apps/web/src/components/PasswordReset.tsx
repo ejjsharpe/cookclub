@@ -100,7 +100,7 @@ export default function PasswordReset({ apiBaseUrl, adminSignInUrl }: Props) {
       setConfirmation("");
     } catch {
       setError(
-        "Couldn't connect to Cook Club. Check your connection and try again.",
+        "Couldn't connect to cookclub. Check your connection and try again.",
       );
     } finally {
       setPending(false);
@@ -131,7 +131,7 @@ export default function PasswordReset({ apiBaseUrl, adminSignInUrl }: Props) {
       aria-busy={pending}
     >
       <p className="password-reset__eyebrow">
-        Cook Club{isAdmin ? " Admin" : ""}
+        cookclub{isAdmin ? " Admin" : ""}
       </p>
       <h1 id="reset-title">{title}</h1>
       {mode === "loading" && <p role="status">Loading…</p>}
@@ -164,7 +164,7 @@ export default function PasswordReset({ apiBaseUrl, adminSignInUrl }: Props) {
           <p>
             {isAdmin
               ? "Return to the admin sign-in page to continue."
-              : "Return to the Cook Club app and sign in with your new password."}
+              : "Return to the cookclub app and sign in with your new password."}
           </p>
         </div>
       )}
@@ -248,7 +248,7 @@ export default function PasswordReset({ apiBaseUrl, adminSignInUrl }: Props) {
           className="password-reset__link"
           href={isAdmin ? adminSignInUrl : "cookclub://"}
         >
-          {isAdmin ? "Back to admin sign in" : "Open Cook Club"}
+          {isAdmin ? "Back to admin sign in" : "Open cookclub"}
         </a>
       )}
       <p className="password-reset__help">

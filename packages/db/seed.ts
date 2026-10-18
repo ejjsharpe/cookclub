@@ -1717,7 +1717,7 @@ async function seedModeration(
       termsVersion: CURRENT_TERMS_VERSION,
       acceptedAt: randomDateAfter(user.createdAt, 60),
       ipAddress: "127.0.0.1",
-      userAgent: "Cook Club seed script",
+      userAgent: "cookclub seed script",
     })),
   );
 

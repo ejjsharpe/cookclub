@@ -1,6 +1,6 @@
-# Cook Club
+# cookclub
 
-Cook Club is a recipe and meal-planning platform for saving recipes from
+cookclub is a recipe and meal-planning platform for saving recipes from
 anywhere, building a personal cookbook, planning meals, creating shopping
 lists, and sharing what is worth making again.
 

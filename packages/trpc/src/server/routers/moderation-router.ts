@@ -192,7 +192,7 @@ function queueModerationAlert(
   const details = report.details ?? "No additional details provided.";
   const promise = ctx.env.EMAIL.send({
     to: "help@cookclub.app",
-    from: { email: "moderation@cookclub.app", name: "Cook Club Moderation" },
+    from: { email: "moderation@cookclub.app", name: "cookclub Moderation" },
     subject: `${priority}New ${report.targetType} report #${report.id}`,
     text: `Report #${report.id}\nTarget: ${report.targetType} ${report.targetId}\nReason: ${report.reason}\nDetails: ${details}`,
     html: `<h1>New moderation report #${report.id}</h1><p><strong>Target:</strong> ${escapeHtml(report.targetType)} ${escapeHtml(report.targetId)}</p><p><strong>Reason:</strong> ${escapeHtml(report.reason)}</p><p><strong>Details:</strong> ${escapeHtml(details)}</p>`,

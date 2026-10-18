@@ -1,4 +1,4 @@
-# Cook Club 1.0 release runbook
+# cookclub 1.0 release runbook
 
 Production artifacts must be built from the verified, tagged release commit.
 Do not paste tokens, signing keys, service-account files, or reviewer passwords

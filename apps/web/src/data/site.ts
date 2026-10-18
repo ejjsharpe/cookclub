@@ -1,9 +1,9 @@
 export const site = {
-  name: "Cook Club",
+  name: "cookclub",
   developer: "Elliot Sharpe",
   url: "https://cookclub.app",
   description:
-    "Cook Club helps home cooks save recipes from anywhere, use up ingredients, plan meals, build shopping lists, and share the dishes worth making again.",
+    "cookclub helps home cooks save recipes from anywhere, use up ingredients, plan meals, build shopping lists, and share the dishes worth making again.",
   supportEmail: "help@cookclub.app",
   lastUpdated: "August 2, 2026",
   appleSubscriptionsUrl: "https://apps.apple.com/account/subscriptions",
