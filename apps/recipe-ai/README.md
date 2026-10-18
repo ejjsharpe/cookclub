@@ -49,6 +49,13 @@ Run `bun run test` and `bun run test:integration` for offline coverage. See
 
 ## Reddit Smart Import
 
+Availability: Reddit has announced that RSS support ends on **2026-11-13** in its
+[October 8 changelog](https://support.reddithelp.com/hc/en-us/articles/54353370049684-Changelog-October-8-2026).
+The feed-based importer below passes the recorded live checks but is a temporary
+implementation. A supported replacement must be established before relying on it
+beyond that date; the same announcement also describes the public Data API's
+migration to the Developer Platform.
+
 Public post, gallery and comment permalinks, `redd.it` links and Reddit app share
 links use the same Smart Import, recipe validation and image staging flow as the
 other social platforms. Basic Import routes Reddit users to Smart Import.
