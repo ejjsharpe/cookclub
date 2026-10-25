@@ -89,6 +89,36 @@ describe("Sentry observability", () => {
     });
   });
 
+  it("captures image provider failures with the original provider diagnostics", () => {
+    const message =
+      "Cerebras failed (Cerebras request failed with status 404: model_archived); Groq fallback failed (Groq request failed with status 404: model_not_found).";
+    let capturedScope: unknown;
+    vi.mocked(Sentry.captureMessage).mockImplementation(() => {
+      capturedScope = Sentry.getCurrentScope().getScopeData();
+      return "event-id";
+    });
+
+    captureImportFailure(
+      {
+        event: "recipe_import_terminal_failure",
+        jobId: "job-image",
+        userId: "user-1",
+        importType: "smart",
+        mode: "image",
+        errorCode: "SERVICE_UNAVAILABLE",
+        message,
+      },
+      "recipe-import-image",
+    );
+
+    expect(Sentry.captureMessage).toHaveBeenCalledOnce();
+    expect(capturedScope).toMatchObject({
+      level: "error",
+      tags: { import_mode: "image", import_error_code: "SERVICE_UNAVAILABLE" },
+      contexts: { recipe_import: { jobId: "job-image", message } },
+    });
+  });
+
   it("samples production traces without enabling default PII", () => {
     expect(
       getSentryOptions({
@@ -156,6 +186,8 @@ describe("Sentry observability", () => {
     ["IMPORT_SOURCE_UNAVAILABLE", true],
     ["IMPORT_RECIPE_NOT_FOUND", true],
     ["IMPORT_FAILED", true],
+    ["SERVICE_UNAVAILABLE", true],
+    ["IMPORT_TIMED_OUT", true],
     ["IMPORT_INVALID_URL", false],
     ["IMPORT_IMAGE_INVALID", false],
     ["PAYLOAD_TOO_LARGE", false],

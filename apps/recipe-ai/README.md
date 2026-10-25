@@ -9,6 +9,9 @@ Black Forest Labs' FLUX.2 Klein 4B model for recipe image generation. YouTube
 Smart Import also requires a YouTube Data API key. Store all provider keys as
 Worker secrets; do not add them to `wrangler.jsonc`.
 
+Image understanding uses `qwen-3.8-27b` on Cerebras and `qwen/qwen3.8-27b`
+on Groq. These replace the retired Gemma 4 and Qwen 3.6 public models.
+
 ```sh
 bun --cwd apps/recipe-ai wrangler secret put CEREBRAS_API_KEY
 bun --cwd apps/recipe-ai wrangler secret put CEREBRAS_API_KEY --env production

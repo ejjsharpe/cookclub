@@ -12,6 +12,7 @@ const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
 const textEncoder = new TextEncoder();
 
 function byteLength(value: string) {
+  console.log("helo");
   return textEncoder.encode(value).byteLength;
 }
 

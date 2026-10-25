@@ -80,6 +80,7 @@ export type RecipeImportFailureEvent = {
   importType?: RecipeImportType;
   mode?: RecipeImportMode;
   errorCode?: RecipeImportErrorCode;
+  message?: string;
   retryAfterSeconds?: number;
   sourceHost?: string;
   sourceUrl?: string;
@@ -714,6 +715,7 @@ export async function processRecipeImportJob(
         importType: job.importType as RecipeImportType,
         mode: job.mode as RecipeImportMode,
         errorCode: result.error.code,
+        message: result.error.message,
         ...(result.error.retryAfterSeconds !== undefined
           ? { retryAfterSeconds: result.error.retryAfterSeconds }
           : {}),
@@ -777,6 +779,15 @@ export async function processRecipeImportJob(
     return { outcome: updated[0] ? "ready" : "busy" };
   } catch (error) {
     const reset = await resetRecipeImportJobForRetry(ctx, job);
+    ctx.reportFailure?.({
+      event: "recipe_import_retry_scheduled",
+      jobId: job.id,
+      userId: job.userId,
+      importType: job.importType as RecipeImportType,
+      mode: job.mode as RecipeImportMode,
+      errorCode: "SERVICE_UNAVAILABLE",
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
     console.error(
       JSON.stringify({
         event: "recipe_import_unexpected_retry",

@@ -115,6 +115,8 @@ export function captureQueueException(
 export function shouldCaptureImportFailure(failure: RecipeImportFailureEvent) {
   return (
     failure.event === "recipe_import_retry_exhausted" ||
+    failure.errorCode === "SERVICE_UNAVAILABLE" ||
+    failure.errorCode === "IMPORT_TIMED_OUT" ||
     failure.errorCode === "IMPORT_SOURCE_UNAVAILABLE" ||
     failure.errorCode === "IMPORT_RECIPE_NOT_FOUND" ||
     failure.errorCode === "IMPORT_FAILED"
@@ -130,6 +132,8 @@ export function captureImportFailure(
   Sentry.withScope((scope) => {
     scope.setLevel(
       failure.event === "recipe_import_retry_exhausted" ||
+        failure.errorCode === "SERVICE_UNAVAILABLE" ||
+        failure.errorCode === "IMPORT_TIMED_OUT" ||
         failure.errorCode === "IMPORT_FAILED"
         ? "error"
         : "warning",
@@ -153,6 +157,7 @@ export function captureImportFailure(
     scope.setContext("recipe_import", {
       jobId: failure.jobId,
       event: failure.event,
+      message: failure.message,
       retryAfterSeconds: failure.retryAfterSeconds,
       sourceHost: failure.sourceHost,
       sourceUrl: failure.sourceUrl,

@@ -6,7 +6,7 @@ const CEREBRAS_CHAT_COMPLETIONS_URL =
 const CEREBRAS_API_VERSION = "2";
 const CEREBRAS_MODELS = {
   text: "gpt-oss-120b",
-  vision: "gemma-4-31b",
+  vision: "qwen-3.8-27b",
 } as const;
 
 export function createCerebrasClient(apiKey: string): AiClient {

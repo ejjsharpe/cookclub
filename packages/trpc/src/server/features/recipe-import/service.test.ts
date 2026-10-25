@@ -475,6 +475,7 @@ describe("recipe import processing outcomes", () => {
       importType: "basic",
       mode: "url",
       errorCode: "IMPORT_RECIPE_NOT_FOUND",
+      message: "No recipe found",
       sourceHost: "example.com",
       sourceUrl,
     });
@@ -482,6 +483,74 @@ describe("recipe import processing outcomes", () => {
     expect(state.job.sourceData).toBeNull();
     expect(state.job.errorCode).toBe("IMPORT_RECIPE_NOT_FOUND");
     expect(env.IMAGE_SERVICE.deleteImportImages).toHaveBeenCalledOnce();
+  });
+
+  it.each(["terminal", "retry"] as const)(
+    "reports handled image provider failures with %s disposition before clearing diagnostics",
+    async (disposition) => {
+      const { db, state } = createProcessDb();
+      state.job.mode = "image";
+      state.job.sourceData = "2";
+      const reportFailure = vi.fn();
+      const message = "Cerebras request failed with status 404: model_archived";
+      const env = {
+        ...createEnvironment(),
+        RECIPE_AI: {
+          parse: vi.fn().mockResolvedValue({
+            success: false,
+            error: { code: "SERVICE_UNAVAILABLE", message, disposition },
+          }),
+        },
+        IMAGE_SERVICE: { deleteImportImages: vi.fn() },
+      };
+
+      await processRecipeImportJob({ db, env, reportFailure } as never, {
+        jobId: JOB_ID,
+        userId: "user-1",
+      });
+
+      expect(reportFailure).toHaveBeenCalledWith({
+        event:
+          disposition === "retry"
+            ? "recipe_import_retry_scheduled"
+            : "recipe_import_terminal_failure",
+        jobId: JOB_ID,
+        userId: "user-1",
+        importType: "smart",
+        mode: "image",
+        errorCode: "SERVICE_UNAVAILABLE",
+        message,
+      });
+      expect(state.job.status).toBe(
+        disposition === "retry" ? "pending" : "failed",
+      );
+      expect(JSON.stringify(state.job)).not.toContain(message);
+    },
+  );
+
+  it("reports unexpected RPC failures that are handled as retries", async () => {
+    const { db } = createProcessDb();
+    const reportFailure = vi.fn();
+    const env = {
+      ...createEnvironment(),
+      RECIPE_AI: {
+        parse: vi.fn().mockRejectedValue(new Error("RPC unavailable")),
+      },
+    };
+
+    await expect(
+      processRecipeImportJob({ db, env, reportFailure } as never, {
+        jobId: JOB_ID,
+        userId: "user-1",
+      }),
+    ).resolves.toEqual({ outcome: "retry", errorCode: "SERVICE_UNAVAILABLE" });
+    expect(reportFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "recipe_import_retry_scheduled",
+        errorCode: "SERVICE_UNAVAILABLE",
+        message: "RPC unavailable",
+      }),
+    );
   });
 
   it.each([

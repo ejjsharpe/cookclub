@@ -58,7 +58,7 @@ describe("Groq client", () => {
     });
   });
 
-  it("uses Qwen 3.6 JSON object mode for vision workloads", async () => {
+  it("uses Qwen 3.8 JSON object mode for vision workloads", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(completionResponse('{"name":"Pasta"}'));
@@ -91,7 +91,7 @@ describe("Groq client", () => {
       String(fetchMock.mock.calls[0]?.[1]?.body),
     ) as Record<string, unknown>;
     expect(body).toMatchObject({
-      model: "qwen/qwen3.6-27b",
+      model: "qwen/qwen3.8-27b",
       reasoning_effort: "none",
       response_format: { type: "json_object" },
     });

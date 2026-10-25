@@ -89,6 +89,25 @@ describe("createCerebrasClient", () => {
     expect(body.response_format).toEqual({ type: "json_object" });
   });
 
+  it("uses Qwen 3.8 for image understanding", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(completionResponse("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createCerebrasClient("test-key").complete("vision", {
+      messages: [{ role: "user", content: "Return JSON" }],
+    });
+
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
+    ).toMatchObject({
+      model: "qwen-3.8-27b",
+      reasoning_effort: "none",
+      response_format: { type: "json_object" },
+    });
+  });
+
   it("surfaces bounded API errors with the request ID", async () => {
     vi.stubGlobal(
       "fetch",

@@ -58,9 +58,24 @@ export const queue: ExportedHandlerQueueHandler<
         const terminal = message.attempts >= FINAL_ATTEMPT;
         if (terminal) {
           const errorCode = exhaustedImportErrorCode(result.errorCode);
-          await failRecipeImportJob({ db, env }, message.body, errorCode, {
-            expectedStatus: "pending",
-          });
+          const failed = await failRecipeImportJob(
+            { db, env },
+            message.body,
+            errorCode,
+            {
+              expectedStatus: "pending",
+            },
+          );
+          if (failed) {
+            captureImportFailure(
+              {
+                event: "recipe_import_retry_exhausted",
+                ...message.body,
+                errorCode,
+              },
+              batch.queue,
+            );
+          }
           console.error(
             JSON.stringify({
               event: "recipe_import_retry_exhausted",

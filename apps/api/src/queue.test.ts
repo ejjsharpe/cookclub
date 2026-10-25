@@ -51,6 +51,7 @@ describe("recipe import queue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getDb.mockReturnValue(mocks.db);
+    mocks.failRecipeImportJob.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -145,6 +146,28 @@ describe("recipe import queue", () => {
     expect(message.ack).not.toHaveBeenCalled();
     expect(message.retry).toHaveBeenCalledWith();
     expect(mocks.captureQueueException).not.toHaveBeenCalled();
+    expect(mocks.captureImportFailure).toHaveBeenCalledWith(
+      {
+        event: "recipe_import_retry_exhausted",
+        jobId: "job-1",
+        userId: "user-1",
+        errorCode: "SERVICE_UNAVAILABLE",
+      },
+      "cookclub-recipe-import-url-development",
+    );
+  });
+
+  it("does not report retry exhaustion when another worker already finished the job", async () => {
+    const message = createMessage(4);
+    mocks.processRecipeImportJob.mockResolvedValue({
+      outcome: "retry",
+      errorCode: "SERVICE_UNAVAILABLE",
+    });
+    mocks.failRecipeImportJob.mockResolvedValue(false);
+
+    await queue(createBatch(message) as any, {} as any, {} as any);
+
+    expect(mocks.captureImportFailure).not.toHaveBeenCalled();
   });
 
   it("honours provider Retry-After delays", async () => {
