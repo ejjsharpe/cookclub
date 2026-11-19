@@ -528,6 +528,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   userBubble: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderBottomRightRadius: 6,
   },
   assistantBubble: {
@@ -630,6 +631,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 44,
     borderRadius: 22,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -639,6 +641,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   sendButtonDisabled: {
     backgroundColor: theme.colors.inputBackground,
+    backgroundImage: [],
   },
 }));
 

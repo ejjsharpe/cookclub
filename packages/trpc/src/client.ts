@@ -13,7 +13,9 @@ export const createTRPCClient = ({
   credentials,
 }: {
   apiUrl: string;
-  getCookie?: () => string | undefined;
+  // Better Auth's Expo client reads cookies from async storage (1.7+).
+  getCookie?: () =>
+    string | null | undefined | Promise<string | null | undefined>;
   credentials?: "include" | "same-origin" | "omit";
 }) => {
   return _createTRPCClient<AppRouter>({
@@ -27,8 +29,8 @@ export const createTRPCClient = ({
               credentials,
             } as RequestInit),
         }),
-        headers() {
-          const cookie = getCookie?.();
+        async headers() {
+          const cookie = await getCookie?.();
           if (!cookie) return {};
 
           return {

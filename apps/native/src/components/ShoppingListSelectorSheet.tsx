@@ -629,7 +629,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     paddingTop: 8,
     paddingBottom: 6,
     color: theme.colors.textSecondary,
-    textTransform: "uppercase",
     fontFamily: theme.fonts.semiBold,
   },
   ingredientRow: {
@@ -656,6 +655,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   checkCircleSelected: {
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   checkIcon: {
     color: theme.colors.buttonText,
@@ -760,6 +760,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   createButtonDisabled: {
     opacity: 0.5,
@@ -798,6 +799,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     gap: 8,
     height: 50,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderRadius: 25,
   },
   addButtonDisabled: {

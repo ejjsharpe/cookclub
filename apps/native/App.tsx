@@ -26,6 +26,7 @@ import startImage7 from "@/assets/images/start-food-7.jpg";
 import startImage8 from "@/assets/images/start-food-8.jpg";
 import startImage9 from "@/assets/images/start-food-9.jpg";
 import { WelcomeOverlayProvider } from "@/components/WelcomeOverlay";
+import { AddRecipeProvider } from "@/features/add-recipe/AddRecipeProvider";
 import { RecipeImportProvider } from "@/features/recipe-import/RecipeImportProvider";
 import { ShareIntentImportHandler } from "@/features/recipe-import/ShareIntentImportHandler";
 import { activateAdaptyAtStartup } from "@/lib/adapty";
@@ -162,21 +163,23 @@ function App() {
                   <SubscriptionProvider>
                     <PushNotificationsProvider>
                       <RecipeImportProvider>
-                        <ShareIntentImportHandler />
                         <GestureHandlerRootView style={styles.rootView}>
                           <CookTimerProvider>
                             <WelcomeOverlayProvider>
-                              <Navigation
-                                ref={navigationRef}
-                                key={navigationKey}
-                                onReady={onNavigationReady}
-                                initialState={navigationStateRef.current}
-                                onStateChange={(state) => {
-                                  navigationStateRef.current = state;
-                                }}
-                                linking={linking}
-                                theme={navigationTheme}
-                              />
+                              <AddRecipeProvider>
+                                <ShareIntentImportHandler />
+                                <Navigation
+                                  ref={navigationRef}
+                                  key={navigationKey}
+                                  onReady={onNavigationReady}
+                                  initialState={navigationStateRef.current}
+                                  onStateChange={(state) => {
+                                    navigationStateRef.current = state;
+                                  }}
+                                  linking={linking}
+                                  theme={navigationTheme}
+                                />
+                              </AddRecipeProvider>
                             </WelcomeOverlayProvider>
                             <CookTimerOverlay />
                           </CookTimerProvider>

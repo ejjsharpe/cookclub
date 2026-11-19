@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 
 import { Ionicons } from "@/components/Ionicons";
 import { Text } from "@/components/Text";
+import { getInitials, getPlaceholderColours } from "@/utils/avatarPlaceholder";
 import { appendImageVersion, getImageUrl } from "@/utils/imageUrl";
 
 interface AvatarProps {
@@ -25,7 +26,8 @@ export const Avatar = ({
   subscriptionTier,
   onPress,
 }: AvatarProps) => {
-  const initial = name.charAt(0).toUpperCase();
+  const initials = getInitials(name);
+  const placeholderColours = getPlaceholderColours(name);
   const fontSize = size * 0.36;
   const proIndicatorSize = Math.max(16, Math.round(size * 0.36));
   const proIconSize = Math.max(9, Math.round(size * 0.2));
@@ -43,9 +45,28 @@ export const Avatar = ({
       transition={100}
     />
   ) : (
-    <View style={[styles.placeholder, { width: size, height: size }]}>
-      <Text type="heading" style={[styles.initial, { fontSize }]}>
-        {initial}
+    <View
+      style={[
+        styles.placeholder,
+        {
+          width: size,
+          height: size,
+          backgroundColor: placeholderColours.background,
+        },
+      ]}
+    >
+      <Text
+        type="heading"
+        style={[
+          styles.initial,
+          {
+            fontSize,
+            lineHeight: fontSize * 1.2,
+            color: placeholderColours.ink,
+          },
+        ]}
+      >
+        {initials}
       </Text>
     </View>
   );
@@ -105,12 +126,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   placeholder: {
     borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary + "20",
     justifyContent: "center",
     alignItems: "center",
   },
   initial: {
-    color: theme.colors.primary,
+    fontFamily: theme.fonts.bold,
+    letterSpacing: 0,
   },
   proRing: {
     position: "absolute",
@@ -127,6 +148,7 @@ const styles = StyleSheet.create((theme) => ({
     right: -2,
     bottom: -2,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderWidth: 2,
     borderColor: theme.colors.background,
     justifyContent: "center",

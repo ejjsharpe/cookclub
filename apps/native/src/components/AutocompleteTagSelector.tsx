@@ -283,6 +283,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   chipDefault: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   chipLike: {
     backgroundColor: "#22c55e",

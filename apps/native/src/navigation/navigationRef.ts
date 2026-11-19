@@ -25,6 +25,7 @@ export type RootStackParamList = {
   Settings: undefined;
   BlockedUsers: undefined;
   Notifications: undefined;
+  FindCooks: undefined;
   Activity: ActivityScreenParams;
   GenerateRecipe: undefined;
   UserProfile: { userId: string };

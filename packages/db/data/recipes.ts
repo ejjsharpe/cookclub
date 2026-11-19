@@ -169,7 +169,8 @@ export const recipes: RecipeData[] = [
       "Fold in onion, jalapeño, cilantro, and tomato",
       "Season with salt and serve with tortilla chips",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1603894584373-5ac82b2fb076",
+    imageUrl:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/Guacamole_bowl.jpg/1280px-Guacamole_bowl.jpg",
   },
 
   // CHINESE CUISINE
@@ -293,7 +294,8 @@ export const recipes: RecipeData[] = [
       "Add wakame and green onions",
       "Serve immediately (do not boil after adding miso)",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1588566565463-180a5f3d3a5e",
+    imageUrl:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/A_bowl_of_miso_soup.jpg/1280px-A_bowl_of_miso_soup.jpg",
   },
 
   // THAI CUISINE
@@ -397,7 +399,8 @@ export const recipes: RecipeData[] = [
       "Stir in cream and kasuri methi",
       "Serve with naan or rice",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1603894584373-5ac82b2fb076",
+    imageUrl:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Chicken_makhani.jpg/1280px-Chicken_makhani.jpg",
   },
   {
     name: "Vegetable Samosas",
@@ -826,6 +829,7 @@ export const recipes: RecipeData[] = [
       "Heat cream and pour over chocolate to make sauce",
       "Serve churros with chocolate for dipping",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1611686802018-e3c1886d73f5",
+    imageUrl:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Chocolate_con_churros_de_lazo.jpg/1280px-Chocolate_con_churros_de_lazo.jpg",
   },
 ];

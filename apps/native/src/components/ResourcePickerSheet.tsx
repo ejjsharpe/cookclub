@@ -436,6 +436,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   saveButtonDisabled: { opacity: 0.5 },
   saveButtonText: { color: theme.colors.buttonText },

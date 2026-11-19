@@ -82,6 +82,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   todayBadge: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: theme.borderRadius.full,

@@ -68,6 +68,8 @@ import {
 } from "@/components/ReportContentSheet";
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { Text } from "@/components/Text";
+import { FEED_CARD_INSET } from "@/components/feed/FeedCardParts";
+import { useAddRecipe } from "@/features/add-recipe/AddRecipeProvider";
 import {
   createRecipeImportId,
   useRecipeImport,
@@ -201,7 +203,7 @@ export const ActivityScreen = () => {
     }
   }, [showMentionSelector]);
 
-  const feedImageWidth = Math.max(windowWidth - 40, 1);
+  const feedImageWidth = Math.max(windowWidth - FEED_CARD_INSET * 2, 1);
   const feedImagePreset = useMemo(
     () => selectFeedImagePreset(feedImageWidth),
     [feedImageWidth],
@@ -301,6 +303,7 @@ export const ActivityScreen = () => {
   const { mutate: blockUser } = useBlockUser();
   const { mutateAsync: importExistingRecipe } = useImportRecipe();
   const { submitImport } = useRecipeImport();
+  const { openAddMenu, notifyImportStarted } = useAddRecipe();
   const { requireSmartImport } = useSubscription();
 
   const flattenedComments = useMemo<CommentListItem[]>(
@@ -492,7 +495,7 @@ export const ActivityScreen = () => {
       try {
         const allowed = await requireSmartImport();
         if (!allowed) {
-          navigation.navigate("Tabs", { screen: "Add recipe" });
+          openAddMenu();
           return;
         }
 
@@ -505,7 +508,7 @@ export const ActivityScreen = () => {
           source: { type: "url", value: sourceUrl },
         });
         sourceImportIdsRef.current.delete(sourceUrl);
-        navigation.navigate("Tabs", { screen: "Add recipe" });
+        notifyImportStarted();
       } catch (error) {
         alertApiError("Import Failed", error, {
           operation: "recipeImport.create",
@@ -513,7 +516,7 @@ export const ActivityScreen = () => {
         });
       }
     },
-    [navigation, requireSmartImport, submitImport],
+    [notifyImportStarted, openAddMenu, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(
@@ -1046,6 +1049,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     paddingHorizontal: 20,
     borderRadius: theme.borderRadius.medium,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1205,6 +1209,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   sendButtonDisabled: {
     opacity: 0.45,

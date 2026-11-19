@@ -1,9 +1,5 @@
-import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  type LayoutChangeEvent,
   Pressable,
   View,
   ScrollView,
@@ -11,56 +7,21 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import Animated, {
-  cancelAnimation,
-  FadeIn,
-  LinearTransition,
-  Easing,
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
   withTiming,
 } from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
-import {
-  usePersonalizeRecipe,
-  type ParsedRecipe,
-  type PersonalizationGoal,
-} from "@/api/recipe";
 import { Ionicons } from "@/components/Ionicons";
-import {
-  PersonaliseRecipeSheet,
-  type PersonaliseRecipeSheetRef,
-} from "@/components/PersonaliseRecipeSheet";
-import {
-  RecipeBrowserSheet,
-  type RecipeBrowserSheetRef,
-} from "@/components/RecipeBrowserSheet";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import {
-  BasicImportSheet,
-  type BasicImportSheetRef,
-} from "@/features/recipe-import/BasicImportSheet";
-import {
-  useRecipeImport,
-  type RecipeImportItem,
-} from "@/features/recipe-import/RecipeImportProvider";
-import {
-  SmartImportSheet,
-  type SmartImportSheetRef,
-} from "@/features/recipe-import/SmartImportSheet";
-import { alertApiError } from "@/lib/apiErrorAlert";
+import { useAddRecipe } from "@/features/add-recipe/AddRecipeProvider";
+import { ImportQueueList } from "@/features/add-recipe/ImportQueue";
+import { useRecipeImport } from "@/features/recipe-import/RecipeImportProvider";
 import { useSubscription } from "@/lib/subscription";
-import {
-  getRecipeImportSocialPlatform,
-  getRecipeImportSocialPlatformInfo,
-  getRecipeImportSourceTitle,
-} from "@/utils/socialPlatforms";
 
 const HEADER_HEIGHT = 52;
-const IMPORT_PROGRESS_TRACK_WIDTH = 160;
-const IMPORT_PROGRESS_BAR_WIDTH = 56;
 
 const ActionRow = ({
   icon,
@@ -142,283 +103,11 @@ const ActionRow = ({
   );
 };
 
-const getImportIcon = (
-  mode: RecipeImportItem["mode"],
-): keyof typeof Ionicons.glyphMap => {
-  switch (mode) {
-    case "url":
-      return "link-outline";
-    case "text":
-      return "document-text-outline";
-    case "image":
-      return "image-outline";
-  }
-};
-
-const getImportStatusCopy = (importItem: RecipeImportItem) => {
-  if (importItem.status === "ready") return "Recipe ready";
-  if (importItem.status === "failed")
-    return importItem.error || "Import failed";
-  if (importItem.status === "processing") return "Import is processing";
-  return "Import is running";
-};
-
-const ImportProgressBar = ({ active }: { active: boolean }) => {
-  const [trackWidth, setTrackWidth] = useState(IMPORT_PROGRESS_TRACK_WIDTH);
-  const positionProgress = useSharedValue(0);
-  const completionProgress = useSharedValue(active ? 0 : 1);
-
-  useEffect(() => {
-    if (active) {
-      cancelAnimation(positionProgress);
-      completionProgress.set(0);
-      positionProgress.set(0);
-      positionProgress.set(
-        withRepeat(
-          withTiming(1, {
-            duration: 1400,
-            easing: Easing.inOut(Easing.ease),
-          }),
-          -1,
-          true,
-        ),
-      );
-    } else {
-      cancelAnimation(positionProgress);
-      completionProgress.set(
-        withTiming(1, {
-          duration: 260,
-          easing: Easing.out(Easing.cubic),
-        }),
-      );
-    }
-
-    return () => {
-      cancelAnimation(positionProgress);
-      cancelAnimation(completionProgress);
-    };
-  }, [active, completionProgress, positionProgress]);
-
-  const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
-    const measuredWidth = event.nativeEvent.layout.width;
-    if (measuredWidth > 0) {
-      setTrackWidth(measuredWidth);
-    }
-  }, []);
-
-  const segmentWidth = Math.min(IMPORT_PROGRESS_BAR_WIDTH, trackWidth);
-  const travelWidth = Math.max(0, trackWidth - segmentWidth);
-
-  const indicatorStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: positionProgress.get() * travelWidth }],
-    };
-  }, [travelWidth]);
-
-  const completionStyle = useAnimatedStyle(() => ({
-    opacity: completionProgress.get(),
-  }));
-
-  return (
-    <View style={styles.importProgressTrack} onLayout={handleTrackLayout}>
-      <Animated.View
-        style={[
-          styles.importProgressIndicator,
-          { width: segmentWidth },
-          indicatorStyle,
-        ]}
-      />
-      <Animated.View
-        style={[styles.importProgressCompletion, completionStyle]}
-      />
-    </View>
-  );
-};
-
-const ImportQueueSummary = ({
-  pendingCount,
-  readyCount,
-}: {
-  pendingCount: number;
-  readyCount: number;
-}) => {
-  const active = pendingCount > 0;
-
-  return (
-    <Animated.View
-      entering={FadeIn.duration(180)}
-      layout={LinearTransition.duration(180)}
-      style={styles.importSummary}
-    >
-      <View style={styles.importSummaryTopRow}>
-        <View style={styles.importSummaryTitleRow}>
-          <Ionicons
-            name={active ? "sparkles" : "checkmark"}
-            size={18}
-            style={styles.importSummaryIconGlyph}
-          />
-          <Text type="headline">
-            {active ? "Import is working" : "Import ready"}
-          </Text>
-        </View>
-        <Text type="caption" style={styles.importProgressLabel}>
-          {active ? "Analyzing" : "Complete"}
-        </Text>
-      </View>
-      <View style={styles.importSummaryText}>
-        <Text type="subheadline" style={styles.importSummarySubtitle}>
-          {active
-            ? "You can keep using cookclub. Your recipe will appear here when it is ready."
-            : `${readyCount} recipe${readyCount === 1 ? "" : "s"} ready to review.`}
-        </Text>
-      </View>
-      <ImportProgressBar active={active} />
-    </Animated.View>
-  );
-};
-
-const BackgroundImportCard = ({
-  importItem,
-  showSeparator,
-  onReview,
-  onDismiss,
-}: {
-  importItem: RecipeImportItem;
-  showSeparator: boolean;
-  onReview: (id: string) => void;
-  onDismiss: (id: string) => void;
-}) => {
-  const theme = UnistylesRuntime.getTheme();
-  const isReady = importItem.status === "ready";
-  const isFailed = importItem.status === "failed";
-  const isPending =
-    importItem.status === "pending" || importItem.status === "processing";
-  const shouldEmphasizeTitle = isPending || isReady || isFailed;
-  const socialPlatform =
-    importItem.mode === "url" && !isReady
-      ? getRecipeImportSocialPlatform(importItem.title)
-      : null;
-  const socialPlatformInfo = socialPlatform
-    ? getRecipeImportSocialPlatformInfo(socialPlatform)
-    : null;
-  const displayTitle =
-    isFailed && socialPlatformInfo
-      ? `Import from ${socialPlatformInfo.displayName} failed`
-      : importItem.mode === "url" && !isReady
-        ? getRecipeImportSourceTitle(importItem.title)
-        : importItem.title;
-
-  return (
-    <Animated.View
-      entering={FadeIn.duration(180)}
-      layout={LinearTransition.duration(180)}
-      style={[
-        styles.importCard,
-        showSeparator && styles.importCardWithSeparator,
-        isReady && styles.importCardReady,
-        isFailed && styles.importCardFailed,
-      ]}
-    >
-      <View
-        style={[
-          styles.importIconContainer,
-          isFailed && styles.importIconContainerFailed,
-          isReady && styles.importIconContainerReady,
-          socialPlatformInfo &&
-            !isFailed && {
-              backgroundColor: `${socialPlatformInfo.color}18`,
-            },
-        ]}
-      >
-        {socialPlatformInfo && !isFailed ? (
-          <Ionicons
-            name={socialPlatformInfo.icon}
-            size={23}
-            color={socialPlatformInfo.color}
-          />
-        ) : importItem.status === "pending" ? (
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-        ) : (
-          <Ionicons
-            name={
-              isFailed ? "alert-circle-outline" : getImportIcon(importItem.mode)
-            }
-            size={22}
-            color={isFailed ? theme.colors.destructive : theme.colors.primary}
-          />
-        )}
-      </View>
-
-      <View style={styles.importTextContainer}>
-        <Text
-          type="body"
-          numberOfLines={1}
-          style={[
-            styles.importTitle,
-            shouldEmphasizeTitle && styles.importTitleEmphasized,
-          ]}
-        >
-          {displayTitle}
-        </Text>
-        <Text
-          type="subheadline"
-          numberOfLines={2}
-          style={[
-            styles.importSubtitle,
-            isFailed && styles.importSubtitleFailed,
-          ]}
-        >
-          {getImportStatusCopy(importItem)}
-        </Text>
-      </View>
-
-      {isReady ? (
-        <Pressable
-          style={styles.importReviewButton}
-          onPress={() => onReview(importItem.id)}
-        >
-          <Text type="caption" style={styles.importReviewButtonText}>
-            Review
-          </Text>
-        </Pressable>
-      ) : isFailed ? (
-        <Pressable
-          style={styles.importDismissButton}
-          onPress={() => onDismiss(importItem.id)}
-          accessibilityLabel="Dismiss failed import"
-        >
-          <Ionicons name="close" size={18} style={styles.importDismissIcon} />
-        </Pressable>
-      ) : null}
-    </Animated.View>
-  );
-};
-
 export const AddRecipeScreen = () => {
-  const { navigate } = useNavigation();
   const insets = UnistylesRuntime.insets;
-
-  // Sheet refs
-  const smartImportSheetRef = useRef<SmartImportSheetRef>(null);
-  const basicImportSheetRef = useRef<BasicImportSheetRef>(null);
-  const recipeBrowserSheetRef = useRef<RecipeBrowserSheetRef>(null);
-  const personaliseRecipeSheetRef = useRef<PersonaliseRecipeSheetRef>(null);
-  const [selectedPersonaliseRecipeId, setSelectedPersonaliseRecipeId] =
-    useState<number | null>(null);
-  const {
-    imports: backgroundImports,
-    pendingCount: pendingImportCount,
-    readyCount: readyImportCount,
-    dismissImport,
-  } = useRecipeImport();
-  const personalizeRecipeMutation = usePersonalizeRecipe();
-  const {
-    isPro,
-    smartImportsRemaining,
-    smartImportsLimit,
-    requireSmartImport,
-    requireProFeature,
-  } = useSubscription();
+  const { actions } = useAddRecipe();
+  const { imports: backgroundImports } = useRecipeImport();
+  const { isPro, smartImportsRemaining, smartImportsLimit } = useSubscription();
 
   // Scroll tracking for header fade
   const titleOpacity = useSharedValue(1);
@@ -440,91 +129,6 @@ export const AddRecipeScreen = () => {
     [titleOpacity],
   );
 
-  const handleReviewImport = useCallback(
-    (id: string) => {
-      const importItem = backgroundImports.find((item) => item.id === id);
-      if (importItem?.status !== "ready") return;
-
-      navigate("RecipeDetail", {
-        importJobId: importItem.id,
-        mode: "edit",
-      });
-    },
-    [backgroundImports, navigate],
-  );
-
-  const handleDismissImport = useCallback(
-    (id: string) => {
-      dismissImport(id).catch(() => {});
-    },
-    [dismissImport],
-  );
-
-  const onPressSmartImport = async () => {
-    const allowed = await requireSmartImport();
-    if (!allowed) return;
-    smartImportSheetRef.current?.present();
-  };
-
-  const onPressCreate = () => {
-    navigate("RecipeDetail", { draft: true, mode: "edit" });
-  };
-
-  const onPressAIChef = async () => {
-    const allowed = await requireProFeature("AI Chef");
-    if (!allowed) return;
-    navigate("GenerateRecipe");
-  };
-
-  const onPressPersonalise = async () => {
-    const allowed = await requireProFeature("Personalise recipe");
-    if (!allowed) return;
-    recipeBrowserSheetRef.current?.present();
-  };
-
-  const onPressBasicImport = () => {
-    basicImportSheetRef.current?.present();
-  };
-
-  const handleSelectRecipeToPersonalise = async (recipeId: number) => {
-    setSelectedPersonaliseRecipeId(recipeId);
-    setTimeout(() => {
-      personaliseRecipeSheetRef.current?.present();
-    }, 350);
-  };
-
-  const handlePersonaliseRecipe = async (input: {
-    goals: PersonalizationGoal[];
-    allergyNotes?: string;
-    customNotes?: string;
-  }) => {
-    if (!selectedPersonaliseRecipeId) {
-      Alert.alert("Choose a recipe", "Select a recipe to personalise first.");
-      return;
-    }
-
-    try {
-      const result = await personalizeRecipeMutation.mutateAsync({
-        recipeId: selectedPersonaliseRecipeId,
-        goals: input.goals,
-        allergyNotes: input.allergyNotes,
-        customNotes: input.customNotes,
-      });
-
-      personaliseRecipeSheetRef.current?.dismiss();
-      setSelectedPersonaliseRecipeId(null);
-      navigate("RecipeDetail", {
-        parsedRecipe: result as ParsedRecipe,
-        mode: "edit",
-      });
-    } catch (error: unknown) {
-      alertApiError("Personalisation Failed", error, {
-        operation: "recipe.personalize",
-        fallback: "Something went wrong while personalising the recipe.",
-      });
-    }
-  };
-
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -539,21 +143,7 @@ export const AddRecipeScreen = () => {
         {backgroundImports.length > 0 && (
           <>
             <VSpace size={8} />
-            <View style={styles.importQueue}>
-              <ImportQueueSummary
-                pendingCount={pendingImportCount}
-                readyCount={readyImportCount}
-              />
-              {backgroundImports.map((importItem, index) => (
-                <BackgroundImportCard
-                  key={importItem.id}
-                  importItem={importItem}
-                  showSeparator={index < backgroundImports.length - 1}
-                  onReview={handleReviewImport}
-                  onDismiss={handleDismissImport}
-                />
-              ))}
-            </View>
+            <ImportQueueList />
             <VSpace size={24} />
           </>
         )}
@@ -566,7 +156,7 @@ export const AddRecipeScreen = () => {
             icon="link"
             label="Basic import"
             subtitle="Import from URL. Works for most recipe websites."
-            onPress={onPressBasicImport}
+            onPress={actions.basicImport}
           />
           <View style={styles.separator} />
           <ActionRow
@@ -578,7 +168,7 @@ export const AddRecipeScreen = () => {
                 ? undefined
                 : `${smartImportsRemaining ?? 0}/${smartImportsLimit ?? 5} left`
             }
-            onPress={onPressSmartImport}
+            onPress={actions.smartImport}
             featured
           />
         </View>
@@ -597,7 +187,7 @@ export const AddRecipeScreen = () => {
                 ? "Describe what you want and AI will create a recipe."
                 : "cookclub Pro feature."
             }
-            onPress={onPressAIChef}
+            onPress={actions.aiChef}
           />
           <View style={styles.separator} />
           <ActionRow
@@ -608,7 +198,7 @@ export const AddRecipeScreen = () => {
                 ? "Make it vegan, cheaper, healthier, kid-friendly, or meal-prep ready."
                 : "cookclub Pro feature."
             }
-            onPress={onPressPersonalise}
+            onPress={actions.personalise}
           />
         </View>
 
@@ -622,7 +212,7 @@ export const AddRecipeScreen = () => {
             icon="create"
             label="Create from scratch"
             subtitle="Build your own recipe step by step."
-            onPress={onPressCreate}
+            onPress={actions.createFromScratch}
           />
         </View>
       </ScrollView>
@@ -633,20 +223,6 @@ export const AddRecipeScreen = () => {
           <Text type="screenTitle">Add recipe</Text>
         </Animated.View>
       </View>
-
-      {/* Sheets */}
-      <SmartImportSheet ref={smartImportSheetRef} />
-      <BasicImportSheet ref={basicImportSheetRef} />
-      <RecipeBrowserSheet
-        ref={recipeBrowserSheetRef}
-        title="Choose Recipe"
-        onSelectRecipe={handleSelectRecipeToPersonalise}
-      />
-      <PersonaliseRecipeSheet
-        ref={personaliseRecipeSheetRef}
-        isSubmitting={personalizeRecipeMutation.isPending}
-        onSubmit={handlePersonaliseRecipe}
-      />
     </View>
   );
 };
@@ -680,147 +256,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     backgroundColor: theme.colors.inputBackground,
     borderRadius: theme.borderRadius.large,
     overflow: "hidden",
-  },
-  importQueue: {
-    marginHorizontal: 20,
-    backgroundColor: theme.colors.inputBackground,
-    borderRadius: theme.borderRadius.large,
-    overflow: "hidden",
-  },
-  importSummary: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 16,
-    gap: 10,
-    backgroundColor: theme.colors.inputBackground,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  importSummaryTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  importSummaryTitleRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  importSummaryIconGlyph: {
-    color: theme.colors.primary,
-  },
-  importSummaryText: {
-    gap: 4,
-  },
-  importSummarySubtitle: {
-    color: theme.colors.textSecondary,
-  },
-  importProgressTrack: {
-    width: "100%",
-    height: 8,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.background,
-    overflow: "hidden",
-  },
-  importProgressIndicator: {
-    width: IMPORT_PROGRESS_BAR_WIDTH,
-    height: "100%",
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
-  },
-  importProgressCompletion: {
-    position: "absolute",
-    inset: 0,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
-  },
-  importProgressLabel: {
-    color: theme.colors.primary,
-    fontFamily: theme.fonts.medium,
-    fontVariant: ["tabular-nums"],
-  },
-  importCard: {
-    minHeight: 74,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    backgroundColor: theme.colors.inputBackground,
-    overflow: "hidden",
-  },
-  importCardWithSeparator: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  importCardReady: {
-    backgroundColor: theme.colors.inputBackground,
-  },
-  importCardFailed: {
-    backgroundColor: theme.colors.inputBackground,
-  },
-  importIconContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: theme.colors.primary + "18",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  importIconContainerReady: {
-    backgroundColor: theme.colors.primary + "22",
-  },
-  importThumbnailContainer: {
-    backgroundColor: theme.colors.background,
-  },
-  importThumbnailImage: {
-    width: "100%",
-    height: "100%",
-  },
-  importIconContainerFailed: {
-    backgroundColor: theme.colors.destructive + "16",
-  },
-  importTextContainer: {
-    flex: 1,
-    gap: 2,
-  },
-  importTitle: {
-    position: "relative",
-  },
-  importTitleEmphasized: {
-    fontFamily: theme.fonts.medium,
-  },
-  importSubtitle: {
-    color: theme.colors.textSecondary,
-  },
-  importSubtitleFailed: {
-    color: theme.colors.destructive,
-  },
-  importReviewButton: {
-    minWidth: 72,
-    height: 34,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 14,
-  },
-  importReviewButtonText: {
-    color: theme.colors.buttonText,
-    fontFamily: theme.fonts.medium,
-  },
-  importDismissButton: {
-    width: 34,
-    height: 34,
-    borderRadius: theme.borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.pressHighlight,
-  },
-  importDismissIcon: {
-    color: theme.colors.textSecondary,
   },
   row: {
     flexDirection: "row",
@@ -873,6 +308,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   },
   badge: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: theme.borderRadius.full,

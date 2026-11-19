@@ -5,7 +5,13 @@ import { fonts } from "./fonts";
 export const lightTheme = {
   colors: {
     background: colors.white,
-    primary: colors.red,
+    primary: colors.paprika,
+    // Solid buttons and pills: Paprika, lit from above.
+    primaryGradient: "linear-gradient(180deg, #D23F27, #B3301B)",
+    // Tinted fill for secondary primary actions (e.g. Save on feed cards),
+    // with its text colour.
+    primarySoft: "#FCE6E0",
+    onPrimarySoft: "#9C2A16",
     destructive: "#FF3B30",
     text: colors.black,
     textSecondary: "rgba(0, 0, 0, 0.5)",
@@ -24,7 +30,11 @@ export const lightTheme = {
 export const darkTheme = {
   colors: {
     background: colors.black,
-    primary: colors.red,
+    // Lifted a little so it holds contrast on the dark background.
+    primary: "#E0533B",
+    primaryGradient: "linear-gradient(180deg, #E8624A, #CC4530)",
+    primarySoft: "rgba(224, 83, 59, 0.22)",
+    onPrimarySoft: "#FF9C86",
     destructive: "#FF453A",
     text: colors.white,
     textSecondary: "rgba(255, 255, 255, 0.6)",

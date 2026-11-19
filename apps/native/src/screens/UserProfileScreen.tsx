@@ -62,6 +62,11 @@ import { BackButton } from "@/components/buttons/BackButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 import {
+  FEED_CARD_INSET,
+  FeedSeparator,
+} from "@/components/feed/FeedCardParts";
+import { useAddRecipe } from "@/features/add-recipe/AddRecipeProvider";
+import {
   createRecipeImportId,
   useRecipeImport,
 } from "@/features/recipe-import/RecipeImportProvider";
@@ -80,7 +85,6 @@ const ThemedActivityIndicator = withUnistyles(ActivityIndicator, (theme) => ({
 }));
 const ThemedFlashList = withUnistyles(FlashList<ActivityFeedListItem>);
 const HEADER_HEIGHT = 52;
-const HORIZONTAL_PADDING = 20;
 const AVATAR_SIZE = 100;
 const AVATAR_PREVIEW_SIZE = 220;
 const AVATAR_PREVIEW_ACTION_GAP = 20;
@@ -91,7 +95,7 @@ export const UserProfileScreen = () => {
   const route = useRoute<UserProfileScreenRoute>();
   const navigation = useNavigation();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const feedImageWidth = Math.max(windowWidth - HORIZONTAL_PADDING * 2, 1);
+  const feedImageWidth = Math.max(windowWidth - FEED_CARD_INSET * 2, 1);
   const feedImagePreset = useMemo(
     () => selectFeedImagePreset(feedImageWidth),
     [feedImageWidth],
@@ -99,6 +103,7 @@ export const UserProfileScreen = () => {
   const { userId } = route.params;
   const importRecipeMutation = useImportRecipe();
   const { submitImport } = useRecipeImport();
+  const { openAddMenu, notifyImportStarted } = useAddRecipe();
   const session = useSessionContext();
   const { requireSmartImport } = useSubscription();
 
@@ -515,10 +520,6 @@ export const UserProfileScreen = () => {
     avatarTransitionProgress,
   ]);
 
-  const navigateToAddRecipeTab = useCallback(() => {
-    navigation.navigate("Tabs", { screen: "Add recipe" });
-  }, [navigation]);
-
   const sourceImportIdsRef = useRef(new Map<string, string>());
 
   const handleImportRecipe = useCallback(
@@ -526,7 +527,7 @@ export const UserProfileScreen = () => {
       try {
         const allowed = await requireSmartImport();
         if (!allowed) {
-          navigateToAddRecipeTab();
+          openAddMenu();
           return;
         }
 
@@ -539,7 +540,7 @@ export const UserProfileScreen = () => {
           source: { type: "url", value: sourceUrl },
         });
         sourceImportIdsRef.current.delete(sourceUrl);
-        navigateToAddRecipeTab();
+        notifyImportStarted();
       } catch (error) {
         alertApiError("Import Failed", error, {
           operation: "recipeImport.create",
@@ -547,7 +548,7 @@ export const UserProfileScreen = () => {
         });
       }
     },
-    [navigateToAddRecipeTab, requireSmartImport, submitImport],
+    [notifyImportStarted, openAddMenu, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(
@@ -637,7 +638,6 @@ export const UserProfileScreen = () => {
           onImportRecipePress={handleImportExistingRecipe}
           currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
-          sourceDescription={item._display.sourceDescription}
           imagePreset={feedImagePreset}
         />
       );
@@ -976,7 +976,7 @@ export const UserProfileScreen = () => {
             onEndReachedThreshold={0.5}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <VSpace size={16} />}
+            ItemSeparatorComponent={FeedSeparator}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -1204,6 +1204,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 30,
     borderRadius: 15,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderWidth: 3,
     borderColor: theme.colors.background,
     justifyContent: "center",
@@ -1396,6 +1397,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: AVATAR_PREVIEW_ACTION_HEIGHT,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",

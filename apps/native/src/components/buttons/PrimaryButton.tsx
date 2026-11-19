@@ -36,6 +36,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   disabled: {
     opacity: 0.5,

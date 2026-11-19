@@ -444,6 +444,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   submitButton: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderRadius: 999,
     paddingVertical: 16,
     alignItems: "center",

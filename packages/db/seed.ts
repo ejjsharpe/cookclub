@@ -1319,7 +1319,9 @@ async function seedActivityFeed(
       "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800",
       "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800",
     ],
-    ["https://images.unsplash.com/photo-1482049016823-2e42b83c6cf3?w=800"],
+    [
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Fluffy_pancakes_%2815052252793%29.jpg/1280px-Fluffy_pancakes_%2815052252793%29.jpg",
+    ],
     [
       "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800",
       "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800",

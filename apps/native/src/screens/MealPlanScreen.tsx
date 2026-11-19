@@ -743,6 +743,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 36,
     borderRadius: 18,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.18,

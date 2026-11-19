@@ -42,6 +42,17 @@ vi.mock("../../schemas", () => ({
     recipeId: "recipe_images.recipe_id",
     index: "recipe_images.index",
   },
+  recipeTags: {
+    _name: "recipe_tags",
+    id: "recipe_tags.id",
+    recipeId: "recipe_tags.recipe_id",
+    tagId: "recipe_tags.tag_id",
+  },
+  tags: {
+    _name: "tags",
+    id: "tags.id",
+    name: "tags.name",
+  },
 }));
 
 vi.mock("../moderation", () => ({
@@ -69,6 +80,7 @@ function createMockDb(results: Record<string, unknown[]>) {
           rows = results[table._name ?? ""] ?? [];
           return query;
         }),
+        innerJoin: vi.fn(() => query),
         where: vi.fn(() => query),
         orderBy: vi.fn(() => query),
         then: (
@@ -138,5 +150,69 @@ describe("hydrateActivityIds", () => {
     expect(items).toHaveLength(sourceTypes.length);
     expect(items.map((item) => item.recipe.sourceType)).toEqual(sourceTypes);
     expect(items.every((item) => item.type === "recipe_import")).toBe(true);
+  });
+
+  it("adds total time and up to two tags to feed recipes", async () => {
+    const createdAt = new Date("2026-08-20T12:00:00.000Z");
+    const db = createMockDb({
+      activity_events: [1, 2].map((id) => ({
+        id,
+        type: "recipe_import",
+        userId: "owner-1",
+        recipeId: id,
+        likeCount: 0,
+        commentCount: 0,
+        createdAt,
+      })),
+      recipes: [
+        {
+          id: 1,
+          ownerId: "owner-1",
+          name: "Pad thai",
+          sourceUrl: "https://example.com/pad-thai",
+          sourceType: "url",
+          originalOwnerId: null,
+          prepTime: 10,
+          cookTime: 15,
+          totalTime: null,
+        },
+        {
+          id: 2,
+          ownerId: "owner-1",
+          name: "Toast",
+          sourceUrl: null,
+          sourceType: "manual",
+          originalOwnerId: null,
+          prepTime: null,
+          cookTime: null,
+          totalTime: null,
+        },
+      ],
+      recipe_tags: [
+        { recipeId: 1, name: "Noodles" },
+        { recipeId: 1, name: "Thai" },
+        { recipeId: 1, name: "Quick" },
+      ],
+      user: [
+        {
+          id: "owner-1",
+          name: "Recipe Owner",
+          username: "owner",
+          image: null,
+          banned: false,
+          subscriptionTier: "free",
+        },
+      ],
+      recipe_images: [],
+      activity_likes: [],
+    });
+
+    const items = await hydrateActivityIds(db as never, [1, 2], "viewer-1");
+
+    expect(items[0]?.recipe).toMatchObject({
+      totalTime: 25,
+      tags: ["Noodles", "Thai"],
+    });
+    expect(items[1]?.recipe).toMatchObject({ totalTime: null, tags: [] });
   });
 });

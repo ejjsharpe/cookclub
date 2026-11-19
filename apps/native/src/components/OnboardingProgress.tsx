@@ -46,6 +46,7 @@ const styles = StyleSheet.create((theme) => ({
   fill: {
     height: "100%",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderRadius: BAR_HEIGHT / 2,
   },
 }));

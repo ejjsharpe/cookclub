@@ -3563,6 +3563,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   emptyHeroButtonPrimary: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderColor: theme.colors.primary,
   },
   emptyHeroButtonIcon: {
@@ -3986,6 +3987,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 14,
     borderRadius: 17,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     justifyContent: "center",
   },
   nutritionRetryText: {
@@ -4034,6 +4036,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 50,
     borderRadius: 25,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -4052,6 +4055,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   importActionButton: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   personaliseActionButton: {
     backgroundColor: theme.colors.inputBackground,
@@ -4088,6 +4092,7 @@ const styles = StyleSheet.create((theme) => ({
     height: 36,
     borderRadius: 18,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     justifyContent: "center",
     alignItems: "center",
     flexShrink: 0,
@@ -4112,10 +4117,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.inputBackground,
   },
   authorLabel: {
-    fontSize: 11,
+    fontSize: 13,
     color: theme.colors.textSecondary,
     fontFamily: theme.fonts.semiBold,
-    textTransform: "uppercase",
   },
   authorName: {
     fontSize: 15,
@@ -4440,6 +4444,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
     height: 50,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderRadius: 25,
   },
   buttonDisabled: {

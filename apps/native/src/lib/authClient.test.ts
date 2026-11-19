@@ -33,7 +33,7 @@ describe("authClient", () => {
 
   it("gets cookies from the initialized auth client", async () => {
     const plugin = { id: "expo", getActions: mocks.getActions };
-    const clientGetCookie = vi.fn(() => "session=cookie");
+    const clientGetCookie = vi.fn(async () => "session=cookie");
     mocks.expoClient.mockReturnValue(plugin);
     mocks.createAuthClient.mockReturnValue({ getCookie: clientGetCookie });
 
@@ -43,7 +43,7 @@ describe("authClient", () => {
       expect.objectContaining({ plugins: [plugin] }),
     );
     expect(mocks.getActions).not.toHaveBeenCalled();
-    expect(getAuthCookie()).toBe("session=cookie");
+    await expect(getAuthCookie()).resolves.toBe("session=cookie");
     expect(clientGetCookie).toHaveBeenCalledOnce();
   });
 });

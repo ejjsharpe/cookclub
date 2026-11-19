@@ -79,6 +79,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   toggleButtonActive: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,

@@ -12,9 +12,9 @@ import {
   updatePendingShareIntent,
 } from "./pendingShareIntent";
 
+import { useAddRecipe } from "@/features/add-recipe/AddRecipeProvider";
 import { useIsSignedIn } from "@/lib/signedInContext";
 import { useSubscription } from "@/lib/subscription";
-import { navigationRef } from "@/navigation/navigationRef";
 import { detectPendingShareIntent } from "@/utils/shareIntent";
 
 export function ShareIntentImportHandler() {
@@ -26,11 +26,7 @@ export function ShareIntentImportHandler() {
   const capturedShareRef = useRef(false);
   const attemptedPendingIdRef = useRef<string | null>(null);
 
-  const navigateToImports = useCallback(() => {
-    if (navigationRef.isReady()) {
-      navigationRef.navigate("Tabs", { screen: "Add recipe" });
-    }
-  }, []);
+  const { notifyImportStarted } = useAddRecipe();
 
   const canUseSmartImport = useCallback(async () => {
     if (isPro || (status?.smartImports.remaining ?? 0) > 0) return true;
@@ -89,13 +85,13 @@ export function ShareIntentImportHandler() {
       }
 
       clearPendingShareIntent(record.id);
-      navigateToImports();
+      notifyImportStarted();
       return true;
     },
     [
       canUseSmartImport,
       isSignedIn,
-      navigateToImports,
+      notifyImportStarted,
       presentPaywall,
       submitImport,
       uploadImportSource,

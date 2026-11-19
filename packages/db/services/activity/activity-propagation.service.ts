@@ -11,6 +11,8 @@ import {
   user,
   recipes,
   recipeImages,
+  recipeTags,
+  tags,
 } from "../../schemas";
 import { getBlockedUserIds } from "../moderation";
 import { publicSubscriptionTierSqlForUserTable } from "../subscription";
@@ -103,6 +105,9 @@ export async function hydrateActivityIds(
             sourceUrl: recipes.sourceUrl,
             sourceType: recipes.sourceType,
             originalOwnerId: recipes.originalOwnerId,
+            prepTime: recipes.prepTime,
+            cookTime: recipes.cookTime,
+            totalTime: recipes.totalTime,
           })
           .from(recipes)
           .where(
@@ -160,6 +165,24 @@ export async function hydrateActivityIds(
     if (!recipeImageMap.has(img.recipeId)) {
       recipeImageMap.set(img.recipeId, toPublicImageAsset(img));
     }
+  }
+
+  // Batch fetch tags (first two per recipe, in the order they were added)
+  const FEED_TAG_LIMIT = 2;
+  const tagRows =
+    recipeIds.length > 0
+      ? await db
+          .select({ recipeId: recipeTags.recipeId, name: tags.name })
+          .from(recipeTags)
+          .innerJoin(tags, eq(recipeTags.tagId, tags.id))
+          .where(inArray(recipeTags.recipeId, recipeIds))
+          .orderBy(recipeTags.recipeId, recipeTags.id)
+      : [];
+  const recipeTagMap = new Map<number, string[]>();
+  for (const row of tagRows) {
+    const list = recipeTagMap.get(row.recipeId) ?? [];
+    if (list.length < FEED_TAG_LIMIT) list.push(row.name);
+    recipeTagMap.set(row.recipeId, list);
   }
 
   // Batch fetch cooking reviews for review activities
@@ -242,6 +265,11 @@ export async function hydrateActivityIds(
     if (!recipe) continue;
 
     const recipeImage = recipeImageMap.get(recipe.id) ?? null;
+    const summedTime = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
+    const recipeExtras = {
+      totalTime: recipe.totalTime ?? (summedTime > 0 ? summedTime : null),
+      tags: recipeTagMap.get(recipe.id) ?? [],
+    };
 
     // Build recipe metadata
     const sourceType = recipe.sourceType as SourceType;
@@ -254,6 +282,7 @@ export async function hydrateActivityIds(
         ownerId: recipe.ownerId,
         name: recipe.name,
         image: recipeImage,
+        ...recipeExtras,
         sourceType: "url",
         sourceUrl: recipe.sourceUrl,
         sourceDomain: sourceDomain ?? recipe.sourceUrl,
@@ -278,6 +307,7 @@ export async function hydrateActivityIds(
         ownerId: recipe.ownerId,
         name: recipe.name,
         image: recipeImage,
+        ...recipeExtras,
         sourceType: "user",
         originalOwner: publicOriginalOwner,
       };
@@ -287,6 +317,7 @@ export async function hydrateActivityIds(
         ownerId: recipe.ownerId,
         name: recipe.name,
         image: recipeImage,
+        ...recipeExtras,
         sourceType: sourceType === "url" ? "manual" : sourceType,
       };
     }

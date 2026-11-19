@@ -31,7 +31,8 @@ export const authClient = createAuthClient({
 // are identical, so retain the action added when createAuthClient initializes
 // the plugin without invoking the plugin lifecycle manually.
 const expoAuthClient = authClient as typeof authClient & {
-  getCookie: () => string;
+  // Async since Better Auth Expo 1.7, which reads cookies via getItemAsync.
+  getCookie: () => Promise<string>;
 };
 
 export const getAuthCookie = () => expoAuthClient.getCookie();

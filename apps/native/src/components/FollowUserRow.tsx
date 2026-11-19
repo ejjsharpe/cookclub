@@ -24,6 +24,8 @@ interface FollowUserRowProps {
   isFollowing: boolean;
   onUserPress?: () => void;
   showFollowButton?: boolean;
+  /** Replaces the @username line, e.g. "@sam · 12 recipes". */
+  subtitle?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -32,6 +34,7 @@ export function FollowUserRow({
   isFollowing: isFollowingServer,
   onUserPress,
   showFollowButton = true,
+  subtitle,
   style,
 }: FollowUserRowProps) {
   const [optimisticFollowing, setOptimisticFollowing] = useState<
@@ -80,12 +83,12 @@ export function FollowUserRow({
           subscriptionTier={user.subscriptionTier}
         />
         <View style={styles.nameContainer}>
-          <Text type="heading" numberOfLines={1}>
+          <Text type="subheadline" numberOfLines={1} style={styles.name}>
             {user.name}
           </Text>
-          {user.username ? (
-            <Text type="bodyFaded" numberOfLines={1} style={styles.username}>
-              @{user.username}
+          {(subtitle ?? user.username) ? (
+            <Text type="footnote" numberOfLines={1} style={styles.username}>
+              {subtitle ?? `@${user.username}`}
             </Text>
           ) : null}
         </View>
@@ -119,8 +122,8 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     minHeight: 64,
-    paddingVertical: 8,
-    position: "relative",
+    paddingVertical: 10,
+    gap: 12,
   },
   userInfo: {
     flex: 1,
@@ -130,32 +133,36 @@ const styles = StyleSheet.create((theme) => ({
   },
   nameContainer: {
     flex: 1,
+    gap: 1,
+  },
+  name: {
+    fontSize: 16,
+    fontFamily: theme.fonts.bold,
   },
   username: {
-    fontSize: 13,
-    marginTop: 1,
+    color: theme.colors.textSecondary,
   },
+  // Follow is a soft Paprika pill; Following steps back to grey so a list of
+  // people you already follow stays calm.
   followButton: {
-    minHeight: 30,
+    height: 32,
+    minWidth: 88,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primarySoft,
   },
   followingButton: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.inputBackground,
   },
   followButtonText: {
-    color: theme.colors.buttonText,
-    fontFamily: theme.fonts.semiBold,
-    fontSize: 13,
+    color: theme.colors.onPrimarySoft,
+    fontFamily: theme.fonts.bold,
+    fontSize: 14,
     lineHeight: 18,
   },
   followingButtonText: {
-    color: theme.colors.text,
+    color: theme.colors.textSecondary,
   },
 }));
