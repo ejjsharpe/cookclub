@@ -1,5 +1,10 @@
 import { useState, useMemo, useRef } from "react";
-import { View, TextInput, TouchableOpacity } from "react-native";
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  type TextInputInstance,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { VSpace } from "./Space";
@@ -36,7 +41,7 @@ export const AutocompleteTagSelector = ({
 }: Props) => {
   const [searchText, setSearchText] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
 
   const { data: allTags = [] } = useUserTags();
   const normalizedSearchText = normalizeTagName(searchText);

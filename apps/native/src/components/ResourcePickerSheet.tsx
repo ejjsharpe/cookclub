@@ -12,6 +12,7 @@ import {
   ScrollView,
   TextInput,
   View,
+  type TextInputInstance,
 } from "react-native";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
@@ -147,7 +148,7 @@ export const ResourcePickerSheet = forwardRef<
   ) => {
     const theme = UnistylesRuntime.getTheme();
     const sheetRef = useRef<TrueSheet>(null);
-    const inputRef = useRef<TextInput>(null);
+    const inputRef = useRef<TextInputInstance>(null);
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [newName, setNewName] = useState("");
     const [resourceToDelete, setResourceToDelete] = useState<number | null>(

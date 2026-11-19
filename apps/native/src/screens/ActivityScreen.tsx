@@ -19,10 +19,10 @@ import {
   FlatList,
   Keyboard,
   Pressable,
-  TextInput,
   View,
   useWindowDimensions,
   type ListRenderItemInfo,
+  type TextInputInstance,
   type TextInputSelectionChangeEvent,
 } from "react-native";
 import {
@@ -119,7 +119,7 @@ export const ActivityScreen = () => {
   const insets = UnistylesRuntime.insets;
   const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
   const listRef = useAnimatedRef<FlatList<CommentListItem>>();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
   const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -898,7 +898,7 @@ export const ActivityScreen = () => {
         </View>
       ) : null}
     </View>
-  ) : null;
+  ) : undefined;
 
   const canSubmit = commentText.trim().length > 0 && !isCreatingComment;
 
@@ -928,7 +928,7 @@ export const ActivityScreen = () => {
                   No comments yet. Be the first to comment.
                 </Text>
               </View>
-            ) : null
+            ) : undefined
           }
           contentContainerStyle={[
             styles.listContent,

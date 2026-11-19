@@ -27,7 +27,6 @@
       ],
       ["expo-font"],
       "expo-web-browser",
-      "react-native-edge-to-edge",
       [
         "./plugins/withShareExtensionReleaseSettings",
         {

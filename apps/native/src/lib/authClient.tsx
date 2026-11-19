@@ -8,9 +8,15 @@ import { getAuthBaseUrl } from "./runtimeConfig";
 const expoAuthPlugin = expoClient({
   scheme: "cookclub",
   storagePrefix: "cookclub",
+  // Better Auth Expo 1.7+ reads and writes through both the sync and async
+  // methods, so both are backed by the same MMKV store.
   storage: {
-    getItem: (key) => storage.getString(key) ?? null,
-    setItem: (key, val) => storage.set(key, val),
+    getItem: (key: string) => storage.getString(key) ?? null,
+    setItem: (key: string, val: string) => storage.set(key, val),
+    getItemAsync: async (key: string) => storage.getString(key) ?? null,
+    setItemAsync: async (key: string, val: string) => {
+      storage.set(key, val);
+    },
   },
 });
 

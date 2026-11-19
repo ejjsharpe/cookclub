@@ -336,7 +336,7 @@ export const RecipeBrowserSheet = forwardRef<
               <View style={styles.footer}>
                 <ActivityIndicator />
               </View>
-            ) : null
+            ) : undefined
           }
         />
       );

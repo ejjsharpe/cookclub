@@ -20,6 +20,10 @@ export default defineConfig([
     files: ["apps/native/**/*.{js,jsx,ts,tsx}"],
     extends: [nativeConfig],
     rules: {
+      // TypeScript already validates namespace members, and this rule can't
+      // parse the SWC-compiled builds of Expo SDK 58 modules (false positives
+      // on e.g. Notifications.AndroidImportance).
+      "import/namespace": "off",
       "react-hooks/preserve-manual-memoization": "off",
       "react-hooks/refs": "off",
       "react-hooks/set-state-in-effect": "off",

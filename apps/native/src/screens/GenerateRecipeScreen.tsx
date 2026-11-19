@@ -342,7 +342,7 @@ const GenerateRecipeScreen = () => {
                     : "Thinking through the next step..."}
                 </Text>
               </Animated.View>
-            ) : null
+            ) : undefined
           }
           onContentSizeChange={() => scrollToBottom(true)}
           onLayout={() => scrollToBottom(false)}

@@ -14,7 +14,8 @@ import {
   ActivityIndicator,
   Dimensions,
   useWindowDimensions,
-  type TextInput,
+  type TextInputInstance,
+  type ViewInstance,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -242,7 +243,7 @@ const SearchUserRow = memo(
 export const HomeScreen = () => {
   const browseScrollRef = useRef<FlashListRef<ActivityFeedListItem>>(null);
   const searchListRef = useRef<FlatList>(null);
-  const searchBarRef = useRef<View>(null);
+  const searchBarRef = useRef<ViewInstance>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
   const loadLatestTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -274,7 +275,7 @@ export const HomeScreen = () => {
   // Track the search bar's Y position relative to the screen
   const searchBarY = useSharedValue(0);
   const searchBarMeasuredY = useRef(0);
-  const searchInputRef = useRef<TextInput>(null);
+  const searchInputRef = useRef<TextInputInstance>(null);
 
   // Animation progress (0 = browse, 1 = search)
   const searchProgress = useSharedValue(0);

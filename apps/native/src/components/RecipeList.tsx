@@ -1,14 +1,15 @@
-import {
-  AnimatedFlashList,
-  type ListRenderItemInfo,
-} from "@shopify/flash-list";
+import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { useMemo, useRef, useImperativeHandle, forwardRef } from "react";
 import { View, ActivityIndicator, RefreshControl } from "react-native";
+import Animated from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
 
 import { VSpace } from "./Space";
 
 import type { Recipe } from "@/hooks/useRecipeData";
+
+// Typed per item: flash-list's bundled AnimatedFlashList loses its prop types with Reanimated 4.7.
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList<Recipe>);
 
 const RecipeSeparator = () => <View style={styles.recipeItemGap} />;
 const keyExtractor = (item: Recipe) => item.id.toString();

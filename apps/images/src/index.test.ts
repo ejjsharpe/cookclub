@@ -154,14 +154,14 @@ function createEnv(bucket = createBucket()) {
       R2_BUCKET_NAME: "bucket",
       R2_ACCESS_KEY_ID: "access-key",
       R2_SECRET_ACCESS_KEY: "secret-key",
-    },
+    } as unknown as Cloudflare.Env,
     bucket,
     transformer,
   };
 }
 
 function createService(env: ReturnType<typeof createEnv>["env"]) {
-  return new ImageService({} as ExecutionContext, env as Cloudflare.Env);
+  return new ImageService({} as ExecutionContext, env);
 }
 
 afterEach(() => {
@@ -179,12 +179,12 @@ describe("public image worker", () => {
 
     const health = await worker.fetch(
       new Request("https://images.example.com/health"),
-      env as Cloudflare.Env,
+      env,
       {} as ExecutionContext,
     );
     const unsupported = await worker.fetch(
       new Request("https://images.example.com/photo.jpg?width=100"),
-      env as Cloudflare.Env,
+      env,
       {} as ExecutionContext,
     );
 
@@ -211,7 +211,7 @@ describe("public image worker", () => {
       new Request(
         "https://images.example.com/recipes/covers/recipe-1/photo.jpg",
       ),
-      env as Cloudflare.Env,
+      env,
       {} as ExecutionContext,
     );
 
@@ -231,7 +231,7 @@ describe("public image worker", () => {
 
     const response = await worker.fetch(
       new Request("https://images.example.com/missing.jpg"),
-      env as Cloudflare.Env,
+      env,
       {} as ExecutionContext,
     );
 
@@ -250,7 +250,7 @@ describe("public image worker", () => {
       new Request("https://images.example.com/photo.jpg?preset=feed_720", {
         headers: { Accept: "image/avif,image/webp,image/*" },
       }),
-      env as Cloudflare.Env,
+      env,
       {} as ExecutionContext,
     );
 
@@ -286,7 +286,7 @@ describe("public image worker", () => {
 
     const response = await worker.fetch(
       new Request("https://images.example.com/photo.jpg?preset=feed_720"),
-      env as Cloudflare.Env,
+      env,
       {} as ExecutionContext,
     );
 
@@ -326,11 +326,7 @@ describe("image cleanup schedule", () => {
       });
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await worker.scheduled(
-      {} as ScheduledEvent,
-      env as Cloudflare.Env,
-      {} as ExecutionContext,
-    );
+    await worker.scheduled({} as ScheduledEvent, env, {} as ExecutionContext);
 
     expect(bucket.list).toHaveBeenNthCalledWith(1, {
       prefix: "temp/",

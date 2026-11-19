@@ -3,10 +3,11 @@ import {
   FlashList,
   type FlashListRef,
   type ListRenderItemInfo,
+  type ViewToken,
 } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, TouchableOpacity, Alert, type ViewToken } from "react-native";
+import { View, TouchableOpacity, Alert } from "react-native";
 import Animated, {
   Easing,
   interpolate,
@@ -373,7 +374,7 @@ export const MealPlanScreen = () => {
   }).current;
 
   const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    ({ viewableItems }: { viewableItems: ViewToken<MealPlanListItem>[] }) => {
       const todayDateString = todayDateStringRef.current;
       if (!todayDateString) return;
 

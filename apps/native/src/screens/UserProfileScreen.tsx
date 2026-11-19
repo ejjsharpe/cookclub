@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   Share,
   useWindowDimensions,
+  type ViewInstance,
 } from "react-native";
 import Animated, {
   Easing,
@@ -102,8 +103,8 @@ export const UserProfileScreen = () => {
   const { requireSmartImport } = useSubscription();
 
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
-  const profileBlurTargetRef = useRef<View>(null);
-  const avatarRef = useRef<View>(null);
+  const profileBlurTargetRef = useRef<ViewInstance>(null);
+  const avatarRef = useRef<ViewInstance>(null);
   const isDismissingAvatarPreviewRef = useRef(false);
   const shouldChangeAvatarAfterDismissRef = useRef(false);
   const confirmedFollowingRef = useRef<boolean | null>(null);

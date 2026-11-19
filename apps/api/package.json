@@ -27,17 +27,17 @@
     "@repo/trpc": "workspace:*",
     "@sentry/cloudflare": "10.69.0",
     "@sentry/hono": "10.69.0",
-    "hono": "4.12.33"
+    "hono": "4.13.19"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20260801.1",
+    "@cloudflare/workers-types": "5.20261119.1",
     "@repo/tsconfig": "workspace:*",
     "@sentry/cli": "^2",
     "@types/node": "22.20.1",
     "typescript": "6.0.3",
     "vitest": "4.1.7",
-    "wait-on": "9.0.10",
-    "wrangler": "4.118.0"
+    "wait-on": "9.5.1",
+    "wrangler": "4.165.0"
   },
   "nx": {
     "tags": [

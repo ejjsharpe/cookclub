@@ -11,8 +11,9 @@ import {
   Text,
   TextInput,
   View,
+  type ScrollEvent,
+  type TextInputInstance,
   type TextInputProps,
-  type TextInputScrollEvent,
 } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -22,7 +23,7 @@ type MentionTextInputProps = Omit<
   TextInputProps,
   "children" | "style" | "value"
 > & {
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
   value: string;
   taggedUsernames: ReadonlySet<string>;
 };
@@ -63,7 +64,7 @@ export function MentionTextInput({
   }, [taggedUsernames, value]);
 
   const handleScroll = useCallback(
-    (event: TextInputScrollEvent) => {
+    (event: ScrollEvent) => {
       setScrollOffsetY(event.nativeEvent.contentOffset.y);
       onScroll?.(event);
     },
