@@ -2,7 +2,7 @@
  * cookclub icons: drawn on a 24pt grid at SF Symbols semibold weight (2.2
  * stroke). Each has an outline (default) and filled (selected) form.
  *
- * The first eight are the signature set. The rest are everyday UI icons
+ * The first four are the signature set (the tab icons). The rest are everyday UI icons
  * (search, notifications, like, comment) drawn at the same weight so they
  * sit evenly next to each other.
  *
@@ -33,19 +33,6 @@ const PLAN_DOTS = [
 const CART_BODY =
   "M5.5 6h14.2c.7 0 1.2.7 1 1.3l-1.5 5.9a2.2 2.2 0 0 1-2.1 1.7H9a2.2 2.2 0 0 1-2.1-1.7Z";
 
-const POT_BODY =
-  "M4.5 12h15v4.5a4.5 4.5 0 0 1-4.5 4.5H9a4.5 4.5 0 0 1-4.5-4.5Z";
-const POT_STEAM =
-  "M9.5 3.5c-.7.8-.7 1.7 0 2.5s.7 1.7 0 2.5M14.5 3.5c-.7.8-.7 1.7 0 2.5s.7 1.7 0 2.5";
-
-const BOOKMARK =
-  "M7 3h10a2 2 0 0 1 2 2v14.6a.8.8 0 0 1-1.2.7L12 17l-5.8 3.3a.8.8 0 0 1-1.2-.7V5a2 2 0 0 1 2-2Z";
-
-const SCAN_FRAME =
-  "M3 7.5v-2A2.5 2.5 0 0 1 5.5 3h2M16.5 3h2A2.5 2.5 0 0 1 21 5.5v2M7.5 21h-2A2.5 2.5 0 0 1 3 18.5v-2";
-const SPARK =
-  "M18.5 14.5c.2 1.4.9 2.1 2.5 2.5-1.6.3-2.3 1-2.5 2.5-.2-1.5-.9-2.2-2.5-2.5 1.6-.4 2.3-1.1 2.5-2.5Z";
-
 const BELL = "M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9";
 const HEART_LARGE =
   "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
@@ -71,22 +58,6 @@ export const SIGNATURE_ICONS = {
   shop: {
     outline: `<g ${STROKE}><path d="M2.5 3.5h1.6c.5 0 .9.3 1 .8L5.5 6"/><path d="${CART_BODY}"/><circle cx="9.5" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></g>`,
     filled: `<g ${STROKE}><path d="M2.5 3.5h1.6c.5 0 .9.3 1 .8L5.5 6"/><path d="${CART_BODY}" fill="currentColor"/><circle cx="9.5" cy="19.5" r="1.5" fill="currentColor"/><circle cx="17" cy="19.5" r="1.5" fill="currentColor"/></g>`,
-  },
-  cook: {
-    outline: `<g ${STROKE}><path d="${POT_BODY}"/><path d="M2.5 12h19"/><path d="${POT_STEAM}"/></g>`,
-    filled: `<g ${STROKE}><path d="${POT_BODY}" fill="currentColor"/><path d="M2.5 12h19"/><path d="${POT_STEAM}"/></g>`,
-  },
-  save: {
-    outline: `<g ${STROKE}><path d="${BOOKMARK}"/></g>`,
-    filled: `<g ${STROKE}><path d="${BOOKMARK}" fill="currentColor"/></g>`,
-  },
-  smartImport: {
-    outline: `<g ${STROKE}><path d="${SCAN_FRAME}"/><path d="M8 9h8M8 12.5h5"/><path d="${SPARK}"/></g>`,
-    filled: `<g ${STROKE}><path d="${SCAN_FRAME}"/><path d="M8 9h8M8 12.5h5"/><path d="${SPARK}" fill="currentColor"/></g>`,
-  },
-  timer: {
-    outline: `<g ${STROKE}><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V10M10 2.5h4M12 2.5V6M18.5 6.5l1.2-1.2"/></g>`,
-    filled: `${mask("timer-hand", `<path d="M12 13.5V10" stroke="#000" stroke-width="2.2" stroke-linecap="round"/>`)}<g ${STROKE}><circle cx="12" cy="13.5" r="7.5" fill="currentColor" mask="url(#timer-hand)"/><path d="M10 2.5h4M12 2.5V6M18.5 6.5l1.2-1.2"/></g>`,
   },
 
   // ─── Everyday UI icons, matched to the signature weight ───────────────────

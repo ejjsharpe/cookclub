@@ -6,7 +6,7 @@ const PLACEHOLDER_COLOURS = [
   { background: "#E2F1E8", ink: "#1F6646" }, // sage
   { background: "#F8E3EC", ink: "#8A2352" }, // rose
   { background: "#FFF3C4", ink: "#5C4300" }, // butter
-  { background: "#FCE6E0", ink: "#9C2A16" }, // clay
+  { background: "#ECE6F7", ink: "#4A3A7A" }, // lavender
 ] as const;
 
 /** "Priya Shah" → "PS", "james" → "J". */
