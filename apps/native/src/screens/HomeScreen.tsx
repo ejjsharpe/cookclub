@@ -66,7 +66,6 @@ import {
   GlassSurface,
 } from "@/components/glass/Glass";
 import { SignatureIcon } from "@/components/icons/SignatureIcon";
-import { useAddRecipe } from "@/features/add-recipe/AddRecipeProvider";
 import {
   createRecipeImportId,
   useRecipeImport,
@@ -229,7 +228,6 @@ export const HomeScreen = () => {
   const importRecipeMutation = useImportRecipe();
   const blockUserMutation = useBlockUser();
   const { submitImport } = useRecipeImport();
-  const { openAddMenu, notifyImportStarted } = useAddRecipe();
   const session = useSessionContext();
   const { isPro, requireSmartImport } = useSubscription();
 
@@ -370,7 +368,7 @@ export const HomeScreen = () => {
       try {
         const allowed = await requireSmartImport();
         if (!allowed) {
-          openAddMenu();
+          navigation.navigate("Tabs", { screen: "Add recipe" });
           return;
         }
 
@@ -383,7 +381,7 @@ export const HomeScreen = () => {
           source: { type: "url", value: sourceUrl },
         });
         sourceImportIdsRef.current.delete(sourceUrl);
-        notifyImportStarted();
+        navigation.navigate("Tabs", { screen: "Add recipe" });
       } catch (error) {
         alertApiError("Import Failed", error, {
           operation: "recipeImport.create",
@@ -391,7 +389,7 @@ export const HomeScreen = () => {
         });
       }
     },
-    [notifyImportStarted, openAddMenu, requireSmartImport, submitImport],
+    [navigation, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(

@@ -65,7 +65,6 @@ import {
   FEED_CARD_INSET,
   FeedSeparator,
 } from "@/components/feed/FeedCardParts";
-import { useAddRecipe } from "@/features/add-recipe/AddRecipeProvider";
 import {
   createRecipeImportId,
   useRecipeImport,
@@ -103,7 +102,6 @@ export const UserProfileScreen = () => {
   const { userId } = route.params;
   const importRecipeMutation = useImportRecipe();
   const { submitImport } = useRecipeImport();
-  const { openAddMenu, notifyImportStarted } = useAddRecipe();
   const session = useSessionContext();
   const { requireSmartImport } = useSubscription();
 
@@ -527,7 +525,7 @@ export const UserProfileScreen = () => {
       try {
         const allowed = await requireSmartImport();
         if (!allowed) {
-          openAddMenu();
+          navigation.navigate("Tabs", { screen: "Add recipe" });
           return;
         }
 
@@ -540,7 +538,7 @@ export const UserProfileScreen = () => {
           source: { type: "url", value: sourceUrl },
         });
         sourceImportIdsRef.current.delete(sourceUrl);
-        notifyImportStarted();
+        navigation.navigate("Tabs", { screen: "Add recipe" });
       } catch (error) {
         alertApiError("Import Failed", error, {
           operation: "recipeImport.create",
@@ -548,7 +546,7 @@ export const UserProfileScreen = () => {
         });
       }
     },
-    [notifyImportStarted, openAddMenu, requireSmartImport, submitImport],
+    [navigation, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(

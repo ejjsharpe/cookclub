@@ -69,7 +69,6 @@ import {
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { Text } from "@/components/Text";
 import { FEED_CARD_INSET } from "@/components/feed/FeedCardParts";
-import { useAddRecipe } from "@/features/add-recipe/AddRecipeProvider";
 import {
   createRecipeImportId,
   useRecipeImport,
@@ -303,7 +302,6 @@ export const ActivityScreen = () => {
   const { mutate: blockUser } = useBlockUser();
   const { mutateAsync: importExistingRecipe } = useImportRecipe();
   const { submitImport } = useRecipeImport();
-  const { openAddMenu, notifyImportStarted } = useAddRecipe();
   const { requireSmartImport } = useSubscription();
 
   const flattenedComments = useMemo<CommentListItem[]>(
@@ -495,7 +493,7 @@ export const ActivityScreen = () => {
       try {
         const allowed = await requireSmartImport();
         if (!allowed) {
-          openAddMenu();
+          navigation.navigate("Tabs", { screen: "Add recipe" });
           return;
         }
 
@@ -508,7 +506,7 @@ export const ActivityScreen = () => {
           source: { type: "url", value: sourceUrl },
         });
         sourceImportIdsRef.current.delete(sourceUrl);
-        notifyImportStarted();
+        navigation.navigate("Tabs", { screen: "Add recipe" });
       } catch (error) {
         alertApiError("Import Failed", error, {
           operation: "recipeImport.create",
@@ -516,7 +514,7 @@ export const ActivityScreen = () => {
         });
       }
     },
-    [notifyImportStarted, openAddMenu, requireSmartImport, submitImport],
+    [navigation, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(
