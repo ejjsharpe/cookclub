@@ -15,13 +15,16 @@ import { neon } from "@neondatabase/serverless";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 const BUCKET = "cook-club-images-development";
 const IMAGE_PUBLIC_URL = (
   process.env.IMAGE_PUBLIC_URL ?? "http://localhost:8789"
 ).replace(/\/$/, "");
-const IMAGES_APP_DIR = resolve(__dirname, "../../../apps/images");
+// The images worker's Cloudflare account (its wrangler config's account_id).
+// Passed to wrangler directly so this package doesn't reach into the app.
+const CLOUDFLARE_ACCOUNT_ID =
+  process.env.CLOUDFLARE_ACCOUNT_ID ?? "46fa47bc2bba51d75383b4dfe6e3deb1";
 const TABLES = ["recipe_images", "cooking_review_images"] as const;
 
 const apply = process.argv.includes("--apply");
@@ -116,7 +119,10 @@ async function main() {
           "image/jpeg",
           "--remote",
         ],
-        { cwd: IMAGES_APP_DIR, stdio: "pipe" },
+        {
+          env: { ...process.env, CLOUDFLARE_ACCOUNT_ID },
+          stdio: "pipe",
+        },
       );
 
       for (const table of TABLES) {
