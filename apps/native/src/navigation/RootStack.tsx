@@ -16,6 +16,10 @@ import { BlockedUsersScreen } from "@/screens/BlockedUsersScreen";
 import { CollectionDetailScreen } from "@/screens/CollectionDetailScreen";
 import { CookModeScreen } from "@/screens/CookModeScreen";
 import { EmailVerificationScreen } from "@/screens/EmailVerificationScreen";
+import {
+  FIND_COOKS_SEARCH_BAR,
+  FindCooksScreen,
+} from "@/screens/FindCooksScreen";
 import { FollowsScreen } from "@/screens/FollowsScreen";
 import GenerateRecipeScreen from "@/screens/GenerateRecipeScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
@@ -61,6 +65,23 @@ const RootStack = createNativeStackNavigator({
         Settings: { screen: SettingsScreen },
         BlockedUsers: { screen: BlockedUsersScreen },
         Notifications: { screen: NotificationsScreen },
+        FindCooks: {
+          screen: FindCooksScreen,
+          options: ({ theme }) => ({
+            headerShown: true,
+            title: "Find cooks",
+            headerSearchBarOptions: {
+              ...FIND_COOKS_SEARCH_BAR,
+              tintColor: theme.colors.primary,
+            },
+            // The list runs under the glass bar and insets itself
+            // (contentInsetAdjustmentBehavior).
+            headerTransparent: true,
+            headerShadowVisible: false,
+            headerBackButtonDisplayMode: "minimal",
+            headerTitleStyle: { fontFamily: "Satoshi-Bold" },
+          }),
+        },
         Activity: {
           screen: ActivityScreen,
           linking: {

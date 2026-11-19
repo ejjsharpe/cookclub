@@ -6,6 +6,12 @@ export const lightTheme = {
   colors: {
     background: colors.white,
     primary: colors.red,
+    // Solid buttons and pills: the brand red, lit from above.
+    primaryGradient: "linear-gradient(180deg, #FF2E4C, #E00022)",
+    // Tinted fill for secondary primary actions (e.g. Save on feed cards),
+    // with its text colour.
+    primarySoft: "#FFE5E9",
+    onPrimarySoft: "#C2001E",
     destructive: "#FF3B30",
     text: colors.black,
     textSecondary: "rgba(0, 0, 0, 0.5)",
@@ -25,6 +31,9 @@ export const darkTheme = {
   colors: {
     background: colors.black,
     primary: colors.red,
+    primaryGradient: "linear-gradient(180deg, #FF2E4C, #E00022)",
+    primarySoft: "rgba(255, 0, 39, 0.22)",
+    onPrimarySoft: "#FF8A9B",
     destructive: "#FF453A",
     text: colors.white,
     textSecondary: "rgba(255, 255, 255, 0.6)",

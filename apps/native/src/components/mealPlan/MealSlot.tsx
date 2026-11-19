@@ -275,9 +275,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   mealLabel: {
     color: theme.colors.textTertiary,
-    textTransform: "uppercase",
-    fontSize: 10,
-    letterSpacing: 0.5,
+    fontSize: 13,
   },
   deleteActionContainer: {
     justifyContent: "center",

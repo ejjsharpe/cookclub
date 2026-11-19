@@ -5,6 +5,7 @@ import type { ImageSourcePropType } from "react-native";
 import { useUnistyles } from "react-native-unistyles";
 
 import type { TabParamList } from "@/navigation/navigationRef";
+import { signatureTabIcon } from "@/navigation/tabIcons";
 import { AddRecipeScreen } from "@/screens/AddRecipeScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
 import { MealPlanScreen } from "@/screens/MealPlanScreen";
@@ -13,13 +14,12 @@ import { ShoppingListScreen } from "@/screens/ShoppingListScreen";
 
 const Tab = createNativeBottomTabNavigator<TabParamList>();
 
+// The signature icons cover every tab except Add, which stays a system icon.
 const TAB_ICON_NAMES = {
-  Home: "home",
-  Recipes: "book",
   "Add recipe": "add-circle",
-  "Meal Plan": "calendar",
-  "Shopping List": "cart",
-} as const satisfies Record<keyof TabParamList, keyof typeof Ionicons.glyphMap>;
+} as const satisfies Partial<
+  Record<keyof TabParamList, keyof typeof Ionicons.glyphMap>
+>;
 
 type TabIconSources = Partial<Record<keyof TabParamList, ImageSourcePropType>>;
 
@@ -79,18 +79,14 @@ export const TabNavigator = () => {
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: tabIcons.Home
-            ? { type: "image", source: tabIcons.Home }
-            : undefined,
+          tabBarIcon: signatureTabIcon("home"),
         }}
       />
       <Tab.Screen
         name="Recipes"
         component={MyRecipesScreen}
         options={{
-          tabBarIcon: tabIcons.Recipes
-            ? { type: "image", source: tabIcons.Recipes }
-            : undefined,
+          tabBarIcon: signatureTabIcon("recipes"),
         }}
       />
       <Tab.Screen
@@ -108,9 +104,7 @@ export const TabNavigator = () => {
         component={MealPlanScreen}
         options={{
           tabBarLabel: "Plan",
-          tabBarIcon: tabIcons["Meal Plan"]
-            ? { type: "image", source: tabIcons["Meal Plan"] }
-            : undefined,
+          tabBarIcon: signatureTabIcon("plan"),
         }}
       />
       <Tab.Screen
@@ -118,9 +112,7 @@ export const TabNavigator = () => {
         component={ShoppingListScreen}
         options={{
           tabBarLabel: "Shop",
-          tabBarIcon: tabIcons["Shopping List"]
-            ? { type: "image", source: tabIcons["Shopping List"] }
-            : undefined,
+          tabBarIcon: signatureTabIcon("shop"),
         }}
       />
     </Tab.Navigator>

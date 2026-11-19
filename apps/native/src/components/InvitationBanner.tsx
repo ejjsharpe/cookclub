@@ -128,6 +128,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 10,
     borderRadius: theme.borderRadius.medium,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     alignItems: "center",
   },
   acceptText: {

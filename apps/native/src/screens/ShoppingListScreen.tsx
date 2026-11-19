@@ -1062,6 +1062,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 44,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1092,6 +1093,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 22,
     borderRadius: 11,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1148,6 +1150,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   checkboxChecked: {
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   checkIcon: {
     color: theme.colors.buttonText,

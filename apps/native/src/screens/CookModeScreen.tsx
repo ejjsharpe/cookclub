@@ -773,9 +773,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionName: {
     fontSize: 14,
-    textTransform: "uppercase",
     color: theme.colors.textSecondary,
-    letterSpacing: 0,
     fontFamily: theme.fonts.semiBold,
   },
   stepHeader: {
@@ -887,8 +885,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 13,
     lineHeight: 18,
     fontFamily: theme.fonts.semiBold,
-    textTransform: "uppercase",
-    letterSpacing: 0,
     marginTop: 10,
   },
   timerShortcuts: {
@@ -908,6 +904,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   timerShortcutButtonSelected: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   timerShortcutText: {
     color: theme.colors.text,
@@ -923,6 +920,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     borderCurve: "continuous",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -945,9 +943,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   ingredientsSectionTitle: {
     fontSize: 14,
-    textTransform: "uppercase",
     color: theme.colors.textSecondary,
-    letterSpacing: 0,
     fontFamily: theme.fonts.semiBold,
   },
   ingredientRow: {
@@ -961,6 +957,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 9,
     borderRadius: 4,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   ingredientText: {
     flex: 1,

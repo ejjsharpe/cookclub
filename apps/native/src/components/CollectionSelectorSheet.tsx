@@ -464,6 +464,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   createButtonDisabled: {
     opacity: 0.5,
@@ -500,9 +501,11 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
     height: 50,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderRadius: 25,
   },
   deleteSaveButton: {
+    backgroundImage: [],
     backgroundColor: "#ff3b30",
   },
   saveButtonDisabled: {

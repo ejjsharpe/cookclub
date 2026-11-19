@@ -201,6 +201,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   applyButton: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: theme.borderRadius.full,

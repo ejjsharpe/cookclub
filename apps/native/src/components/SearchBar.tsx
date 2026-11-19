@@ -1,5 +1,11 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { View, Text, TextInput, TouchableOpacity } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  type TextInputInstance,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Ionicons } from "@/components/Ionicons";
@@ -13,7 +19,7 @@ interface Props {
   onFocus?: () => void;
   onBlur?: () => void;
   autoFocus?: boolean;
-  ref?: RefObject<TextInput | null>;
+  ref?: RefObject<TextInputInstance | null>;
 }
 
 export function SearchBar({
@@ -25,7 +31,7 @@ export function SearchBar({
   autoFocus = false,
   ref,
 }: Props) {
-  const internalRef = useRef<TextInput>(null);
+  const internalRef = useRef<TextInputInstance>(null);
   const inputRef = ref ?? internalRef;
 
   useEffect(() => {

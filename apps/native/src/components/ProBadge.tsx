@@ -78,6 +78,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   solidBadge: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderColor: theme.colors.primary,
   },
   subtleIcon: {

@@ -198,5 +198,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 10,
     borderRadius: 5,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
 }));

@@ -1,7 +1,4 @@
-import {
-  AnimatedFlashList,
-  type ListRenderItemInfo,
-} from "@shopify/flash-list";
+import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import {
   useCallback,
   useMemo,
@@ -22,6 +19,11 @@ import type { CollectionWithMetadata } from "@/hooks/useCollectionData";
 // Special item type for the create collection button
 type CreateCollectionItem = { id: "create"; type: "create" };
 export type CollectionListItem = CollectionWithMetadata | CreateCollectionItem;
+
+// Typed per item: flash-list's bundled AnimatedFlashList loses its prop types with Reanimated 4.7.
+const AnimatedFlashList = Animated.createAnimatedComponent(
+  FlashList<CollectionListItem>,
+);
 
 const keyExtractor = (item: CollectionListItem) => item.id.toString();
 const getItemType = (item: CollectionListItem) =>

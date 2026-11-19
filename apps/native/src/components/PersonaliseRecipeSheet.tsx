@@ -209,6 +209,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   goalChipSelected: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderColor: theme.colors.primary,
   },
   goalIcon: {
@@ -259,6 +260,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   submitButtonText: {
     fontSize: 17,

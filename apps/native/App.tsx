@@ -162,10 +162,10 @@ function App() {
                   <SubscriptionProvider>
                     <PushNotificationsProvider>
                       <RecipeImportProvider>
-                        <ShareIntentImportHandler />
                         <GestureHandlerRootView style={styles.rootView}>
                           <CookTimerProvider>
                             <WelcomeOverlayProvider>
+                              <ShareIntentImportHandler />
                               <Navigation
                                 ref={navigationRef}
                                 key={navigationKey}

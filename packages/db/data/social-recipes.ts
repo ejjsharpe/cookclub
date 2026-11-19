@@ -285,7 +285,8 @@ export const socialRecipes: SocialRecipeData[] = [
       "Mix before drinking or enjoy layered",
       "Adjust sweetness to taste",
     ],
-    imageUrl: "https://images.unsplash.com/photo-1592318951566-70f6f0ac3c87",
+    imageUrl:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Dalgona_coffee_.jpg/1280px-Dalgona_coffee_.jpg",
     sourceUrl: "https://www.tiktok.com/@danielpark/video/7456789012345678901",
   },
 ];

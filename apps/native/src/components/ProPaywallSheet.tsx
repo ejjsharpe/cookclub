@@ -677,6 +677,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   activeIcon: {
     color: theme.colors.buttonText,
@@ -775,6 +776,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   valueBadgeText: {
     color: theme.colors.buttonText,
@@ -807,6 +809,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 12,
     borderRadius: 6,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   footerContainer: {
     backgroundColor: theme.colors.background,

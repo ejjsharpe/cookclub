@@ -58,6 +58,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   chipSelected: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderColor: theme.colors.primary,
   },
   chipText: {

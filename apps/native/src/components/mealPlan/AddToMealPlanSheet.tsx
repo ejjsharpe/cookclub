@@ -374,6 +374,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   dateChipSelected: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   dateChipDay: {
     fontSize: 13,
@@ -405,6 +406,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   mealTypeChipSelected: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   mealTypeText: {
     fontSize: 15,
@@ -423,6 +425,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
     height: 50,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderRadius: 25,
   },
   confirmButtonDisabled: {

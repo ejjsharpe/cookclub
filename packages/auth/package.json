@@ -12,10 +12,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@better-auth/expo": "1.6.26",
+    "@better-auth/expo": "1.7.26",
     "@repo/db": "workspace:*",
-    "better-auth": "1.6.25",
-    "resend": "6.18.1"
+    "better-auth": "1.7.26",
+    "resend": "6.39.0"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",

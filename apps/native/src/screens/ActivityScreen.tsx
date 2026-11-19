@@ -19,10 +19,10 @@ import {
   FlatList,
   Keyboard,
   Pressable,
-  TextInput,
   View,
   useWindowDimensions,
   type ListRenderItemInfo,
+  type TextInputInstance,
   type TextInputSelectionChangeEvent,
 } from "react-native";
 import {
@@ -68,6 +68,7 @@ import {
 } from "@/components/ReportContentSheet";
 import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { Text } from "@/components/Text";
+import { FEED_CARD_INSET } from "@/components/feed/FeedCardParts";
 import {
   createRecipeImportId,
   useRecipeImport,
@@ -119,7 +120,7 @@ export const ActivityScreen = () => {
   const insets = UnistylesRuntime.insets;
   const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
   const listRef = useAnimatedRef<FlatList<CommentListItem>>();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
   const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -201,7 +202,7 @@ export const ActivityScreen = () => {
     }
   }, [showMentionSelector]);
 
-  const feedImageWidth = Math.max(windowWidth - 40, 1);
+  const feedImageWidth = Math.max(windowWidth - FEED_CARD_INSET * 2, 1);
   const feedImagePreset = useMemo(
     () => selectFeedImagePreset(feedImageWidth),
     [feedImageWidth],
@@ -898,7 +899,7 @@ export const ActivityScreen = () => {
         </View>
       ) : null}
     </View>
-  ) : null;
+  ) : undefined;
 
   const canSubmit = commentText.trim().length > 0 && !isCreatingComment;
 
@@ -928,7 +929,7 @@ export const ActivityScreen = () => {
                   No comments yet. Be the first to comment.
                 </Text>
               </View>
-            ) : null
+            ) : undefined
           }
           contentContainerStyle={[
             styles.listContent,
@@ -1046,6 +1047,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     paddingHorizontal: 20,
     borderRadius: theme.borderRadius.medium,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1205,6 +1207,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   sendButtonDisabled: {
     opacity: 0.45,

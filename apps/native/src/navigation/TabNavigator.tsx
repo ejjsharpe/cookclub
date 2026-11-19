@@ -2,6 +2,7 @@ import { createNativeBottomTabNavigator } from "@react-navigation/bottom-tabs/un
 import { useUnistyles } from "react-native-unistyles";
 
 import type { TabParamList } from "@/navigation/navigationRef";
+import { signatureTabIcon } from "@/navigation/tabIcons";
 import { AddRecipeScreen } from "@/screens/AddRecipeScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
 import { MealPlanScreen } from "@/screens/MealPlanScreen";
@@ -20,23 +21,23 @@ export const TabNavigator = () => {
         tabBarActiveTintColor: theme.colors.primary,
         tabBarControllerMode: "tabBar",
         tabBarMinimizeBehavior: "auto",
-        // lazy: false,
       }}
     >
       <Tab.Screen
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: { type: "sfSymbol", name: "house.fill" },
+          tabBarIcon: signatureTabIcon("home"),
         }}
       />
       <Tab.Screen
         name="Recipes"
         component={MyRecipesScreen}
         options={{
-          tabBarIcon: { type: "sfSymbol", name: "book.fill" },
+          tabBarIcon: signatureTabIcon("recipes"),
         }}
       />
+      {/* The signature set has no add icon, so Add keeps the system one. */}
       <Tab.Screen
         name="Add recipe"
         component={AddRecipeScreen}
@@ -48,16 +49,16 @@ export const TabNavigator = () => {
         name="Meal Plan"
         component={MealPlanScreen}
         options={{
-          tabBarLabelVisibilityMode: "selected",
-          tabBarIcon: { type: "sfSymbol", name: "calendar" },
+          tabBarLabel: "Plan",
+          tabBarIcon: signatureTabIcon("plan"),
         }}
       />
       <Tab.Screen
         name="Shopping List"
         component={ShoppingListScreen}
         options={{
-          tabBarLabelVisibilityMode: "selected",
-          tabBarIcon: { type: "sfSymbol", name: "cart.fill" },
+          tabBarLabel: "Shop",
+          tabBarIcon: signatureTabIcon("shop"),
         }}
       />
     </Tab.Navigator>

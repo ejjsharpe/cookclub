@@ -237,6 +237,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   quickButtonSelected: {
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   quickButtonText: {
     color: theme.colors.text,

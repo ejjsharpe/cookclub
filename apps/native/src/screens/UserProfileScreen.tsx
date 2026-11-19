@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   Share,
   useWindowDimensions,
+  type ViewInstance,
 } from "react-native";
 import Animated, {
   Easing,
@@ -61,6 +62,10 @@ import { BackButton } from "@/components/buttons/BackButton";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
 import {
+  FEED_CARD_INSET,
+  FeedSeparator,
+} from "@/components/feed/FeedCardParts";
+import {
   createRecipeImportId,
   useRecipeImport,
 } from "@/features/recipe-import/RecipeImportProvider";
@@ -79,7 +84,6 @@ const ThemedActivityIndicator = withUnistyles(ActivityIndicator, (theme) => ({
 }));
 const ThemedFlashList = withUnistyles(FlashList<ActivityFeedListItem>);
 const HEADER_HEIGHT = 52;
-const HORIZONTAL_PADDING = 20;
 const AVATAR_SIZE = 100;
 const AVATAR_PREVIEW_SIZE = 220;
 const AVATAR_PREVIEW_ACTION_GAP = 20;
@@ -90,7 +94,7 @@ export const UserProfileScreen = () => {
   const route = useRoute<UserProfileScreenRoute>();
   const navigation = useNavigation();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const feedImageWidth = Math.max(windowWidth - HORIZONTAL_PADDING * 2, 1);
+  const feedImageWidth = Math.max(windowWidth - FEED_CARD_INSET * 2, 1);
   const feedImagePreset = useMemo(
     () => selectFeedImagePreset(feedImageWidth),
     [feedImageWidth],
@@ -102,8 +106,8 @@ export const UserProfileScreen = () => {
   const { requireSmartImport } = useSubscription();
 
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
-  const profileBlurTargetRef = useRef<View>(null);
-  const avatarRef = useRef<View>(null);
+  const profileBlurTargetRef = useRef<ViewInstance>(null);
+  const avatarRef = useRef<ViewInstance>(null);
   const isDismissingAvatarPreviewRef = useRef(false);
   const shouldChangeAvatarAfterDismissRef = useRef(false);
   const confirmedFollowingRef = useRef<boolean | null>(null);
@@ -514,10 +518,6 @@ export const UserProfileScreen = () => {
     avatarTransitionProgress,
   ]);
 
-  const navigateToAddRecipeTab = useCallback(() => {
-    navigation.navigate("Tabs", { screen: "Add recipe" });
-  }, [navigation]);
-
   const sourceImportIdsRef = useRef(new Map<string, string>());
 
   const handleImportRecipe = useCallback(
@@ -525,7 +525,7 @@ export const UserProfileScreen = () => {
       try {
         const allowed = await requireSmartImport();
         if (!allowed) {
-          navigateToAddRecipeTab();
+          navigation.navigate("Tabs", { screen: "Add recipe" });
           return;
         }
 
@@ -538,7 +538,7 @@ export const UserProfileScreen = () => {
           source: { type: "url", value: sourceUrl },
         });
         sourceImportIdsRef.current.delete(sourceUrl);
-        navigateToAddRecipeTab();
+        navigation.navigate("Tabs", { screen: "Add recipe" });
       } catch (error) {
         alertApiError("Import Failed", error, {
           operation: "recipeImport.create",
@@ -546,7 +546,7 @@ export const UserProfileScreen = () => {
         });
       }
     },
-    [navigateToAddRecipeTab, requireSmartImport, submitImport],
+    [navigation, requireSmartImport, submitImport],
   );
 
   const handleImportExistingRecipe = useCallback(
@@ -636,7 +636,6 @@ export const UserProfileScreen = () => {
           onImportRecipePress={handleImportExistingRecipe}
           currentUserId={currentUserId}
           timeAgo={item._display.timeAgo}
-          sourceDescription={item._display.sourceDescription}
           imagePreset={feedImagePreset}
         />
       );
@@ -975,7 +974,7 @@ export const UserProfileScreen = () => {
             onEndReachedThreshold={0.5}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <VSpace size={16} />}
+            ItemSeparatorComponent={FeedSeparator}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -1203,6 +1202,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 30,
     borderRadius: 15,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderWidth: 3,
     borderColor: theme.colors.background,
     justifyContent: "center",
@@ -1395,6 +1395,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: AVATAR_PREVIEW_ACTION_HEIGHT,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",

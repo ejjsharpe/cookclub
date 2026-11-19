@@ -8,7 +8,8 @@ import {
   ScrollView,
   RefreshControl,
   Dimensions,
-  type TextInput,
+  type ScrollViewInstance,
+  type TextInputInstance,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -355,13 +356,13 @@ export const MyRecipesScreen = () => {
   const isFocused = useIsFocused();
   const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
-  const browseScrollRef = useRef<ScrollView>(null);
+  const browseScrollRef = useRef<ScrollViewInstance>(null);
 
   // ─── State ────────────────────────────────────────────────────────────────────
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isRefreshingBrowse, setIsRefreshingBrowse] = useState(false);
-  const searchInputRef = useRef<TextInput>(null);
+  const searchInputRef = useRef<TextInputInstance>(null);
 
   // Filter state from RecipeCollectionBrowser
   const [filterState, setFilterState] = useState<BrowserFilterState | null>(
@@ -1592,5 +1593,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 10,
     borderRadius: 5,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
 }));

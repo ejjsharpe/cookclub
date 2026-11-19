@@ -268,6 +268,7 @@ const styles = StyleSheet.create((theme) => ({
     height: 48,
     borderRadius: 24,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -284,6 +285,7 @@ const styles = StyleSheet.create((theme) => ({
     height: 20,
     borderRadius: 10,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
@@ -314,6 +316,7 @@ const styles = StyleSheet.create((theme) => ({
     height: 8,
     borderRadius: 4,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
   },
   expiredCard: {
     opacity: 0.5,
@@ -345,6 +348,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 8,
     borderRadius: theme.borderRadius.medium,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     alignItems: "center",
   },
   acceptText: {

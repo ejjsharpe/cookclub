@@ -10,6 +10,10 @@ interface BaseRecipeMetadata {
   ownerId: string;
   name: string;
   image: PublicImageAsset | null;
+  /** Total time in minutes (or prep + cook when total isn't set). */
+  totalTime?: number | null;
+  /** Up to two of the owner's tags, for the card's meta line. */
+  tags?: string[];
 }
 
 interface UrlSourcedRecipe extends BaseRecipeMetadata {

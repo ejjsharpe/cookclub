@@ -239,6 +239,7 @@ const styles = StyleSheet.create((theme) => ({
     height: 32,
     borderRadius: 16,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderWidth: 3,
     borderColor: theme.colors.background,
     justifyContent: "center",

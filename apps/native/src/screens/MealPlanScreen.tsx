@@ -3,10 +3,11 @@ import {
   FlashList,
   type FlashListRef,
   type ListRenderItemInfo,
+  type ViewToken,
 } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, TouchableOpacity, Alert, type ViewToken } from "react-native";
+import { View, TouchableOpacity, Alert } from "react-native";
 import Animated, {
   Easing,
   interpolate,
@@ -373,7 +374,7 @@ export const MealPlanScreen = () => {
   }).current;
 
   const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    ({ viewableItems }: { viewableItems: ViewToken<MealPlanListItem>[] }) => {
       const todayDateString = todayDateStringRef.current;
       if (!todayDateString) return;
 
@@ -742,6 +743,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 36,
     borderRadius: 18,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.18,

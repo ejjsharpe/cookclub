@@ -468,6 +468,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     height: 36,
     borderRadius: 18,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     justifyContent: "center",
     alignItems: "center",
   },

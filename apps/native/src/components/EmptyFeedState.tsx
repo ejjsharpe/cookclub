@@ -69,6 +69,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     paddingVertical: 14,
     paddingHorizontal: 24,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     borderRadius: 100,
   },
   buttonText: {

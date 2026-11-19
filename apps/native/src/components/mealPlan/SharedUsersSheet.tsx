@@ -240,6 +240,7 @@ const styles = StyleSheet.create((theme) => ({
   inviteButton: {
     marginTop: 20,
     backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: theme.borderRadius.medium,

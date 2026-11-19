@@ -404,7 +404,9 @@ export const NotificationsScreen = () => {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => {
+              refetch();
+            }}
             tintColor={theme.colors.primary}
             colors={[theme.colors.primary]}
             progressViewOffset={refreshOffset}
