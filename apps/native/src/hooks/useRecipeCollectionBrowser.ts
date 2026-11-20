@@ -11,22 +11,10 @@ export type { Recipe } from "./useRecipeData";
 export type { CollectionWithMetadata } from "./useCollectionData";
 export type { TabType } from "./useTabNavigation";
 
-interface UseRecipeCollectionBrowserOptions {
-  /** External search query - when provided, uses this instead of internal state */
-  externalSearchQuery?: string;
-  /** Initial tab to display */
-  initialTab?: TabType;
-}
-
-export const useRecipeCollectionBrowser = ({
-  externalSearchQuery,
-  initialTab,
-}: UseRecipeCollectionBrowserOptions = {}) => {
+export const useRecipeCollectionBrowser = () => {
   // Search state
-  const [internalSearchQuery, setInternalSearchQuery] = useState("");
-  const searchQuery = externalSearchQuery ?? internalSearchQuery;
+  const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 250);
-  const setSearchQuery = setInternalSearchQuery;
 
   // Compose tab navigation
   const {
@@ -34,7 +22,7 @@ export const useRecipeCollectionBrowser = ({
     activeTabIndex,
     scrollProgress,
     switchTab: baseSwitchTab,
-  } = useTabNavigation({ initialTab });
+  } = useTabNavigation();
 
   // Compose filters with tab-aware animation
   const {

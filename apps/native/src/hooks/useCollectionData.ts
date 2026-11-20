@@ -10,10 +10,12 @@ const EMPTY_COLLECTIONS: CollectionWithMetadata[] = [];
 
 interface UseCollectionDataOptions {
   search?: string;
+  enabled?: boolean;
 }
 
 export const useCollectionData = ({
   search,
+  enabled,
 }: UseCollectionDataOptions = {}) => {
   const {
     data: collectionsData,
@@ -22,6 +24,7 @@ export const useCollectionData = ({
     error,
   } = useGetUserCollectionsWithMetadata({
     search,
+    ...(enabled === undefined ? {} : { enabled }),
   });
 
   const collections = useMemo(() => {

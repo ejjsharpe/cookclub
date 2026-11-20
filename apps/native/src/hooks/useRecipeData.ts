@@ -1,6 +1,10 @@
 import { useCallback, useMemo } from "react";
 
-import { useGetUserRecipes } from "@/api/recipe";
+import {
+  useGetUserRecipes,
+  type RecipeSort,
+  type RecipeSourceFilter,
+} from "@/api/recipe";
 
 export type Recipe = NonNullable<
   ReturnType<typeof useGetUserRecipes>["data"]
@@ -12,12 +16,20 @@ interface UseRecipeDataOptions {
   search?: string;
   tagIds?: number[];
   maxTotalTime?: number;
+  sort?: RecipeSort;
+  source?: RecipeSourceFilter;
+  limit?: number;
+  enabled?: boolean;
 }
 
 export const useRecipeData = ({
   search,
   tagIds,
   maxTotalTime,
+  sort,
+  source,
+  limit,
+  enabled,
 }: UseRecipeDataOptions = {}) => {
   const {
     data: recipesData,
@@ -31,6 +43,10 @@ export const useRecipeData = ({
     search,
     tagIds,
     maxTotalTime,
+    ...(sort ? { sort } : {}),
+    ...(source ? { source } : {}),
+    ...(limit ? { limit } : {}),
+    ...(enabled === undefined ? {} : { enabled }),
   });
 
   const recipes = useMemo(() => {

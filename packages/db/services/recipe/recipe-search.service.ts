@@ -9,6 +9,19 @@ import {
   normalizeRecipeSearchInput,
   normalizeRecipeTitleForSearch,
 } from "./recipe-search-input";
+import {
+  decodeRecipeKeysetCursor,
+  encodeRecipeKeysetCursor,
+  isRecipeKeysetSort,
+  recipeKeysetAfter,
+  recipeKeysetCursorFor,
+  recipeKeysetOrder,
+  recipeNameSortKey,
+  recipeSourceCondition,
+  type RecipeKeysetCursor,
+  type RecipeKeysetSort,
+  type RecipeSourceFilter,
+} from "./recipe-sort";
 
 export interface SearchCursorPayload {
   v: 1;
@@ -23,6 +36,9 @@ export interface SearchCursorPayload {
 export interface SearchUserRecipesOptions {
   ownerId: string;
   query: string;
+  /** Best match by default. */
+  sort?: "relevance" | RecipeKeysetSort;
+  source?: RecipeSourceFilter;
   tagIds?: number[];
   maxTotalTime?: number;
   limit?: number;
@@ -37,6 +53,9 @@ export interface RecipeSearchQueryOptions {
   maxTotalTime: number | null;
   limit: number;
   cursor: SearchCursorPayload | null;
+  sort?: RecipeKeysetSort | undefined;
+  source?: RecipeSourceFilter | undefined;
+  keysetCursor?: RecipeKeysetCursor | null;
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -64,11 +83,17 @@ async function searchFingerprint(input: {
   query: string;
   tagIds: number[];
   maxTotalTime: number | null;
+  sort?: RecipeKeysetSort | undefined;
+  source?: RecipeSourceFilter | undefined;
 }): Promise<string> {
+  // Optional keys are left out when unset so best-match cursors issued before
+  // sort and source existed keep their fingerprint.
   const canonical = JSON.stringify({
     query: normalizeRecipeTitleForSearch(input.query),
     tagIds: input.tagIds,
     maxTotalTime: input.maxTotalTime,
+    sort: input.sort,
+    source: input.source,
   });
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -141,7 +166,7 @@ export function buildRecipeSearchQuery(
             AND matching_tag.user_id = ${options.ownerId}
         )`;
 
-  const cursorFilter = options.cursor
+  const relevanceCursorFilter = options.cursor
     ? sql`(
         ${exactTitle},
         ${titleMatch},
@@ -156,6 +181,11 @@ export function buildRecipeSearchQuery(
         ${options.cursor.recipeId}
       )`
     : undefined;
+  const cursorFilter = options.sort
+    ? options.keysetCursor
+      ? recipeKeysetAfter(options.keysetCursor)
+      : undefined
+    : relevanceCursorFilter;
 
   return db
     .select({
@@ -169,6 +199,7 @@ export function buildRecipeSearchQuery(
       exactTitle,
       titleMatch,
       relevanceRank,
+      nameKey: recipeNameSortKey,
     })
     .from(recipeSearchDocuments)
     .innerJoin(recipes, eq(recipeSearchDocuments.recipeId, recipes.id))
@@ -187,16 +218,21 @@ export function buildRecipeSearchQuery(
               sql`${recipes.totalTime} IS NOT NULL`,
               lte(recipes.totalTime, options.maxTotalTime),
             ),
+        recipeSourceCondition(options.source),
         tagFilter,
         cursorFilter,
       ),
     )
     .orderBy(
-      desc(exactTitle),
-      desc(titleMatch),
-      desc(relevanceRank),
-      desc(recipes.createdAt),
-      desc(recipes.id),
+      ...(options.sort
+        ? recipeKeysetOrder(options.sort)
+        : [
+            desc(exactTitle),
+            desc(titleMatch),
+            desc(relevanceRank),
+            desc(recipes.createdAt),
+            desc(recipes.id),
+          ]),
     )
     .limit(options.limit + 1);
 }
@@ -223,15 +259,25 @@ export async function searchUserRecipes(
     );
   }
 
+  const sort = isRecipeKeysetSort(options.sort) ? options.sort : undefined;
+  const source = options.source;
   const fingerprint = await searchFingerprint({
     query,
     tagIds,
     maxTotalTime,
+    sort,
+    source,
   });
-  const cursor = options.cursor
-    ? decodeRecipeSearchCursor(options.cursor)
-    : null;
-  if (cursor && cursor.fingerprint !== fingerprint) {
+  const cursor =
+    options.cursor && !sort ? decodeRecipeSearchCursor(options.cursor) : null;
+  const keysetCursor =
+    options.cursor && sort
+      ? decodeRecipeKeysetCursor(options.cursor, sort)
+      : null;
+  if (
+    (cursor && cursor.fingerprint !== fingerprint) ||
+    (keysetCursor && keysetCursor.f !== fingerprint)
+  ) {
     throw new ServiceError(
       "BAD_REQUEST",
       "Recipe search cursor does not match this search.",
@@ -246,6 +292,9 @@ export async function searchUserRecipes(
     maxTotalTime,
     limit,
     cursor,
+    sort,
+    source,
+    keysetCursor,
   });
 
   const pageRows = rankedRows.slice(0, limit);
@@ -254,15 +303,19 @@ export async function searchUserRecipes(
   const lastRow = pageRows.at(-1);
   const nextCursor =
     rankedRows.length > limit && lastRow
-      ? encodeRecipeSearchCursor({
-          v: 1,
-          fingerprint,
-          exactTitle: Boolean(lastRow.exactTitle),
-          titleMatch: Boolean(lastRow.titleMatch),
-          rank: Number(lastRow.relevanceRank),
-          createdAt: lastRow.recipe.createdAt.toISOString(),
-          recipeId: lastRow.recipe.id,
-        })
+      ? sort
+        ? encodeRecipeKeysetCursor(
+            recipeKeysetCursorFor(sort, lastRow, fingerprint),
+          )
+        : encodeRecipeSearchCursor({
+            v: 1,
+            fingerprint,
+            exactTitle: Boolean(lastRow.exactTitle),
+            titleMatch: Boolean(lastRow.titleMatch),
+            rank: Number(lastRow.relevanceRank),
+            createdAt: lastRow.recipe.createdAt.toISOString(),
+            recipeId: lastRow.recipe.id,
+          })
       : undefined;
 
   return { items, nextCursor };

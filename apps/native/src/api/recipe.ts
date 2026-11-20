@@ -2,6 +2,7 @@ import { MIN_RECIPE_SEARCH_LENGTH } from "@repo/shared";
 import type { Inputs, Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import {
+  keepPreviousData,
   useQuery,
   useInfiniteQuery,
   useMutation,
@@ -22,11 +23,22 @@ export type ParsedRecipe = Extract<
 export type PersonalizationGoal =
   Inputs["recipeAi"]["personalizeRecipe"]["goals"][number];
 
+/**
+ * "default" is newest first while browsing and best match while searching.
+ */
+export type RecipeSort = "default" | "name" | "time";
+export type RecipeSourceFilter = "mine" | "web" | "cook";
+
 interface UseGetUserRecipesParams {
   search?: string;
   limit?: number;
   tagIds?: number[];
   maxTotalTime?: number;
+  sort?: RecipeSort;
+  source?: RecipeSourceFilter;
+  enabled?: boolean;
+  /** Keep showing the last result while a changed query loads. */
+  keepPreviousData?: boolean;
 }
 
 export const useGetUserRecipes = ({
@@ -34,6 +46,10 @@ export const useGetUserRecipes = ({
   limit = 20,
   tagIds,
   maxTotalTime,
+  sort = "default",
+  source,
+  enabled = true,
+  keepPreviousData: keepPrevious = false,
 }: UseGetUserRecipesParams = {}) => {
   const trpc = useTRPC();
   const normalizedSearch = search?.trim() || undefined;
@@ -45,6 +61,8 @@ export const useGetUserRecipes = ({
       ? maxTotalTime
       : undefined;
 
+  const keysetSort = sort === "default" ? undefined : sort;
+
   const sharedInput = useMemo(
     () => ({
       limit,
@@ -52,8 +70,10 @@ export const useGetUserRecipes = ({
       ...(normalizedMaxTotalTime != null
         ? { maxTotalTime: normalizedMaxTotalTime }
         : {}),
+      ...(keysetSort ? { sort: keysetSort } : {}),
+      ...(source ? { source } : {}),
     }),
-    [limit, normalizedTagIds, normalizedMaxTotalTime],
+    [limit, normalizedTagIds, normalizedMaxTotalTime, keysetSort, source],
   );
 
   const searchInput = useMemo(
@@ -73,13 +93,16 @@ export const useGetUserRecipes = ({
     { getNextPageParam: (lastPage) => lastPage?.nextCursor },
   );
 
+  const placeholder = keepPrevious ? { placeholderData: keepPreviousData } : {};
   const browseQuery = useInfiniteQuery({
     ...browseOptions,
-    enabled: !isSearchActive,
+    ...placeholder,
+    enabled: enabled && !isSearchActive,
   });
   const searchQuery = useInfiniteQuery({
     ...searchOptions,
-    enabled: isSearchActive,
+    ...placeholder,
+    enabled: enabled && isSearchActive,
   });
 
   return isSearchActive ? searchQuery : browseQuery;

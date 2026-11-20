@@ -2,7 +2,19 @@ import type { PublicImageAsset } from "@repo/contracts/images";
 import { and, desc, eq, exists, ilike, inArray, lt, lte } from "drizzle-orm";
 
 import { recipeImages, recipes, recipeTags, tags, user } from "../../schemas";
+import { ServiceError } from "../errors";
 import type { DbClient } from "../types";
+import {
+  decodeRecipeKeysetCursor,
+  encodeRecipeKeysetCursor,
+  recipeKeysetAfter,
+  recipeKeysetCursorFor,
+  recipeKeysetOrder,
+  recipeNameSortKey,
+  recipeSourceCondition,
+  type RecipeKeysetSort,
+  type RecipeSourceFilter,
+} from "./recipe-sort";
 
 const MAX_RECIPE_LIST_LIMIT = 100;
 
@@ -118,13 +130,33 @@ export async function queryUserRecipes(
   db: DbClient,
   options: {
     ownerId: string;
-    cursor?: number;
+    /** Newest first by default; keyset sorts page with a string cursor. */
+    sort?: "recent" | RecipeKeysetSort;
+    /** `createdAt` in ms for the newest-first order, else an opaque string. */
+    cursor?: number | string;
     tagIds?: number[];
     maxTotalTime?: number;
+    source?: RecipeSourceFilter;
     limit?: number;
   },
 ) {
   const limit = normalizeRecipeListLimit(options.limit);
+  const keysetSort = options.sort === "recent" ? undefined : options.sort;
+  if (
+    options.cursor !== undefined &&
+    typeof options.cursor !== (keysetSort ? "string" : "number")
+  ) {
+    throw new ServiceError(
+      "BAD_REQUEST",
+      "Recipe list cursor does not match this sort.",
+    );
+  }
+  const keysetCursor =
+    keysetSort && typeof options.cursor === "string"
+      ? decodeRecipeKeysetCursor(options.cursor, keysetSort)
+      : undefined;
+  const recentCursor =
+    typeof options.cursor === "number" ? options.cursor : undefined;
   const tagIds = [...new Set(options.tagIds ?? [])].filter((id) => id > 0);
   const tagFilter =
     tagIds.length === 0
@@ -156,6 +188,7 @@ export async function queryUserRecipes(
         username: user.username,
         image: user.image,
       },
+      nameKey: recipeNameSortKey,
     })
     .from(recipes)
     .innerJoin(user, eq(recipes.ownerId, user.id))
@@ -163,23 +196,34 @@ export async function queryUserRecipes(
       and(
         eq(recipes.ownerId, options.ownerId),
         eq(recipes.moderationState, "visible"),
-        options.cursor !== undefined
-          ? lt(recipes.createdAt, new Date(options.cursor))
+        recentCursor !== undefined
+          ? lt(recipes.createdAt, new Date(recentCursor))
           : undefined,
+        keysetCursor ? recipeKeysetAfter(keysetCursor) : undefined,
         maxTotalTime === undefined
           ? undefined
           : lte(recipes.totalTime, maxTotalTime),
+        recipeSourceCondition(options.source),
         tagFilter,
       ),
     )
-    .orderBy(desc(recipes.createdAt), desc(recipes.id))
+    .orderBy(
+      ...(keysetSort
+        ? recipeKeysetOrder(keysetSort)
+        : [desc(recipes.createdAt), desc(recipes.id)]),
+    )
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
   const pageRows = rows.slice(0, limit);
+  const lastRow = pageRows.at(-1);
   return {
     items: await hydrateRecipeListRows(db, pageRows),
-    nextCursor: nextRecipeListCursor(hasMore, pageRows),
+    nextCursor: keysetSort
+      ? hasMore && lastRow
+        ? encodeRecipeKeysetCursor(recipeKeysetCursorFor(keysetSort, lastRow))
+        : undefined
+      : nextRecipeListCursor(hasMore, pageRows),
   };
 }
 
