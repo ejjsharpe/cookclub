@@ -48,6 +48,7 @@ import {
 
 import { useUserRecipeTags } from "@/api/recipe";
 import { Ionicons } from "@/components/Ionicons";
+import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
 import { GlassSurface } from "@/components/glass/Glass";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -299,7 +300,12 @@ export const RecipeSearch = ({ onOpenChange, ref }: RecipeSearchProps) => {
                 style={styles.field}
                 contentStyle={styles.fieldContent}
               >
-                <Ionicons name="search" size={20} style={styles.muted} />
+                <SystemIcon
+                  sf="magnifyingglass"
+                  android="search"
+                  size={18}
+                  color={theme.colors.textSecondary}
+                />
                 <ScrollView
                   ref={tokenScrollRef}
                   horizontal
@@ -340,7 +346,7 @@ export const RecipeSearch = ({ onOpenChange, ref }: RecipeSearchProps) => {
                       handleKeyPress(event.nativeEvent.key)
                     }
                     placeholder={tokens.length > 0 ? "" : "Search your library"}
-                    placeholderTextColor={theme.colors.placeholderText}
+                    placeholderTextColor={theme.colors.textSecondary}
                     accessibilityLabel="Search your library"
                     returnKeyType="search"
                     autoCapitalize="none"
@@ -520,9 +526,8 @@ const styles = StyleSheet.create((theme) => ({
     flexGrow: 1,
     minWidth: 80,
     height: FIELD,
-    fontSize: 17,
-    letterSpacing: -0.4,
-    fontFamily: theme.fonts.regular,
+    fontSize: 16,
+    fontFamily: theme.fonts.medium,
     color: theme.colors.text,
     paddingVertical: 0,
   },

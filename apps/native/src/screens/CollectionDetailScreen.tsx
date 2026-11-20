@@ -417,7 +417,7 @@ export const CollectionDetailScreen = () => {
               value={query}
               onChangeText={setQuery}
               placeholder={`Search ${collection.name}`}
-              placeholderTextColor={theme.colors.placeholderText}
+              placeholderTextColor={theme.colors.textSecondary}
               accessibilityLabel={`Search ${collection.name}`}
               returnKeyType="search"
               autoCapitalize="none"
@@ -453,6 +453,7 @@ export const CollectionDetailScreen = () => {
       <RecipeBrowserSheet
         ref={recipeBrowserSheetRef}
         title={`Add to ${collection.name}`}
+        rowAccessibilityHint={`Adds it to ${collection.name}`}
         onSelectRecipe={handleSelectRecipe}
         excludedRecipeIds={excludedRecipeIds}
         excludedRecipesEmptyMessage="All recipes are already in this collection"
@@ -586,7 +587,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     flex: 1,
     height: FIELD,
     fontFamily: theme.fonts.medium,
-    fontSize: 17,
+    fontSize: 16,
     color: theme.colors.text,
   },
 }));

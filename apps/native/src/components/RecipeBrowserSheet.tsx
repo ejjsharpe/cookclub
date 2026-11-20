@@ -1,71 +1,86 @@
 import { TrueSheet } from "@lodev09/react-native-true-sheet";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   forwardRef,
-  useState,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import {
-  View,
-  TouchableOpacity,
   ActivityIndicator,
   FlatList,
-  Dimensions,
+  Pressable,
+  TextInput,
+  View,
 } from "react-native";
-import Animated from "react-native-reanimated";
-import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Animated, {
+  FadeIn,
+  FadeInLeft,
+  FadeInRight,
+  FadeOut,
+  FadeOutLeft,
+  FadeOutRight,
+  interpolate,
+  useAnimatedStyle,
+} from "react-native-reanimated";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { AppSheet } from "./AppSheet";
-import { CollectionGridCard, GRID_GAP } from "./CollectionGridCard";
+import { CollectionGridCard } from "./CollectionGridCard";
 import { FilterSheet, type FilterSheetRef } from "./FilterBottomSheet";
 import { RecipeCard } from "./RecipeCard";
-import { SearchBar, SEARCH_BAR_HEIGHT } from "./SearchBar";
-import { SegmentedControl, type TabOption } from "./SegmentedControl";
-import { MyRecipesListSkeleton, CollectionsListSkeleton } from "./Skeleton";
-import { SwipeableTabView } from "./SwipeableTabView";
+import { MyRecipesListSkeleton, Skeleton } from "./Skeleton";
 import { Text } from "./Text";
-import { useGetCollectionDetail } from "../api/collection";
+import {
+  useGetCollectionDetail,
+  type CollectionRecipe,
+} from "../api/collection";
 
-import { Ionicons } from "@/components/Ionicons";
-import { ScalePressable } from "@/components/buttons/ScalePressable";
+import { SystemIcon } from "@/components/SystemIcon";
+import { GlassSurface } from "@/components/glass/Glass";
+import { GlassCircleButton } from "@/components/glass/GlassCircleButton";
 import {
   useRecipeCollectionBrowser,
-  type Recipe,
   type CollectionWithMetadata,
-  type TabType,
+  type Recipe,
 } from "@/hooks/useRecipeCollectionBrowser";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const GRID_PADDING = 20;
-const NUM_COLUMNS = 2;
-const COLLECTION_CARD_WIDTH =
-  (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / NUM_COLUMNS;
-
-const TAB_OPTIONS: TabOption<TabType>[] = [
-  { value: "recipes", label: "Recipes" },
-  { value: "collections", label: "Collections" },
-];
-
-// Recipe type from collection detail (dates are serialized to strings via tRPC)
-type CollectionRecipe = {
-  id: number;
-  name: string;
-  cookTime: number | null;
-  servings: number | null;
-  sourceUrl: string | null;
-  createdAt: string;
-  images: { id: number; url: string }[];
+// The same sizes as the Recipes tab, so the two read as one library.
+const COLLECTION_CARD_WIDTH = 132;
+const RECIPE_ROW_GAP = 16;
+const HEADER_BUTTON = 40;
+/** Gap between the search bar and the keyboard while typing. */
+const KEYBOARD_GAP = 10;
+/** Moving into or out of a collection, like a push in a navigation stack. */
+const PUSH_MS = 260;
+const FORWARD = {
+  entering: FadeInRight.duration(PUSH_MS),
+  exiting: FadeOutLeft.duration(PUSH_MS),
 };
+const BACK = {
+  entering: FadeInLeft.duration(PUSH_MS),
+  exiting: FadeOutRight.duration(PUSH_MS),
+};
+const FIELD = 50;
 
-const RecipeSeparator = () => <View style={styles.recipeItemGap} />;
+type PickerRecipe = Recipe | CollectionRecipe;
+
+const NO_EXCLUDED_IDS: number[] = [];
+
+const RecipeSeparator = () => <View style={styles.recipeGap} />;
+const CollectionSeparator = () => <View style={styles.collectionGap} />;
 
 export interface RecipeBrowserSheetProps {
   /** Title displayed in the sheet header */
   title: string;
+  /** Shown under the title, e.g. the meal time menu */
+  subtitle?: ReactNode;
   /** Called when a recipe is selected. Return a promise to dismiss after completion. */
   onSelectRecipe: (recipeId: number) => Promise<void> | void;
   /** Called when the sheet is dismissed */
@@ -74,8 +89,10 @@ export interface RecipeBrowserSheetProps {
   excludedRecipeIds?: number[];
   /** Empty-state text when every loaded recipe is excluded */
   excludedRecipesEmptyMessage?: string;
-  /** Extra controls shown above the search field (e.g. meal time chips) */
-  topContent?: ReactNode;
+  /** What tapping a recipe does, for screen readers */
+  rowAccessibilityHint?: string;
+  /** Show a + on each row. Off when picking opens something else. */
+  showAddButton?: boolean;
 }
 
 export interface RecipeBrowserSheetRef {
@@ -83,6 +100,10 @@ export interface RecipeBrowserSheetRef {
   dismiss: () => void;
 }
 
+/**
+ * Pick one of your recipes to add somewhere: collections as on the Recipes
+ * tab, then your recipes newest first, with search at the bottom.
+ */
 export const RecipeBrowserSheet = forwardRef<
   RecipeBrowserSheetRef,
   RecipeBrowserSheetProps
@@ -90,35 +111,35 @@ export const RecipeBrowserSheet = forwardRef<
   (
     {
       title,
+      subtitle,
       onSelectRecipe,
       onDismiss,
-      excludedRecipeIds = [],
+      excludedRecipeIds = NO_EXCLUDED_IDS,
       excludedRecipesEmptyMessage = "All recipes are already selected",
-      topContent,
+      rowAccessibilityHint = "Adds this recipe",
+      showAddButton = true,
     },
     ref,
   ) => {
-    const theme = UnistylesRuntime.getTheme();
+    const { theme, rt } = useUnistyles();
     const sheetRef = useRef<TrueSheet>(null);
     const filterSheetRef = useRef<FilterSheetRef>(null);
+    const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
     const [selectedCollectionId, setSelectedCollectionId] = useState<
       number | null
     >(null);
-    const [isSelecting, setIsSelecting] = useState(false);
+    const [pendingRecipeId, setPendingRecipeId] = useState<number | null>(null);
+    // State updates too late to stop a second quick tap, so guard with a ref.
+    const isSelectingRef = useRef(false);
     const [isPresented, setIsPresented] = useState(false);
+    const [collectionQuery, setCollectionQuery] = useState("");
+    // Which way the list slides when moving into or out of a collection.
+    const [isGoingBack, setIsGoingBack] = useState(false);
 
-    // Use the composable hook directly
     const {
-      activeTab,
-      activeTabIndex,
-      scrollProgress,
-      switchTab,
-      handleSwipeTabChange,
       searchQuery,
       setSearchQuery,
       hasActiveFilters,
-      filterButtonStyle,
-      searchBarWrapperStyle,
       filterSheetProps,
       recipes,
       isPendingRecipes,
@@ -128,14 +149,23 @@ export const RecipeBrowserSheet = forwardRef<
       handleLoadMoreRecipes,
       collections,
       isPendingCollections,
-      collectionsError,
+      clearFilters,
     } = useRecipeCollectionBrowser();
 
-    const { data: collectionDetail, isLoading: isLoadingCollection } =
-      useGetCollectionDetail({
-        collectionId: selectedCollectionId ?? 0,
-        enabled: selectedCollectionId !== null,
-      });
+    const inCollection = selectedCollectionId !== null;
+    const {
+      data: collectionDetail,
+      isPending: isPendingCollection,
+      isError: isCollectionError,
+    } = useGetCollectionDetail({
+      collectionId: selectedCollectionId ?? 0,
+      enabled: inCollection,
+    });
+    // From the tile, so the title is right before the detail has loaded.
+    const selectedCollectionName = inCollection
+      ? (collections.find((c) => c.id === selectedCollectionId)?.name ??
+        collectionDetail?.name)
+      : undefined;
 
     const excludedRecipeIdSet = useMemo(
       () => new Set(excludedRecipeIds),
@@ -147,14 +177,16 @@ export const RecipeBrowserSheet = forwardRef<
       [recipes, excludedRecipeIdSet],
     );
 
-    const visibleCollectionRecipes = useMemo(
-      () =>
-        (collectionDetail?.recipes ?? []).filter(
-          (recipe) => !excludedRecipeIdSet.has(recipe.id),
-        ),
-      [collectionDetail?.recipes, excludedRecipeIdSet],
-    );
+    const visibleCollectionRecipes = useMemo(() => {
+      const term = collectionQuery.trim().toLowerCase();
+      return (collectionDetail?.recipes ?? []).filter(
+        (recipe) =>
+          !excludedRecipeIdSet.has(recipe.id) &&
+          (!term || recipe.name.toLowerCase().includes(term)),
+      );
+    }, [collectionDetail?.recipes, collectionQuery, excludedRecipeIdSet]);
 
+    // Every loaded recipe may be excluded; keep paging until some show.
     useEffect(() => {
       if (
         isPendingRecipes ||
@@ -187,448 +219,522 @@ export const RecipeBrowserSheet = forwardRef<
     }));
 
     const handleDismiss = () => {
-      // Reset state when sheet is dismissed
       setIsPresented(false);
       setSelectedCollectionId(null);
       setSearchQuery("");
+      setCollectionQuery("");
+      clearFilters();
       onDismiss?.();
     };
 
-    const handleOpenFilters = useCallback(() => {
-      filterSheetRef.current?.present();
-    }, []);
-
     const handleSelectRecipe = useCallback(
       async (recipeId: number) => {
-        if (isSelecting) return;
+        if (isSelectingRef.current) return;
+        isSelectingRef.current = true;
 
         try {
-          setIsSelecting(true);
+          setPendingRecipeId(recipeId);
           await onSelectRecipe(recipeId);
           sheetRef.current?.dismiss();
         } catch {
           // Error handled by caller
         } finally {
-          setIsSelecting(false);
+          isSelectingRef.current = false;
+          setPendingRecipeId(null);
         }
       },
-      [onSelectRecipe, isSelecting],
+      [onSelectRecipe],
     );
 
-    const handleRecipePress = useCallback(
-      (recipe: Recipe) => {
-        handleSelectRecipe(recipe.id);
-      },
-      [handleSelectRecipe],
-    );
-
-    const handleCollectionPress = useCallback((collectionId: number) => {
+    const handleOpenCollection = useCallback((collectionId: number) => {
+      setIsGoingBack(false);
+      setCollectionQuery("");
       setSelectedCollectionId(collectionId);
     }, []);
 
-    const handleBackPress = useCallback(() => {
+    const handleBack = useCallback(() => {
+      setIsGoingBack(true);
       setSelectedCollectionId(null);
+      setCollectionQuery("");
     }, []);
 
-    const handleTabChange = useCallback(
-      (value: TabType, _direction: number) => {
-        switchTab(value);
-      },
-      [switchTab],
-    );
-
     const renderRecipe = useCallback(
-      ({ item }: { item: Recipe }) => (
-        <RecipeCard recipe={item} onPress={() => handleRecipePress(item)} />
-      ),
-      [handleRecipePress],
-    );
-
-    const renderCollectionRecipe = useCallback(
-      ({ item }: { item: CollectionRecipe }) => (
-        <RecipeCard
-          recipe={{
-            id: item.id,
-            name: item.name,
-            cookTime: item.cookTime,
-            sourceUrl: item.sourceUrl,
-            coverImage: item.images[0]?.url,
-          }}
-          onPress={() => handleSelectRecipe(item.id)}
+      ({ item }: { item: PickerRecipe }) => (
+        <PickerRow
+          recipe={item}
+          onSelect={handleSelectRecipe}
+          isPending={pendingRecipeId === item.id}
+          disabled={pendingRecipeId !== null}
+          hint={rowAccessibilityHint}
+          showAddButton={showAddButton}
         />
       ),
-      [handleSelectRecipe],
+      [
+        handleSelectRecipe,
+        pendingRecipeId,
+        rowAccessibilityHint,
+        showAddButton,
+      ],
     );
 
     const renderCollection = useCallback(
-      ({ item, index }: { item: CollectionWithMetadata; index: number }) => {
-        const isLeftColumn = index % 2 === 0;
-        return (
-          <View
-            style={[
-              styles.collectionItem,
-              {
-                marginLeft: isLeftColumn ? 0 : GRID_GAP / 2,
-                marginRight: isLeftColumn ? GRID_GAP / 2 : 0,
-              },
-            ]}
-          >
-            <CollectionGridCard
-              collection={item}
-              onPress={() => handleCollectionPress(item.id)}
-              width={COLLECTION_CARD_WIDTH}
-            />
-          </View>
-        );
-      },
-      [handleCollectionPress],
+      ({ item }: { item: CollectionWithMetadata }) => (
+        <CollectionGridCard
+          collection={item}
+          onPressCollection={handleOpenCollection}
+          width={COLLECTION_CARD_WIDTH}
+        />
+      ),
+      [handleOpenCollection],
     );
 
-    // Render recipe list content
-    const renderRecipesContent = () => {
-      if (isPendingRecipes) {
+    const query = inCollection ? collectionQuery : searchQuery;
+    const setQuery = inCollection ? setCollectionQuery : setSearchQuery;
+
+    const listHeader = inCollection ? undefined : (
+      <View>
+        {isPendingCollections ? (
+          // Holds the shelf's place so the list doesn't jump when it loads.
+          <View style={styles.section}>
+            <Text type="title3" style={styles.sectionTitle}>
+              Collections
+            </Text>
+            <View style={[styles.horizontalList, styles.shelfPlaceholder]}>
+              {[0, 1, 2].map((i) => (
+                <Skeleton
+                  key={i}
+                  width={COLLECTION_CARD_WIDTH}
+                  height={COLLECTION_CARD_WIDTH}
+                  borderRadius={16}
+                />
+              ))}
+            </View>
+          </View>
+        ) : collections.length > 0 ? (
+          <View style={styles.section}>
+            <Text type="title3" style={styles.sectionTitle}>
+              Collections
+            </Text>
+            <FlatList
+              horizontal
+              data={collections}
+              renderItem={renderCollection}
+              keyExtractor={(item) => item.id.toString()}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+              ItemSeparatorComponent={CollectionSeparator}
+              keyboardShouldPersistTaps="handled"
+            />
+          </View>
+        ) : null}
+        {visibleRecipes.length > 0 ? (
+          <Text type="title3" style={[styles.sectionTitle, styles.section]}>
+            {searchQuery.trim() ? "Recipes" : "Recently added"}
+          </Text>
+        ) : null}
+      </View>
+    );
+
+    const emptyState = (() => {
+      if (inCollection ? isPendingCollection : isPendingRecipes) {
         return (
-          <View style={styles.stateContainer}>
+          <View style={styles.skeleton}>
             <MyRecipesListSkeleton />
           </View>
         );
       }
-
-      if (recipesError) {
+      if (!inCollection && recipesError) {
+        return <EmptyState text="Couldn't load your recipes" />;
+      }
+      if (inCollection && isCollectionError) {
+        return <EmptyState text="Couldn't load this collection" />;
+      }
+      if (inCollection) {
+        const total = collectionDetail?.recipes.length ?? 0;
         return (
-          <View style={styles.centered}>
-            <Text type="subheadline" style={styles.centeredText}>
-              Failed to load recipes
-            </Text>
-          </View>
+          <EmptyState
+            text={
+              collectionQuery.trim()
+                ? `No recipes match "${collectionQuery.trim()}"`
+                : total > 0
+                  ? excludedRecipesEmptyMessage
+                  : "No recipes in this collection yet"
+            }
+          />
         );
       }
-
-      if (visibleRecipes.length === 0) {
-        const emptyMessage =
-          recipes.length > 0
-            ? excludedRecipesEmptyMessage
-            : searchQuery
-              ? "No recipes found for your search"
-              : "You don't have any recipes yet";
-
-        return (
-          <View style={styles.centered}>
-            <Ionicons
-              name="restaurant-outline"
-              size={48}
-              style={styles.emptyIcon}
-            />
-            <Text type="subheadline" style={styles.centeredText}>
-              {isFetchingNextRecipes ? "Loading more recipes..." : emptyMessage}
-            </Text>
-          </View>
-        );
-      }
-
+      if (isFetchingNextRecipes) return <EmptyState text="Loading more…" />;
       return (
-        <FlatList
-          data={visibleRecipes}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderRecipe}
-          ItemSeparatorComponent={RecipeSeparator}
-          contentContainerStyle={styles.recipeListContent}
-          onEndReached={handleLoadMoreRecipes}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            isFetchingNextRecipes ? (
-              <View style={styles.footer}>
-                <ActivityIndicator />
-              </View>
-            ) : undefined
+        <EmptyState
+          text={
+            recipes.length > 0
+              ? excludedRecipesEmptyMessage
+              : searchQuery.trim()
+                ? `No recipes match "${searchQuery.trim()}"`
+                : "You don't have any recipes yet"
           }
         />
       );
-    };
+    })();
 
-    // Render collections grid content
-    const renderCollectionsContent = () => {
-      if (isPendingCollections) {
-        return (
-          <View style={styles.stateContainer}>
-            <CollectionsListSkeleton />
-          </View>
-        );
-      }
-
-      if (collectionsError) {
-        return (
-          <View style={styles.centered}>
-            <Text type="subheadline" style={styles.centeredText}>
-              Failed to load collections
-            </Text>
-          </View>
-        );
-      }
-
-      if (collections.length === 0) {
-        return (
-          <View style={styles.centered}>
-            <Ionicons
-              name="albums-outline"
-              size={48}
-              style={styles.emptyIcon}
+    const header = (
+      <View style={styles.header}>
+        <View style={styles.headerSide}>
+          {inCollection ? (
+            <GlassCircleButton
+              size={HEADER_BUTTON}
+              icon={{ sf: "chevron.left", android: "chevron-back" }}
+              accessibilityLabel="Back to all recipes"
+              onPress={handleBack}
             />
-            <Text type="subheadline" style={styles.centeredText}>
-              {searchQuery
-                ? "No collections found for your search"
-                : "No collections yet"}
+          ) : null}
+        </View>
+        <View style={styles.headerCenter}>
+          <Animated.View
+            key={inCollection ? "collection" : "all"}
+            entering={FadeIn.duration(PUSH_MS)}
+            exiting={FadeOut.duration(PUSH_MS / 2)}
+            style={styles.headerTitleWrap}
+          >
+            <Text
+              type="headline"
+              numberOfLines={1}
+              accessibilityRole="header"
+              style={styles.headerTitle}
+            >
+              {inCollection ? (selectedCollectionName ?? "Collection") : title}
             </Text>
-          </View>
-        );
-      }
+          </Animated.View>
+          {subtitle}
+        </View>
+        <View style={styles.headerSide}>
+          <GlassCircleButton
+            size={HEADER_BUTTON}
+            icon={{ sf: "xmark", android: "close" }}
+            accessibilityLabel="Close"
+            onPress={() => sheetRef.current?.dismiss()}
+          />
+        </View>
+      </View>
+    );
 
-      return (
-        <FlatList
-          data={collections}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderCollection}
-          numColumns={2}
-          contentContainerStyle={styles.collectionGridContent}
+    const searchPlaceholder = inCollection
+      ? `Search ${selectedCollectionName ?? "this collection"}`
+      : "Search your recipes";
+
+    // In the sheet's footer, which sits at the bottom of the screen and
+    // above the keyboard; the fade hides the rows scrolling under it.
+    // The home indicator gap isn't needed over the keyboard, so the bar
+    // drops into it as the keyboard opens.
+    const restingGap = rt.insets.bottom;
+    const footerStyle = useAnimatedStyle(() => ({
+      transform: [
+        {
+          translateY: interpolate(
+            keyboardProgress.get(),
+            [0, 1],
+            [0, restingGap - KEYBOARD_GAP],
+          ),
+        },
+      ],
+    }));
+
+    const footer = (
+      <Animated.View
+        style={[styles.footer, { paddingBottom: restingGap }, footerStyle]}
+      >
+        {/* Behind the controls, so the glass sits on top of the fade. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={[`${theme.colors.background}00`, theme.colors.background]}
+          locations={[0, 0.6]}
+          style={styles.footerFade}
         />
-      );
-    };
-
-    const headerLeading =
-      selectedCollectionId !== null ? (
-        <ScalePressable
-          onPress={handleBackPress}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Back to collections"
-        >
-          <Ionicons name="chevron-back" size={24} style={styles.backIcon} />
-        </ScalePressable>
-      ) : undefined;
+        <View style={styles.controls}>
+          <View style={styles.fieldWrap}>
+            <GlassSurface
+              interactive
+              style={styles.field}
+              contentStyle={styles.fieldContent}
+            >
+              <SystemIcon
+                sf="magnifyingglass"
+                android="search"
+                size={18}
+                color={theme.colors.textSecondary}
+              />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={searchPlaceholder}
+                placeholderTextColor={theme.colors.textSecondary}
+                accessibilityLabel={searchPlaceholder}
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.input}
+              />
+              {query.length > 0 ? (
+                <Pressable
+                  onPress={() => setQuery("")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  hitSlop={10}
+                >
+                  <SystemIcon
+                    sf="xmark.circle.fill"
+                    android="close-circle"
+                    size={18}
+                    color={theme.colors.textTertiary}
+                  />
+                </Pressable>
+              ) : null}
+            </GlassSurface>
+          </View>
+          {inCollection ? null : (
+            <View>
+              <GlassCircleButton
+                size={FIELD}
+                icon={{
+                  sf: "line.3.horizontal.decrease",
+                  android: "options-outline",
+                }}
+                accessibilityLabel={
+                  hasActiveFilters ? "Filters, some applied" : "Filters"
+                }
+                onPress={() => filterSheetRef.current?.present()}
+              />
+              {hasActiveFilters ? (
+                <View pointerEvents="none" style={styles.filterBadge} />
+              ) : null}
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    );
 
     return (
       <AppSheet
         ref={sheetRef}
-        title={
-          selectedCollectionId !== null
-            ? (collectionDetail?.name ?? "Collection")
-            : title
-        }
-        leading={headerLeading}
+        title={title}
+        headerContent={header}
+        footer={footer}
         detents={[1]}
         backgroundColor={theme.colors.background}
         scrollable
         onDidDismiss={handleDismiss}
       >
-        <View style={styles.container}>
-          {selectedCollectionId !== null ? (
-            // Collection drill-down view
-            <View style={styles.container}>
-              {isLoadingCollection ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" />
-                </View>
-              ) : (
-                <FlatList
-                  data={visibleCollectionRecipes}
-                  keyExtractor={(item) => item.id.toString()}
-                  renderItem={renderCollectionRecipe}
-                  ItemSeparatorComponent={RecipeSeparator}
-                  contentContainerStyle={styles.listContent}
-                  ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                      <Ionicons
-                        name="restaurant-outline"
-                        size={48}
-                        style={styles.emptyIcon}
-                      />
-                      <Text type="subheadline" style={styles.centeredText}>
-                        {(collectionDetail?.recipes.length ?? 0) > 0
-                          ? excludedRecipesEmptyMessage
-                          : "No recipes in this collection yet"}
-                      </Text>
-                    </View>
-                  }
-                />
-              )}
-            </View>
-          ) : (
-            // Main browser view with inline layout
-            <View style={styles.container}>
-              {topContent}
-              {/* Search Row */}
-              <View style={styles.searchRow}>
-                <Animated.View
-                  style={[styles.searchBarWrapper, searchBarWrapperStyle]}
-                >
-                  <SearchBar
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Search recipes..."
-                  />
-                </Animated.View>
-                <Animated.View
-                  style={[styles.filterButtonWrapper, filterButtonStyle]}
-                >
-                  <TouchableOpacity
-                    style={styles.filterButton}
-                    onPress={handleOpenFilters}
-                  >
-                    <Ionicons
-                      name="options-outline"
-                      size={22}
-                      style={styles.filterIcon}
-                    />
-                    {hasActiveFilters && <View style={styles.filterBadge} />}
-                  </TouchableOpacity>
-                </Animated.View>
+        <Animated.FlatList<PickerRecipe>
+          key={inCollection ? `collection-${selectedCollectionId}` : "all"}
+          {...(isGoingBack ? BACK : FORWARD)}
+          data={inCollection ? visibleCollectionRecipes : visibleRecipes}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderRecipe}
+          ItemSeparatorComponent={RecipeSeparator}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={emptyState}
+          ListFooterComponent={
+            // The empty state says "Loading more…" when nothing shows yet.
+            !inCollection &&
+            isFetchingNextRecipes &&
+            visibleRecipes.length > 0 ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator />
               </View>
+            ) : undefined
+          }
+          onEndReached={inCollection ? undefined : handleLoadMoreRecipes}
+          onEndReachedThreshold={0.5}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            styles.listContent,
+            // TrueSheet already insets the list by the home indicator.
+            { paddingBottom: FIELD + 40 },
+          ]}
+        />
 
-              {/* Tab Switcher */}
-              <View style={styles.tabContainer}>
-                <SegmentedControl
-                  options={TAB_OPTIONS}
-                  value={activeTab}
-                  onValueChange={handleTabChange}
-                  scrollProgress={scrollProgress}
-                  fullWidth
-                />
-              </View>
-
-              {/* Content Area */}
-              <View style={styles.contentContainer}>
-                <SwipeableTabView
-                  activeIndex={activeTabIndex}
-                  onIndexChange={handleSwipeTabChange}
-                  containerWidth={SCREEN_WIDTH}
-                  scrollProgress={scrollProgress}
-                >
-                  {renderRecipesContent()}
-                  {renderCollectionsContent()}
-                </SwipeableTabView>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Filter Sheet */}
         <FilterSheet ref={filterSheetRef} {...filterSheetProps} />
       </AppSheet>
     );
   },
 );
 
-const styles = StyleSheet.create((theme, rt) => ({
-  container: {
-    flex: 1,
-  },
-  // Search row styles
-  searchRow: {
+/** A row with its + kept stable, so rows don't redraw on every keystroke. */
+const PickerRow = memo(function PickerRow({
+  recipe,
+  onSelect,
+  isPending,
+  disabled,
+  hint,
+  showAddButton,
+}: {
+  recipe: PickerRecipe;
+  onSelect: (recipeId: number) => void;
+  isPending: boolean;
+  disabled: boolean;
+  hint: string;
+  showAddButton: boolean;
+}) {
+  const { theme } = useUnistyles();
+  return (
+    <RecipeCard
+      recipe={recipe}
+      onPressRecipeId={onSelect}
+      compact
+      disabled={disabled}
+      accessibilityHint={hint}
+      trailing={
+        showAddButton ? (
+          <View style={styles.addButton}>
+            {isPending ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <SystemIcon
+                sf="plus"
+                android="add"
+                size={16}
+                color={theme.colors.text}
+              />
+            )}
+          </View>
+        ) : isPending ? (
+          <ActivityIndicator size="small" />
+        ) : undefined
+      }
+    />
+  );
+});
+
+const EmptyState = ({ text }: { text: string }) => (
+  <View style={styles.empty}>
+    <Text type="subheadline" style={styles.emptyText}>
+      {text}
+    </Text>
+  </View>
+);
+
+const styles = StyleSheet.create((theme) => ({
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 6,
+    gap: 8,
   },
-  searchBarWrapper: {
+  headerSide: {
+    width: HEADER_BUTTON,
+    height: HEADER_BUTTON,
+  },
+  headerCenter: {
     flex: 1,
-  },
-  filterButtonWrapper: {
-    marginLeft: 8,
-  },
-  filterButton: {
-    width: SEARCH_BAR_HEIGHT,
-    height: SEARCH_BAR_HEIGHT,
-    borderRadius: SEARCH_BAR_HEIGHT / 2,
-    backgroundColor: theme.colors.inputBackground,
-    justifyContent: "center",
+    minWidth: 0,
     alignItems: "center",
   },
-  filterIcon: {
+  headerTitleWrap: {
+    maxWidth: "100%",
+  },
+  headerTitle: {
+    textAlign: "center",
+  },
+  listContent: {
+    flexGrow: 1,
+  },
+  section: {
+    marginTop: 12,
+  },
+  sectionTitle: {
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  horizontalList: {
+    paddingHorizontal: 20,
+  },
+  shelfPlaceholder: {
+    flexDirection: "row",
+    gap: 12,
+    // The tiles' name and count lines.
+    paddingBottom: 44,
+  },
+  collectionGap: {
+    width: 12,
+  },
+  recipeGap: {
+    height: RECIPE_ROW_GAP,
+  },
+  addButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.inputBackground,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skeleton: {
+    paddingTop: 12,
+  },
+  empty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 40,
+    paddingVertical: 60,
+  },
+  emptyText: {
+    textAlign: "center",
+    color: theme.colors.textSecondary,
+  },
+  loadingMore: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  controls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    zIndex: 1,
+  },
+  footerFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: -24,
+    bottom: 0,
+  },
+  fieldWrap: {
+    flex: 1,
+  },
+  field: {
+    height: FIELD,
+    borderRadius: FIELD / 2,
+  },
+  fieldContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 16,
+    paddingRight: 14,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    height: FIELD,
+    fontFamily: theme.fonts.medium,
+    fontSize: 16,
     color: theme.colors.text,
   },
   filterBadge: {
     position: "absolute",
-    top: 10,
-    right: 10,
+    top: 8,
+    right: 8,
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-  },
-
-  // Tab container
-  tabContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-
-  // Content area
-  contentContainer: {
-    flex: 1,
-  },
-  stateContainer: {
-    flex: 1,
-    paddingTop: 8,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  centeredText: {
-    textAlign: "center",
-    color: theme.colors.textSecondary,
-    paddingHorizontal: 40,
-  },
-  emptyIcon: {
-    color: theme.colors.textTertiary,
-    marginBottom: 12,
-  },
-
-  // Recipe list
-  recipeListContent: {
-    paddingBottom: 60 + rt.insets.bottom,
-    flexGrow: 1,
-  },
-  footer: {
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-
-  // Collection grid
-  collectionGridContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 60 + rt.insets.bottom,
-  },
-  collectionItem: {
-    flex: 1,
-    marginBottom: GRID_GAP,
-  },
-
-  // Collection drill-down view
-  backButton: {
-    marginLeft: -4,
-  },
-  backIcon: {
-    color: theme.colors.text,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  listContent: {
-    paddingBottom: 60 + rt.insets.bottom,
-    flexGrow: 1,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 60,
-  },
-  recipeItemGap: {
-    height: 16,
   },
 }));

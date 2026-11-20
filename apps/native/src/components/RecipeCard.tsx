@@ -1,5 +1,5 @@
 import type { PublicImageAsset } from "@repo/contracts/images";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -41,6 +41,10 @@ interface Props {
   onPressRecipeId?: (recipeId: number) => void;
   /** A 72pt thumbnail row, as on the redesigned Recipes screen. */
   compact?: boolean;
+  /** Shown on the right in place of the chevron, e.g. an add button. */
+  trailing?: ReactNode;
+  accessibilityHint?: string;
+  disabled?: boolean;
 }
 
 export const RecipeCard = memo(function RecipeCard({
@@ -48,6 +52,9 @@ export const RecipeCard = memo(function RecipeCard({
   onPress,
   onPressRecipeId,
   compact = false,
+  trailing,
+  accessibilityHint,
+  disabled,
 }: Props) {
   const sourceHost = useMemo(
     () => getSourceHost(recipe.sourceUrl),
@@ -64,7 +71,14 @@ export const RecipeCard = memo(function RecipeCard({
   const pressHandler = onPress || onPressRecipeId ? handlePress : undefined;
 
   return (
-    <Pressable style={styles.card} onPress={pressHandler}>
+    <Pressable
+      style={styles.card}
+      onPress={pressHandler}
+      accessibilityRole={pressHandler ? "button" : undefined}
+      disabled={disabled}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={disabled ? { disabled } : undefined}
+    >
       {({ pressed }) => (
         <>
           {pressed && (
@@ -121,9 +135,14 @@ export const RecipeCard = memo(function RecipeCard({
             </View>
           )}
 
-          {!compact && (
-            <Ionicons name="chevron-forward" size={20} style={styles.chevron} />
-          )}
+          {trailing ??
+            (!compact && (
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                style={styles.chevron}
+              />
+            ))}
         </>
       )}
     </Pressable>
