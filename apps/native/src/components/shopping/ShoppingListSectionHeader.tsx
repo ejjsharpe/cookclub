@@ -1,62 +1,79 @@
+import { Image } from "expo-image";
 import { memo } from "react";
-import { View } from "react-native";
-import Animated, {
-  useAnimatedReaction,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import { Pressable, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Ionicons } from "@/components/Ionicons";
 import { Text } from "@/components/Text";
-
-interface SectionCheckProps {
-  isComplete: boolean;
-}
-
-const SectionCheck = ({ isComplete }: SectionCheckProps) => {
-  const scale = useSharedValue(isComplete ? 1 : 0);
-
-  useAnimatedReaction(
-    () => isComplete,
-    (current, previous) => {
-      if (current !== previous) {
-        scale.set(
-          withSpring(current ? 1 : 0, {
-            damping: 50,
-            stiffness: 300,
-            mass: 2,
-          }),
-        );
-      }
-    },
-    [isComplete],
-  );
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.get() }],
-    opacity: scale.get(),
-  }));
-
-  return (
-    <Animated.View style={[styles.sectionCheck, animatedStyle]}>
-      <Ionicons name="checkmark" size={14} style={styles.sectionCheckIcon} />
-    </Animated.View>
-  );
-};
+import type { ShoppingListRecipe } from "@/lib/shoppingListGroups";
+import { getImageUrl } from "@/utils/imageUrl";
 
 interface ShoppingListSectionHeaderProps {
   title: string;
-  isComplete: boolean;
+  recipe?: ShoppingListRecipe | undefined;
+  isFirst: boolean;
+  onRecipeMore?: (recipe: ShoppingListRecipe) => void;
 }
 
+/**
+ * A quiet grey heading for an aisle, or a recipe's photo and name when the
+ * list is grouped by recipe.
+ */
 export const ShoppingListSectionHeader = memo(
-  ({ title, isComplete }: ShoppingListSectionHeaderProps) => {
+  ({
+    title,
+    recipe,
+    isFirst,
+    onRecipeMore,
+  }: ShoppingListSectionHeaderProps) => {
+    if (!recipe) {
+      return (
+        <Text
+          type="footnote"
+          style={styles.aisle(isFirst)}
+          accessibilityRole="header"
+        >
+          {title}
+        </Text>
+      );
+    }
+
+    const imageUrl = recipe.imageUrl
+      ? getImageUrl(recipe.imageUrl, "recipe-thumb")
+      : undefined;
+
     return (
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        <SectionCheck isComplete={isComplete} />
+      <View style={styles.recipeRow(isFirst)}>
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={styles.thumb} />
+        ) : (
+          <View style={[styles.thumb, styles.thumbEmpty]}>
+            <Ionicons name="restaurant" size={14} style={styles.thumbIcon} />
+          </View>
+        )}
+        <Text
+          type="headline"
+          style={styles.recipeName}
+          numberOfLines={1}
+          accessibilityRole="header"
+        >
+          {recipe.name}
+        </Text>
+        {onRecipeMore && (
+          <Pressable
+            onPress={() => onRecipeMore(recipe)}
+            hitSlop={10}
+            style={styles.more}
+            accessibilityRole="button"
+            accessibilityLabel={`Options for ${recipe.name}`}
+          >
+            <Ionicons
+              name="ellipsis-horizontal"
+              size={18}
+              style={styles.moreIcon}
+            />
+          </Pressable>
+        )}
       </View>
     );
   },
@@ -65,30 +82,45 @@ export const ShoppingListSectionHeader = memo(
 ShoppingListSectionHeader.displayName = "ShoppingListSectionHeader";
 
 const styles = StyleSheet.create((theme) => ({
-  sectionHeader: {
+  aisle: (isFirst: boolean) => ({
+    paddingHorizontal: 20,
+    paddingTop: isFirst ? 12 : 26,
+    paddingBottom: 2,
+    color: theme.colors.textSecondary,
+    fontFamily: theme.fonts.bold,
+  }),
+  recipeRow: (isFirst: boolean) => ({
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 8,
-    backgroundColor: theme.colors.background,
+    paddingTop: isFirst ? 12 : 26,
+    paddingBottom: 4,
+  }),
+  thumb: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
   },
-  sectionTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
-    fontFamily: theme.fonts.semiBold,
-  },
-  sectionCheck: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-    justifyContent: "center",
+  thumbEmpty: {
+    backgroundColor: theme.colors.inputBackground,
     alignItems: "center",
+    justifyContent: "center",
   },
-  sectionCheckIcon: {
-    color: theme.colors.buttonText,
+  thumbIcon: {
+    color: theme.colors.textSecondary,
+  },
+  recipeName: {
+    flex: 1,
+    fontFamily: theme.fonts.bold,
+  },
+  more: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moreIcon: {
+    color: theme.colors.textSecondary,
   },
 }));

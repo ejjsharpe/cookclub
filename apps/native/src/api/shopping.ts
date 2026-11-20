@@ -4,6 +4,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "react-native";
 
 import { alertApiError } from "@/lib/apiErrorAlert";
+import {
+  findItemForRow,
+  recipeRowIds,
+  removeRows,
+  tickRows,
+  tickedRowIds,
+} from "@/lib/shoppingListGroups";
 
 // Get user's shopping list (optionally by ID)
 export const useGetShoppingList = (params?: { shoppingListId?: number }) => {
@@ -114,7 +121,7 @@ export const useToggleItemChecked = (params?: { shoppingListId?: number }) => {
   const mutationOptions = trpc.shopping.toggleItemChecked.mutationOptions({
     networkMode: "offlineFirst",
     onMutate: async (variables) => {
-      const { itemId } = variables;
+      const { itemId, itemIds, isChecked } = variables;
 
       // Cancel outgoing refetches
       const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey(
@@ -129,10 +136,14 @@ export const useToggleItemChecked = (params?: { shoppingListId?: number }) => {
       // Optimistically update
       queryClient.setQueryData(shoppingListQueryKey, (old: any) => {
         if (!old) return old;
+        // A By recipe row's id is one of an item's rows, not the item's own
+        const current = findItemForRow(old.items, itemId);
         return {
           ...old,
-          items: old.items.map((item: any) =>
-            item.id === itemId ? { ...item, isChecked: !item.isChecked } : item,
+          items: tickRows(
+            old.items,
+            [itemId, ...(itemIds ?? [])],
+            isChecked ?? !current?.isChecked,
           ),
         };
       });
@@ -171,7 +182,7 @@ export const useRemoveItem = () => {
   const mutationOptions = trpc.shopping.removeItem.mutationOptions({
     networkMode: "offlineFirst",
     onMutate: async (variables) => {
-      const { itemId, shoppingListId } = variables;
+      const { itemId, itemIds, shoppingListId } = variables;
 
       // Cancel outgoing refetches
       const shoppingListQueryKey = trpc.shopping.getShoppingList.queryKey({
@@ -190,7 +201,7 @@ export const useRemoveItem = () => {
         if (!old) return old;
         return {
           ...old,
-          items: old.items.filter((item: any) => item.id !== itemId),
+          items: removeRows(old.items, [itemId, ...(itemIds ?? [])]),
         };
       });
 
@@ -244,7 +255,8 @@ export const useClearCheckedItems = () => {
         if (!old) return old;
         return {
           ...old,
-          items: old.items.filter((item: any) => !item.isChecked),
+          // Every ticked share, leaving any share still to get
+          items: removeRows(old.items, tickedRowIds(old.items)),
         };
       });
 
@@ -299,15 +311,8 @@ export const useRemoveRecipeFromList = () => {
         if (!old) return old;
         return {
           ...old,
-          // Remove items that have this recipe as their only source
-          items: old.items.filter((item: any) => {
-            // Keep items that have no source items or have sources from other recipes
-            if (!item.sourceItems || item.sourceItems.length === 0) return true;
-            const hasOtherSources = item.sourceItems.some(
-              (si: any) => si.sourceRecipeId !== recipeId,
-            );
-            return hasOtherSources;
-          }),
+          // This recipe's share of each item; other recipes' shares stay
+          items: removeRows(old.items, recipeRowIds(old.items, recipeId)),
           // Remove the recipe from the recipes list
           recipes: old.recipes?.filter((r: any) => r.id !== recipeId) || [],
         };
