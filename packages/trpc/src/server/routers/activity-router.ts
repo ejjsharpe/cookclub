@@ -90,7 +90,8 @@ export const activityRouter = router({
   getFeed: authedProcedure
     .input(
       type({
-        cursor: "string?",
+        // Infinite queries send null for the first page.
+        "cursor?": "string | null",
         limit: "number = 20",
       }),
     )
@@ -324,7 +325,8 @@ export const activityRouter = router({
     .input(
       type({
         recipeId: "number",
-        cursor: "number?",
+        // Infinite queries send null for the first page.
+        "cursor?": "number | null",
         limit: "number = 20",
       }),
     )
@@ -529,7 +531,8 @@ export const activityRouter = router({
     .input(
       type({
         userId: "string",
-        cursor: "number?",
+        // Infinite queries send null for the first page.
+        "cursor?": "number | null",
         limit: "number = 20",
       }),
     )

@@ -729,7 +729,8 @@ const recipeHeadRouter = router({
     .input(
       type({
         limit: "number = 20",
-        cursor: "number?",
+        // Infinite queries send null for the first page.
+        "cursor?": "number | null",
         tagIds: "number[]?",
         maxTotalTime: "number?", // in minutes
       }),
@@ -757,7 +758,8 @@ const recipeHeadRouter = router({
       type({
         query: "string",
         limit: "number = 20",
-        "cursor?": "string",
+        // Infinite queries send null for the first page.
+        "cursor?": "string | null",
         "tagIds?": "number[]",
         "maxTotalTime?": "number",
       }),
@@ -802,7 +804,8 @@ const recipeHeadRouter = router({
       type({
         userId: "string",
         limit: "number = 20",
-        cursor: "number?",
+        // Infinite queries send null for the first page.
+        "cursor?": "number | null",
         search: "string?",
       }),
     )
