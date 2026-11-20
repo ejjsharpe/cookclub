@@ -1,25 +1,17 @@
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import {
-  FlashList,
-  type FlashListRef,
-  type ListRenderItemInfo,
-  type ViewToken,
-} from "@shopify/flash-list";
-import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, TouchableOpacity, Alert } from "react-native";
-import Animated, {
-  Easing,
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
 import {
-  StyleSheet,
-  useUnistyles,
-  UnistylesRuntime,
-} from "react-native-unistyles";
+  Alert,
+  AppState,
+  ScrollView,
+  TouchableOpacity,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ScrollViewInstance,
+} from "react-native";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import {
   useGetMealPlans,
@@ -37,8 +29,11 @@ import { Ionicons } from "@/components/Ionicons";
 import { MealPlanSkeleton } from "@/components/Skeleton";
 import { StackedAvatars } from "@/components/StackedAvatars";
 import { Text } from "@/components/Text";
-import { ScalePressable } from "@/components/buttons/ScalePressable";
-import { DayGroup, DayHeader } from "@/components/mealPlan";
+import {
+  AddToDaySheet,
+  type AddToDaySheetRef,
+} from "@/components/mealPlan/AddToDaySheet";
+import { DaySection, type PlannedMeal } from "@/components/mealPlan/DaySection";
 import {
   MealPlanPickerSheet,
   type MealPlanPickerSheetRef,
@@ -48,52 +43,69 @@ import {
   type MealPlanShareSheetRef,
 } from "@/components/mealPlan/MealPlanShareSheet";
 import {
-  RecipePickerSheet,
-  type RecipePickerSheetRef,
-} from "@/components/mealPlan/RecipePickerSheet";
+  MealTimesSheet,
+  type MealTimesSheetRef,
+} from "@/components/mealPlan/MealTimesSheet";
 import {
   SharedUsersSheet,
   type SharedUsersSheetRef,
 } from "@/components/mealPlan/SharedUsersSheet";
+import { WeekStrip } from "@/components/mealPlan/WeekStrip";
 import {
-  useMealPlanDates,
-  type MealPlanListItem,
-} from "@/hooks/useMealPlanDates";
+  addDays,
+  formatWeekRange,
+  getWeekDays,
+  longDayName,
+  startOfWeek,
+  toDateString,
+  type WeekDay,
+} from "@/components/mealPlan/week";
 import { useSelectedMealPlan } from "@/lib/mealPlanPreferences";
 
-// Constants
-const HEADER_HEIGHT = 52; // Height of the title row
-const BACK_TO_TODAY_ANIMATION_MS = 180;
-const BACK_TO_TODAY_SCROLL_SUPPRESSION_MS = 1500;
+// How far below a day's top the list can be scrolled and still count as that day.
+const ACTIVE_DAY_OFFSET = 48;
+
+const titleCase = (key: string) =>
+  key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, " ");
 
 export const MealPlanScreen = () => {
   const { theme } = useUnistyles();
   const navigation = useNavigation();
-  const insets = UnistylesRuntime.insets;
 
   // Refs
-  const flashListRef = useRef<FlashListRef<MealPlanListItem>>(null);
-  const hasAlignedInitialScrollRef = useRef(false);
-  const todayDateStringRef = useRef<string | null>(null);
-  const isReturningToTodayRef = useRef(false);
-  const backToTodayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const sectionTops = useRef(new Map<string, number>());
+  // Day kept at the top of the list until the user scrolls. Its section's
+  // onLayout re-runs whenever days above it grow (meals loading, a banner
+  // appearing), and each time we scroll it back to the top.
+  const focusDate = useRef<string | null>(toDateString(new Date()));
+  // Only scrolls the user makes move the strip's picked day
+  const isUserScrolling = useRef(false);
 
   // Sheet refs
-  const recipePickerSheetRef = useRef<RecipePickerSheetRef>(null);
+  const addToDaySheetRef = useRef<AddToDaySheetRef>(null);
+  const mealTimesSheetRef = useRef<MealTimesSheetRef>(null);
   const shareSheetRef = useRef<MealPlanShareSheetRef>(null);
   const sharedUsersSheetRef = useRef<SharedUsersSheetRef>(null);
   const mealPlanPickerSheetRef = useRef<MealPlanPickerSheetRef>(null);
 
-  // State for recipe picker props
-  const [recipePickerProps, setRecipePickerProps] = useState<{
-    mealPlanId?: number;
-    date?: string;
-    mealType?: "breakfast" | "lunch" | "dinner";
-  }>({});
-  const [showBackToToday, setShowBackToToday] = useState(false);
-  const backToTodayProgress = useSharedValue(0);
+  // Week shown, and the day picked in the strip
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() =>
+    toDateString(new Date()),
+  );
+  // "Today" moves on if the app stays open past midnight
+  const [today, setToday] = useState(() => toDateString(new Date()));
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") setToday(toDateString(new Date()));
+    });
+    return () => sub.remove();
+  }, []);
+  const days = useMemo(
+    () => getWeekDays(weekStart, new Date(`${today}T12:00:00`)),
+    [weekStart, today],
+  );
 
   // Reactive meal plan selection from MMKV
   const {
@@ -122,51 +134,10 @@ export const MealPlanScreen = () => {
     return defaultPlan ?? mealPlans[0];
   }, [mealPlans, storedPlan, clearSelectedPlan]);
 
-  // Date range management and infinite scroll
-  const {
-    startDateString,
-    endDateString,
-    loadMorePast,
-    loadMoreFuture,
-    flattenedData,
-    todayHeaderIndex,
-    DAY_HEADER_HEIGHT,
-    DAY_CONTENT_HEIGHT,
-    DAY_FOOTER_HEIGHT,
-  } = useMealPlanDates();
-
-  const todayDateString = useMemo(() => {
-    return (
-      flattenedData.find((item) => item.type === "header" && item.isToday)
-        ?.dateString ?? null
-    );
-  }, [flattenedData]);
-
-  useEffect(() => {
-    todayDateStringRef.current = todayDateString;
-  }, [todayDateString]);
-
-  useEffect(() => {
-    backToTodayProgress.set(
-      withTiming(showBackToToday ? 1 : 0, {
-        duration: BACK_TO_TODAY_ANIMATION_MS,
-        easing: Easing.bezier(0.2, 0, 0, 1),
-      }),
-    );
-  }, [backToTodayProgress, showBackToToday]);
-
-  useEffect(() => {
-    return () => {
-      if (backToTodayTimeoutRef.current) {
-        clearTimeout(backToTodayTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const { data: entries } = useGetMealPlanEntries({
     mealPlanId: activePlan?.id ?? 0,
-    startDate: startDateString,
-    endDate: endDateString,
+    startDate: days[0]!.dateString,
+    endDate: days[6]!.dateString,
     enabled: !!activePlan,
   });
 
@@ -186,45 +157,182 @@ export const MealPlanScreen = () => {
   // Mutations
   const removeEntry = useRemoveFromMealPlan();
 
-  // Group entries by date
-  const entriesByDate = useMemo(() => {
-    const map = new Map<string, Map<string, MealPlanEntry>>();
+  const mealTimes = useMemo(() => activePlan?.mealTimes ?? [], [activePlan]);
+
+  // Each day's planned meals, in the plan's meal time order
+  const mealsByDate = useMemo(() => {
+    const order = new Map(mealTimes.map((t, i) => [t.key, i]));
+    const names = new Map(mealTimes.map((t) => [t.key, t.name]));
+    const map = new Map<string, PlannedMeal[]>();
     entries?.forEach((entry) => {
-      if (!map.has(entry.date)) {
-        map.set(entry.date, new Map());
-      }
-      map.get(entry.date)!.set(entry.mealType, entry);
+      const list = map.get(entry.date) ?? [];
+      list.push({
+        entry,
+        label: names.get(entry.mealType) ?? titleCase(entry.mealType),
+      });
+      map.set(entry.date, list);
     });
+    map.forEach((list) =>
+      list.sort(
+        (a, b) =>
+          (order.get(a.entry.mealType) ?? 99) -
+          (order.get(b.entry.mealType) ?? 99),
+      ),
+    );
     return map;
-  }, [entries]);
+  }, [entries, mealTimes]);
 
-  // Handlers - now stable since DayGroup handles dateString internally
-  const handleMealSlotPress = useCallback(
-    (dateString: string, mealType: "breakfast" | "lunch" | "dinner") => {
-      const entry = entriesByDate.get(dateString)?.get(mealType);
-      if (entry) {
-        navigation.navigate("RecipeDetail", { recipeId: entry.recipeId });
-      } else if (activePlan) {
-        setRecipePickerProps({
-          mealPlanId: activePlan.id,
-          date: dateString,
-          mealType,
-        });
-        recipePickerSheetRef.current?.present();
+  const entriesByDate = useMemo(() => {
+    const map = new Map<string, MealPlanEntry[]>();
+    mealsByDate.forEach((list, date) =>
+      map.set(
+        date,
+        list.map((m) => m.entry),
+      ),
+    );
+    return map;
+  }, [mealsByDate]);
+
+  const mealCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    mealsByDate.forEach((list, date) => counts.set(date, list.length));
+    return counts;
+  }, [mealsByDate]);
+
+  // ─── Scrolling between days ────────────────────────────────────────────
+
+  const scrollToDate = useCallback((dateString: string, animated = true) => {
+    const top = sectionTops.current.get(dateString);
+    if (top === undefined) return; // its onLayout scrolls once it's measured
+    scrollRef.current?.scrollTo({ y: Math.max(0, top - 8), animated });
+  }, []);
+
+  const handleSectionLayout = useCallback(
+    (dateString: string, event: LayoutChangeEvent) => {
+      sectionTops.current.set(dateString, event.nativeEvent.layout.y);
+      if (focusDate.current === dateString && !isUserScrolling.current) {
+        requestAnimationFrame(() => scrollToDate(dateString, false));
       }
     },
-    [entriesByDate, activePlan, navigation],
+    [scrollToDate],
   );
 
-  const handleMealSlotDelete = useCallback(
-    (dateString: string, mealType: "breakfast" | "lunch" | "dinner") => {
-      const entry = entriesByDate.get(dateString)?.get(mealType);
-      if (entry) {
-        removeEntry.mutate({ entryId: entry.id });
+  const handleSelectDate = useCallback(
+    (dateString: string) => {
+      isUserScrolling.current = false;
+      focusDate.current = dateString;
+      setSelectedDate(dateString);
+      scrollToDate(dateString);
+    },
+    [scrollToDate],
+  );
+
+  // Keep the strip in step with the day at the top of the list
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!isUserScrolling.current) return;
+      const y = event.nativeEvent.contentOffset.y + ACTIVE_DAY_OFFSET;
+      let current = days[0]!.dateString;
+      for (const day of days) {
+        const top = sectionTops.current.get(day.dateString);
+        if (top !== undefined && top <= y) current = day.dateString;
+      }
+      setSelectedDate((prev) => (prev === current ? prev : current));
+    },
+    [days],
+  );
+
+  const handleScrollBeginDrag = useCallback(() => {
+    isUserScrolling.current = true;
+    focusDate.current = null;
+  }, []);
+
+  const handleScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // With no fling there's no momentum phase to wait for
+      if (Math.abs(event.nativeEvent.velocity?.y ?? 0) < 0.01) {
+        isUserScrolling.current = false;
       }
     },
-    [entriesByDate, removeEntry],
+    [],
   );
+
+  const handleMomentumScrollEnd = useCallback(() => {
+    isUserScrolling.current = false;
+  }, []);
+
+  const showWeek = useCallback((start: Date) => {
+    const today = new Date();
+    const todayString = toDateString(today);
+    const week = getWeekDays(start, today);
+    const focus = week.some((d) => d.dateString === todayString)
+      ? todayString
+      : week[0]!.dateString;
+    sectionTops.current.clear();
+    focusDate.current = focus;
+    isUserScrolling.current = false;
+    setSelectedDate(focus);
+    setWeekStart(start);
+  }, []);
+
+  const handlePreviousWeek = useCallback(
+    () => showWeek(addDays(weekStart, -7)),
+    [showWeek, weekStart],
+  );
+  const handleNextWeek = useCallback(
+    () => showWeek(addDays(weekStart, 7)),
+    [showWeek, weekStart],
+  );
+
+  // Tapping the Plan tab again returns to today
+  const isFocused = useIsFocused();
+  useEffect(() => {
+    //  @ts-expect-error navigation type
+    const unsubscribe = navigation.addListener("tabPress", () => {
+      if (!isFocused) return;
+      const thisWeek = startOfWeek(new Date());
+      if (thisWeek.getTime() === weekStart.getTime()) {
+        handleSelectDate(toDateString(new Date()));
+      } else {
+        showWeek(thisWeek);
+      }
+    });
+    return unsubscribe;
+  }, [navigation, isFocused, weekStart, showWeek, handleSelectDate]);
+
+  // ─── Meals ─────────────────────────────────────────────────────────────
+
+  const dayTitle = useCallback(
+    (day: WeekDay) => (day.isToday ? "Today" : longDayName(day.date)),
+    [],
+  );
+
+  const handleAdd = useCallback((day: WeekDay) => {
+    addToDaySheetRef.current?.present({
+      dateString: day.dateString,
+      label: day.isToday
+        ? "today"
+        : `${longDayName(day.date)} ${day.date.getDate()}`,
+    });
+  }, []);
+
+  const handleOpenMeal = useCallback(
+    (entry: MealPlanEntry) => {
+      navigation.navigate("RecipeDetail", { recipeId: entry.recipeId });
+    },
+    [navigation],
+  );
+
+  const handleDeleteMeal = useCallback(
+    (entry: MealPlanEntry) => removeEntry.mutate({ entryId: entry.id }),
+    [removeEntry],
+  );
+
+  const handleOpenMealTimes = useCallback(() => {
+    mealTimesSheetRef.current?.present();
+  }, []);
+
+  // ─── Sharing ───────────────────────────────────────────────────────────
 
   // Build list of users who can edit (current user + all shared users)
   const editableUsers = useMemo(() => {
@@ -310,176 +418,104 @@ export const MealPlanScreen = () => {
     mealPlanPickerSheetRef.current?.present();
   }, []);
 
-  // Render item based on type
-  const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<MealPlanListItem>) => {
-      switch (item.type) {
-        case "header":
-          return <DayHeader date={item.date} isToday={item.isToday} />;
+  // ─── Render ────────────────────────────────────────────────────────────
 
-        case "content": {
-          const dayEntries = entriesByDate.get(item.dateString);
-          // All users with access can edit (owners and shared users)
-          const canEdit = !!activePlan;
-
-          return (
-            <DayGroup
-              dateString={item.dateString}
-              entries={dayEntries}
-              canEdit={canEdit}
-              onMealPress={handleMealSlotPress}
-              onMealDelete={handleMealSlotDelete}
+  const titleRow = (
+    <View style={styles.headerRow}>
+      <TouchableOpacity
+        style={styles.titleButton}
+        onPress={handleOpenMealPlanPicker}
+        activeOpacity={0.7}
+        disabled={isLoadingPlans}
+      >
+        <Text type="screenTitle" numberOfLines={1} style={styles.title}>
+          {activePlan?.name ?? storedPlan?.name ?? "Meal Plan"}
+        </Text>
+        <Ionicons
+          name="chevron-down"
+          size={20}
+          color={theme.colors.textSecondary}
+          style={styles.titleChevron}
+        />
+      </TouchableOpacity>
+      {editableUsers.length > 0 && (
+        <TouchableOpacity
+          style={styles.inviteStack}
+          activeOpacity={0.7}
+          onPress={handleOpenSharedUsers}
+          accessibilityLabel="Sharing"
+        >
+          <View style={styles.inviteIconWrapper}>
+            <Ionicons
+              name="people"
+              size={20}
+              color={theme.colors.textSecondary}
             />
-          );
-        }
-
-        case "footer":
-          return <View style={styles.sectionFooter} />;
-      }
-    },
-    [entriesByDate, activePlan, handleMealSlotPress, handleMealSlotDelete],
+          </View>
+          <View style={styles.stackedAvatarsWrapper}>
+            <StackedAvatars users={editableUsers} maxVisible={3} size={44} />
+          </View>
+        </TouchableOpacity>
+      )}
+    </View>
   );
 
-  // Item type for FlashList recycling optimization
-  const getItemType = useCallback((item: MealPlanListItem) => item.type, []);
+  if (isLoadingPlans) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>{titleRow}</View>
+        <MealPlanSkeleton />
+      </View>
+    );
+  }
 
-  // Key extractor
-  const keyExtractor = useCallback((item: MealPlanListItem) => item.id, []);
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        {titleRow}
 
-  const clearBackToTodaySuppression = useCallback(() => {
-    isReturningToTodayRef.current = false;
-    if (backToTodayTimeoutRef.current) {
-      clearTimeout(backToTodayTimeoutRef.current);
-      backToTodayTimeoutRef.current = null;
-    }
-  }, []);
+        <View style={styles.weekRow}>
+          <Text type="headline" style={styles.weekRange}>
+            {formatWeekRange(weekStart)}
+          </Text>
+          <TouchableOpacity
+            style={styles.weekArrow}
+            onPress={handlePreviousWeek}
+            accessibilityLabel="Previous week"
+          >
+            <Ionicons name="chevron-back" size={20} style={styles.arrowIcon} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.weekArrow}
+            onPress={handleNextWeek}
+            accessibilityLabel="Next week"
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              style={styles.arrowIcon}
+            />
+          </TouchableOpacity>
+        </View>
 
-  const suppressBackToTodayPrompt = useCallback(() => {
-    isReturningToTodayRef.current = true;
-    setShowBackToToday(false);
+        <WeekStrip
+          days={days}
+          mealCounts={mealCounts}
+          selectedDate={selectedDate}
+          onSelectDate={handleSelectDate}
+        />
+      </View>
 
-    if (backToTodayTimeoutRef.current) {
-      clearTimeout(backToTodayTimeoutRef.current);
-    }
-
-    backToTodayTimeoutRef.current = setTimeout(() => {
-      isReturningToTodayRef.current = false;
-      backToTodayTimeoutRef.current = null;
-    }, BACK_TO_TODAY_SCROLL_SUPPRESSION_MS);
-  }, []);
-
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 10,
-    minimumViewTime: 80,
-  }).current;
-
-  const handleViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken<MealPlanListItem>[] }) => {
-      const todayDateString = todayDateStringRef.current;
-      if (!todayDateString) return;
-
-      const isTodayVisible = viewableItems.some(({ item }) => {
-        return (item as MealPlanListItem).dateString === todayDateString;
-      });
-
-      if (isTodayVisible) {
-        clearBackToTodaySuppression();
-        setShowBackToToday(false);
-        return;
-      }
-
-      if (!isReturningToTodayRef.current) {
-        setShowBackToToday(true);
-      }
-    },
-  ).current;
-
-  // Override item layout for proper sizing
-  const overrideItemLayout = useCallback(
-    (layout: { size?: number; span?: number }, item: MealPlanListItem) => {
-      switch (item.type) {
-        case "header":
-          layout.size = DAY_HEADER_HEIGHT;
-          break;
-        case "content":
-          layout.size = DAY_CONTENT_HEIGHT;
-          break;
-        case "footer":
-          layout.size = DAY_FOOTER_HEIGHT;
-          break;
-      }
-    },
-    [DAY_HEADER_HEIGHT, DAY_CONTENT_HEIGHT, DAY_FOOTER_HEIGHT],
-  );
-
-  // Bi-directional infinite scroll handlers
-  const handleStartReached = useCallback(() => {
-    loadMorePast();
-  }, [loadMorePast]);
-
-  const handleEndReached = useCallback(() => {
-    loadMoreFuture();
-  }, [loadMoreFuture]);
-
-  // Scroll to today helper
-  const todayScrollViewOffset = -(insets.top + HEADER_HEIGHT);
-  const scrollToToday = useCallback(
-    (animated = true) => {
-      if (todayHeaderIndex < 0) return;
-
-      suppressBackToTodayPrompt();
-      flashListRef.current?.scrollToIndex({
-        index: todayHeaderIndex,
-        animated,
-        viewOffset: todayScrollViewOffset,
-      });
-    },
-    [suppressBackToTodayPrompt, todayHeaderIndex, todayScrollViewOffset],
-  );
-
-  const handleBackToTodayPress = useCallback(() => {
-    scrollToToday(true);
-  }, [scrollToToday]);
-
-  const handleListLoad = useCallback(() => {
-    if (hasAlignedInitialScrollRef.current) return;
-
-    hasAlignedInitialScrollRef.current = true;
-    requestAnimationFrame(() => {
-      scrollToToday(false);
-    });
-  }, [scrollToToday]);
-
-  const isFocused = useIsFocused();
-
-  useEffect(() => {
-    //  @ts-expect-error navigation type
-    const unsubscribe = navigation.addListener("tabPress", () => {
-      if (isFocused) {
-        scrollToToday(true);
-      }
-    });
-
-    return unsubscribe;
-  }, [navigation, scrollToToday, isFocused]);
-
-  const backToTodayAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backToTodayProgress.get(),
-    transform: [
-      {
-        translateY: interpolate(backToTodayProgress.get(), [0, 1], [-8, 0]),
-      },
-      {
-        scale: interpolate(backToTodayProgress.get(), [0, 1], [0.96, 1]),
-      },
-    ],
-  }));
-
-  // List header component - includes safe area top + header height + invitation banners
-  const ListHeaderComponent = useMemo(
-    () => (
-      <View>
-        <View style={{ height: insets.top + HEADER_HEIGHT }} />
+      <ScrollView
+        ref={scrollRef}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        onScroll={handleScroll}
+        scrollEventThrottle={64}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
+      >
         {pendingInvitations?.map((invitation) => (
           <InvitationBanner
             key={invitation.id}
@@ -496,146 +532,36 @@ export const MealPlanScreen = () => {
             isDeclining={declineInvitation.isPending}
           />
         ))}
-      </View>
-    ),
-    [insets.top, pendingInvitations, acceptInvitation, declineInvitation],
-  );
 
-  if (isLoadingPlans) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.fixedHeader}>
-          <LinearGradient
-            colors={[theme.colors.background, `${theme.colors.background}00`]}
-            style={styles.headerGradient}
-            pointerEvents="none"
+        {days.map((day) => (
+          <DaySection
+            key={day.dateString}
+            day={day}
+            title={dayTitle(day)}
+            meals={mealsByDate.get(day.dateString) ?? []}
+            canEdit={!!activePlan}
+            onAdd={handleAdd}
+            onOpenMeal={handleOpenMeal}
+            onDeleteMeal={handleDeleteMeal}
+            onLayout={handleSectionLayout}
           />
-          <View style={styles.headerRow}>
-            <View style={styles.titleButton}>
-              <Text type="screenTitle">{storedPlan?.name ?? "Meal Plan"}</Text>
-              <Ionicons
-                name="chevron-down"
-                size={20}
-                color={theme.colors.text}
-                style={styles.titleChevron}
-              />
-            </View>
-          </View>
-        </View>
-        <View style={{ paddingTop: insets.top + HEADER_HEIGHT }}>
-          <MealPlanSkeleton />
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      {/* Calendar */}
-      <View style={styles.listContainer}>
-        <FlashList
-          ref={flashListRef}
-          data={flattenedData}
-          renderItem={renderItem}
-          getItemType={getItemType}
-          keyExtractor={keyExtractor}
-          overrideItemLayout={overrideItemLayout}
-          onStartReached={handleStartReached}
-          onStartReachedThreshold={0.5}
-          onEndReached={handleEndReached}
-          onEndReachedThreshold={0.5}
-          maintainVisibleContentPosition={{ disabled: false }}
-          ListHeaderComponent={ListHeaderComponent}
-          contentContainerStyle={styles.listContent}
-          viewabilityConfig={viewabilityConfig}
-          onViewableItemsChanged={handleViewableItemsChanged}
-          initialScrollIndex={
-            todayHeaderIndex >= 0 ? todayHeaderIndex : undefined
-          }
-          onLoad={handleListLoad}
-        />
-      </View>
-
-      {/* Fixed Header with Gradient */}
-      <View style={styles.fixedHeader}>
-        <LinearGradient
-          colors={[theme.colors.background, `${theme.colors.background}00`]}
-          style={styles.headerGradient}
-          pointerEvents="none"
-        />
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            style={styles.titleButton}
-            onPress={handleOpenMealPlanPicker}
-            activeOpacity={0.7}
-          >
-            <Text type="screenTitle">{activePlan?.name ?? "Meal Plan"}</Text>
-            <Ionicons
-              name="chevron-down"
-              size={20}
-              color={theme.colors.text}
-              style={styles.titleChevron}
-            />
-          </TouchableOpacity>
-          <View style={styles.headerButtons}>
-            {editableUsers.length > 0 && (
-              <TouchableOpacity
-                style={styles.inviteStack}
-                activeOpacity={0.7}
-                onPress={handleOpenSharedUsers}
-              >
-                <View style={styles.inviteIconWrapper}>
-                  <Ionicons
-                    name="people"
-                    size={20}
-                    color={theme.colors.textSecondary}
-                  />
-                </View>
-                <View style={styles.stackedAvatarsWrapper}>
-                  <StackedAvatars
-                    users={editableUsers}
-                    maxVisible={3}
-                    size={44}
-                  />
-                </View>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </View>
-
-      <Animated.View
-        style={[styles.backToTodayContainer, backToTodayAnimatedStyle]}
-        pointerEvents={showBackToToday ? "box-none" : "none"}
-        accessibilityElementsHidden={!showBackToToday}
-        importantForAccessibility={
-          showBackToToday ? "auto" : "no-hide-descendants"
-        }
-      >
-        <ScalePressable
-          disabled={!showBackToToday}
-          onPress={handleBackToTodayPress}
-          style={styles.backToTodayButton}
-          accessibilityRole="button"
-          accessibilityLabel="Scroll back to today"
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={16}
-            style={styles.backToTodayIcon}
-          />
-          <Text type="subheadline" style={styles.backToTodayText}>
-            Back to today
-          </Text>
-        </ScalePressable>
-      </Animated.View>
+        ))}
+      </ScrollView>
 
       {/* Sheets */}
-      <RecipePickerSheet
-        ref={recipePickerSheetRef}
-        mealPlanId={recipePickerProps.mealPlanId}
-        date={recipePickerProps.date}
-        mealType={recipePickerProps.mealType}
+      <AddToDaySheet
+        ref={addToDaySheetRef}
+        mealPlanId={activePlan?.id}
+        mealTimes={mealTimes}
+        entriesByDate={entriesByDate}
+        onEditMealTimes={handleOpenMealTimes}
+      />
+      <MealTimesSheet
+        ref={mealTimesSheetRef}
+        mealPlanId={activePlan?.id}
+        planName={activePlan?.name}
+        mealTimes={mealTimes}
+        isShared={!activePlan?.isOwner || (shareStatus?.length ?? 0) > 0}
       />
       <MealPlanShareSheet
         ref={shareSheetRef}
@@ -664,43 +590,31 @@ const styles = StyleSheet.create((theme, rt) => ({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  listContainer: {
-    flex: 1,
-  },
-  fixedHeader: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
+  header: {
     paddingTop: rt.insets.top,
-    paddingHorizontal: 20,
-  },
-  headerGradient: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: rt.insets.top + 72,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: 8,
+    minHeight: 52,
   },
   titleButton: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 1,
+  },
+  title: {
+    flexShrink: 1,
   },
   titleChevron: {
     marginLeft: 4,
     marginTop: 2,
-  },
-  headerButtons: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  headerButton: {
-    padding: 8,
   },
   inviteStack: {
     flexDirection: "row",
@@ -721,40 +635,31 @@ const styles = StyleSheet.create((theme, rt) => ({
   stackedAvatarsWrapper: {
     marginLeft: -22,
   },
-  listContent: {
-    paddingBottom: 100,
-  },
-  sectionFooter: {
-    height: 16,
-  },
-  backToTodayContainer: {
-    position: "absolute",
-    top: rt.insets.top + HEADER_HEIGHT + 8,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 20,
-  },
-  backToTodayButton: {
+  weekRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
+    paddingLeft: 8,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  weekRange: {
+    flex: 1,
+    fontFamily: theme.fonts.bold,
+  },
+  weekArrow: {
+    width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  backToTodayIcon: {
-    color: theme.colors.buttonText,
+  arrowIcon: {
+    color: theme.colors.primary,
   },
-  backToTodayText: {
-    color: theme.colors.buttonText,
-    fontWeight: "600",
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    // Enough room for Sunday to scroll up to the top of the list
+    paddingBottom: Math.max(rt.insets.bottom + 120, rt.screen.height * 0.6),
   },
 }));

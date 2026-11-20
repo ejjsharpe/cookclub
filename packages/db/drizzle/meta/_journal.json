@@ -141,6 +141,13 @@
       "when": 1786875727909,
       "tag": "0019_skinny_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795180451362,
+      "tag": "0020_fat_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

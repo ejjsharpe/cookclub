@@ -7,6 +7,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  type ReactNode,
 } from "react";
 import {
   View,
@@ -73,6 +74,8 @@ export interface RecipeBrowserSheetProps {
   excludedRecipeIds?: number[];
   /** Empty-state text when every loaded recipe is excluded */
   excludedRecipesEmptyMessage?: string;
+  /** Extra controls shown above the search field (e.g. meal time chips) */
+  topContent?: ReactNode;
 }
 
 export interface RecipeBrowserSheetRef {
@@ -91,6 +94,7 @@ export const RecipeBrowserSheet = forwardRef<
       onDismiss,
       excludedRecipeIds = [],
       excludedRecipesEmptyMessage = "All recipes are already selected",
+      topContent,
     },
     ref,
   ) => {
@@ -451,6 +455,7 @@ export const RecipeBrowserSheet = forwardRef<
           ) : (
             // Main browser view with inline layout
             <View style={styles.container}>
+              {topContent}
               {/* Search Row */}
               <View style={styles.searchRow}>
                 <Animated.View

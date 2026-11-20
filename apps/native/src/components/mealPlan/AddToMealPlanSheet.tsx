@@ -26,13 +26,8 @@ import { useGetMealPlans, useAddRecipeToMealPlan } from "@/api/mealPlan";
 import { Ionicons } from "@/components/Ionicons";
 import { useSelectedMealPlan } from "@/lib/mealPlanPreferences";
 
-type MealType = "breakfast" | "lunch" | "dinner";
-
-const MEAL_TYPES: { value: MealType; label: string }[] = [
-  { value: "breakfast", label: "Breakfast" },
-  { value: "lunch", label: "Lunch" },
-  { value: "dinner", label: "Dinner" },
-];
+// Key of one of the plan's meal times
+type MealType = string;
 
 function getDefaultMealType(): MealType {
   const hour = new Date().getHours();
@@ -107,6 +102,18 @@ export const AddToMealPlanSheet = forwardRef<
 
   const hasMultiplePlans = (mealPlans?.length ?? 0) > 1;
 
+  // The plan's meal times that are switched on (breakfast, lunch, dinner + custom)
+  const mealTimeOptions = useMemo(
+    () => (activePlan?.mealTimes ?? []).filter((t) => !t.hidden),
+    [activePlan],
+  );
+  // Fall back to the first option if the time-of-day pick is hidden on this plan
+  const effectiveMealType = mealTimeOptions.some(
+    (t) => t.key === selectedMealType,
+  )
+    ? selectedMealType
+    : (mealTimeOptions[0]?.key ?? selectedMealType);
+
   useImperativeHandle(ref, () => ({
     present: () => {
       // Reset to defaults on each open
@@ -140,7 +147,7 @@ export const AddToMealPlanSheet = forwardRef<
         mealPlanId: activePlan.id,
         recipeId,
         date: selectedDate,
-        mealType: selectedMealType,
+        mealType: effectiveMealType,
       });
       handleDismiss();
     } catch {
@@ -246,16 +253,16 @@ export const AddToMealPlanSheet = forwardRef<
                 Meal
               </Text>
               <View style={styles.mealTypeRow}>
-                {MEAL_TYPES.map((mt) => {
-                  const isSelected = selectedMealType === mt.value;
+                {mealTimeOptions.map((mt) => {
+                  const isSelected = effectiveMealType === mt.key;
                   return (
                     <TouchableOpacity
-                      key={mt.value}
+                      key={mt.key}
                       style={[
                         styles.mealTypeChip,
                         isSelected && styles.mealTypeChipSelected,
                       ]}
-                      onPress={() => setSelectedMealType(mt.value)}
+                      onPress={() => setSelectedMealType(mt.key)}
                     >
                       <Text
                         style={[
@@ -263,7 +270,7 @@ export const AddToMealPlanSheet = forwardRef<
                           isSelected && styles.mealTypeTextSelected,
                         ]}
                       >
-                        {mt.label}
+                        {mt.name}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -393,11 +400,15 @@ const styles = StyleSheet.create((theme) => ({
   // Meal type selector
   mealTypeRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     marginBottom: 24,
   },
   mealTypeChip: {
-    flex: 1,
+    // Three to a row; custom meal times wrap onto the next
+    flexGrow: 1,
+    flexBasis: "30%",
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 22,
     backgroundColor: theme.colors.inputBackground,
