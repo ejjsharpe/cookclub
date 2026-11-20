@@ -118,10 +118,10 @@ const ActivityActionRowSkeleton = () => (
   </View>
 );
 
+// Size comes from aspectRatio; height "auto" overrides Skeleton's default
+// fixed height so the placeholder fills the same 4:3 box as the real photo.
 const FeedImageSkeleton = () => (
-  <View style={styles.feedImage}>
-    <Skeleton borderRadius={22} style={styles.fill} />
-  </View>
+  <Skeleton borderRadius={22} style={styles.feedImage} />
 );
 
 // Saved recipe card: 4:3 photo, title, source
@@ -469,10 +469,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   feedImage: {
     width: "100%",
+    height: "auto",
     aspectRatio: 4 / 3,
-  },
-  fill: {
-    ...StyleSheet.absoluteFillObject,
   },
   recipePreview: {
     flexDirection: "row",
