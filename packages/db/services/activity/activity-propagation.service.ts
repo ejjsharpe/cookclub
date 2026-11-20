@@ -299,6 +299,7 @@ export async function hydrateActivityIds(
               id: originalOwner.id,
               name: originalOwner.name,
               username: originalOwner.username ?? null,
+              image: originalOwner.image ?? null,
             }
           : null;
 

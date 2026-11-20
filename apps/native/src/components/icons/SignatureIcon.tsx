@@ -17,7 +17,7 @@ interface Props {
   style?: StyleProp<ViewStyle>;
 }
 
-/** One of the eight cookclub signature icons. Everything else uses system icons. */
+/** One of the cookclub signature icons. Everything else uses system icons. */
 export const SignatureIcon = memo(
   ({ name, variant = "outline", size = 24, color, style }: Props) => (
     <SvgXml

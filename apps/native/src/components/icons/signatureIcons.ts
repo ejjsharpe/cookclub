@@ -3,8 +3,8 @@
  * stroke). Each has an outline (default) and filled (selected) form.
  *
  * The first four are the signature set (the tab icons). The rest are everyday UI icons
- * (search, notifications, like, comment) drawn at the same weight so they
- * sit evenly next to each other.
+ * (search, notifications, like, comment, save, open link) drawn at the same
+ * weight so they sit evenly next to each other.
  *
  * The markup is single-colour (`currentColor`) so it can be tinted. Holes in
  * filled icons are masks, not white shapes, so tinting never covers them.
@@ -37,6 +37,9 @@ const BELL = "M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9";
 const HEART_LARGE =
   "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
 const BUBBLE = "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z";
+const BOOKMARK =
+  "M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4Z";
+const ARROW_UP_RIGHT = "M7 17 17 7M8 7h9v9";
 
 /** A mask that keeps everything except `holes` (drawn in black). */
 const mask = (id: string, holes: string) =>
@@ -76,6 +79,15 @@ export const SIGNATURE_ICONS = {
   comment: {
     outline: `<g ${STROKE}><path d="${BUBBLE}"/></g>`,
     filled: `<g ${STROKE}><path d="${BUBBLE}" fill="currentColor"/></g>`,
+  },
+  bookmark: {
+    outline: `<g ${STROKE}><path d="${BOOKMARK}"/></g>`,
+    filled: `<g ${STROKE}><path d="${BOOKMARK}" fill="currentColor"/></g>`,
+  },
+  // "Opens outside the app". A chevron would mean another screen in the app.
+  external: {
+    outline: `<g ${STROKE}><path d="${ARROW_UP_RIGHT}"/></g>`,
+    filled: `<g ${STROKE}><path d="${ARROW_UP_RIGHT}"/></g>`,
   },
 } as const;
 

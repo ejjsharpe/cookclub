@@ -1,19 +1,26 @@
 import { memo, useMemo, useCallback } from "react";
-import { View, Pressable } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { View } from "react-native";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { Text } from "./Text";
 
 import type { RecipeImportFeedItem } from "@/api/activity";
 import { OptimizedImage } from "@/components/OptimizedImage";
+import { ScalePressable } from "@/components/buttons/ScalePressable";
 import {
   FEED_CARD_INSET,
   FeedActions,
   FeedAuthorLine,
   FeedSaveButton,
+  FeedSourceMark,
 } from "@/components/feed/FeedCardParts";
+import { SignatureIcon } from "@/components/icons/SignatureIcon";
 import { openExternalWebsite } from "@/lib/externalBrowser";
-import { formatFeedRecipeMeta } from "@/utils/feedRecipeMeta";
+import {
+  formatFeedRecipeDetails,
+  formatFeedRecipeMeta,
+  getFeedRecipeSource,
+} from "@/utils/feedRecipeMeta";
 import type { ImagePreset } from "@/utils/imageUrl";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
@@ -50,6 +57,7 @@ export const ImportActivityCard = memo(
     imagePreset,
     imagePriority = "normal",
   }: Props) => {
+    const { theme } = useUnistyles();
     const activityId = useMemo(() => parseInt(activity.id, 10), [activity.id]);
     const isCurrentUserRecipe =
       activity.recipe.ownerId === currentUserId ||
@@ -104,7 +112,12 @@ export const ImportActivityCard = memo(
     const isExternal = recipe.sourceType === "url";
     const isOwnPost = activity.actor.id === currentUserId;
 
-    const meta = formatFeedRecipeMeta(recipe);
+    const source = getFeedRecipeSource(recipe);
+    // With a photo, the source sits on it as a chip, so leave it out here.
+    const meta =
+      source && recipe.image
+        ? formatFeedRecipeDetails(recipe)
+        : formatFeedRecipeMeta(recipe);
 
     return (
       <View style={styles.card}>
@@ -119,10 +132,11 @@ export const ImportActivityCard = memo(
           onBlockPress={onBlockPress}
         />
 
-        <Pressable
-          style={({ pressed }) => [styles.recipe, pressed && styles.pressed]}
+        <ScalePressable
+          pressedScale={0.98}
+          style={styles.recipe}
           onPress={isExternal ? handleViewSource : handleRecipePress}
-          accessibilityRole="button"
+          accessibilityRole={isExternal ? "link" : "button"}
           accessibilityLabel={`${recipe.name}. Opens ${
             recipe.sourceType === "url"
               ? `recipe website, ${recipe.sourceDomain}`
@@ -130,26 +144,51 @@ export const ImportActivityCard = memo(
           }`}
         >
           {recipe.image ? (
-            <OptimizedImage
-              image={recipe.image}
-              preset={imagePreset}
-              style={styles.recipeImage}
-              priority={imagePriority}
-              decodeFormat="rgb"
-              transition={0}
-            />
+            <View>
+              <OptimizedImage
+                image={recipe.image}
+                preset={imagePreset}
+                style={styles.recipeImage}
+                priority={imagePriority}
+                decodeFormat="rgb"
+                transition={0}
+              />
+              {source ? (
+                <View style={styles.sourceChip}>
+                  <FeedSourceMark recipe={recipe} />
+                  <Text
+                    type="footnote"
+                    numberOfLines={1}
+                    style={styles.sourceChipLabel}
+                  >
+                    {source}
+                  </Text>
+                  {isExternal ? (
+                    <SignatureIcon
+                      name="external"
+                      size={14}
+                      color={theme.colors.text}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
           ) : null}
           <View style={styles.recipeInfo}>
             <Text type="title3" numberOfLines={2} style={styles.recipeTitle}>
               {recipe.name}
             </Text>
             {meta ? (
-              <Text type="footnote" numberOfLines={1} style={styles.meta}>
-                {meta}
-              </Text>
+              <View style={styles.metaRow}>
+                {/* Without a photo there's no chip, so show the source here. */}
+                {recipe.image ? null : <FeedSourceMark recipe={recipe} />}
+                <Text type="footnote" numberOfLines={1} style={styles.meta}>
+                  {meta}
+                </Text>
+              </View>
             ) : null}
           </View>
-        </Pressable>
+        </ScalePressable>
 
         <FeedActions
           activityId={activityId}
@@ -160,7 +199,7 @@ export const ImportActivityCard = memo(
           onCommentPress={onCommentPress}
           trailing={
             <FeedSaveButton
-              label={isCurrentUserRecipe ? "View" : "Save"}
+              saved={isCurrentUserRecipe}
               recipeName={recipe.name}
               onPress={handleImport}
             />
@@ -179,6 +218,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 10,
   },
   meta: {
+    flexShrink: 1,
     color: theme.colors.textSecondary,
   },
   recipe: {
@@ -189,14 +229,36 @@ const styles = StyleSheet.create((theme) => ({
     aspectRatio: 4 / 3,
     borderRadius: 22,
   },
+  // Solid rather than glass: glass is too costly in a scrolling list.
+  sourceChip: {
+    position: "absolute",
+    left: 12,
+    bottom: 12,
+    maxWidth: "80%",
+    height: 32,
+    paddingLeft: 8,
+    paddingRight: 12,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: theme.colors.photoChip,
+  },
+  sourceChipLabel: {
+    flexShrink: 1,
+    fontFamily: theme.fonts.bold,
+    color: theme.colors.text,
+  },
   recipeInfo: {
     gap: 2,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   recipeTitle: {
     fontSize: 18,
     lineHeight: 23,
-  },
-  pressed: {
-    opacity: 0.85,
   },
 }));

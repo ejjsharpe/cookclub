@@ -1,3 +1,4 @@
+import type { RecipeMetadata } from "@repo/contracts/feed";
 import { memo, useCallback, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -7,6 +8,10 @@ import { Avatar } from "@/components/Avatar";
 import { Ionicons } from "@/components/Ionicons";
 import { Text } from "@/components/Text";
 import { SignatureIcon } from "@/components/icons/SignatureIcon";
+import {
+  getRecipeImportSocialPlatform,
+  getRecipeImportSocialPlatformInfo,
+} from "@/utils/socialPlatforms";
 
 /** Horizontal inset shared by every feed card. */
 export const FEED_CARD_INSET = 16;
@@ -95,30 +100,97 @@ export const StarRating = memo(({ rating }: { rating: number }) => (
 ));
 
 // ─── Save button ────────────────────────────────────────────────────────────
+// A bookmark at the end of the like / comment row. Filled once the recipe is
+// already in your recipes, where it opens it instead.
 
 export const FeedSaveButton = memo(
   ({
-    label,
+    saved,
     recipeName,
     onPress,
   }: {
-    label: string;
+    saved: boolean;
     recipeName: string;
     onPress: () => void;
-  }) => (
-    <Pressable
-      onPress={onPress}
-      hitSlop={4}
-      style={({ pressed }) => [styles.saveButton, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`${label} ${recipeName}`}
-    >
-      <Text type="subheadline" style={styles.saveLabel}>
-        {label}
-      </Text>
-    </Pressable>
-  ),
+  }) => {
+    const { theme } = useUnistyles();
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={
+          saved ? `View ${recipeName} in your recipes` : `Save ${recipeName}`
+        }
+      >
+        <SignatureIcon
+          name="bookmark"
+          variant={saved ? "filled" : "outline"}
+          size={23}
+          color={theme.colors.text}
+        />
+      </Pressable>
+    );
+  },
 );
+
+// ─── Recipe source ──────────────────────────────────────────────────────────
+
+/**
+ * A small mark for where a recipe came from: the cook's avatar, the platform
+ * logo, or the website's first letter. Nothing for recipes with no source.
+ */
+export const FeedSourceMark = memo(({ recipe }: { recipe: RecipeMetadata }) => {
+  if (recipe.sourceType === "user") {
+    if (!recipe.originalOwner) return null;
+    return (
+      <View accessibilityElementsHidden importantForAccessibility="no">
+        <Avatar
+          imageUrl={recipe.originalOwner.image}
+          name={recipe.originalOwner.name}
+          size={18}
+        />
+      </View>
+    );
+  }
+  if (recipe.sourceType !== "url") return null;
+
+  const platform = getRecipeImportSocialPlatform(recipe.sourceUrl);
+  const info = platform ? getRecipeImportSocialPlatformInfo(platform) : null;
+  return (
+    <View
+      style={styles.sourceTile}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      {info ? (
+        <Ionicons name={info.icon} size={11} color={info.color} />
+      ) : (
+        <Text type="caption2" style={styles.sourceTileLetter}>
+          {recipe.sourceDomain.charAt(0).toLowerCase()}
+        </Text>
+      )}
+    </View>
+  );
+});
+
+/** The round marker at the end of a recipe link: ↗ when it leaves the app, › when it doesn't. */
+export const FeedOpenIndicator = memo(({ external }: { external: boolean }) => {
+  const { theme } = useUnistyles();
+  return (
+    <View
+      style={styles.openIndicator}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      {external ? (
+        <SignatureIcon name="external" size={16} color={theme.colors.text} />
+      ) : (
+        <Ionicons name="chevron-forward" size={16} color={theme.colors.text} />
+      )}
+    </View>
+  );
+});
 
 // ─── Like / comment row ─────────────────────────────────────────────────────
 
@@ -232,16 +304,29 @@ const styles = StyleSheet.create((theme) => ({
   starEmpty: {
     color: theme.colors.border,
   },
-  saveButton: {
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 18,
+  sourceTile: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.colors.primarySoft,
+    backgroundColor: theme.colors.background,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
   },
-  saveLabel: {
-    color: theme.colors.onPrimarySoft,
+  sourceTileLetter: {
+    fontSize: 10,
+    lineHeight: 12,
     fontFamily: theme.fonts.bold,
+    color: theme.colors.text,
+  },
+  openIndicator: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.background,
   },
   actions: {
     flexDirection: "row",
@@ -264,7 +349,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   trailing: {
     marginLeft: "auto",
-    paddingRight: 10,
   },
   pressed: {
     opacity: 0.6,

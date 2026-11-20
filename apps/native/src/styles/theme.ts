@@ -22,6 +22,8 @@ export const lightTheme = {
     tabBarBackground: "#F9FAFA",
     pressHighlight: "rgba(0, 0, 0, 0.05)",
     placeholderText: "#BCBDC0",
+    // Small labels laid over photos (e.g. the source on a feed card).
+    photoChip: "rgba(255, 255, 255, 0.88)",
   },
   fonts,
   borderRadius,
@@ -44,6 +46,7 @@ export const darkTheme = {
     tabBarBackground: "#252526",
     pressHighlight: "rgba(255, 255, 255, 0.08)",
     placeholderText: "#BCBDC0",
+    photoChip: "rgba(0, 0, 0, 0.72)",
   },
   fonts,
   borderRadius,

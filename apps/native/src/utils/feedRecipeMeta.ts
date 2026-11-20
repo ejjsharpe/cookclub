@@ -27,8 +27,14 @@ export function getFeedRecipeSource(recipe: RecipeMetadata): string | null {
 
 /** The card meta line: "seriouseats.com · 25 min · Noodles, Thai". */
 export function formatFeedRecipeMeta(recipe: RecipeMetadata): string {
+  return [getFeedRecipeSource(recipe), formatFeedRecipeDetails(recipe)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** The meta line without the source, for cards that show it elsewhere: "25 min · Noodles, Thai". */
+export function formatFeedRecipeDetails(recipe: RecipeMetadata): string {
   return [
-    getFeedRecipeSource(recipe),
     formatMinutesShort(recipe.totalTime),
     recipe.tags?.length ? recipe.tags.join(", ") : null,
   ]

@@ -28,6 +28,7 @@ interface UserSourcedRecipe extends BaseRecipeMetadata {
     id: string;
     name: string;
     username: string | null;
+    image: string | null;
   } | null;
 }
 

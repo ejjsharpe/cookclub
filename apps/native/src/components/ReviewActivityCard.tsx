@@ -1,16 +1,19 @@
 import { memo, useMemo, useCallback } from "react";
-import { View, Pressable, ScrollView } from "react-native";
+import { View, ScrollView } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Text } from "./Text";
 
 import type { CookingReviewFeedItem } from "@/api/activity";
 import { OptimizedImage } from "@/components/OptimizedImage";
+import { ScalePressable } from "@/components/buttons/ScalePressable";
 import {
   FEED_CARD_INSET,
   FeedActions,
   FeedAuthorLine,
+  FeedOpenIndicator,
   FeedSaveButton,
+  FeedSourceMark,
   StarRating,
 } from "@/components/feed/FeedCardParts";
 import { openExternalWebsite } from "@/lib/externalBrowser";
@@ -177,47 +180,42 @@ export const ReviewActivityCard = memo(
           </Text>
         ) : null}
 
-        <View style={styles.recipeRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.recipeLink,
-              pressed && styles.pressed,
-            ]}
-            onPress={isExternal ? handleViewSource : handleRecipePress}
-            accessibilityRole="button"
-            accessibilityLabel={`${recipe.name}. Opens ${
-              recipe.sourceType === "url"
-                ? `recipe website, ${recipe.sourceDomain}`
-                : "in app"
-            }`}
-          >
-            {recipe.image ? (
-              <OptimizedImage
-                image={recipe.image}
-                preset="thumb_200"
-                style={styles.recipeThumb}
-                priority={imagePriority}
-                decodeFormat="rgb"
-                transition={0}
-              />
-            ) : null}
-            <View style={styles.recipeInfo}>
-              <Text type="subheadline" numberOfLines={1} style={styles.bold}>
-                {recipe.name}
-              </Text>
-              {meta ? (
+        <ScalePressable
+          pressedScale={0.98}
+          style={styles.recipeLink}
+          onPress={isExternal ? handleViewSource : handleRecipePress}
+          accessibilityRole={isExternal ? "link" : "button"}
+          accessibilityLabel={`${recipe.name}. Opens ${
+            recipe.sourceType === "url"
+              ? `recipe website, ${recipe.sourceDomain}`
+              : "in app"
+          }`}
+        >
+          {recipe.image ? (
+            <OptimizedImage
+              image={recipe.image}
+              preset="thumb_200"
+              style={styles.recipeThumb}
+              priority={imagePriority}
+              decodeFormat="rgb"
+              transition={0}
+            />
+          ) : null}
+          <View style={styles.recipeInfo}>
+            <Text type="callout" numberOfLines={1} style={styles.bold}>
+              {recipe.name}
+            </Text>
+            {meta ? (
+              <View style={styles.metaRow}>
+                <FeedSourceMark recipe={recipe} />
                 <Text type="footnote" numberOfLines={1} style={styles.meta}>
                   {meta}
                 </Text>
-              ) : null}
-            </View>
-          </Pressable>
-          <FeedSaveButton
-            label={isCurrentUserRecipe ? "View" : "Save"}
-            recipeName={recipe.name}
-            onPress={handleImport}
-          />
-        </View>
+              </View>
+            ) : null}
+          </View>
+          <FeedOpenIndicator external={isExternal} />
+        </ScalePressable>
 
         <FeedActions
           activityId={activityId}
@@ -226,6 +224,13 @@ export const ReviewActivityCard = memo(
           commentCount={activity.commentCount}
           onLikePress={onLikePress}
           onCommentPress={onCommentPress}
+          trailing={
+            <FeedSaveButton
+              saved={isCurrentUserRecipe}
+              recipeName={recipe.name}
+              onPress={handleImport}
+            />
+          }
         />
       </View>
     );
@@ -254,39 +259,38 @@ const styles = StyleSheet.create((theme) => ({
   reviewText: {
     marginTop: -2,
   },
-  recipeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 8,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth * 2,
-    borderColor: theme.colors.border,
-  },
+  // Filled rather than outlined so the whole row reads as one button.
   recipeLink: {
-    flex: 1,
-    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    paddingVertical: 8,
+    paddingLeft: 8,
+    paddingRight: 12,
+    borderRadius: 18,
+    backgroundColor: theme.colors.inputBackground,
   },
   recipeThumb: {
-    width: 48,
-    height: 48,
+    width: 56,
+    height: 56,
     borderRadius: 12,
   },
   recipeInfo: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 4,
   },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  // Shrinks so long tags truncate before the arrow instead of running under it.
   meta: {
+    flexShrink: 1,
     color: theme.colors.textSecondary,
   },
   bold: {
     fontFamily: theme.fonts.bold,
-  },
-  pressed: {
-    opacity: 0.6,
   },
 }));
