@@ -19,7 +19,9 @@ import { Text } from "@/components/Text";
 import { getImageUrl } from "@/utils/imageUrl";
 
 interface MealSlotProps {
-  mealType: "breakfast" | "lunch" | "dinner";
+  mealType: string;
+  /** Shown above the recipe name, e.g. "Snack" or "Dinner · leftovers" */
+  label?: string;
   entry?: {
     id: number;
     recipeId: number;
@@ -37,7 +39,7 @@ const MEAL_LABELS: Record<string, string> = {
   dinner: "Dinner",
 };
 
-const MEAL_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+const MEAL_ICONS: Partial<Record<string, keyof typeof Ionicons.glyphMap>> = {
   breakfast: "sunny-outline",
   lunch: "partly-sunny-outline",
   dinner: "moon-outline",
@@ -93,12 +95,14 @@ const DeleteAction = ({
 
 const SlotContent = ({
   mealType,
+  label,
   entry,
   onPress,
   swipeProgress,
   disabled,
 }: {
-  mealType: "breakfast" | "lunch" | "dinner";
+  mealType: string;
+  label: string | undefined;
   entry: MealSlotProps["entry"];
   onPress: () => void;
   swipeProgress: SharedValue<number>;
@@ -149,7 +153,7 @@ const SlotContent = ({
             ) : (
               <View style={styles.iconContainer}>
                 <Ionicons
-                  name={MEAL_ICONS[mealType]}
+                  name={MEAL_ICONS[mealType] ?? "restaurant-outline"}
                   size={20}
                   color={theme.colors.primary}
                 />
@@ -159,7 +163,7 @@ const SlotContent = ({
             {/* Center: Text content */}
             <View style={styles.textContainer}>
               <Text type="caption" style={styles.mealLabel}>
-                {MEAL_LABELS[mealType]}
+                {label ?? MEAL_LABELS[mealType] ?? mealType}
               </Text>
               {entry ? (
                 <Text type="body" numberOfLines={1}>
@@ -193,6 +197,7 @@ const SlotContent = ({
 
 export const MealSlot = memo(function MealSlot({
   mealType,
+  label,
   entry,
   onPress,
   onDelete,
@@ -215,6 +220,7 @@ export const MealSlot = memo(function MealSlot({
     return (
       <SlotContent
         mealType={mealType}
+        label={label}
         entry={entry}
         onPress={onPress}
         swipeProgress={swipeProgress}
@@ -232,6 +238,7 @@ export const MealSlot = memo(function MealSlot({
     >
       <SlotContent
         mealType={mealType}
+        label={label}
         entry={entry}
         onPress={onPress}
         swipeProgress={swipeProgress}

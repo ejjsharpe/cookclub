@@ -6,6 +6,8 @@ import { Alert } from "react-native";
 // API Response Types
 export type MealPlanEntry = Outputs["mealPlan"]["getEntries"][number];
 export type ShareStatus = Outputs["mealPlan"]["getShareStatus"][number];
+export type MealPlan = Outputs["mealPlan"]["getMealPlans"][number];
+export type MealTime = MealPlan["mealTimes"][number];
 
 // Get all meal plans (owned + shared with user)
 export const useGetMealPlans = () => {
@@ -51,6 +53,86 @@ export const useDeleteMealPlan = () => {
     },
     onError: () => {
       Alert.alert("Error", "Failed to delete meal plan. Please try again.");
+    },
+  });
+
+  return useMutation(mutationOptions);
+};
+
+// Replace one plan's meal times in the cached plan list
+const setPlanMealTimes = (
+  plans: MealPlan[] | undefined,
+  mealPlanId: number,
+  mealTimes: MealTime[],
+) => plans?.map((p) => (p.id === mealPlanId ? { ...p, mealTimes } : p));
+
+const errorMessage = (err: unknown, fallback: string) =>
+  err instanceof Error && err.message ? err.message : fallback;
+
+// Add a custom meal time (e.g. "Supper") to a plan
+export const useAddMealTime = () => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  const mutationOptions = trpc.mealPlan.addMealTime.mutationOptions({
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(trpc.mealPlan.getMealPlans.queryKey(), (plans) =>
+        setPlanMealTimes(plans, variables.mealPlanId, data.mealTimes),
+      );
+    },
+    onError: (err) => {
+      Alert.alert(
+        "Couldn't add meal time",
+        errorMessage(err, "Please try again."),
+      );
+    },
+  });
+
+  return useMutation(mutationOptions);
+};
+
+// Reorder, hide, rename or remove a plan's meal times (applied straight away)
+export const useUpdateMealTimes = () => {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const plansKey = trpc.mealPlan.getMealPlans.queryKey();
+
+  const mutationOptions = trpc.mealPlan.updateMealTimes.mutationOptions({
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: plansKey });
+      const previous = queryClient.getQueryData(plansKey);
+      queryClient.setQueryData(plansKey, (plans) =>
+        plans?.map((p) => {
+          if (p.id !== variables.mealPlanId) return p;
+          const byKey = new Map(p.mealTimes.map((t) => [t.key, t]));
+          const mealTimes = variables.mealTimes.flatMap((t) => {
+            const existing = byKey.get(t.key);
+            if (!existing) return [];
+            const { hidden: _hidden, ...rest } = existing;
+            return [
+              t.hidden
+                ? { ...rest, name: t.name, hidden: true }
+                : { ...rest, name: t.name },
+            ];
+          });
+          return { ...p, mealTimes };
+        }),
+      );
+      return { previous };
+    },
+    onError: (err, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(plansKey, context.previous);
+      }
+      Alert.alert(
+        "Couldn't update meal times",
+        errorMessage(err, "Please try again."),
+      );
+    },
+    onSuccess: (mealTimes, variables) => {
+      queryClient.setQueryData(plansKey, (plans) =>
+        setPlanMealTimes(plans, variables.mealPlanId, mealTimes),
+      );
     },
   });
 

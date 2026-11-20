@@ -15,7 +15,8 @@ export const notificationRouter = router({
   getNotifications: authedProcedure
     .input(
       type({
-        "cursor?": "number",
+        // Infinite queries send null for the first page.
+        "cursor?": "number | null",
         "limit?": "number",
       }),
     )
@@ -29,7 +30,7 @@ export const notificationRouter = router({
           userId: ctx.user.id,
           limit: input.limit ?? 20,
         };
-        if (input.cursor !== undefined) {
+        if (input.cursor != null) {
           params.cursor = input.cursor;
         }
         return await getNotifications(ctx.db, params);

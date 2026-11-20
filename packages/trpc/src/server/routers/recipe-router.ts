@@ -730,7 +730,8 @@ const recipeHeadRouter = router({
       type({
         limit: "number = 20",
         // createdAt in ms for "recent"; an opaque string for the other sorts.
-        "cursor?": "number | string",
+        // Infinite queries send null for the first page.
+        "cursor?": "number | string | null",
         tagIds: "number[]?",
         maxTotalTime: "number?", // in minutes
         "sort?": "'recent' | 'name' | 'time'",
@@ -744,7 +745,7 @@ const recipeHeadRouter = router({
         return await queryUserRecipes(ctx.db, {
           ownerId: ctx.user.id,
           limit: input.limit,
-          ...(input.cursor !== undefined && input.cursor !== ""
+          ...(input.cursor != null && input.cursor !== ""
             ? { cursor: input.cursor }
             : {}),
           ...(input.sort ? { sort: input.sort } : {}),
@@ -764,7 +765,8 @@ const recipeHeadRouter = router({
       type({
         query: "string",
         limit: "number = 20",
-        "cursor?": "string",
+        // Infinite queries send null for the first page.
+        "cursor?": "string | null",
         "tagIds?": "number[]",
         "maxTotalTime?": "number",
         "sort?": "'relevance' | 'name' | 'time'",
@@ -813,7 +815,8 @@ const recipeHeadRouter = router({
       type({
         userId: "string",
         limit: "number = 20",
-        cursor: "number?",
+        // Infinite queries send null for the first page.
+        "cursor?": "number | null",
         search: "string?",
       }),
     )

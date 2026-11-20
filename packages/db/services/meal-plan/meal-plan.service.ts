@@ -11,10 +11,17 @@ import {
 } from "../../schemas";
 import { ServiceError } from "../errors";
 import type { DbClient } from "../types";
+import {
+  createMealTime,
+  resolveMealTimes,
+  validateMealTimesUpdate,
+  type MealTime,
+} from "./meal-times";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type MealType = "breakfast" | "lunch" | "dinner";
+// Key of one of the plan's meal times: "breakfast", "lunch", "dinner" or a custom one.
+export type MealType = string;
 
 export interface MealPlanWithMeta {
   id: number;
@@ -26,6 +33,7 @@ export interface MealPlanWithMeta {
     name: string;
     image: string | null;
   };
+  mealTimes: MealTime[];
   createdAt: Date;
 }
 
@@ -91,6 +99,7 @@ export async function getMealPlans(
       id: mealPlans.id,
       name: mealPlans.name,
       isDefault: mealPlans.isDefault,
+      mealTimes: mealPlans.mealTimes,
       createdAt: mealPlans.createdAt,
       ownerId: mealPlans.userId,
       ownerName: user.name,
@@ -106,6 +115,7 @@ export async function getMealPlans(
       id: mealPlans.id,
       name: mealPlans.name,
       isDefault: mealPlans.isDefault,
+      mealTimes: mealPlans.mealTimes,
       createdAt: mealPlans.createdAt,
       ownerId: mealPlanInvitations.invitedByUserId,
       ownerName: mealPlanInvitations.inviterName,
@@ -132,6 +142,7 @@ export async function getMealPlans(
         name: plan.ownerName,
         image: plan.ownerImage,
       },
+      mealTimes: resolveMealTimes(plan.mealTimes),
       createdAt: plan.createdAt,
     })),
     ...sharedPlans.map((plan) => ({
@@ -144,6 +155,7 @@ export async function getMealPlans(
         name: plan.ownerName,
         image: plan.ownerImage,
       },
+      mealTimes: resolveMealTimes(plan.mealTimes),
       createdAt: plan.createdAt,
     })),
   ];
@@ -260,6 +272,124 @@ export async function canUserEditMealPlan(
   return canUserAccessMealPlan(db, userId, mealPlanId);
 }
 
+// ─── Meal Times ─────────────────────────────────────────────────────────────
+
+async function getPlanMealTimes(db: DbClient, mealPlanId: number) {
+  const plan = await db
+    .select({ mealTimes: mealPlans.mealTimes })
+    .from(mealPlans)
+    .where(eq(mealPlans.id, mealPlanId))
+    .then((rows) => rows[0]);
+  if (!plan) {
+    throw new ServiceError("NOT_FOUND", "Meal plan not found");
+  }
+  return resolveMealTimes(plan.mealTimes);
+}
+
+async function assertMealTimeExists(
+  db: DbClient,
+  mealPlanId: number,
+  mealType: string,
+) {
+  const mealTimes = await getPlanMealTimes(db, mealPlanId);
+  if (!mealTimes.some((t) => t.key === mealType)) {
+    throw new ServiceError("BAD_REQUEST", "That meal time isn't on this plan");
+  }
+}
+
+/**
+ * Add a custom meal time (e.g. "Supper") to the end of a plan's meal times.
+ * Returns the plan's updated meal times and the new one.
+ */
+export async function addMealTime(
+  db: DbClient,
+  params: { userId: string; mealPlanId: number; name: string },
+): Promise<{ mealTimes: MealTime[]; mealTime: MealTime }> {
+  const { userId, mealPlanId, name } = params;
+
+  const canEdit = await canUserEditMealPlan(db, userId, mealPlanId);
+  if (!canEdit) {
+    throw new ServiceError(
+      "FORBIDDEN",
+      "You do not have permission to edit this meal plan",
+    );
+  }
+
+  const adder = await db
+    .select({ name: user.name })
+    .from(user)
+    .where(eq(user.id, userId))
+    .then((rows) => rows[0]);
+
+  const current = await getPlanMealTimes(db, mealPlanId);
+  const mealTime = createMealTime(current, name, {
+    id: userId,
+    name: adder?.name ?? "",
+  });
+  const mealTimes = [...current, mealTime];
+
+  await db
+    .update(mealPlans)
+    .set({ mealTimes, updatedAt: new Date() })
+    .where(eq(mealPlans.id, mealPlanId));
+
+  return { mealTimes, mealTime };
+}
+
+/**
+ * Save a reordered or edited list of a plan's meal times (hide, rename, remove).
+ * Meal times with planned meals can't be removed, only hidden.
+ */
+export async function updateMealTimes(
+  db: DbClient,
+  params: {
+    userId: string;
+    mealPlanId: number;
+    mealTimes: { key: string; name: string; hidden?: boolean }[];
+  },
+): Promise<MealTime[]> {
+  const { userId, mealPlanId } = params;
+
+  const canEdit = await canUserEditMealPlan(db, userId, mealPlanId);
+  if (!canEdit) {
+    throw new ServiceError(
+      "FORBIDDEN",
+      "You do not have permission to edit this meal plan",
+    );
+  }
+
+  const current = await getPlanMealTimes(db, mealPlanId);
+  const nextKeys = new Set(params.mealTimes.map((t) => t.key));
+  const removed = current.map((t) => t.key).filter((key) => !nextKeys.has(key));
+
+  const usedKeys = new Set<string>();
+  if (removed.length > 0) {
+    const used = await db
+      .selectDistinct({ mealType: mealPlanEntries.mealType })
+      .from(mealPlanEntries)
+      .where(
+        and(
+          eq(mealPlanEntries.mealPlanId, mealPlanId),
+          inArray(mealPlanEntries.mealType, removed),
+        ),
+      );
+    used.forEach((row) => usedKeys.add(row.mealType));
+  }
+
+  const mealTimes = validateMealTimesUpdate(
+    current,
+    params.mealTimes,
+    usedKeys,
+  );
+
+  await db
+    .update(mealPlans)
+    .set({ mealTimes, updatedAt: new Date() })
+    .where(eq(mealPlans.id, mealPlanId));
+
+  return mealTimes;
+}
+
 // ─── Entry Operations ─────────────────────────────────────────────────────
 
 /**
@@ -302,10 +432,7 @@ export async function getMealPlanEntries(
       ),
     );
 
-  return entries.map((entry) => ({
-    ...entry,
-    mealType: entry.mealType as MealType,
-  }));
+  return entries;
 }
 
 /**
@@ -331,6 +458,8 @@ export async function addRecipeToMealPlan(
       "You do not have permission to edit this meal plan",
     );
   }
+
+  await assertMealTimeExists(db, mealPlanId, mealType);
 
   // Verify recipe exists and belongs to user's library
   const recipe = await db
@@ -461,6 +590,8 @@ export async function moveEntry(
       "You do not have permission to edit this meal plan",
     );
   }
+
+  await assertMealTimeExists(db, entry.mealPlanId, newMealType);
 
   // Delete any existing entry at the target slot
   await db

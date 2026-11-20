@@ -16,6 +16,8 @@ import {
   getPendingMealPlanInvitations as getPendingMealPlanInvitationsService,
   getMealPlanInvitationStatus as getMealPlanInvitationStatusService,
   getShareStatus as getShareStatusService,
+  addMealTime as addMealTimeService,
+  updateMealTimes as updateMealTimesService,
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
@@ -24,7 +26,8 @@ import { createAndSendNotificationInBackground } from "../services/push-notifica
 import { router, authedProcedure } from "../trpc";
 import { mapServiceError } from "../utils";
 
-const MealTypeValidator = type("'breakfast' | 'lunch' | 'dinner'");
+// Key of one of the plan's meal times; the service checks it exists on the plan.
+const MealTypeValidator = type("0 < string <= 64");
 
 export const mealPlanRouter = router({
   // Get all meal plans the user has access to (owned + shared)
@@ -136,12 +139,7 @@ export const mealPlanRouter = router({
           mealType: input.mealType,
         });
       } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        console.error("Error adding recipe to meal plan:", err);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to add recipe to meal plan",
-        });
+        throw mapServiceError(err);
       }
     }),
 
@@ -186,12 +184,53 @@ export const mealPlanRouter = router({
           newMealType: input.newMealType,
         });
       } catch (err) {
-        if (err instanceof TRPCError) throw err;
-        console.error("Error moving meal plan entry:", err);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to move meal plan entry",
+        throw mapServiceError(err);
+      }
+    }),
+
+  // Add a custom meal time (e.g. "Supper") to a plan
+  addMealTime: authedProcedure
+    .input(
+      type({
+        mealPlanId: "number",
+        name: "0 < string <= 64",
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await addMealTimeService(ctx.db, {
+          userId: ctx.user.id,
+          mealPlanId: input.mealPlanId,
+          name: input.name,
         });
+      } catch (err) {
+        throw mapServiceError(err);
+      }
+    }),
+
+  // Reorder, hide, rename or remove a plan's meal times
+  updateMealTimes: authedProcedure
+    .input(
+      type({
+        mealPlanId: "number",
+        mealTimes: type({
+          key: "0 < string <= 64",
+          name: "0 < string <= 64",
+          "hidden?": "boolean",
+        })
+          .array()
+          .atMostLength(24),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await updateMealTimesService(ctx.db, {
+          userId: ctx.user.id,
+          mealPlanId: input.mealPlanId,
+          mealTimes: input.mealTimes,
+        });
+      } catch (err) {
+        throw mapServiceError(err);
       }
     }),
 
