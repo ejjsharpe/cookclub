@@ -534,24 +534,22 @@ export const activityRouter = router({
         // Infinite queries send null for the first page.
         "cursor?": "number | null",
         limit: "number = 20",
+        // Only one kind, so a profile can page its reviews and saves apart.
+        "type?": "'recipe_import' | 'cooking_review'",
       }),
     )
     .query(async ({ ctx, input }) => {
-      const { userId, cursor, limit } = input;
+      const { userId, cursor, limit, type: activityType } = input;
 
       try {
         await assertInteractionAllowed(ctx.db, ctx.user.id, userId);
         // Build query conditions
-        const conditions = cursor
-          ? and(
-              eq(activityEvents.userId, userId),
-              lt(activityEvents.id, cursor),
-              eq(activityEvents.moderationState, "visible"),
-            )
-          : and(
-              eq(activityEvents.userId, userId),
-              eq(activityEvents.moderationState, "visible"),
-            );
+        const conditions = and(
+          eq(activityEvents.userId, userId),
+          eq(activityEvents.moderationState, "visible"),
+          cursor ? lt(activityEvents.id, cursor) : undefined,
+          activityType ? eq(activityEvents.type, activityType) : undefined,
+        );
 
         // Fetch activity events for the user
         const activities = await ctx.db

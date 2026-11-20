@@ -37,8 +37,8 @@ const BELL = "M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9";
 const HEART_LARGE =
   "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z";
 const BUBBLE = "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z";
-const BOOKMARK =
-  "M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21l-6-4-6 4Z";
+const PLUS = "M12 4.5v15M4.5 12h15";
+const CHECK = "m4.5 12.5 5 5 10-11";
 const ARROW_UP_RIGHT = "M7 17 17 7M8 7h9v9";
 
 /** A mask that keeps everything except `holes` (drawn in black). */
@@ -80,9 +80,11 @@ export const SIGNATURE_ICONS = {
     outline: `<g ${STROKE}><path d="${BUBBLE}"/></g>`,
     filled: `<g ${STROKE}><path d="${BUBBLE}" fill="currentColor"/></g>`,
   },
-  bookmark: {
-    outline: `<g ${STROKE}><path d="${BOOKMARK}"/></g>`,
-    filled: `<g ${STROKE}><path d="${BOOKMARK}" fill="currentColor"/></g>`,
+  // Add to your recipes: a plus, which becomes a tick once it's there
+  // (the same pairing as adding to a library in Apple Music).
+  addToLibrary: {
+    outline: `<g ${STROKE}><path d="${PLUS}"/></g>`,
+    filled: `<g ${STROKE}><path d="${CHECK}"/></g>`,
   },
   // "Opens outside the app". A chevron would mean another screen in the app.
   external: {

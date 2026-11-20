@@ -160,18 +160,21 @@ export const useCreateCookingReview = () => {
 interface UseUserActivitiesParams {
   userId: string;
   limit?: number;
+  /** Only reviews, or only saves. Leave out for everything. */
+  type?: FeedItem["type"];
 }
 
 export const useUserActivities = ({
   userId,
   limit = 20,
+  type,
 }: UseUserActivitiesParams) => {
   const trpc = useTRPC();
   const selectActivityItems = useActivityItemsSelector<UserActivitiesPage>();
 
   const infiniteQueryOptions =
     trpc.activity.getUserActivities.infiniteQueryOptions(
-      { userId, limit },
+      type ? { userId, limit, type } : { userId, limit },
       { getNextPageParam: (lastPage) => lastPage?.nextCursor },
     );
 
