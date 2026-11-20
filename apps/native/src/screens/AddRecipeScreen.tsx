@@ -255,7 +255,9 @@ export const AddRecipeScreen = () => {
       {/* Sheets */}
       <RecipeBrowserSheet
         ref={recipeBrowserSheetRef}
-        title="Choose Recipe"
+        title="Choose a recipe"
+        rowAccessibilityHint="Opens it to personalise"
+        showAddButton={false}
         onSelectRecipe={handleSelectRecipeToPersonalise}
       />
       <PersonaliseRecipeSheet

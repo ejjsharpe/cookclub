@@ -211,43 +211,6 @@ export const MyRecipesListSkeleton = () => {
   );
 };
 
-// ─── Collection Card Skeleton ────────────────────────────────────────────────
-
-const GRID_PADDING = 20;
-const GRID_GAP = 12;
-
-const CollectionGridCardSkeleton = () => {
-  return (
-    <View style={styles.collectionGridCard}>
-      <Skeleton
-        width="100%"
-        height={100}
-        borderRadius={12}
-        style={styles.collectionGridImageSkeleton}
-      />
-      <View style={styles.collectionGridContent}>
-        <Skeleton width="80%" height={17} borderRadius={4} />
-        <Skeleton width={60} height={14} borderRadius={4} />
-      </View>
-    </View>
-  );
-};
-
-export const CollectionsListSkeleton = () => {
-  return (
-    <View style={styles.collectionsGridContainer}>
-      <View style={styles.collectionsGridRow}>
-        <CollectionGridCardSkeleton />
-        <CollectionGridCardSkeleton />
-      </View>
-      <View style={styles.collectionsGridRow}>
-        <CollectionGridCardSkeleton />
-        <CollectionGridCardSkeleton />
-      </View>
-    </View>
-  );
-};
-
 // ─── Shopping List Skeleton ──────────────────────────────────────────────────
 
 const ShoppingItemSkeleton = () => {
@@ -521,27 +484,6 @@ const styles = StyleSheet.create((theme) => ({
     height: 1,
     backgroundColor: theme.colors.border,
     opacity: 0.5,
-  },
-
-  // Collections styles
-  collectionGridCard: {
-    flex: 1,
-  },
-  collectionGridImageSkeleton: {
-    aspectRatio: 1,
-    height: "auto",
-  },
-  collectionGridContent: {
-    paddingTop: 8,
-    gap: 4,
-  },
-  collectionsGridContainer: {
-    paddingHorizontal: GRID_PADDING,
-    gap: GRID_GAP,
-  },
-  collectionsGridRow: {
-    flexDirection: "row",
-    gap: GRID_GAP,
   },
 
   // Shopping List styles

@@ -54,6 +54,7 @@ import { InvitationBanner } from "@/components/InvitationBanner";
 import { Ionicons } from "@/components/Ionicons";
 import { ShoppingListSkeleton, SkeletonContainer } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
+import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
 import { GlassSurface } from "@/components/glass/Glass";
 import {
@@ -967,6 +968,7 @@ export const ShoppingListScreen = () => {
           >
             {/* The row layout goes on both: the blur fallback lays out children itself */}
             <GlassSurface
+              interactive
               style={[styles.inputGlass, styles.inputRow]}
               contentStyle={styles.inputRowContent}
             >
@@ -991,7 +993,12 @@ export const ShoppingListScreen = () => {
                   accessibilityLabel="Add item"
                   hitSlop={6}
                 >
-                  <Ionicons name="arrow-up" size={20} color="#fff" />
+                  <SystemIcon
+                    sf="arrow.up"
+                    android="arrow-up"
+                    size={18}
+                    color="#fff"
+                  />
                 </Pressable>
               )}
             </GlassSurface>

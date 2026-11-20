@@ -14,7 +14,7 @@ import Animated, {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useAnimatedTheme } from "react-native-unistyles/reanimated";
 
-import { Ionicons } from "@/components/Ionicons";
+import { SystemIcon, type SystemIconProps } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
 import { getImageUrl } from "@/utils/imageUrl";
 
@@ -39,11 +39,14 @@ const MEAL_LABELS: Record<string, string> = {
   dinner: "Dinner",
 };
 
-const MEAL_ICONS: Partial<Record<string, keyof typeof Ionicons.glyphMap>> = {
-  breakfast: "sunny-outline",
-  lunch: "partly-sunny-outline",
-  dinner: "moon-outline",
+type Icon = Pick<SystemIconProps, "sf" | "android">;
+
+const MEAL_ICONS: Partial<Record<string, Icon>> = {
+  breakfast: { sf: "sun.max", android: "sunny-outline" },
+  lunch: { sf: "cloud.sun", android: "partly-sunny-outline" },
+  dinner: { sf: "moon", android: "moon-outline" },
 };
+const DEFAULT_ICON: Icon = { sf: "fork.knife", android: "restaurant-outline" };
 
 const ProgressSyncer = ({
   source,
@@ -86,7 +89,7 @@ const DeleteAction = ({
     <View style={styles.deleteActionContainer}>
       <Animated.View style={deleteButtonStyle}>
         <Pressable style={styles.deleteActionPill} onPress={onDelete}>
-          <Ionicons name="trash" size={20} color="#fff" />
+          <SystemIcon sf="trash" android="trash" size={18} color="#fff" />
         </Pressable>
       </Animated.View>
     </View>
@@ -143,18 +146,18 @@ const SlotContent = ({
                 />
               ) : (
                 <View style={styles.iconContainer}>
-                  <Ionicons
-                    name="restaurant-outline"
-                    size={20}
-                    color={theme.colors.textTertiary}
+                  <SystemIcon
+                    {...DEFAULT_ICON}
+                    size={18}
+                    color={theme.colors.textSecondary}
                   />
                 </View>
               )
             ) : (
               <View style={styles.iconContainer}>
-                <Ionicons
-                  name={MEAL_ICONS[mealType] ?? "restaurant-outline"}
-                  size={20}
+                <SystemIcon
+                  {...(MEAL_ICONS[mealType] ?? DEFAULT_ICON)}
+                  size={18}
                   color={theme.colors.primary}
                 />
               </View>
@@ -166,7 +169,7 @@ const SlotContent = ({
                 {label ?? MEAL_LABELS[mealType] ?? mealType}
               </Text>
               {entry ? (
-                <Text type="body" numberOfLines={1}>
+                <Text type="body" numberOfLines={1} style={styles.recipeName}>
                   {entry.recipeName}
                 </Text>
               ) : (
@@ -176,15 +179,17 @@ const SlotContent = ({
 
             {/* Right: Chevron or Add icon */}
             {entry ? (
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={theme.colors.textTertiary}
+              <SystemIcon
+                sf="chevron.right"
+                android="chevron-forward"
+                size={14}
+                color={theme.colors.textSecondary}
               />
             ) : (
-              <Ionicons
-                name="add-circle"
-                size={24}
+              <SystemIcon
+                sf="plus.circle.fill"
+                android="add-circle"
+                size={22}
                 color={theme.colors.primary}
               />
             )}
@@ -281,8 +286,14 @@ const styles = StyleSheet.create((theme) => ({
     gap: 2,
   },
   mealLabel: {
-    color: theme.colors.textTertiary,
+    color: theme.colors.textSecondary,
+    fontFamily: theme.fonts.semiBold,
     fontSize: 13,
+  },
+  // The same weight and size as recipe names in lists elsewhere.
+  recipeName: {
+    fontFamily: theme.fonts.bold,
+    fontSize: 16,
   },
   deleteActionContainer: {
     justifyContent: "center",

@@ -6,8 +6,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { Pressable, TextInput, View } from "react-native";
+import { Alert, Platform, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+
+import { MealTimeMenu } from "./MealTimeMenu";
 
 import {
   useAddMealTime,
@@ -15,11 +17,11 @@ import {
   type MealPlanEntry,
   type MealTime,
 } from "@/api/mealPlan";
-import { Ionicons } from "@/components/Ionicons";
 import {
   RecipeBrowserSheet,
   type RecipeBrowserSheetRef,
 } from "@/components/RecipeBrowserSheet";
+import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
 
 export interface AddToDayTarget {
@@ -54,7 +56,8 @@ const pickDefaultMealTime = (
 };
 
 /**
- * Add a recipe to one day: pick the meal time (or make a new one), then a recipe.
+ * Add a recipe to one day. The meal time sits under the title as a menu, and
+ * starts on the first free one.
  */
 export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
   ({ mealPlanId, mealTimes, entriesByDate, onEditMealTimes }, ref) => {
@@ -62,8 +65,6 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
     const browserRef = useRef<RecipeBrowserSheetRef>(null);
     const [target, setTarget] = useState<AddToDayTarget | null>(null);
     const [selectedKey, setSelectedKey] = useState<string | undefined>();
-    const [isNaming, setIsNaming] = useState(false);
-    const [newName, setNewName] = useState("");
 
     const addRecipe = useAddRecipeToMealPlan();
     const addMealTime = useAddMealTime();
@@ -82,8 +83,6 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
             entriesByDate.get(next.dateString) ?? [],
           ),
         );
-        setIsNaming(false);
-        setNewName("");
         browserRef.current?.present();
       },
       dismiss: () => browserRef.current?.dismiss(),
@@ -107,27 +106,51 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
     const selected = visible.find((t) => t.key === effectiveKey);
     const replacing = effectiveKey ? takenBy.get(effectiveKey) : undefined;
 
-    const handleSaveNew = useCallback(async () => {
-      if (!mealPlanId || !newName.trim()) {
-        setIsNaming(false);
+    const saveNewMealTime = useCallback(
+      async (name: string | undefined) => {
+        const trimmed = name?.trim();
+        if (!mealPlanId || !trimmed) return;
+        try {
+          const { mealTime } = await addMealTime.mutateAsync({
+            mealPlanId,
+            name: trimmed.slice(0, 24),
+          });
+          setSelectedKey(mealTime.key);
+        } catch {
+          // Alert shown by the mutation
+        }
+      },
+      [addMealTime, mealPlanId],
+    );
+
+    const handleNewMealTime = useCallback(() => {
+      // Android has no text prompt; its meal times sheet can add one.
+      if (Platform.OS !== "ios") {
+        onEditMealTimes();
         return;
       }
-      try {
-        const { mealTime } = await addMealTime.mutateAsync({
-          mealPlanId,
-          name: newName.trim(),
-        });
-        setSelectedKey(mealTime.key);
-        setIsNaming(false);
-        setNewName("");
-      } catch {
-        // Alert shown by the mutation
-      }
-    }, [addMealTime, mealPlanId, newName]);
+      Alert.prompt(
+        "New meal time",
+        "For example Supper or Second breakfast.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Add", onPress: (name?: string) => saveNewMealTime(name) },
+        ],
+        "plain-text",
+      );
+    }, [onEditMealTimes, saveNewMealTime]);
 
     const handleSelectRecipe = useCallback(
       async (recipeId: number) => {
-        if (!mealPlanId || !target || !effectiveKey) return;
+        if (!mealPlanId || !target) return;
+        if (!effectiveKey) {
+          // Every meal time is hidden; keep the sheet open so one can be made.
+          Alert.alert(
+            "Pick a meal time",
+            "Add or show a meal time, then choose a recipe.",
+          );
+          throw new Error("No meal time");
+        }
         await addRecipe.mutateAsync({
           mealPlanId,
           recipeId,
@@ -138,95 +161,43 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
       [addRecipe, mealPlanId, effectiveKey, target],
     );
 
-    const hint = !selected
-      ? "Pick a meal time first."
-      : replacing
-        ? `This replaces ${replacing.recipeName}.`
-        : `Tap a recipe to add it to ${target?.label ?? "this day"} as ${selected.name.toLowerCase()}.`;
+    const menuOptions = useMemo(
+      () =>
+        visible.map((t) => ({
+          key: t.key,
+          name: t.name,
+          planned: takenBy.get(t.key)?.recipeName,
+        })),
+      [takenBy, visible],
+    );
 
-    const topContent = (
-      <View style={styles.top}>
-        <View style={styles.labelRow}>
-          <Text type="footnote" style={styles.label}>
-            Meal
-          </Text>
-          <Pressable
-            onPress={onEditMealTimes}
-            hitSlop={8}
-            accessibilityRole="button"
-          >
-            <Text type="subheadline" style={styles.link}>
-              Edit meal times
+    const subtitle = (
+      <View style={styles.subtitle}>
+        <MealTimeMenu
+          options={menuOptions}
+          selectedKey={effectiveKey}
+          onSelect={setSelectedKey}
+          onNew={handleNewMealTime}
+          onEdit={onEditMealTimes}
+          accessibilityLabel={`Meal: ${selected?.name ?? "none"}`}
+        >
+          <View style={styles.mealButton}>
+            <Text type="subheadline" style={styles.mealText}>
+              {selected?.name ?? "Pick a meal"}
             </Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.chips} accessibilityRole="radiogroup">
-          {visible.map((t) => {
-            const on = t.key === effectiveKey;
-            return (
-              <Pressable
-                key={t.key}
-                onPress={() => setSelectedKey(t.key)}
-                style={styles.chip(on)}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: on }}
-                accessibilityHint={
-                  takenBy.has(t.key) ? "Already planned" : undefined
-                }
-              >
-                <Text type="subheadline" style={styles.chipText(on)}>
-                  {t.name}
-                </Text>
-                {takenBy.has(t.key) && <View style={styles.takenDot(on)} />}
-              </Pressable>
-            );
-          })}
-
-          {isNaming ? (
-            <View style={styles.newField}>
-              <TextInput
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="e.g. Supper"
-                placeholderTextColor={theme.colors.placeholderText}
-                autoFocus
-                maxLength={24}
-                returnKeyType="done"
-                onSubmitEditing={handleSaveNew}
-                onBlur={() => !newName.trim() && setIsNaming(false)}
-                style={styles.newInput}
-                accessibilityLabel="New meal time name"
-              />
-              <Pressable
-                onPress={handleSaveNew}
-                disabled={addMealTime.isPending}
-                style={styles.newSave}
-                accessibilityRole="button"
-              >
-                <Text type="footnote" style={styles.newSaveText}>
-                  Add
-                </Text>
-              </Pressable>
-            </View>
-          ) : (
-            <Pressable
-              onPress={() => setIsNaming(true)}
-              style={styles.newChip}
-              accessibilityRole="button"
-              accessibilityLabel="New meal time"
-            >
-              <Ionicons name="add" size={16} style={styles.newIcon} />
-              <Text type="subheadline" style={styles.newChipText}>
-                New
-              </Text>
-            </Pressable>
-          )}
-        </View>
-
-        <Text type="footnote" style={styles.hint}>
-          {hint}
-        </Text>
+            <SystemIcon
+              sf="chevron.down"
+              android="chevron-down"
+              size={11}
+              color={theme.colors.primary}
+            />
+          </View>
+        </MealTimeMenu>
+        {replacing ? (
+          <Text type="footnote" numberOfLines={1} style={styles.replacing}>
+            Replaces {replacing.recipeName}
+          </Text>
+        ) : null}
       </View>
     );
 
@@ -234,104 +205,34 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
       <RecipeBrowserSheet
         ref={browserRef}
         title={target ? `Add to ${target.label}` : "Add a meal"}
+        subtitle={subtitle}
+        rowAccessibilityHint={
+          selected
+            ? `Adds it as ${selected.name.toLowerCase()}${target ? ` on ${target.label}` : ""}`
+            : undefined
+        }
         onSelectRecipe={handleSelectRecipe}
-        topContent={topContent}
       />
     );
   },
 );
 
 const styles = StyleSheet.create((theme) => ({
-  top: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    gap: 8,
+  subtitle: {
+    alignItems: "center",
   },
-  labelRow: {
+  mealButton: {
     flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 3,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
   },
-  label: {
-    color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.bold,
-  },
-  link: {
+  mealText: {
     color: theme.colors.primary,
     fontFamily: theme.fonts.bold,
   },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: (on: boolean) => ({
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: on ? theme.colors.primary : theme.colors.inputBackground,
-  }),
-  chipText: (on: boolean) => ({
-    fontFamily: theme.fonts.bold,
-    color: on ? theme.colors.buttonText : theme.colors.text,
-  }),
-  takenDot: (on: boolean) => ({
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: on ? theme.colors.buttonText : theme.colors.textSecondary,
-  }),
-  newChip: {
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderWidth: 1.5,
-    borderColor: theme.colors.border,
-  },
-  newIcon: {
-    color: theme.colors.primary,
-  },
-  newChipText: {
-    fontFamily: theme.fonts.bold,
-    color: theme.colors.primary,
-  },
-  newField: {
-    height: 36,
-    paddingLeft: 14,
-    paddingRight: 4,
-    borderRadius: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
-  },
-  newInput: {
-    minWidth: 90,
-    fontSize: 15,
-    fontFamily: theme.fonts.bold,
-    color: theme.colors.text,
-    paddingVertical: 0,
-  },
-  newSave: {
-    height: 28,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    justifyContent: "center",
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-  },
-  newSaveText: {
-    color: theme.colors.buttonText,
-    fontFamily: theme.fonts.bold,
-  },
-  hint: {
+  replacing: {
     color: theme.colors.textSecondary,
   },
 }));

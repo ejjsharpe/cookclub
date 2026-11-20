@@ -110,7 +110,8 @@ export const AddRecipeToShoppingListSheet = forwardRef<
     <>
       <RecipeBrowserSheet
         ref={browserSheetRef}
-        title="Add to Groceries"
+        title="Add to groceries"
+        rowAccessibilityHint="Choose its ingredients to add to the list"
         onSelectRecipe={handleSelectRecipe}
         onDismiss={handleBrowserDismiss}
       />
