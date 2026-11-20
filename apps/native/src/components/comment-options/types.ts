@@ -21,4 +21,10 @@ export interface CommentContextMenuProps {
   options: CommentOption[];
   /** The comment row, which opens the menu when long-pressed. */
   children: ReactElement;
+  /**
+   * What lifts out while the menu is open. A separate view, so the live row
+   * never leaves the list (iOS would otherwise lift the row itself, and it
+   * snaps back as soon as React Native lays it out again).
+   */
+  preview: ReactElement;
 }

@@ -1,6 +1,6 @@
 import { parseMentionTokens } from "@repo/shared";
 import { memo, useCallback, useMemo, type ReactNode } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Alert, Pressable, View, useWindowDimensions } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Avatar } from "./Avatar";
@@ -16,6 +16,8 @@ import type { Comment } from "@/api/comment";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
 export const COMMENT_AVATAR_SIZE = 34;
+/** Gap between the lifted preview card and the screen edges. */
+const PREVIEW_INSET = 12;
 const REPLY_AVATAR_SIZE = 26;
 const ROW_INSET = 20;
 const AVATAR_GAP = 12;
@@ -50,6 +52,7 @@ export const CommentCard = memo(
     onUserPress,
     onMentionPress,
   }: Props) => {
+    const { width: windowWidth } = useWindowDimensions();
     const timeAgo = useMemo(
       () => formatRelativeTimeShort(comment.createdAt),
       [comment.createdAt],
@@ -160,7 +163,43 @@ export const CommentCard = memo(
     ]);
 
     return (
-      <CommentContextMenu options={options}>
+      <CommentContextMenu
+        options={options}
+        preview={
+          // A still copy of the comment on a card, lifted while the menu shows.
+          <View
+            pointerEvents="none"
+            style={[styles.preview, { width: windowWidth - PREVIEW_INSET * 2 }]}
+          >
+            <Avatar
+              imageUrl={comment.user.image}
+              name={comment.user.name}
+              size={COMMENT_AVATAR_SIZE}
+            />
+            <View style={styles.content}>
+              <View style={styles.header}>
+                <Text
+                  type="subheadline"
+                  numberOfLines={1}
+                  style={styles.userName}
+                >
+                  {comment.user.name}
+                </Text>
+                <Text type="footnote" style={styles.timeAgo}>
+                  {timeAgo}
+                </Text>
+              </View>
+              <Text
+                type="subheadline"
+                numberOfLines={8}
+                style={styles.commentText}
+              >
+                {renderedContent}
+              </Text>
+            </View>
+          </View>
+        }
+      >
         <View
           style={[
             styles.container,
@@ -293,6 +332,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingLeft: ROW_INSET + COMMENT_AVATAR_SIZE + AVATAR_GAP,
     paddingTop: 4,
     gap: 10,
+  },
+  preview: {
+    flexDirection: "row",
+    gap: AVATAR_GAP,
+    padding: 16,
+    borderRadius: 22,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.background,
   },
   highlighted: {
     // A faint wash of the brand red that reads in light and dark themes.

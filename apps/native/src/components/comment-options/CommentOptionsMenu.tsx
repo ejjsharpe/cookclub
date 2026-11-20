@@ -64,6 +64,7 @@ export const CommentOptionsMenu = ({
 export const CommentContextMenu = ({
   options,
   children,
+  preview,
 }: CommentContextMenuProps) => (
   <Host matchContents={{ vertical: true }} style={{ width: "100%" }}>
     <ContextMenu>
@@ -73,6 +74,9 @@ export const CommentContextMenu = ({
       <ContextMenu.Trigger>
         <RNHostView matchContents={{ vertical: true }}>{children}</RNHostView>
       </ContextMenu.Trigger>
+      <ContextMenu.Preview>
+        <RNHostView matchContents>{preview}</RNHostView>
+      </ContextMenu.Preview>
     </ContextMenu>
   </Host>
 );
