@@ -1,22 +1,29 @@
 import { parseMentionTokens } from "@repo/shared";
 import { memo, useCallback, useMemo, type ReactNode } from "react";
 import {
-  ActionSheetIOS,
   Alert,
+  Keyboard,
   Pressable,
   View,
-  type AlertButton,
+  useWindowDimensions,
 } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Avatar } from "./Avatar";
 import { Ionicons } from "./Ionicons";
 import { Text } from "./Text";
+import {
+  CommentContextMenu,
+  CommentOptionsMenu,
+} from "./comment-options/CommentOptionsMenu";
+import type { CommentOption } from "./comment-options/types";
 
 import type { Comment } from "@/api/comment";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
 export const COMMENT_AVATAR_SIZE = 34;
+/** Gap between the lifted preview card and the screen edges. */
+const PREVIEW_INSET = 12;
 const REPLY_AVATAR_SIZE = 26;
 const ROW_INSET = 20;
 const AVATAR_GAP = 12;
@@ -37,49 +44,14 @@ interface Props {
   onMentionPress: (userId: string) => void;
 }
 
-interface CommentOption {
-  label: string;
-  destructive?: boolean;
-  /** Reachable elsewhere in the row, so it can give way on Android. */
-  optional?: boolean;
-  run: () => void;
-}
-
-// Android's alert dialog shows at most three buttons.
-const ANDROID_ALERT_MAX_BUTTONS = 3;
-
-/** Interim presenter until native context menus (Expo UI) are available. */
-const presentCommentOptions = (options: CommentOption[]) => {
-  if (process.env.EXPO_OS === "ios") {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: [...options.map((option) => option.label), "Cancel"],
-        cancelButtonIndex: options.length,
-        destructiveButtonIndex: options.flatMap((option, index) =>
-          option.destructive ? [index] : [],
-        ),
-      },
-      (buttonIndex) => options[buttonIndex]?.run(),
-    );
-    return;
-  }
-
-  // Drop shortcuts first so every action that only lives here stays visible;
-  // the dialog can always be dismissed with back or a tap outside.
-  const buttons: AlertButton[] = options
-    .filter(
-      (option) =>
-        !option.optional || options.length < ANDROID_ALERT_MAX_BUTTONS,
-    )
-    .map((option) => ({
-      text: option.label,
-      style: option.destructive ? "destructive" : "default",
-      onPress: option.run,
-    }));
-  if (buttons.length < ANDROID_ALERT_MAX_BUTTONS) {
-    buttons.push({ text: "Cancel", style: "cancel" });
-  }
-  Alert.alert("Comment", undefined, buttons, { cancelable: true });
+/**
+ * Opening a native menu takes focus from the composer, and iOS hides the
+ * keyboard without the keyboard events the composer follows, so it would be
+ * left floating and then jump when the keyboard returned. Put the keyboard
+ * away ourselves first so the composer goes down with it.
+ */
+const dismissKeyboardForMenu = () => {
+  if (Keyboard.isVisible()) Keyboard.dismiss();
 };
 
 export const CommentCard = memo(
@@ -96,6 +68,7 @@ export const CommentCard = memo(
     onUserPress,
     onMentionPress,
   }: Props) => {
+    const { width: windowWidth } = useWindowDimensions();
     const timeAgo = useMemo(
       () => formatRelativeTimeShort(comment.createdAt),
       [comment.createdAt],
@@ -151,29 +124,44 @@ export const CommentCard = memo(
       ]);
     }, [comment.id, onDelete]);
 
-    // Moderation lives behind the ellipsis and a long press, so the row only
-    // shows what people do most: read and reply. Kept as plain data so a
-    // native context menu (Expo UI) can render the same list later.
+    // Moderation lives behind the ellipsis and a long press (iOS), so the row
+    // only shows what people do most: read and reply.
     const options = useMemo<CommentOption[]>(() => {
       const list: CommentOption[] = [];
       if (!isReply) {
-        list.push({ label: "Reply", run: () => onReply(comment) });
+        list.push({
+          key: "reply",
+          label: "Reply",
+          systemImage: "arrowshape.turn.up.left",
+          run: () => onReply(comment),
+        });
       }
       list.push({
+        key: "profile",
         label: "View profile",
-        optional: true,
+        systemImage: "person.crop.circle",
         run: handleUserPress,
       });
       if (isOwnComment) {
         list.push({
+          key: "delete",
           label: "Delete comment",
+          systemImage: "trash",
           destructive: true,
           run: confirmDelete,
         });
       } else {
-        list.push({ label: "Report comment", run: () => onReport(comment.id) });
         list.push({
-          label: `Block ${comment.user.name}`,
+          key: "report",
+          label: "Report comment",
+          systemImage: "flag",
+          run: () => onReport(comment.id),
+        });
+        list.push({
+          key: "block",
+          // First name keeps the menu row to one line.
+          label: `Block ${comment.user.name.split(" ")[0] || comment.user.name}`,
+          systemImage: "hand.raised",
           destructive: true,
           run: () => onBlock(comment.user.id, comment.user.name),
         });
@@ -190,93 +178,126 @@ export const CommentCard = memo(
       onReport,
     ]);
 
-    const showOptions = useCallback(
-      () => presentCommentOptions(options),
-      [options],
-    );
-
     return (
-      <Pressable
-        // The row is only a long-press target; leave its name, links, Reply
-        // and options buttons individually reachable by screen readers.
-        accessible={false}
-        onLongPress={showOptions}
-        delayLongPress={350}
-        style={({ pressed }) => [
-          styles.container,
-          isReply && styles.replyContainer,
-          isHighlighted && styles.highlighted,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Avatar
-          imageUrl={comment.user.image}
-          name={comment.user.name}
-          size={isReply ? REPLY_AVATAR_SIZE : COMMENT_AVATAR_SIZE}
-          onPress={handleUserPress}
-        />
-
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Text
-              type="subheadline"
-              numberOfLines={1}
-              accessibilityRole="button"
-              onPress={handleUserPress}
-              style={styles.userName}
-            >
-              {comment.user.name}
-            </Text>
-            {isAuthor ? (
-              <View style={styles.authorBadge}>
-                <Text type="caption2" style={styles.authorBadgeText}>
-                  Author
+      <CommentContextMenu
+        options={options}
+        preview={
+          // A still copy of the comment on a card, lifted while the menu shows.
+          <View
+            pointerEvents="none"
+            style={[styles.preview, { width: windowWidth - PREVIEW_INSET * 2 }]}
+          >
+            <Avatar
+              imageUrl={comment.user.image}
+              name={comment.user.name}
+              size={COMMENT_AVATAR_SIZE}
+            />
+            <View style={styles.content}>
+              <View style={styles.header}>
+                <Text
+                  type="subheadline"
+                  numberOfLines={1}
+                  style={styles.userName}
+                >
+                  {comment.user.name}
+                </Text>
+                <Text type="footnote" style={styles.timeAgo}>
+                  {timeAgo}
                 </Text>
               </View>
-            ) : null}
-            <Text type="footnote" style={styles.timeAgo}>
-              {timeAgo}
-            </Text>
-            <Pressable
-              accessibilityLabel="Comment options"
-              accessibilityRole="button"
-              hitSlop={12}
-              onPress={showOptions}
-              style={({ pressed }) => [
-                styles.moreButton,
-                pressed && styles.dimmed,
-              ]}
-            >
-              <Ionicons
-                name="ellipsis-horizontal"
-                size={16}
-                style={styles.moreIcon}
-              />
-            </Pressable>
-          </View>
-
-          <Text type="subheadline" style={styles.commentText}>
-            {renderedContent}
-          </Text>
-
-          {!isReply ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Reply to ${comment.user.name}`}
-              hitSlop={10}
-              onPress={() => onReply(comment)}
-              style={({ pressed }) => [
-                styles.replyButton,
-                pressed && styles.dimmed,
-              ]}
-            >
-              <Text type="footnote" style={styles.replyText}>
-                Reply
+              <Text
+                type="subheadline"
+                numberOfLines={8}
+                style={styles.commentText}
+              >
+                {renderedContent}
               </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </Pressable>
+            </View>
+          </View>
+        }
+      >
+        <Pressable
+          // Only here to put the keyboard away just before the native long-
+          // press menu takes over (see dismissKeyboardForMenu).
+          accessible={false}
+          onLongPress={dismissKeyboardForMenu}
+          delayLongPress={250}
+          style={[
+            styles.container,
+            isReply && styles.replyContainer,
+            isHighlighted && styles.highlighted,
+          ]}
+        >
+          <Avatar
+            imageUrl={comment.user.image}
+            name={comment.user.name}
+            size={isReply ? REPLY_AVATAR_SIZE : COMMENT_AVATAR_SIZE}
+            onPress={handleUserPress}
+          />
+
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text
+                type="subheadline"
+                numberOfLines={1}
+                accessibilityRole="button"
+                onPress={handleUserPress}
+                style={styles.userName}
+              >
+                {comment.user.name}
+              </Text>
+              {isAuthor ? (
+                <View style={styles.authorBadge}>
+                  <Text type="caption2" style={styles.authorBadgeText}>
+                    Author
+                  </Text>
+                </View>
+              ) : null}
+              <Text type="footnote" style={styles.timeAgo}>
+                {timeAgo}
+              </Text>
+              <View style={styles.moreSlot}>
+                <CommentOptionsMenu options={options}>
+                  <View
+                    accessible
+                    onTouchStart={dismissKeyboardForMenu}
+                    accessibilityLabel="Comment options"
+                    accessibilityRole="button"
+                    style={styles.moreButton}
+                  >
+                    <Ionicons
+                      name="ellipsis-horizontal"
+                      size={16}
+                      style={styles.moreIcon}
+                    />
+                  </View>
+                </CommentOptionsMenu>
+              </View>
+            </View>
+
+            <Text type="subheadline" style={styles.commentText}>
+              {renderedContent}
+            </Text>
+
+            {!isReply ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Reply to ${comment.user.name}`}
+                hitSlop={10}
+                onPress={() => onReply(comment)}
+                style={({ pressed }) => [
+                  styles.replyButton,
+                  pressed && styles.dimmed,
+                ]}
+              >
+                <Text type="footnote" style={styles.replyText}>
+                  Reply
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </Pressable>
+      </CommentContextMenu>
     );
   },
 );
@@ -334,12 +355,17 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: 4,
     gap: 10,
   },
+  preview: {
+    flexDirection: "row",
+    gap: AVATAR_GAP,
+    padding: 16,
+    borderRadius: 22,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.background,
+  },
   highlighted: {
     // A faint wash of the brand red that reads in light and dark themes.
     backgroundColor: `${theme.colors.primary}12`,
-  },
-  pressed: {
-    backgroundColor: theme.colors.pressHighlight,
   },
   pending: {
     opacity: 0.55,
@@ -371,10 +397,13 @@ const styles = StyleSheet.create((theme) => ({
   timeAgo: {
     color: theme.colors.textSecondary,
   },
-  moreButton: {
+  moreSlot: {
     marginLeft: "auto",
-    width: 28,
-    height: 20,
+  },
+  moreButton: {
+    // Taller than the icon so the menu is easy to hit.
+    width: 32,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
   },
