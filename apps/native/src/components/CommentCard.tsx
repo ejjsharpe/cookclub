@@ -1,6 +1,12 @@
 import { parseMentionTokens } from "@repo/shared";
 import { memo, useCallback, useMemo, type ReactNode } from "react";
-import { Alert, Pressable, View, useWindowDimensions } from "react-native";
+import {
+  Alert,
+  Keyboard,
+  Pressable,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Avatar } from "./Avatar";
@@ -37,6 +43,16 @@ interface Props {
   onUserPress: (userId: string) => void;
   onMentionPress: (userId: string) => void;
 }
+
+/**
+ * Opening a native menu takes focus from the composer, and iOS hides the
+ * keyboard without the keyboard events the composer follows, so it would be
+ * left floating and then jump when the keyboard returned. Put the keyboard
+ * away ourselves first so the composer goes down with it.
+ */
+const dismissKeyboardForMenu = () => {
+  if (Keyboard.isVisible()) Keyboard.dismiss();
+};
 
 export const CommentCard = memo(
   ({
@@ -200,7 +216,12 @@ export const CommentCard = memo(
           </View>
         }
       >
-        <View
+        <Pressable
+          // Only here to put the keyboard away just before the native long-
+          // press menu takes over (see dismissKeyboardForMenu).
+          accessible={false}
+          onLongPress={dismissKeyboardForMenu}
+          delayLongPress={250}
           style={[
             styles.container,
             isReply && styles.replyContainer,
@@ -239,6 +260,7 @@ export const CommentCard = memo(
                 <CommentOptionsMenu options={options}>
                   <View
                     accessible
+                    onTouchStart={dismissKeyboardForMenu}
                     accessibilityLabel="Comment options"
                     accessibilityRole="button"
                     style={styles.moreButton}
@@ -274,7 +296,7 @@ export const CommentCard = memo(
               </Pressable>
             ) : null}
           </View>
-        </View>
+        </Pressable>
       </CommentContextMenu>
     );
   },
