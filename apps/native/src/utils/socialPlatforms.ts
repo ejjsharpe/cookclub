@@ -104,11 +104,3 @@ export function getRecipeImportSocialPlatformInfo(
     color: info.color,
   };
 }
-
-export function getRecipeImportSourceTitle(source: string) {
-  const platform = getRecipeImportSocialPlatform(source);
-  if (!platform) return source;
-
-  const info = getRecipeImportSocialPlatformInfo(platform);
-  return `Importing recipe from ${info.displayName}`;
-}
