@@ -1,9 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
-  type LayoutChangeEvent,
   Pressable,
   View,
   ScrollView,
@@ -11,13 +9,8 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import Animated, {
-  cancelAnimation,
-  FadeIn,
-  LinearTransition,
-  Easing,
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
   withTiming,
 } from "react-native-reanimated";
 import { StyleSheet, UnistylesRuntime } from "react-native-unistyles";
@@ -38,387 +31,74 @@ import {
 } from "@/components/RecipeBrowserSheet";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import {
-  BasicImportSheet,
-  type BasicImportSheetRef,
-} from "@/features/recipe-import/BasicImportSheet";
-import {
-  useRecipeImport,
-  type RecipeImportItem,
-} from "@/features/recipe-import/RecipeImportProvider";
-import {
-  SmartImportSheet,
-  type SmartImportSheetRef,
-} from "@/features/recipe-import/SmartImportSheet";
+import { RecipeImportBox } from "@/features/recipe-import/RecipeImportBox";
+import { RecipeImportList } from "@/features/recipe-import/RecipeImportList";
+import { useRecipeImport } from "@/features/recipe-import/RecipeImportProvider";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import { useSubscription } from "@/lib/subscription";
-import {
-  getRecipeImportSocialPlatform,
-  getRecipeImportSocialPlatformInfo,
-  getRecipeImportSourceTitle,
-} from "@/utils/socialPlatforms";
 
 const HEADER_HEIGHT = 52;
-const IMPORT_PROGRESS_TRACK_WIDTH = 160;
-const IMPORT_PROGRESS_BAR_WIDTH = 56;
 
 const ActionRow = ({
   icon,
   label,
   subtitle,
-  counterLabel,
+  isPro,
+  showSeparator,
   onPress,
-  disabled,
-  featured,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   subtitle: string;
-  counterLabel?: string;
+  isPro?: boolean;
+  showSeparator?: boolean;
   onPress: () => void;
-  disabled?: boolean;
-  featured?: boolean;
-}) => {
-  const theme = UnistylesRuntime.getTheme();
-
-  return (
+}) => (
+  <>
+    {showSeparator && <View style={styles.separator} />}
     <Pressable
-      style={[
-        styles.row,
-        disabled && styles.rowDisabled,
-        featured && styles.rowFeatured,
-      ]}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={onPress}
-      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityHint={isPro ? "Needs cookclub Pro" : undefined}
     >
-      {({ pressed }) => (
-        <>
-          {pressed && !disabled && (
-            <View pointerEvents="none" style={styles.pressHighlight} />
-          )}
-          <View
-            style={[
-              styles.iconContainer,
-              featured && styles.iconContainerFeatured,
-            ]}
-          >
-            <Ionicons name={icon} size={24} color={theme.colors.primary} />
-          </View>
-          <View style={styles.textContainer}>
-            <View style={styles.labelRow}>
-              <Text type="body" style={styles.actionLabel}>
-                {label}
+      <View style={styles.iconContainer}>
+        <Ionicons name={icon} size={21} style={styles.icon} />
+      </View>
+      <View style={styles.textContainer}>
+        <View style={styles.labelRow}>
+          <Text type="body" style={styles.actionLabel}>
+            {label}
+          </Text>
+          {isPro && (
+            <View style={styles.badge}>
+              <Text type="caption" style={styles.badgeText}>
+                Pro
               </Text>
-              {featured && (
-                <View style={styles.badge}>
-                  <Text type="caption" style={styles.badgeText}>
-                    Recommended
-                  </Text>
-                </View>
-              )}
             </View>
-            <Text type="subheadline" style={styles.subtitle}>
-              {subtitle}
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.rowTrailing,
-              !counterLabel && styles.rowTrailingCentered,
-            ]}
-          >
-            {counterLabel && (
-              <View style={styles.counterBadge}>
-                <Text type="caption" style={styles.counterBadgeText}>
-                  {counterLabel}
-                </Text>
-              </View>
-            )}
-            <Ionicons name="chevron-forward" size={20} style={styles.chevron} />
-          </View>
-        </>
-      )}
-    </Pressable>
-  );
-};
-
-const getImportIcon = (
-  mode: RecipeImportItem["mode"],
-): keyof typeof Ionicons.glyphMap => {
-  switch (mode) {
-    case "url":
-      return "link-outline";
-    case "text":
-      return "document-text-outline";
-    case "image":
-      return "image-outline";
-  }
-};
-
-const getImportStatusCopy = (importItem: RecipeImportItem) => {
-  if (importItem.status === "ready") return "Recipe ready";
-  if (importItem.status === "failed")
-    return importItem.error || "Import failed";
-  if (importItem.status === "processing") return "Import is processing";
-  return "Import is running";
-};
-
-const ImportProgressBar = ({ active }: { active: boolean }) => {
-  const [trackWidth, setTrackWidth] = useState(IMPORT_PROGRESS_TRACK_WIDTH);
-  const positionProgress = useSharedValue(0);
-  const completionProgress = useSharedValue(active ? 0 : 1);
-
-  useEffect(() => {
-    if (active) {
-      cancelAnimation(positionProgress);
-      completionProgress.set(0);
-      positionProgress.set(0);
-      positionProgress.set(
-        withRepeat(
-          withTiming(1, {
-            duration: 1400,
-            easing: Easing.inOut(Easing.ease),
-          }),
-          -1,
-          true,
-        ),
-      );
-    } else {
-      cancelAnimation(positionProgress);
-      completionProgress.set(
-        withTiming(1, {
-          duration: 260,
-          easing: Easing.out(Easing.cubic),
-        }),
-      );
-    }
-
-    return () => {
-      cancelAnimation(positionProgress);
-      cancelAnimation(completionProgress);
-    };
-  }, [active, completionProgress, positionProgress]);
-
-  const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
-    const measuredWidth = event.nativeEvent.layout.width;
-    if (measuredWidth > 0) {
-      setTrackWidth(measuredWidth);
-    }
-  }, []);
-
-  const segmentWidth = Math.min(IMPORT_PROGRESS_BAR_WIDTH, trackWidth);
-  const travelWidth = Math.max(0, trackWidth - segmentWidth);
-
-  const indicatorStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: positionProgress.get() * travelWidth }],
-    };
-  }, [travelWidth]);
-
-  const completionStyle = useAnimatedStyle(() => ({
-    opacity: completionProgress.get(),
-  }));
-
-  return (
-    <View style={styles.importProgressTrack} onLayout={handleTrackLayout}>
-      <Animated.View
-        style={[
-          styles.importProgressIndicator,
-          { width: segmentWidth },
-          indicatorStyle,
-        ]}
-      />
-      <Animated.View
-        style={[styles.importProgressCompletion, completionStyle]}
-      />
-    </View>
-  );
-};
-
-const ImportQueueSummary = ({
-  pendingCount,
-  readyCount,
-}: {
-  pendingCount: number;
-  readyCount: number;
-}) => {
-  const active = pendingCount > 0;
-
-  return (
-    <Animated.View
-      entering={FadeIn.duration(180)}
-      layout={LinearTransition.duration(180)}
-      style={styles.importSummary}
-    >
-      <View style={styles.importSummaryTopRow}>
-        <View style={styles.importSummaryTitleRow}>
-          <Ionicons
-            name={active ? "sparkles" : "checkmark"}
-            size={18}
-            style={styles.importSummaryIconGlyph}
-          />
-          <Text type="headline">
-            {active ? "Import is working" : "Import ready"}
-          </Text>
+          )}
         </View>
-        <Text type="caption" style={styles.importProgressLabel}>
-          {active ? "Analyzing" : "Complete"}
+        <Text type="subheadline" style={styles.subtitle}>
+          {subtitle}
         </Text>
       </View>
-      <View style={styles.importSummaryText}>
-        <Text type="subheadline" style={styles.importSummarySubtitle}>
-          {active
-            ? "You can keep using cookclub. Your recipe will appear here when it is ready."
-            : `${readyCount} recipe${readyCount === 1 ? "" : "s"} ready to review.`}
-        </Text>
-      </View>
-      <ImportProgressBar active={active} />
-    </Animated.View>
-  );
-};
-
-const BackgroundImportCard = ({
-  importItem,
-  showSeparator,
-  onReview,
-  onDismiss,
-}: {
-  importItem: RecipeImportItem;
-  showSeparator: boolean;
-  onReview: (id: string) => void;
-  onDismiss: (id: string) => void;
-}) => {
-  const theme = UnistylesRuntime.getTheme();
-  const isReady = importItem.status === "ready";
-  const isFailed = importItem.status === "failed";
-  const isPending =
-    importItem.status === "pending" || importItem.status === "processing";
-  const shouldEmphasizeTitle = isPending || isReady || isFailed;
-  const socialPlatform =
-    importItem.mode === "url" && !isReady
-      ? getRecipeImportSocialPlatform(importItem.title)
-      : null;
-  const socialPlatformInfo = socialPlatform
-    ? getRecipeImportSocialPlatformInfo(socialPlatform)
-    : null;
-  const displayTitle =
-    isFailed && socialPlatformInfo
-      ? `Import from ${socialPlatformInfo.displayName} failed`
-      : importItem.mode === "url" && !isReady
-        ? getRecipeImportSourceTitle(importItem.title)
-        : importItem.title;
-
-  return (
-    <Animated.View
-      entering={FadeIn.duration(180)}
-      layout={LinearTransition.duration(180)}
-      style={[
-        styles.importCard,
-        showSeparator && styles.importCardWithSeparator,
-        isReady && styles.importCardReady,
-        isFailed && styles.importCardFailed,
-      ]}
-    >
-      <View
-        style={[
-          styles.importIconContainer,
-          isFailed && styles.importIconContainerFailed,
-          isReady && styles.importIconContainerReady,
-          socialPlatformInfo &&
-            !isFailed && {
-              backgroundColor: `${socialPlatformInfo.color}18`,
-            },
-        ]}
-      >
-        {socialPlatformInfo && !isFailed ? (
-          <Ionicons
-            name={socialPlatformInfo.icon}
-            size={23}
-            color={socialPlatformInfo.color}
-          />
-        ) : importItem.status === "pending" ? (
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-        ) : (
-          <Ionicons
-            name={
-              isFailed ? "alert-circle-outline" : getImportIcon(importItem.mode)
-            }
-            size={22}
-            color={isFailed ? theme.colors.destructive : theme.colors.primary}
-          />
-        )}
-      </View>
-
-      <View style={styles.importTextContainer}>
-        <Text
-          type="body"
-          numberOfLines={1}
-          style={[
-            styles.importTitle,
-            shouldEmphasizeTitle && styles.importTitleEmphasized,
-          ]}
-        >
-          {displayTitle}
-        </Text>
-        <Text
-          type="subheadline"
-          numberOfLines={2}
-          style={[
-            styles.importSubtitle,
-            isFailed && styles.importSubtitleFailed,
-          ]}
-        >
-          {getImportStatusCopy(importItem)}
-        </Text>
-      </View>
-
-      {isReady ? (
-        <Pressable
-          style={styles.importReviewButton}
-          onPress={() => onReview(importItem.id)}
-        >
-          <Text type="caption" style={styles.importReviewButtonText}>
-            Review
-          </Text>
-        </Pressable>
-      ) : isFailed ? (
-        <Pressable
-          style={styles.importDismissButton}
-          onPress={() => onDismiss(importItem.id)}
-          accessibilityLabel="Dismiss failed import"
-        >
-          <Ionicons name="close" size={18} style={styles.importDismissIcon} />
-        </Pressable>
-      ) : null}
-    </Animated.View>
-  );
-};
+      <Ionicons name="chevron-forward" size={18} style={styles.chevron} />
+    </Pressable>
+  </>
+);
 
 export const AddRecipeScreen = () => {
   const { navigate } = useNavigation();
   const insets = UnistylesRuntime.insets;
 
   // Sheet refs
-  const smartImportSheetRef = useRef<SmartImportSheetRef>(null);
-  const basicImportSheetRef = useRef<BasicImportSheetRef>(null);
   const recipeBrowserSheetRef = useRef<RecipeBrowserSheetRef>(null);
   const personaliseRecipeSheetRef = useRef<PersonaliseRecipeSheetRef>(null);
   const [selectedPersonaliseRecipeId, setSelectedPersonaliseRecipeId] =
     useState<number | null>(null);
-  const {
-    imports: backgroundImports,
-    pendingCount: pendingImportCount,
-    readyCount: readyImportCount,
-    dismissImport,
-  } = useRecipeImport();
+  const { imports: backgroundImports, dismissImport } = useRecipeImport();
   const personalizeRecipeMutation = usePersonalizeRecipe();
-  const {
-    isPro,
-    smartImportsRemaining,
-    smartImportsLimit,
-    requireSmartImport,
-    requireProFeature,
-  } = useSubscription();
+  const { isPro, requireProFeature } = useSubscription();
 
   // Scroll tracking for header fade
   const titleOpacity = useSharedValue(1);
@@ -460,12 +140,6 @@ export const AddRecipeScreen = () => {
     [dismissImport],
   );
 
-  const onPressSmartImport = async () => {
-    const allowed = await requireSmartImport();
-    if (!allowed) return;
-    smartImportSheetRef.current?.present();
-  };
-
   const onPressCreate = () => {
     navigate("RecipeDetail", { draft: true, mode: "edit" });
   };
@@ -480,10 +154,6 @@ export const AddRecipeScreen = () => {
     const allowed = await requireProFeature("Personalise recipe");
     if (!allowed) return;
     recipeBrowserSheetRef.current?.present();
-  };
-
-  const onPressBasicImport = () => {
-    basicImportSheetRef.current?.present();
   };
 
   const handleSelectRecipeToPersonalise = async (recipeId: number) => {
@@ -531,98 +201,46 @@ export const AddRecipeScreen = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
         <VSpace size={insets.top + HEADER_HEIGHT + 8} />
 
-        {backgroundImports.length > 0 && (
-          <>
-            <VSpace size={8} />
-            <View style={styles.importQueue}>
-              <ImportQueueSummary
-                pendingCount={pendingImportCount}
-                readyCount={readyImportCount}
-              />
-              {backgroundImports.map((importItem, index) => (
-                <BackgroundImportCard
-                  key={importItem.id}
-                  importItem={importItem}
-                  showSeparator={index < backgroundImports.length - 1}
-                  onReview={handleReviewImport}
-                  onDismiss={handleDismissImport}
-                />
-              ))}
-            </View>
-            <VSpace size={24} />
-          </>
-        )}
+        <RecipeImportBox />
 
-        {/* Import Section */}
-        <Text style={styles.sectionTitle}>Import</Text>
-        <VSpace size={8} />
+        <RecipeImportList
+          imports={backgroundImports}
+          onReview={handleReviewImport}
+          onDismiss={handleDismissImport}
+        />
+
+        <Text type="subheadline" style={styles.sectionTitle}>
+          Or start another way
+        </Text>
         <View style={styles.section}>
           <ActionRow
-            icon="link"
-            label="Basic import"
-            subtitle="Import from URL. Works for most recipe websites."
-            onPress={onPressBasicImport}
+            icon="create-outline"
+            label="Write it yourself"
+            subtitle="Start from a blank recipe"
+            onPress={onPressCreate}
           />
-          <View style={styles.separator} />
           <ActionRow
-            icon="sparkles"
-            label="Smart import"
-            subtitle="Use AI to import from URL's, social media, text or photos."
-            counterLabel={
-              isPro
-                ? undefined
-                : `${smartImportsRemaining ?? 0}/${smartImportsLimit ?? 5} left`
-            }
-            onPress={onPressSmartImport}
-            featured
-          />
-        </View>
-
-        <VSpace size={24} />
-
-        {/* AI Section */}
-        <Text style={styles.sectionTitle}>AI Tools</Text>
-        <VSpace size={8} />
-        <View style={styles.section}>
-          <ActionRow
-            icon="restaurant"
-            label="AI Chef"
-            subtitle={
-              isPro
-                ? "Describe what you want and AI will create a recipe."
-                : "cookclub Pro feature."
-            }
+            icon="restaurant-outline"
+            label="Ask the AI chef"
+            subtitle="Describe a dish and get a recipe"
+            isPro={!isPro}
+            showSeparator
             onPress={onPressAIChef}
           />
-          <View style={styles.separator} />
           <ActionRow
-            icon="sparkles"
-            label="Personalise recipe"
-            subtitle={
-              isPro
-                ? "Make it vegan, cheaper, healthier, kid-friendly, or meal-prep ready."
-                : "cookclub Pro feature."
-            }
+            icon="color-wand-outline"
+            label="Change a recipe"
+            subtitle="Make one vegan, cheaper or quicker"
+            isPro={!isPro}
+            showSeparator
             onPress={onPressPersonalise}
-          />
-        </View>
-
-        <VSpace size={24} />
-
-        {/* Manual Section */}
-        <Text style={styles.sectionTitle}>Manual</Text>
-        <VSpace size={8} />
-        <View style={styles.section}>
-          <ActionRow
-            icon="create"
-            label="Create from scratch"
-            subtitle="Build your own recipe step by step."
-            onPress={onPressCreate}
           />
         </View>
       </ScrollView>
@@ -635,8 +253,6 @@ export const AddRecipeScreen = () => {
       </View>
 
       {/* Sheets */}
-      <SmartImportSheet ref={smartImportSheetRef} />
-      <BasicImportSheet ref={basicImportSheetRef} />
       <RecipeBrowserSheet
         ref={recipeBrowserSheetRef}
         title="Choose Recipe"
@@ -670,227 +286,56 @@ const styles = StyleSheet.create((theme, rt) => ({
     paddingHorizontal: 20,
   },
   sectionTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
-    fontFamily: theme.fonts.semiBold,
-    marginLeft: 24,
+    marginTop: 30,
+    marginBottom: 2,
+    marginHorizontal: 20,
+    color: theme.colors.textSecondary,
+    fontFamily: theme.fonts.bold,
   },
   section: {
     marginHorizontal: 20,
-    backgroundColor: theme.colors.inputBackground,
-    borderRadius: theme.borderRadius.large,
-    overflow: "hidden",
-  },
-  importQueue: {
-    marginHorizontal: 20,
-    backgroundColor: theme.colors.inputBackground,
-    borderRadius: theme.borderRadius.large,
-    overflow: "hidden",
-  },
-  importSummary: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 16,
-    gap: 10,
-    backgroundColor: theme.colors.inputBackground,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  importSummaryTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  importSummaryTitleRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  importSummaryIconGlyph: {
-    color: theme.colors.primary,
-  },
-  importSummaryText: {
-    gap: 4,
-  },
-  importSummarySubtitle: {
-    color: theme.colors.textSecondary,
-  },
-  importProgressTrack: {
-    width: "100%",
-    height: 8,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.background,
-    overflow: "hidden",
-  },
-  importProgressIndicator: {
-    width: IMPORT_PROGRESS_BAR_WIDTH,
-    height: "100%",
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
-  },
-  importProgressCompletion: {
-    position: "absolute",
-    inset: 0,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
-  },
-  importProgressLabel: {
-    color: theme.colors.primary,
-    fontFamily: theme.fonts.medium,
-    fontVariant: ["tabular-nums"],
-  },
-  importCard: {
-    minHeight: 74,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 14,
-    backgroundColor: theme.colors.inputBackground,
-    overflow: "hidden",
-  },
-  importCardWithSeparator: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  importCardReady: {
-    backgroundColor: theme.colors.inputBackground,
-  },
-  importCardFailed: {
-    backgroundColor: theme.colors.inputBackground,
-  },
-  importIconContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: theme.colors.primary + "18",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  importIconContainerReady: {
-    backgroundColor: theme.colors.primary + "22",
-  },
-  importThumbnailContainer: {
-    backgroundColor: theme.colors.background,
-  },
-  importThumbnailImage: {
-    width: "100%",
-    height: "100%",
-  },
-  importIconContainerFailed: {
-    backgroundColor: theme.colors.destructive + "16",
-  },
-  importTextContainer: {
-    flex: 1,
-    gap: 2,
-  },
-  importTitle: {
-    position: "relative",
-  },
-  importTitleEmphasized: {
-    fontFamily: theme.fonts.medium,
-  },
-  importSubtitle: {
-    color: theme.colors.textSecondary,
-  },
-  importSubtitleFailed: {
-    color: theme.colors.destructive,
-  },
-  importReviewButton: {
-    minWidth: 72,
-    height: 34,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 14,
-  },
-  importReviewButtonText: {
-    color: theme.colors.buttonText,
-    fontFamily: theme.fonts.medium,
-  },
-  importDismissButton: {
-    width: 34,
-    height: 34,
-    borderRadius: theme.borderRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.pressHighlight,
-  },
-  importDismissIcon: {
-    color: theme.colors.textSecondary,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
+    paddingVertical: 12,
     gap: 16,
-    position: "relative",
   },
-  pressHighlight: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: theme.colors.pressHighlight,
-  },
-  rowDisabled: {
-    opacity: 0.5,
-  },
-  rowFeatured: {
-    backgroundColor: theme.colors.inputBackground,
+  rowPressed: {
+    opacity: 0.6,
   },
   iconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 10,
-    backgroundColor: theme.colors.primary + "15",
+    borderRadius: 12,
+    backgroundColor: theme.colors.primarySoft,
     justifyContent: "center",
     alignItems: "center",
   },
-  iconContainerFeatured: {
-    backgroundColor: theme.colors.primary + "25",
+  icon: {
+    color: theme.colors.primary,
   },
   textContainer: {
     flex: 1,
-    gap: 2,
-  },
-  rowTrailing: {
-    alignSelf: "stretch",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    minWidth: 54,
-  },
-  rowTrailingCentered: {
-    justifyContent: "center",
+    gap: 1,
   },
   labelRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   actionLabel: {
-    fontFamily: theme.fonts.medium,
+    fontFamily: theme.fonts.bold,
   },
   badge: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.primarySoft,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 7,
   },
   badgeText: {
-    color: "white",
-    fontWeight: "600",
-  },
-  counterBadge: {
-    backgroundColor: theme.colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: theme.borderRadius.full,
-  },
-  counterBadgeText: {
     color: theme.colors.primary,
-    fontFamily: theme.fonts.semiBold,
-    fontVariant: ["tabular-nums"],
+    fontFamily: theme.fonts.bold,
   },
   subtitle: {
     color: theme.colors.textSecondary,
@@ -899,8 +344,8 @@ const styles = StyleSheet.create((theme, rt) => ({
     color: theme.colors.textTertiary,
   },
   separator: {
-    height: 1,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: theme.colors.border,
-    marginLeft: 72,
+    marginLeft: 56,
   },
 }));
