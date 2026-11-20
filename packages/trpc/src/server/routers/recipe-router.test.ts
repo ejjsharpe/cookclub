@@ -921,6 +921,26 @@ describe("recipeRouter - activity integration", () => {
       });
     });
 
+    it("passes the chosen sort and source to the search", async () => {
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.searchUserRecipes({
+        query: "pasta",
+        limit: 20,
+        sort: "time",
+        source: "web",
+      });
+
+      expect(mockSearchUserRecipes).toHaveBeenCalledWith(mockDb, {
+        ownerId: "test-user-id",
+        query: "pasta",
+        limit: 20,
+        sort: "time",
+        source: "web",
+      });
+    });
+
     it("rejects an excessive tag filter before querying", async () => {
       const ctx = createMockContext(mockDb);
       const caller = recipeRouter.createCaller(ctx as any);
@@ -957,6 +977,26 @@ describe("recipeRouter - activity integration", () => {
         tagIds: [4, 9],
         maxTotalTime: 30,
         limit: 25,
+      });
+    });
+
+    it("passes a sorted browse with its string cursor and source", async () => {
+      const ctx = createMockContext(mockDb);
+      const caller = recipeRouter.createCaller(ctx as any);
+
+      await caller.getUserRecipes({
+        limit: 20,
+        sort: "name",
+        cursor: "abc",
+        source: "cook",
+      });
+
+      expect(mockQueryUserRecipes).toHaveBeenCalledWith(mockDb, {
+        ownerId: "test-user-id",
+        limit: 20,
+        cursor: "abc",
+        sort: "name",
+        source: "cook",
       });
     });
 

@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { clearSelectedMealPlan } from "./mealPlanPreferences";
 import { storage } from "./mmkv";
 import { queryPersister } from "./queryPersister";
+import { clearRecentRecipeSearches } from "./recentRecipeSearches";
 import { clearSelectedShoppingList } from "./shoppingListPreferences";
 import { applyThemePreference, setThemePreference } from "./themePreferences";
 
@@ -23,6 +24,7 @@ export async function clearLocalSessionState(queryClient: QueryClient) {
   clearSelectedMealPlan();
   clearSelectedShoppingList();
   clearPendingShareIntent();
+  clearRecentRecipeSearches();
   setThemePreference("system");
   applyThemePreference("system");
 }

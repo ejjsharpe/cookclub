@@ -20,7 +20,7 @@ import {
 import { parseIngredients } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 import {
   filterOptionalPublicText,
@@ -729,9 +729,12 @@ const recipeHeadRouter = router({
     .input(
       type({
         limit: "number = 20",
-        cursor: "number?",
+        // createdAt in ms for "recent"; an opaque string for the other sorts.
+        "cursor?": "number | string",
         tagIds: "number[]?",
         maxTotalTime: "number?", // in minutes
+        "sort?": "'recent' | 'name' | 'time'",
+        "source?": "'mine' | 'web' | 'cook'",
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -741,7 +744,11 @@ const recipeHeadRouter = router({
         return await queryUserRecipes(ctx.db, {
           ownerId: ctx.user.id,
           limit: input.limit,
-          ...(input.cursor ? { cursor: input.cursor } : {}),
+          ...(input.cursor !== undefined && input.cursor !== ""
+            ? { cursor: input.cursor }
+            : {}),
+          ...(input.sort ? { sort: input.sort } : {}),
+          ...(input.source ? { source: input.source } : {}),
           ...(input.tagIds ? { tagIds: input.tagIds } : {}),
           ...(input.maxTotalTime !== undefined
             ? { maxTotalTime: input.maxTotalTime }
@@ -760,6 +767,8 @@ const recipeHeadRouter = router({
         "cursor?": "string",
         "tagIds?": "number[]",
         "maxTotalTime?": "number",
+        "sort?": "'relevance' | 'name' | 'time'",
+        "source?": "'mine' | 'web' | 'cook'",
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -776,6 +785,8 @@ const recipeHeadRouter = router({
           query: input.query,
           limit: input.limit,
           ...(input.cursor ? { cursor: input.cursor } : {}),
+          ...(input.sort ? { sort: input.sort } : {}),
+          ...(input.source ? { source: input.source } : {}),
           ...(input.tagIds ? { tagIds: input.tagIds } : {}),
           ...(input.maxTotalTime !== undefined
             ? { maxTotalTime: input.maxTotalTime }
@@ -1026,16 +1037,23 @@ const recipeTailRouter = router({
 
   getUserRecipeTags: authedProcedure.query(async ({ ctx }) => {
     const userTags = await ctx.db
-      .selectDistinct({
+      .select({
         id: tags.id,
         name: tags.name,
+        recipeCount: sql<number>`count(distinct ${recipes.id})::int`,
       })
       .from(tags)
       .innerJoin(recipeTags, eq(tags.id, recipeTags.tagId))
       .innerJoin(recipes, eq(recipeTags.recipeId, recipes.id))
       .where(
-        and(eq(recipes.ownerId, ctx.user.id), eq(tags.userId, ctx.user.id)),
+        and(
+          eq(recipes.ownerId, ctx.user.id),
+          eq(tags.userId, ctx.user.id),
+          // Match the recipe lists, which only show visible recipes.
+          eq(recipes.moderationState, "visible"),
+        ),
       )
+      .groupBy(tags.id, tags.name)
       .orderBy(tags.name);
 
     return userTags;

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   applyThemePreference: vi.fn(),
   cancelQueries: vi.fn(),
   clearPendingShareIntent: vi.fn(),
+  clearRecentRecipeSearches: vi.fn(),
   clearSelectedMealPlan: vi.fn(),
   clearSelectedShoppingList: vi.fn(),
   getAllKeys: vi.fn(),
@@ -30,6 +31,10 @@ vi.mock("./mmkv", () => ({
 
 vi.mock("./queryPersister", () => ({
   queryPersister: { removeClient: mocks.removeClient },
+}));
+
+vi.mock("./recentRecipeSearches", () => ({
+  clearRecentRecipeSearches: mocks.clearRecentRecipeSearches,
 }));
 
 vi.mock("./shoppingListPreferences", () => ({
@@ -83,7 +88,7 @@ describe("clearLocalSessionState", () => {
     expect(mocks.remove).toHaveBeenNthCalledWith(2, "cookclub-user-cache");
   });
 
-  it("resets feature selections, pending imports, and theme state", async () => {
+  it("resets feature selections, pending imports, recent searches, and theme state", async () => {
     const queryClient = makeQueryClient();
 
     await clearLocalSessionState(queryClient);
@@ -91,6 +96,7 @@ describe("clearLocalSessionState", () => {
     expect(mocks.clearSelectedMealPlan).toHaveBeenCalledOnce();
     expect(mocks.clearSelectedShoppingList).toHaveBeenCalledOnce();
     expect(mocks.clearPendingShareIntent).toHaveBeenCalledOnce();
+    expect(mocks.clearRecentRecipeSearches).toHaveBeenCalledOnce();
     expect(mocks.setThemePreference).toHaveBeenCalledWith("system");
     expect(mocks.applyThemePreference).toHaveBeenCalledWith("system");
   });
