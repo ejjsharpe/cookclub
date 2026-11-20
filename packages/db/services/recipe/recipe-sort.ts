@@ -96,7 +96,7 @@ function fromBase64Url(value: string): string {
     .replace(/_/g, "/")
     .padEnd(Math.ceil(value.length / 4) * 4, "=");
   const binary = atob(padded);
-  return new TextDecoder("utf-8", { fatal: true }).decode(
+  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
     Uint8Array.from(binary, (character) => character.charCodeAt(0)),
   );
 }
