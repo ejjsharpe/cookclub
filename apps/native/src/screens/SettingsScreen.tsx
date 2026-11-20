@@ -1,8 +1,20 @@
 import { useNavigation } from "@react-navigation/native";
 import { LEGAL_URLS } from "@repo/contracts";
-import { useState } from "react";
-import { View, TouchableOpacity, Alert, ScrollView } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import Constants from "expo-constants";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
+import {
+  StyleSheet,
+  useUnistyles,
+  withUnistyles,
+} from "react-native-unistyles";
 
 import { useSignOut } from "@/api/auth";
 import {
@@ -11,12 +23,16 @@ import {
   useLegalStatus,
 } from "@/api/legal";
 import { useDeleteAccount, useUpdateProfile, useUser } from "@/api/user";
-import { Ionicons } from "@/components/Ionicons";
-import { NavigationHeader } from "@/components/NavigationHeader";
-import { ProBadge } from "@/components/ProBadge";
-import { SafeAreaView } from "@/components/SafeAreaView";
-import { VSpace } from "@/components/Space";
+import { Avatar } from "@/components/Avatar";
+import {
+  SegmentedControl,
+  type TabOption,
+} from "@/components/SegmentedControl";
+import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
+import { TopScrollFade } from "@/components/TopScrollFade";
+import { GLASS_CONTROL_SIZE, GlassSurface } from "@/components/glass/Glass";
+import { GlassCircleButton } from "@/components/glass/GlassCircleButton";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import {
   openExternalWebsite,
@@ -33,128 +49,116 @@ import {
   type ThemePreference,
 } from "@/lib/themePreferences";
 
-type SettingsRowProps = {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value?: string;
-  onPress: () => void;
-  destructive?: boolean;
-};
-
 const StyledScrollView = withUnistyles(ScrollView);
 
-const SettingsRow = ({
-  icon,
+const THEME_OPTIONS: TabOption<ThemePreference>[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "Match phone" },
+];
+
+const MEASUREMENT_OPTIONS: TabOption<MeasurementSystem>[] = [
+  { value: "metric", label: "Metric" },
+  { value: "imperial", label: "Imperial" },
+  { value: "auto", label: "As written" },
+];
+
+const BROWSER_OPTIONS: TabOption<ExternalBrowserPreference>[] = [
+  { value: "in_app", label: "In cookclub" },
+  {
+    value: "system",
+    label: process.env.EXPO_OS === "ios" ? "In Safari" : "In browser",
+  },
+];
+
+/** Free accounts get this many smart imports a month. */
+const FREE_SMART_IMPORTS = 5;
+
+/** How far the large title scrolls before the glass title takes over. */
+const TITLE_SCROLL_THRESHOLD = 44;
+
+const SUBSCRIPTION_URL =
+  process.env.EXPO_OS === "ios"
+    ? "https://apps.apple.com/account/subscriptions"
+    : "https://play.google.com/store/account/subscriptions?package=com.shakyhand.cookclub";
+
+/** The row "goes somewhere" chevron, in the system style. */
+const Chevron = () => {
+  const { theme } = useUnistyles();
+  return (
+    <SystemIcon
+      sf="chevron.forward"
+      android="chevron-forward"
+      size={15}
+      color={theme.colors.textTertiary}
+    />
+  );
+};
+
+const SectionTitle = ({ children }: { children: string }) => (
+  <Text type="title3" style={styles.sectionTitle} accessibilityRole="header">
+    {children}
+  </Text>
+);
+
+const Row = ({
   label,
   value,
   onPress,
-  destructive,
-}: SettingsRowProps) => {
-  return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
-      <View style={styles.rowLeft}>
-        <View
-          style={[styles.iconContainer, destructive && styles.destructiveIcon]}
-        >
-          <Ionicons
-            name={icon}
-            size={20}
-            style={destructive ? styles.destructiveIconColor : styles.iconColor}
-          />
-        </View>
-        <Text
-          type="body"
-          style={destructive ? styles.destructiveText : undefined}
-        >
-          {label}
-        </Text>
-      </View>
-      <View style={styles.rowRight}>
-        {value && (
-          <Text type="bodyFaded" style={styles.valueText}>
-            {value}
-          </Text>
-        )}
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          style={destructive ? styles.destructiveChevron : styles.chevron}
-        />
-      </View>
-    </TouchableOpacity>
-  );
-};
-
-const ToggleOption = ({
-  label,
-  selected,
-  onPress,
+  last,
 }: {
   label: string;
-  selected: boolean;
+  value?: string;
   onPress: () => void;
-}) => {
-  return (
-    <TouchableOpacity
-      style={[styles.themeOption, selected && styles.themeOptionSelected]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Text
-        type="body"
-        style={selected ? styles.themeOptionTextSelected : undefined}
-      >
+  last?: boolean;
+}) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={value ? `${label}, ${value}` : label}
+    style={({ pressed }) => [styles.rowHit, pressed && styles.rowPressed]}
+  >
+    <View style={[styles.row, last && styles.rowLast]}>
+      <Text type="body" style={styles.rowLabel}>
         {label}
       </Text>
-      {selected && (
-        <Ionicons name="checkmark" size={20} style={styles.checkmark} />
-      )}
-    </TouchableOpacity>
-  );
-};
-
-const ProStatusCard = () => {
-  return (
-    <View style={styles.proStatusCard}>
-      <View style={styles.proStatusIcon}>
-        <Ionicons name="sparkles" size={18} style={styles.proStatusIconGlyph} />
-      </View>
-      <View style={styles.proStatusText}>
-        <Text type="heading">cookclub Pro</Text>
-        <Text type="bodyFaded" style={styles.proStatusSubtitle}>
-          Active
+      {value ? (
+        <Text type="callout" style={styles.rowValue}>
+          {value}
         </Text>
-      </View>
-      <ProBadge variant="solid" />
+      ) : null}
+      <Chevron />
     </View>
-  );
-};
+  </Pressable>
+);
 
 export const SettingsScreen = () => {
+  const { theme } = useUnistyles();
   const navigation = useNavigation();
   const signOutMutation = useSignOut();
   const deleteAccountMutation = useDeleteAccount();
   const legalStatus = useLegalStatus();
   const acceptTerms = useAcceptCurrentTerms();
   const updateProfileMutation = useUpdateProfile();
-  const [currentTheme, setCurrentTheme] =
-    useState<ThemePreference>(getThemePreference);
-  const currentExternalBrowser = useExternalBrowserPreference();
   const { data: userData } = useUser();
+  const user = userData?.user;
   const { isPro, smartImportsRemaining, presentPaywall, restorePurchases } =
     useSubscription();
+  const currentExternalBrowser = useExternalBrowserPreference();
+  const [currentTheme, setCurrentTheme] =
+    useState<ThemePreference>(getThemePreference);
   const [currentMeasurement, setCurrentMeasurement] =
     useState<MeasurementSystem>(
-      (userData?.user?.measurementPreference as MeasurementSystem) ?? "auto",
+      (user?.measurementPreference as MeasurementSystem) ?? "auto",
     );
+  const [isTitleCollapsed, setIsTitleCollapsed] = useState(false);
 
-  const subscriptionManagementUrl =
-    process.env.EXPO_OS === "ios"
-      ? "https://apps.apple.com/account/subscriptions"
-      : "https://play.google.com/store/account/subscriptions?package=com.shakyhand.cookclub";
+  const version = Constants.expoConfig?.version;
 
-  const openUrl = (url: string) => {
-    return openExternalWebsite(url);
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const collapsed =
+      event.nativeEvent.contentOffset.y > TITLE_SCROLL_THRESHOLD;
+    if (collapsed !== isTitleCollapsed) setIsTitleCollapsed(collapsed);
   };
 
   const handleThemeChange = (theme: ThemePreference) => {
@@ -163,22 +167,35 @@ export const SettingsScreen = () => {
     applyThemePreference(theme);
   };
 
-  const handleMeasurementChange = (system: MeasurementSystem) => {
-    setCurrentMeasurement(system);
-    updateProfileMutation.mutate({ measurementPreference: system });
-  };
+  const savedMeasurement = user?.measurementPreference as
+    MeasurementSystem | undefined;
+  // The account may load after this screen opens.
+  useEffect(() => {
+    if (savedMeasurement) setCurrentMeasurement(savedMeasurement);
+  }, [savedMeasurement]);
 
-  const handleExternalBrowserChange = (
-    preference: ExternalBrowserPreference,
-  ) => {
-    setExternalBrowserPreference(preference);
+  const handleMeasurementChange = (system: MeasurementSystem) => {
+    const previous = currentMeasurement;
+    setCurrentMeasurement(system);
+    updateProfileMutation.mutate(
+      { measurementPreference: system },
+      {
+        onError: (error) => {
+          setCurrentMeasurement(previous);
+          alertApiError("Couldn't change measurements", error, {
+            operation: "user.updateProfile",
+            fallback: "Please try again.",
+          });
+        },
+      },
+    );
   };
 
   const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+    Alert.alert("Sign out?", "You can sign back in at any time.", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Sign Out",
+        text: "Sign out",
         style: "destructive",
         onPress: () => signOutMutation.mutate(),
       },
@@ -198,7 +215,7 @@ export const SettingsScreen = () => {
 
   const handleDeleteAccount = () => {
     Alert.alert(
-      "Delete Account",
+      "Delete account?",
       "This permanently deletes your cookclub account and app data. It does not cancel any App Store or Google Play subscription.",
       [
         { text: "Cancel", style: "cancel" },
@@ -207,12 +224,12 @@ export const SettingsScreen = () => {
           style: "destructive",
           onPress: () => {
             Alert.alert(
-              "Delete Account Permanently",
+              "Delete account permanently?",
               "This cannot be undone.",
               [
                 { text: "Cancel", style: "cancel" },
                 {
-                  text: "Delete Account",
+                  text: "Delete account",
                   style: "destructive",
                   onPress: deleteAccount,
                 },
@@ -226,7 +243,7 @@ export const SettingsScreen = () => {
 
   const handleTermsAcceptance = () => {
     if (legalStatus.data?.hasAcceptedCurrentTerms) {
-      openUrl(LEGAL_URLS.terms);
+      openExternalWebsite(LEGAL_URLS.terms);
       return;
     }
 
@@ -234,7 +251,10 @@ export const SettingsScreen = () => {
       "Accept current Terms?",
       "Read the Terms of Service before accepting. Acceptance is required before publishing public content.",
       [
-        { text: "Read Terms", onPress: () => openUrl(LEGAL_URLS.terms) },
+        {
+          text: "Read Terms",
+          onPress: () => openExternalWebsite(LEGAL_URLS.terms),
+        },
         { text: "Cancel", style: "cancel" },
         {
           text: "Accept",
@@ -252,184 +272,202 @@ export const SettingsScreen = () => {
     );
   };
 
+  const proSubtitle = isPro
+    ? "Active"
+    : `${smartImportsRemaining ?? 0} of ${FREE_SMART_IMPORTS} smart imports left`;
+
   return (
-    <SafeAreaView edges={["top"]} style={styles.container}>
-      <NavigationHeader title="Settings" />
-
+    <View style={styles.container}>
       <StyledScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        onScroll={handleScroll}
+        scrollEventThrottle={32}
       >
-        {/* Appearance Section */}
-        <VSpace size={16} />
-        <Text type="heading" style={styles.sectionTitle}>
-          Appearance
+        <Text type="largeTitle" style={styles.title} accessibilityRole="header">
+          Settings
         </Text>
-        <VSpace size={12} />
-        <View style={styles.themeSelector}>
-          <ToggleOption
-            label="Light"
-            selected={currentTheme === "light"}
-            onPress={() => handleThemeChange("light")}
+
+        {user ? (
+          <Pressable
+            onPress={() => navigation.navigate("Account")}
+            accessibilityRole="button"
+            accessibilityLabel={`Account, ${user.name}`}
+            accessibilityHint="Edit your name, username, email and photo"
+            style={({ pressed }) => [styles.me, pressed && styles.rowPressed]}
+          >
+            <Avatar
+              imageUrl={user.image}
+              imageVersion={user.updatedAt}
+              name={user.name}
+              size={48}
+            />
+            <View style={styles.meText}>
+              <Text type="headline" numberOfLines={1}>
+                {user.name}
+              </Text>
+              <Text type="subheadline" style={styles.muted} numberOfLines={1}>
+                {user.email}
+              </Text>
+            </View>
+            <Chevron />
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={presentPaywall}
+          accessibilityRole="button"
+          accessibilityLabel={`cookclub Pro, ${proSubtitle}`}
+          style={({ pressed }) => [styles.pro, pressed && styles.rowPressed]}
+        >
+          <SystemIcon
+            sf="sparkles"
+            android="sparkles"
+            size={20}
+            color={theme.colors.primary}
           />
-          <ToggleOption
-            label="Dark"
-            selected={currentTheme === "dark"}
-            onPress={() => handleThemeChange("dark")}
-          />
-          <ToggleOption
-            label="System"
-            selected={currentTheme === "system"}
-            onPress={() => handleThemeChange("system")}
+          <View style={styles.proText}>
+            <Text type="headline">cookclub Pro</Text>
+            <Text type="footnote" style={styles.muted}>
+              {proSubtitle}
+            </Text>
+          </View>
+          <Text type="headline" style={styles.proAction}>
+            {isPro ? "Manage" : "Upgrade"}
+          </Text>
+        </Pressable>
+
+        <SectionTitle>Appearance</SectionTitle>
+        <View style={styles.segment}>
+          <SegmentedControl
+            fullWidth
+            compact
+            options={THEME_OPTIONS}
+            value={currentTheme}
+            onValueChange={handleThemeChange}
           />
         </View>
 
-        {/* Measurements Section */}
-        <VSpace size={32} />
-        <Text type="heading" style={styles.sectionTitle}>
-          Measurements
-        </Text>
-        <VSpace size={12} />
-        <View style={styles.themeSelector}>
-          <ToggleOption
-            label="Metric"
-            selected={currentMeasurement === "metric"}
-            onPress={() => handleMeasurementChange("metric")}
-          />
-          <ToggleOption
-            label="Imperial"
-            selected={currentMeasurement === "imperial"}
-            onPress={() => handleMeasurementChange("imperial")}
-          />
-          <ToggleOption
-            label="Original"
-            selected={currentMeasurement === "auto"}
-            onPress={() => handleMeasurementChange("auto")}
+        <SectionTitle>Measurements</SectionTitle>
+        <View style={styles.segment}>
+          <SegmentedControl
+            fullWidth
+            compact
+            options={MEASUREMENT_OPTIONS}
+            value={currentMeasurement}
+            onValueChange={handleMeasurementChange}
           />
         </View>
-
-        {/* External Browser Section */}
-        <VSpace size={32} />
-        <Text type="heading" style={styles.sectionTitle}>
-          Open websites
+        <Text type="footnote" style={styles.note}>
+          As written keeps each recipe in the units it came with.
         </Text>
-        <VSpace size={12} />
-        <View style={styles.themeSelector}>
-          <ToggleOption
-            label="In App"
-            selected={currentExternalBrowser === "in_app"}
-            onPress={() => handleExternalBrowserChange("in_app")}
-          />
-          <ToggleOption
-            label="Phone"
-            selected={currentExternalBrowser === "system"}
-            onPress={() => handleExternalBrowserChange("system")}
+
+        <SectionTitle>Open recipe websites</SectionTitle>
+        <View style={styles.segment}>
+          <SegmentedControl
+            fullWidth
+            compact
+            options={BROWSER_OPTIONS}
+            value={currentExternalBrowser}
+            onValueChange={setExternalBrowserPreference}
           />
         </View>
-
-        {/* Subscription Section */}
-        <VSpace size={32} />
-        <Text type="heading" style={styles.sectionTitle}>
-          cookclub Pro
-        </Text>
-        <VSpace size={12} />
-        {isPro && (
-          <>
-            <ProStatusCard />
-            <VSpace size={12} />
-          </>
+        {currentExternalBrowser ? null : (
+          <Text type="footnote" style={styles.note}>
+            You’ll be asked the first time you open one.
+          </Text>
         )}
-        <View style={styles.section}>
-          <SettingsRow
-            icon="sparkles-outline"
-            label={isPro ? "Manage Pro" : "Upgrade to Pro"}
-            value={
-              isPro
-                ? "Active"
-                : `${smartImportsRemaining ?? 0}/5 Smart Imports left`
-            }
-            onPress={presentPaywall}
-          />
-          <View style={styles.separator} />
-          <SettingsRow
-            icon="card-outline"
-            label="Manage Subscription"
-            onPress={() => openUrl(subscriptionManagementUrl)}
-          />
-          <View style={styles.separator} />
-          <SettingsRow
-            icon="refresh-outline"
-            label="Restore Purchases"
-            onPress={restorePurchases}
-          />
-        </View>
 
-        {/* Safety and Legal Section */}
-        <VSpace size={32} />
-        <Text type="heading" style={styles.sectionTitle}>
-          Safety & Legal
-        </Text>
-        <VSpace size={12} />
-        <View style={styles.section}>
-          <SettingsRow
-            icon="ban-outline"
-            label="Blocked Users"
+        <SectionTitle>Safety and legal</SectionTitle>
+        <View style={styles.rows}>
+          <Row
+            label="Blocked users"
             onPress={() => navigation.navigate("BlockedUsers")}
           />
-          <View style={styles.separator} />
-          <SettingsRow
-            icon="shield-checkmark-outline"
-            label="Privacy Policy"
-            onPress={() => openUrl(LEGAL_URLS.privacy)}
+          <Row
+            label="Privacy policy"
+            onPress={() => openExternalWebsite(LEGAL_URLS.privacy)}
           />
-          <View style={styles.separator} />
-          <SettingsRow
-            icon="document-text-outline"
-            label="Terms of Service"
+          <Row
+            label="Terms of service"
             value={
               legalStatus.data?.hasAcceptedCurrentTerms ? "Accepted" : "Review"
             }
             onPress={handleTermsAcceptance}
           />
-          <View style={styles.separator} />
-          <SettingsRow
-            icon="help-circle-outline"
+          <Row
             label="Support"
-            onPress={() => openUrl(LEGAL_URLS.support)}
+            onPress={() => openExternalWebsite(LEGAL_URLS.support)}
+            last
           />
         </View>
 
-        {/* Account Section */}
-        <VSpace size={32} />
-        <Text type="heading" style={styles.sectionTitle}>
-          Account
-        </Text>
-        <VSpace size={12} />
-        <View style={styles.section}>
-          <SettingsRow
-            icon="person-outline"
-            label="Account"
-            onPress={() => navigation.navigate("Account")}
+        <SectionTitle>Subscription</SectionTitle>
+        <View style={styles.rows}>
+          <Row
+            label="Manage subscription"
+            onPress={() => openExternalWebsite(SUBSCRIPTION_URL)}
           />
-          <View style={styles.separator} />
-          <SettingsRow
-            icon="log-out-outline"
-            label="Sign Out"
-            onPress={handleSignOut}
-            destructive
-          />
-          <View style={styles.separator} />
-          <SettingsRow
-            icon="trash-outline"
-            label="Delete Account"
-            value={deleteAccountMutation.isPending ? "Deleting..." : undefined}
-            onPress={handleDeleteAccount}
-            destructive
-          />
+          <Row label="Restore purchases" onPress={restorePurchases} last />
         </View>
+
+        <Pressable
+          onPress={handleSignOut}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.signOut,
+            pressed && styles.rowPressed,
+          ]}
+        >
+          <Text type="headline">Sign out</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleDeleteAccount}
+          disabled={deleteAccountMutation.isPending}
+          accessibilityRole="button"
+          accessibilityState={{ busy: deleteAccountMutation.isPending }}
+          style={({ pressed }) => [styles.delete, pressed && styles.rowPressed]}
+        >
+          <Text type="subheadline" style={styles.deleteText}>
+            {deleteAccountMutation.isPending
+              ? "Deleting account…"
+              : "Delete account"}
+          </Text>
+        </Pressable>
+
+        {version ? (
+          <Text type="footnote" style={styles.version}>
+            cookclub {version}
+          </Text>
+        ) : null}
       </StyledScrollView>
-    </SafeAreaView>
+
+      <TopScrollFade />
+      <View style={styles.toolbar} pointerEvents="box-none">
+        <GlassCircleButton
+          icon={{ sf: "chevron.backward", android: "chevron-back" }}
+          accessibilityLabel="Go back"
+          onPress={navigation.goBack}
+        />
+        <GlassSurface
+          hidden={!isTitleCollapsed}
+          style={styles.titlePill}
+          contentStyle={styles.titlePillContent}
+        >
+          {/* The large title already says this to screen readers. */}
+          <Text
+            type="headline"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            Settings
+          </Text>
+        </GlassSurface>
+        <View style={styles.toolbarSpacer} />
+      </View>
+    </View>
   );
 };
 
@@ -438,123 +476,136 @@ const styles = StyleSheet.create((theme, rt) => ({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  scrollView: {
+  scroll: {
     flex: 1,
-    paddingHorizontal: 20,
   },
-  scrollContent: {
-    paddingBottom: rt.insets.bottom + 20,
+  content: {
+    paddingTop: rt.insets.top + GLASS_CONTROL_SIZE + 20,
+    paddingBottom: rt.insets.bottom + 32,
   },
-  sectionTitle: {
-    marginLeft: 4,
-  },
-  section: {
-    backgroundColor: theme.colors.inputBackground,
-    borderRadius: theme.borderRadius.large,
-    overflow: "hidden",
-  },
-  proStatusCard: {
+  toolbar: {
+    position: "absolute",
+    top: rt.insets.top + 4,
+    left: 16,
+    right: 16,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    padding: 14,
-    borderRadius: theme.borderRadius.large,
-    borderWidth: 1,
-    borderColor: theme.colors.primary + "26",
-    backgroundColor: theme.colors.primary + "10",
+    justifyContent: "space-between",
   },
-  proStatusIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
+  toolbarSpacer: {
+    width: GLASS_CONTROL_SIZE,
+  },
+  titlePill: {
+    height: GLASS_CONTROL_SIZE,
+    borderRadius: GLASS_CONTROL_SIZE / 2,
+  },
+  titlePillContent: {
+    flex: 1,
+    paddingHorizontal: 18,
     justifyContent: "center",
+  },
+  title: {
+    paddingHorizontal: 20,
+  },
+  me: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    marginTop: 8,
   },
-  proStatusIconGlyph: {
-    color: theme.colors.buttonText,
-  },
-  proStatusText: {
+  meText: {
     flex: 1,
     minWidth: 0,
   },
-  proStatusSubtitle: {
-    fontSize: 14,
+  muted: {
+    color: theme.colors.textSecondary,
+  },
+  pro: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 12,
+    marginHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: theme.colors.inputBackground,
+  },
+  proIcon: {
+    color: theme.colors.primary,
+  },
+  proText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  proAction: {
+    color: theme.colors.primary,
+  },
+  sectionTitle: {
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 12,
+  },
+  segment: {
+    paddingHorizontal: 20,
+  },
+  note: {
+    color: theme.colors.textSecondary,
+    paddingHorizontal: 22,
+    paddingTop: 8,
+  },
+  rows: {
+    paddingLeft: 20,
+  },
+  rowHit: {
+    paddingRight: 20,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    gap: 10,
+    minHeight: 52,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
   },
-  rowLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  rowLast: {
+    borderBottomWidth: 0,
   },
-  rowRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  rowPressed: {
+    opacity: 0.6,
   },
-  iconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary + "20",
-    justifyContent: "center",
-    alignItems: "center",
+  rowLabel: {
+    flex: 1,
   },
-  iconColor: {
-    color: theme.colors.primary,
-  },
-  destructiveIcon: {
-    backgroundColor: theme.colors.destructive + "20",
-  },
-  destructiveIconColor: {
-    color: theme.colors.destructive,
-  },
-  destructiveText: {
-    color: theme.colors.destructive,
-  },
-  destructiveChevron: {
-    color: theme.colors.destructive + "60",
-  },
-  valueText: {
-    fontSize: 15,
+  rowValue: {
+    color: theme.colors.textSecondary,
   },
   chevron: {
     color: theme.colors.textTertiary,
   },
-  separator: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    marginLeft: 60,
-  },
-  themeSelector: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  themeOption: {
-    flex: 1,
-    flexDirection: "row",
+  signOut: {
+    height: 50,
+    marginTop: 28,
+    marginHorizontal: 20,
+    borderRadius: 25,
     alignItems: "center",
     justifyContent: "center",
-    height: 50,
-    borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.inputBackground,
-    gap: 6,
   },
-  themeOptionSelected: {
-    backgroundColor: theme.colors.primary + "20",
+  delete: {
+    alignSelf: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginTop: 4,
   },
-  themeOptionTextSelected: {
-    color: theme.colors.primary,
-    fontWeight: "500",
+  deleteText: {
+    color: theme.colors.destructive,
+    fontFamily: theme.fonts.bold,
   },
-  checkmark: {
-    color: theme.colors.primary,
+  version: {
+    color: theme.colors.textTertiary,
+    textAlign: "center",
   },
 }));

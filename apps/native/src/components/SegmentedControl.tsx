@@ -23,12 +23,14 @@ const AnimatedTabText = ({
   scrollProgress,
   activeIndex,
   totalTabs,
+  compact,
 }: {
   label: string;
   index: number;
   scrollProgress: SharedValue<number> | undefined;
   activeIndex: number;
   totalTabs: number;
+  compact?: boolean;
 }) => {
   const animatedTheme = useAnimatedTheme();
   // Create input range for all tabs
@@ -66,7 +68,11 @@ const AnimatedTabText = ({
   });
 
   return (
-    <AnimatedText type="body" style={[tabTextStyles.text, animatedStyle]}>
+    <AnimatedText
+      type={compact ? "subheadline" : "body"}
+      numberOfLines={1}
+      style={[tabTextStyles.text, animatedStyle]}
+    >
       {label}
     </AnimatedText>
   );
@@ -79,10 +85,13 @@ export interface TabOption<T extends string> {
 
 interface SegmentedControlProps<T extends string> {
   options: TabOption<T>[];
-  value: T;
+  /** Leave undefined to show no choice selected yet. */
+  value: T | undefined;
   onValueChange: (value: T, direction: number) => void;
   scrollProgress?: SharedValue<number>;
   fullWidth?: boolean;
+  /** Smaller text and padding, for three or more options across the screen. */
+  compact?: boolean;
 }
 
 const SPRING_CONFIG = {
@@ -97,6 +106,7 @@ export function SegmentedControl<T extends string>({
   onValueChange,
   scrollProgress,
   fullWidth = false,
+  compact = false,
 }: SegmentedControlProps<T>) {
   const tabPositions = useRef<{ x: number; width: number }[]>([]);
   const indicatorX = useSharedValue(0);
@@ -160,6 +170,8 @@ export function SegmentedControl<T extends string>({
 
     const direction = index > currentIndex.current ? 1 : -1;
     currentIndex.current = index;
+    // Started with nothing chosen: the indicator is placed now.
+    isInitialized.current = true;
 
     onValueChange(optionValue, direction);
   };
@@ -198,13 +210,23 @@ export function SegmentedControl<T extends string>({
   });
 
   return (
-    <View style={[styles.container, fullWidth && styles.containerFullWidth]}>
+    <View
+      accessibilityRole="tablist"
+      style={[styles.container, fullWidth && styles.containerFullWidth]}
+    >
       <Animated.View style={[styles.indicator, indicatorStyle]} />
       {options.map((option, index) => (
         <TouchableOpacity
           key={option.value}
-          style={[styles.tab, fullWidth && styles.tabFullWidth]}
+          style={[
+            styles.tab,
+            fullWidth && styles.tabFullWidth,
+            compact && styles.tabCompact,
+          ]}
           onPress={() => handlePress(option.value, index)}
+          accessibilityRole="tab"
+          accessibilityLabel={option.label}
+          accessibilityState={{ selected: index === activeIndex }}
           onLayout={(e) => handleTabLayout(index, e)}
           activeOpacity={0.7}
         >
@@ -214,6 +236,7 @@ export function SegmentedControl<T extends string>({
             scrollProgress={scrollProgress}
             activeIndex={activeIndex}
             totalTabs={options.length}
+            compact={compact}
           />
         </TouchableOpacity>
       ))}
@@ -240,6 +263,9 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     paddingHorizontal: 20,
     zIndex: 1,
+  },
+  tabCompact: {
+    paddingHorizontal: 8,
   },
   tabFullWidth: {
     flex: 1,

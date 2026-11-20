@@ -100,8 +100,9 @@ export const StarRating = memo(({ rating }: { rating: number }) => (
 ));
 
 // ─── Save button ────────────────────────────────────────────────────────────
-// A bookmark at the end of the like / comment row. Filled once the recipe is
-// already in your recipes, where it opens it instead.
+// "+ Save" at the end of the like / comment row adds the recipe to your
+// recipes. Once it's there it reads "✓ Saved" and opens it instead. The word
+// is there because a plus on its own doesn't say what it adds to.
 
 export const FeedSaveButton = memo(
   ({
@@ -117,18 +118,24 @@ export const FeedSaveButton = memo(
     return (
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+        hitSlop={6}
+        style={({ pressed }) => [styles.save, pressed && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel={
-          saved ? `View ${recipeName} in your recipes` : `Save ${recipeName}`
+          saved
+            ? `${recipeName} is in your recipes. Open it`
+            : `Save ${recipeName} to your recipes`
         }
       >
         <SignatureIcon
-          name="bookmark"
+          name="addToLibrary"
           variant={saved ? "filled" : "outline"}
-          size={23}
+          size={16}
           color={theme.colors.text}
         />
+        <Text type="subheadline" style={styles.saveLabel}>
+          {saved ? "Saved" : "Save"}
+        </Text>
       </Pressable>
     );
   },
@@ -349,9 +356,24 @@ const styles = StyleSheet.create((theme) => ({
   },
   trailing: {
     marginLeft: "auto",
+    // The row bleeds 10pt so icons line up; pull the trailing control back in.
+    marginRight: 10,
   },
   pressed: {
     opacity: 0.6,
+  },
+  save: {
+    height: 34,
+    paddingLeft: 11,
+    paddingRight: 14,
+    borderRadius: 17,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: theme.colors.inputBackground,
+  },
+  saveLabel: {
+    fontFamily: theme.fonts.bold,
   },
 }));
 

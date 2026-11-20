@@ -17,8 +17,8 @@ import {
   type AlertButton,
   Modal,
   Pressable,
-  TouchableOpacity,
   Share,
+  FlatList,
   useWindowDimensions,
   type ViewInstance,
 } from "react-native";
@@ -34,6 +34,7 @@ import Animated, {
 import {
   StyleSheet,
   UnistylesRuntime,
+  useUnistyles,
   withUnistyles,
 } from "react-native-unistyles";
 
@@ -42,49 +43,48 @@ import type {
   CookingReviewFeedItem,
   RecipeImportFeedItem,
 } from "@/api/activity";
-import { useToggleActivityLike, useUserActivities } from "@/api/activity";
+import { useUserActivities } from "@/api/activity";
 import { useUserProfile, useFollowUser, useUnfollowUser } from "@/api/follows";
 import { useBlockUser } from "@/api/moderation";
 import { useImportRecipe } from "@/api/recipe";
 import { useUser } from "@/api/user";
-import { ImportActivityCard } from "@/components/ImportActivityCard";
-import { Ionicons } from "@/components/Ionicons";
 import { ProBadge } from "@/components/ProBadge";
 import {
   ReportContentSheet,
   type ReportContentSheetRef,
 } from "@/components/ReportContentSheet";
-import { ReviewActivityCard } from "@/components/ReviewActivityCard";
 import { SkeletonContainer, UserProfileSkeleton } from "@/components/Skeleton";
-import { VSpace } from "@/components/Space";
+import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
-import { BackButton } from "@/components/buttons/BackButton";
+import { TopScrollFade } from "@/components/TopScrollFade";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { ScalePressable } from "@/components/buttons/ScalePressable";
-import {
-  FEED_CARD_INSET,
-  FeedSeparator,
-} from "@/components/feed/FeedCardParts";
+import { GlassCircleButton } from "@/components/glass/GlassCircleButton";
+import { CookedCard, SavedRow } from "@/features/profile/ProfileActivity";
 import {
   createRecipeImportId,
   useRecipeImport,
 } from "@/features/recipe-import/RecipeImportProvider";
 import { useAvatarUpload } from "@/hooks/useAvatarUpload";
 import { alertApiError } from "@/lib/apiErrorAlert";
+import { openExternalWebsite } from "@/lib/externalBrowser";
 import { useSessionContext } from "@/lib/sessionContext";
 import { useSubscription } from "@/lib/subscription";
 import type { RootStackParamList } from "@/navigation/navigationRef";
 import { ensureMediaLibraryPermission } from "@/utils/imagePickerPermissions";
-import { getImageUrl, selectFeedImagePreset } from "@/utils/imageUrl";
+import { getImageUrl } from "@/utils/imageUrl";
 
 type UserProfileScreenRoute = RouteProp<RootStackParamList, "UserProfile">;
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator, (theme) => ({
   color: theme.colors.primary,
 }));
-const ThemedFlashList = withUnistyles(FlashList<ActivityFeedListItem>);
+type CookedItem = CookingReviewFeedItem & ActivityFeedListItem;
+type SavedItem = RecipeImportFeedItem & ActivityFeedListItem;
+
+const ThemedFlashList = withUnistyles(FlashList<SavedItem>);
 const HEADER_HEIGHT = 52;
-const AVATAR_SIZE = 100;
+const AVATAR_SIZE = 68;
 const AVATAR_PREVIEW_SIZE = 220;
 const AVATAR_PREVIEW_ACTION_GAP = 20;
 const AVATAR_PREVIEW_ACTION_HEIGHT = 48;
@@ -92,13 +92,9 @@ const AVATAR_TRANSITION_DURATION = 240;
 
 export const UserProfileScreen = () => {
   const route = useRoute<UserProfileScreenRoute>();
+  const { theme } = useUnistyles();
   const navigation = useNavigation();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const feedImageWidth = Math.max(windowWidth - FEED_CARD_INSET * 2, 1);
-  const feedImagePreset = useMemo(
-    () => selectFeedImagePreset(feedImageWidth),
-    [feedImageWidth],
-  );
   const { userId } = route.params;
   const importRecipeMutation = useImportRecipe();
   const { submitImport } = useRecipeImport();
@@ -137,7 +133,6 @@ export const UserProfileScreen = () => {
   const followMutation = useFollowUser();
   const unfollowMutation = useUnfollowUser();
   const blockMutation = useBlockUser();
-  const toggleLike = useToggleActivityLike();
   const currentUserId = currentUser?.user?.id ?? session?.user.id;
   const {
     upload: uploadAvatar,
@@ -145,15 +140,9 @@ export const UserProfileScreen = () => {
     progress: avatarUploadProgress,
   } = useAvatarUpload();
 
-  // Fetch user activities
-  const {
-    data: activities = [],
-    fetchNextPage: fetchNextActivities,
-    hasNextPage: hasMoreActivities,
-    isFetchingNextPage: isFetchingNextActivities,
-    isLoading: isLoadingActivities,
-    refetch: refetchActivities,
-  } = useUserActivities({ userId });
+  // Reviews and saves page separately, so lots of one can't hold up the other.
+  const cookedQuery = useUserActivities({ userId, type: "cooking_review" });
+  const savedQuery = useUserActivities({ userId, type: "recipe_import" });
 
   const isOwnProfile = currentUserId === userId;
   const shouldShowProIndicators = profile?.user.subscriptionTier === "pro";
@@ -413,20 +402,36 @@ export const UserProfileScreen = () => {
     Alert.alert("Profile options", undefined, buttons, { cancelable: true });
   }, [handleBlockUser, handleReportUser]);
 
-  const handleLoadMoreActivities = useCallback(() => {
-    if (hasMoreActivities && !isFetchingNextActivities) {
-      fetchNextActivities();
-    }
-  }, [hasMoreActivities, isFetchingNextActivities, fetchNextActivities]);
+  const {
+    fetchNextPage: fetchNextCooked,
+    hasNextPage: hasMoreCooked,
+    isFetchingNextPage: isFetchingNextCooked,
+  } = cookedQuery;
+  const handleLoadMoreCooked = useCallback(() => {
+    if (hasMoreCooked && !isFetchingNextCooked) fetchNextCooked();
+  }, [fetchNextCooked, hasMoreCooked, isFetchingNextCooked]);
+
+  const {
+    fetchNextPage: fetchNextSaved,
+    hasNextPage: hasMoreSaved,
+    isFetchingNextPage: isFetchingNextSaved,
+  } = savedQuery;
+  const handleLoadMoreSaved = useCallback(() => {
+    if (hasMoreSaved && !isFetchingNextSaved) fetchNextSaved();
+  }, [fetchNextSaved, hasMoreSaved, isFetchingNextSaved]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refetchProfile(), refetchActivities()]);
+      await Promise.all([
+        refetchProfile(),
+        cookedQuery.refetch(),
+        savedQuery.refetch(),
+      ]);
     } finally {
       setIsRefreshing(false);
     }
-  }, [refetchActivities, refetchProfile]);
+  }, [cookedQuery, refetchProfile, savedQuery]);
 
   const pickAvatar = useCallback(async () => {
     const hasPermission = await ensureMediaLibraryPermission({
@@ -571,92 +576,94 @@ export const UserProfileScreen = () => {
     [navigation],
   );
 
-  const handleUserPress = useCallback(
-    (pressedUserId: string) => {
-      navigation.navigate("UserProfile", { userId: pressedUserId });
-    },
-    [navigation],
+  const cookedItems = useMemo(
+    () =>
+      (cookedQuery.data ?? []).filter(
+        (item): item is CookedItem => item.type === "cooking_review",
+      ),
+    [cookedQuery.data],
+  );
+  const savedItems = useMemo(
+    () =>
+      (savedQuery.data ?? []).filter(
+        (item): item is SavedItem => item.type === "recipe_import",
+      ),
+    [savedQuery.data],
   );
 
-  const handleLikePress = useCallback(
-    (activityEventId: number) => {
-      toggleLike.mutate({ activityEventId });
-    },
-    [toggleLike],
-  );
-
-  const handleCommentPress = useCallback(
-    (activityEventId: number) => {
+  // Long-press on a saved recipe opens its post: likes, comments, report.
+  const handleSavedOpenPost = useCallback(
+    (item: SavedItem) => {
       navigation.navigate("Activity", {
-        activityEventId,
-        focusCommentInput: true,
+        activityEventId: parseInt(item.id, 10),
       });
     },
     [navigation],
   );
 
-  const handleReportActivity = useCallback((activityEventId: number) => {
-    reportSheetRef.current?.present({
-      targetType: "activity",
-      targetId: String(activityEventId),
-    });
-  }, []);
+  const handleCookedPress = useCallback(
+    (item: CookedItem) => {
+      navigation.navigate("Activity", {
+        activityEventId: parseInt(item.id, 10),
+      });
+    },
+    [navigation],
+  );
 
-  const renderActivityItem = useCallback(
-    ({ item }: ListRenderItemInfo<ActivityFeedListItem>) => {
-      if (item.type === "cooking_review") {
-        return (
-          <ReviewActivityCard
-            activity={item satisfies CookingReviewFeedItem}
-            onRecipePress={handleRecipePress}
-            onUserPress={handleUserPress}
-            onLikePress={handleLikePress}
-            onCommentPress={handleCommentPress}
-            onReportPress={handleReportActivity}
-            onBlockPress={handleBlockUser}
-            onImportPress={handleImportRecipe}
-            onImportRecipePress={handleImportExistingRecipe}
-            currentUserId={currentUserId}
-            timeAgo={item._display.timeAgo}
-            imagePreset={feedImagePreset}
-            imageWidth={feedImageWidth}
-          />
-        );
+  // Like the feed: recipes saved from a website always open that website,
+  // so the original author gets the visit.
+  const handleSavedPress = useCallback(
+    (item: SavedItem) => {
+      if (item.recipe.sourceType === "url") {
+        openExternalWebsite(item.recipe.sourceUrl);
+        return;
       }
-      return (
-        <ImportActivityCard
-          activity={item satisfies RecipeImportFeedItem}
-          onRecipePress={handleRecipePress}
-          onUserPress={handleUserPress}
-          onLikePress={handleLikePress}
-          onCommentPress={handleCommentPress}
-          onReportPress={handleReportActivity}
-          onBlockPress={handleBlockUser}
-          onImportPress={handleImportRecipe}
-          onImportRecipePress={handleImportExistingRecipe}
-          currentUserId={currentUserId}
-          timeAgo={item._display.timeAgo}
-          imagePreset={feedImagePreset}
-        />
-      );
+      handleRecipePress(item.recipe.id);
+    },
+    [handleRecipePress],
+  );
+
+  // Same as the feed's add button: open it if it's already yours, else add it.
+  const handleSavedSave = useCallback(
+    (item: SavedItem) => {
+      if (item.recipe.ownerId === currentUserId) {
+        handleRecipePress(item.recipe.id);
+      } else if (item.recipe.sourceType === "url") {
+        handleImportRecipe(item.recipe.sourceUrl);
+      } else {
+        handleImportExistingRecipe(item.recipe.id);
+      }
     },
     [
-      handleRecipePress,
-      handleUserPress,
-      handleLikePress,
-      handleImportRecipe,
-      handleImportExistingRecipe,
-      handleCommentPress,
-      handleReportActivity,
-      handleBlockUser,
       currentUserId,
-      feedImagePreset,
-      feedImageWidth,
+      handleImportExistingRecipe,
+      handleImportRecipe,
+      handleRecipePress,
+    ],
+  );
+
+  const renderSavedItem = useCallback(
+    ({ item }: ListRenderItemInfo<SavedItem>) => (
+      <SavedRow
+        item={item}
+        onPress={handleSavedPress}
+        onOpenPost={handleSavedOpenPost}
+        saved={item.recipe.ownerId === currentUserId}
+        onSave={isOwnProfile ? undefined : handleSavedSave}
+      />
+    ),
+    [
+      currentUserId,
+      handleSavedOpenPost,
+      handleSavedPress,
+      handleSavedSave,
+      isOwnProfile,
     ],
   );
 
   const renderEmpty = () => {
-    if (isLoadingActivities) {
+    if (cookedItems.length > 0) return null;
+    if (cookedQuery.isLoading || savedQuery.isLoading) {
       return (
         <View style={styles.emptyContainer}>
           <ThemedActivityIndicator size="large" />
@@ -676,7 +683,7 @@ export const UserProfileScreen = () => {
   };
 
   const renderFooter = () => {
-    if (isFetchingNextActivities) {
+    if (isFetchingNextSaved) {
       return (
         <View style={styles.footer}>
           <ThemedActivityIndicator />
@@ -686,18 +693,15 @@ export const UserProfileScreen = () => {
     return null;
   };
 
-  const formatJoinDate = (date: string) => {
-    return new Date(date).toLocaleDateString("en-GB", {
-      year: "numeric",
-      month: "long",
-    });
-  };
-
   if (error) {
     return (
       <View style={styles.container}>
         <View style={styles.headerRow}>
-          <BackButton />
+          <GlassCircleButton
+            icon={{ sf: "chevron.backward", android: "chevron-back" }}
+            accessibilityLabel="Go back"
+            onPress={navigation.goBack}
+          />
         </View>
         <View style={styles.centered}>
           <Text type="bodyFaded">User not found</Text>
@@ -709,9 +713,8 @@ export const UserProfileScreen = () => {
   const renderHeader = () => {
     if (!profile) return null;
     return (
-      <View style={styles.headerContent}>
-        {/* Profile Header */}
-        <View style={styles.profileHeader}>
+      <View>
+        <View style={styles.identity}>
           <View
             style={[
               styles.avatarFrame,
@@ -748,7 +751,7 @@ export const UserProfileScreen = () => {
                   />
                 ) : (
                   <View style={styles.avatarPlaceholder}>
-                    <Text type="largeTitle" style={styles.avatarText}>
+                    <Text type="title2" style={styles.avatarText}>
                       {profile.user.name.charAt(0).toUpperCase()}
                     </Text>
                   </View>
@@ -762,149 +765,162 @@ export const UserProfileScreen = () => {
             </View>
             {shouldShowProIndicators && (
               <View style={styles.profileProSparkle}>
-                <Ionicons
-                  name="sparkles"
-                  size={14}
-                  style={styles.profileProSparkleIcon}
+                <SystemIcon
+                  sf="sparkles"
+                  android="sparkles"
+                  size={10}
+                  color={theme.colors.buttonText}
                 />
               </View>
             )}
           </View>
-
-          <VSpace size={16} />
-
-          <View style={styles.profileNameBlock}>
+          <View style={styles.identityText}>
             <View style={styles.nameRow}>
-              <Text type="title1" numberOfLines={2} style={styles.name}>
+              <Text type="title2" numberOfLines={2} style={styles.name}>
                 {profile.user.name}
               </Text>
-              {shouldShowProIndicators && (
-                <ProBadge variant="solid" style={styles.profileProBadge} />
-              )}
+              {shouldShowProIndicators && <ProBadge variant="solid" />}
             </View>
-          </View>
-
-          {profile.user.username && (
-            <Text type="bodyFaded" style={styles.username}>
-              @{profile.user.username}
+            <Text type="subheadline" style={styles.muted} numberOfLines={1}>
+              {[
+                profile.user.username ? `@${profile.user.username}` : null,
+                profile.followsMe && !isOwnProfile ? "Follows you" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Text>
-          )}
+          </View>
+        </View>
 
-          <VSpace size={8} />
-
-          <Text type="bodyFaded" style={styles.joinDate}>
-            Joined {formatJoinDate(profile.user.createdAt)}
-          </Text>
-
-          <VSpace size={20} />
-
-          {/* Stats */}
-          <View style={styles.statsContainer}>
-            <TouchableOpacity
-              style={styles.statItem}
-              onPress={() =>
-                navigation.navigate("FollowsList", {
-                  userId,
-                  activeTab: "followers",
-                  userName: profile.user.name,
-                })
-              }
-              activeOpacity={0.7}
-            >
-              <Text type="heading" style={styles.statNumber}>
+        <View style={styles.stats}>
+          <Pressable
+            onPress={() =>
+              navigation.navigate("FollowsList", {
+                userId,
+                activeTab: "followers",
+                userName: profile.user.name,
+              })
+            }
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            <Text type="subheadline" style={styles.muted}>
+              <Text type="subheadline" style={styles.statNumber}>
                 {followersCount}
-              </Text>
-              <Text type="bodyFaded" style={styles.statLabel}>
-                Followers
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.statItem}
-              onPress={() =>
-                navigation.navigate("FollowsList", {
-                  userId,
-                  activeTab: "following",
-                  userName: profile.user.name,
-                })
-              }
-              activeOpacity={0.7}
-            >
-              <Text type="heading" style={styles.statNumber}>
+              </Text>{" "}
+              {followersCount === 1 ? "follower" : "followers"}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() =>
+              navigation.navigate("FollowsList", {
+                userId,
+                activeTab: "following",
+                userName: profile.user.name,
+              })
+            }
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            <Text type="subheadline" style={styles.muted}>
+              <Text type="subheadline" style={styles.statNumber}>
                 {profile.followingCount}
-              </Text>
-              <Text type="bodyFaded" style={styles.statLabel}>
-                Following
-              </Text>
-            </TouchableOpacity>
-            <View style={styles.statItem}>
-              <Text type="heading" style={styles.statNumber}>
-                {profile.recipeCount}
-              </Text>
-              <Text type="bodyFaded" style={styles.statLabel}>
-                Recipes
-              </Text>
-            </View>
-          </View>
+              </Text>{" "}
+              following
+            </Text>
+          </Pressable>
+          <Text type="subheadline" style={styles.muted}>
+            <Text type="subheadline" style={styles.statNumber}>
+              {profile.recipeCount}
+            </Text>{" "}
+            {profile.recipeCount === 1 ? "recipe" : "recipes"}
+          </Text>
         </View>
 
-        <VSpace size={24} />
-
-        {/* Action Buttons */}
-        {!isOwnProfile && (
-          <View style={styles.actionButtons}>
-            {isFollowing ? (
-              <ScalePressable
-                style={[styles.pillButton, styles.followingButton]}
-                onPress={handleUnfollow}
-                accessibilityRole="button"
-                accessibilityLabel={`Unfollow ${profile.user.name}`}
-              >
-                <Ionicons
-                  name="checkmark"
-                  size={18}
-                  style={styles.followingIcon}
-                />
-                <Text style={styles.followingButtonText}>Following</Text>
-              </ScalePressable>
-            ) : (
-              <PrimaryButton onPress={handleFollow} style={styles.followButton}>
-                Follow
-              </PrimaryButton>
-            )}
-            <View style={styles.buttonSpacer} />
-            <TouchableOpacity
-              style={styles.pillButton}
-              onPress={handleShareProfile}
-              activeOpacity={0.7}
+        <View style={styles.actions}>
+          {isOwnProfile ? (
+            <ScalePressable
+              style={styles.actionButton}
+              onPress={() => navigation.navigate("Account")}
+              accessibilityRole="button"
             >
-              <Ionicons
-                name="share-outline"
-                size={18}
-                style={styles.pillButtonIcon}
+              <Text type="headline">Edit profile</Text>
+            </ScalePressable>
+          ) : isFollowing ? (
+            <ScalePressable
+              style={styles.actionButton}
+              onPress={handleUnfollow}
+              accessibilityRole="button"
+              accessibilityLabel={`Unfollow ${profile.user.name}`}
+            >
+              <SystemIcon
+                sf="checkmark"
+                android="checkmark"
+                size={16}
+                color={theme.colors.text}
               />
-              <Text style={styles.pillButtonText}>Share</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {profile.followsMe && !isOwnProfile && (
-          <>
-            <VSpace size={12} />
-            <View style={styles.followsYouBadge}>
-              <Text type="caption" style={styles.followsYouText}>
-                Follows you
-              </Text>
-            </View>
-          </>
-        )}
-
-        <VSpace size={24} />
-
-        {/* Activity Section Header */}
-        <View style={styles.sectionHeader}>
-          <Text type="heading">Activity</Text>
+              <Text type="headline">Following</Text>
+            </ScalePressable>
+          ) : (
+            <PrimaryButton onPress={handleFollow} style={styles.followButton}>
+              Follow
+            </PrimaryButton>
+          )}
+          <ScalePressable
+            style={styles.shareButton}
+            onPress={handleShareProfile}
+            accessibilityRole="button"
+            accessibilityLabel="Share profile"
+          >
+            <SystemIcon
+              sf="square.and.arrow.up"
+              android="share-social-outline"
+              size={20}
+              color={theme.colors.text}
+            />
+          </ScalePressable>
         </View>
-        <VSpace size={12} />
+
+        {cookedItems.length > 0 ? (
+          <>
+            <Text
+              type="title3"
+              style={styles.sectionTitle}
+              accessibilityRole="header"
+            >
+              Cooked
+            </Text>
+            <FlatList
+              horizontal
+              data={cookedItems}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <CookedCard item={item} onPress={handleCookedPress} />
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.shelf}
+              onEndReached={handleLoadMoreCooked}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={
+                isFetchingNextCooked ? (
+                  <View style={styles.shelfLoading}>
+                    <ThemedActivityIndicator />
+                  </View>
+                ) : undefined
+              }
+            />
+          </>
+        ) : null}
+
+        {savedItems.length > 0 ? (
+          <Text
+            type="title3"
+            style={styles.sectionTitle}
+            accessibilityRole="header"
+          >
+            Saved
+          </Text>
+        ) : null}
       </View>
     );
   };
@@ -913,44 +929,33 @@ export const UserProfileScreen = () => {
     navigation.navigate("Settings");
   };
 
-  const theme = UnistylesRuntime.getTheme();
   const refreshOffset = UnistylesRuntime.insets.top + HEADER_HEIGHT + 8;
 
   return (
     <View style={styles.container}>
       <BlurTargetView ref={profileBlurTargetRef} style={styles.container}>
         {/* Floating header */}
-        <View style={styles.headerRow}>
-          <BackButton />
+        <View style={styles.headerRow} pointerEvents="box-none">
+          <GlassCircleButton
+            icon={{ sf: "chevron.backward", android: "chevron-back" }}
+            accessibilityLabel="Go back"
+            onPress={navigation.goBack}
+          />
           {profile ? (
             isOwnProfile ? (
-              <ScalePressable
-                style={styles.headerButton}
-                onPress={handleSettings}
-                accessibilityRole="button"
+              <GlassCircleButton
+                icon={{ sf: "gearshape", android: "settings-outline" }}
                 accessibilityLabel="Open settings"
-              >
-                <Ionicons
-                  name="settings-outline"
-                  size={22}
-                  style={styles.headerIcon}
-                />
-              </ScalePressable>
+                onPress={handleSettings}
+              />
             ) : (
-              <ScalePressable
-                style={styles.headerButton}
-                onPress={handleProfileOptions}
-                disabled={blockMutation.isPending}
-                accessibilityRole="button"
+              <GlassCircleButton
+                icon={{ sf: "ellipsis", android: "ellipsis-horizontal" }}
                 accessibilityLabel="More profile options"
                 accessibilityHint="Report or block this user"
-              >
-                <Ionicons
-                  name="ellipsis-horizontal"
-                  size={22}
-                  style={styles.headerIcon}
-                />
-              </ScalePressable>
+                onPress={handleProfileOptions}
+                disabled={blockMutation.isPending}
+              />
             )
           ) : null}
         </View>
@@ -964,17 +969,16 @@ export const UserProfileScreen = () => {
           }
         >
           <ThemedFlashList
-            data={activities}
-            renderItem={renderActivityItem}
+            data={savedItems}
+            renderItem={renderSavedItem}
             keyExtractor={(item) => item.id}
-            ListHeaderComponent={renderHeader}
+            ListHeaderComponent={renderHeader() ?? undefined}
             ListEmptyComponent={renderEmpty}
             ListFooterComponent={renderFooter}
-            onEndReached={handleLoadMoreActivities}
+            onEndReached={handleLoadMoreSaved}
             onEndReachedThreshold={0.5}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={FeedSeparator}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -986,6 +990,8 @@ export const UserProfileScreen = () => {
             }
           />
         </SkeletonContainer>
+
+        <TopScrollFade />
 
         <ReportContentSheet ref={reportSheetRef} />
       </BlurTargetView>
@@ -1087,10 +1093,11 @@ export const UserProfileScreen = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Change avatar"
               >
-                <Ionicons
-                  name="camera"
+                <SystemIcon
+                  sf="camera"
+                  android="camera"
                   size={18}
-                  style={styles.changeAvatarButtonIcon}
+                  color={theme.colors.buttonText}
                 />
                 <Text style={styles.changeAvatarButtonText}>Change photo</Text>
               </ScalePressable>
@@ -1135,18 +1142,21 @@ const styles = StyleSheet.create((theme, rt) => ({
     justifyContent: "center",
     alignItems: "center",
   },
-  headerContent: {
+  identity: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingTop: 20,
+    gap: 16,
     paddingHorizontal: 20,
   },
-  profileHeader: {
-    alignItems: "center",
+  identityText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   avatarFrame: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1154,29 +1164,28 @@ const styles = StyleSheet.create((theme, rt) => ({
     opacity: 0,
   },
   proAvatarFrame: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
-    backgroundColor: theme.colors.primary + "14",
+    width: AVATAR_SIZE + 6,
+    height: AVATAR_SIZE + 6,
+    borderRadius: (AVATAR_SIZE + 6) / 2,
     borderWidth: 2,
     borderColor: theme.colors.primary + "70",
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
     overflow: "hidden",
   },
   avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: theme.colors.primary + "20",
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: theme.colors.primarySoft,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1189,120 +1198,90 @@ const styles = StyleSheet.create((theme, rt) => ({
     right: 0,
     bottom: 0,
     left: 0,
-    borderRadius: 50,
+    borderRadius: AVATAR_SIZE / 2,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
   },
   profileProSparkle: {
     position: "absolute",
-    right: 4,
-    bottom: 4,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: theme.colors.primary,
     backgroundImage: theme.colors.primaryGradient,
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: theme.colors.background,
     justifyContent: "center",
     alignItems: "center",
   },
-  profileProSparkleIcon: {
-    color: theme.colors.buttonText,
-  },
-  profileNameBlock: {
-    alignItems: "center",
-    maxWidth: "100%",
-  },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 8,
-    maxWidth: "100%",
   },
   name: {
     flexShrink: 1,
-    textAlign: "center",
   },
-  profileProBadge: {
-    alignSelf: "center",
+  muted: {
+    color: theme.colors.textSecondary,
   },
-  username: {
-    textAlign: "center",
-    marginTop: 4,
-  },
-  joinDate: {
-    textAlign: "center",
-    fontSize: 14,
-  },
-  statsContainer: {
+  stats: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: 40,
-  },
-  statItem: {
-    alignItems: "center",
+    gap: 16,
+    paddingHorizontal: 20,
+    marginTop: 14,
   },
   statNumber: {
-    fontSize: 20,
+    color: theme.colors.text,
+    fontFamily: theme.fonts.bold,
   },
-  statLabel: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  actionButtons: {
+  actions: {
     flexDirection: "row",
-    width: "100%",
+    gap: 10,
+    paddingHorizontal: 20,
+    marginTop: 18,
   },
-  pillButton: {
+  actionButton: {
     flex: 1,
+    height: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    height: 50,
-    borderRadius: theme.borderRadius.full,
+    gap: 6,
+    borderRadius: 22,
     backgroundColor: theme.colors.inputBackground,
-    gap: 8,
-  },
-  pillButtonText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: theme.colors.text,
-  },
-  pillButtonIcon: {
-    color: theme.colors.text,
-  },
-  buttonSpacer: {
-    width: 12,
   },
   followButton: {
     flex: 1,
+    height: 44,
   },
-  followingButton: {
-    backgroundColor: theme.colors.primary + "15",
-  },
-  followingButtonText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: theme.colors.primary,
-  },
-  followingIcon: {
-    color: theme.colors.primary,
-  },
-  followsYouBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius.full,
+  shareButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: theme.colors.inputBackground,
   },
-  followsYouText: {
-    color: theme.colors.textSecondary,
+  actionIcon: {
+    color: theme.colors.text,
   },
-  sectionHeader: {
-    width: "100%",
-    paddingLeft: 4,
+  sectionTitle: {
+    paddingHorizontal: 20,
+    paddingTop: 30,
+    paddingBottom: 12,
+  },
+  shelf: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  shelfLoading: {
+    height: 126,
+    justifyContent: "center",
+    paddingHorizontal: 8,
   },
   skeletonContent: {
     paddingTop: rt.insets.top + HEADER_HEIGHT + 8,
@@ -1400,9 +1379,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
-  },
-  changeAvatarButtonIcon: {
-    color: theme.colors.buttonText,
   },
   changeAvatarButtonText: {
     color: theme.colors.buttonText,
