@@ -3,10 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Alert,
-  Pressable,
   RefreshControl,
   type ScrollViewInstance,
-  type ViewInstance,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -25,16 +23,16 @@ import { CollectionGridCard } from "@/components/CollectionGridCard";
 import { CreateCollectionCard } from "@/components/CreateCollectionCard";
 import { Ionicons } from "@/components/Ionicons";
 import { RecipeCard } from "@/components/RecipeCard";
-import { SearchBar } from "@/components/SearchBar";
 import { Skeleton, RecipeCardSkeleton, FadeIn } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
-import { RECIPE_SEARCH_PLACEHOLDER } from "@/features/recipe-search/RecipeSearchHeader";
 import {
-  RecipeSearchOverlay,
-  type RecipeSearchOverlayRef,
-} from "@/features/recipe-search/RecipeSearchOverlay";
+  RecipeSearch,
+  SEARCH_FIELD_CLEARANCE,
+  type RecipeSearchRef,
+} from "@/features/recipe-search/RecipeSearch";
 import type { CollectionWithMetadata } from "@/hooks/useCollectionData";
+import { TAB_BAR_HEIGHT } from "@/navigation/tabBar";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const HORIZONTAL_PADDING = 20;
@@ -43,7 +41,6 @@ const COLLECTION_CARD_WIDTH = 132;
 /** Space between rows in Recently Added. */
 const RECIPE_ROW_GAP = 16;
 const EMPTY_COLLECTIONS: CollectionWithMetadata[] = [];
-const NOOP = () => {};
 
 type CollectionItem = CollectionWithMetadata | { id: "create"; type: "create" };
 
@@ -91,11 +88,9 @@ export const MyRecipesScreen = () => {
   const theme = UnistylesRuntime.getTheme();
   const insets = UnistylesRuntime.insets;
   const browseScrollRef = useRef<ScrollViewInstance>(null);
-  const searchBarRef = useRef<ViewInstance>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  // Where the grey bar was when search opened; null while search is closed.
-  const [searchOriginY, setSearchOriginY] = useState<number | null>(null);
-  const searchOverlayRef = useRef<RecipeSearchOverlayRef>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchRef = useRef<RecipeSearchRef>(null);
 
   // Scroll-based title fade (like HomeScreen)
   const titleOpacity = useSharedValue(1);
@@ -175,27 +170,13 @@ export const MyRecipesScreen = () => {
     );
   }, [createCollectionMutation]);
 
-  // The search screen grows its glass field out of this bar, so it needs to
-  // know where the bar is on screen right now.
-  const handleSearchPress = useCallback(() => {
-    const bar = searchBarRef.current;
-    if (!bar) {
-      setSearchOriginY(insets.top + HEADER_HEIGHT + 8);
-      return;
-    }
-    bar.measureInWindow((_x, y) => setSearchOriginY(y));
-  }, [insets.top]);
-
-  const handleSearchClosed = useCallback(() => setSearchOriginY(null), []);
-  const isSearchOpen = searchOriginY !== null;
-
   useEffect(() => {
     // @ts-expect-error navigation type
     const unsubscribe = navigation.addListener("tabPress", () => {
       if (!isFocused) return;
       // Tapping the Recipes tab again leaves search, then scrolls to the top.
       if (isSearchOpen) {
-        searchOverlayRef.current?.close();
+        searchRef.current?.close();
       } else {
         browseScrollRef.current?.scrollTo({ y: 0, animated: true });
       }
@@ -263,6 +244,11 @@ export const MyRecipesScreen = () => {
     <View style={styles.screen}>
       <Animated.ScrollView
         ref={browseScrollRef}
+        // Search covers the library; screen readers shouldn't reach under it.
+        accessibilityElementsHidden={isSearchOpen}
+        importantForAccessibility={
+          isSearchOpen ? "no-hide-descendants" : "auto"
+        }
         contentContainerStyle={styles.browseContent}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
@@ -277,24 +263,6 @@ export const MyRecipesScreen = () => {
           />
         }
       >
-        {/* Looks like a search field; opens the search screen. */}
-        <Pressable
-          ref={searchBarRef}
-          // Search draws its own copy of this bar while it's open.
-          style={[styles.searchContainer, isSearchOpen && styles.hidden]}
-          onPress={handleSearchPress}
-          accessibilityRole="button"
-          accessibilityLabel="Search recipes, ingredients and collections"
-        >
-          <View pointerEvents="none">
-            <SearchBar
-              value=""
-              onChangeText={NOOP}
-              placeholder={RECIPE_SEARCH_PLACEHOLDER}
-            />
-          </View>
-        </Pressable>
-
         {/* Collections Section */}
         <View style={styles.section}>
           <Text type="title3" style={styles.sectionTitle}>
@@ -362,19 +330,20 @@ export const MyRecipesScreen = () => {
       </Animated.ScrollView>
 
       {/* Fixed Title Header */}
-      <View style={styles.fixedHeader} pointerEvents="none">
+      <View
+        style={styles.fixedHeader}
+        pointerEvents="none"
+        accessibilityElementsHidden={isSearchOpen}
+        importantForAccessibility={
+          isSearchOpen ? "no-hide-descendants" : "auto"
+        }
+      >
         <Animated.View style={titleAnimatedStyle}>
           <Text type="screenTitle">Recipes</Text>
         </Animated.View>
       </View>
 
-      {searchOriginY !== null && (
-        <RecipeSearchOverlay
-          ref={searchOverlayRef}
-          originY={searchOriginY}
-          onClosed={handleSearchClosed}
-        />
-      )}
+      <RecipeSearch ref={searchRef} onOpenChange={setIsSearchOpen} />
     </View>
   );
 };
@@ -392,14 +361,9 @@ const styles = StyleSheet.create((theme, rt) => ({
     paddingHorizontal: HORIZONTAL_PADDING,
   },
   browseContent: {
-    paddingTop: rt.insets.top + HEADER_HEIGHT + 8,
-    paddingBottom: rt.insets.bottom + 100,
-  },
-  searchContainer: {
-    paddingHorizontal: HORIZONTAL_PADDING,
-  },
-  hidden: {
-    opacity: 0,
+    paddingTop: rt.insets.top + HEADER_HEIGHT - 16,
+    // Clears the search field floating above the tab bar.
+    paddingBottom: TAB_BAR_HEIGHT + SEARCH_FIELD_CLEARANCE + 24,
   },
   section: {
     marginTop: 24,

@@ -1,7 +1,6 @@
-import { Pressable, View } from "react-native";
+import { Pressable } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
-import { Ionicons } from "@/components/Ionicons";
 import { Text } from "@/components/Text";
 
 interface FilterChipProps {
@@ -47,28 +46,6 @@ export const FilterChip = ({
   </Pressable>
 );
 
-interface AppliedPillProps {
-  label: string;
-  onRemove: () => void;
-}
-
-/** An applied filter shown under the search bar; tap to remove it. */
-export const AppliedPill = ({ label, onRemove }: AppliedPillProps) => (
-  <Pressable
-    accessibilityRole="button"
-    accessibilityLabel={`Remove ${label}`}
-    onPress={onRemove}
-    style={({ pressed }) => [styles.pill, pressed && styles.pressed]}
-  >
-    <Text type="subheadline" style={styles.pillLabel}>
-      {label}
-    </Text>
-    <View>
-      <Ionicons name="close" size={14} style={styles.pillIcon} />
-    </View>
-  </Pressable>
-);
-
 const styles = StyleSheet.create((theme) => ({
   chip: {
     height: 36,
@@ -92,23 +69,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   count: {
     color: theme.colors.textSecondary,
-  },
-  pill: {
-    height: 34,
-    paddingLeft: 12,
-    paddingRight: 10,
-    borderRadius: 17,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: theme.colors.primarySoft,
-  },
-  pillLabel: {
-    fontFamily: theme.fonts.semiBold,
-    color: theme.colors.onPrimarySoft,
-  },
-  pillIcon: {
-    color: theme.colors.onPrimarySoft,
   },
   pressed: {
     opacity: 0.7,
