@@ -12,8 +12,10 @@ import {
   TextInput,
   View,
   type ScrollEvent,
+  type StyleProp,
   type TextInputInstance,
   type TextInputProps,
+  type ViewStyle,
 } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -26,12 +28,15 @@ type MentionTextInputProps = Omit<
   ref?: Ref<TextInputInstance>;
   value: string;
   taggedUsernames: ReadonlySet<string>;
+  /** Overrides the filled capsule, e.g. when the input sits inside glass. */
+  containerStyle?: StyleProp<ViewStyle>;
 };
 
 export function MentionTextInput({
   ref,
   value,
   taggedUsernames,
+  containerStyle,
   onScroll,
   ...props
 }: MentionTextInputProps) {
@@ -72,7 +77,7 @@ export function MentionTextInput({
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       {value.length > 0 ? (
         <Text
           accessibilityElementsHidden

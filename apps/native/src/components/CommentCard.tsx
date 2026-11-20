@@ -1,62 +1,104 @@
 import { parseMentionTokens } from "@repo/shared";
-import { formatDistanceToNow } from "date-fns";
-import { Image } from "expo-image";
-import { memo, useMemo, type ReactNode } from "react";
-import { View, TouchableOpacity, Alert } from "react-native";
+import { memo, useCallback, useMemo, type ReactNode } from "react";
+import {
+  ActionSheetIOS,
+  Alert,
+  Pressable,
+  View,
+  type AlertButton,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
+import { Avatar } from "./Avatar";
+import { Ionicons } from "./Ionicons";
 import { Text } from "./Text";
 
 import type { Comment } from "@/api/comment";
+import { formatRelativeTimeShort } from "@/utils/relativeTime";
+
+export const COMMENT_AVATAR_SIZE = 34;
+const REPLY_AVATAR_SIZE = 26;
+const ROW_INSET = 20;
+const AVATAR_GAP = 12;
 
 interface Props {
   comment: Comment;
   isReply?: boolean;
-  isFocused?: boolean;
+  /** Deep-linked comment, or the one being replied to. */
+  isHighlighted?: boolean;
   isOwnComment: boolean;
+  /** The comment was written by whoever posted the activity. */
+  isAuthor?: boolean;
   onReply: (comment: Comment) => void;
   onDelete: (commentId: number) => void;
   onReport: (commentId: number) => void;
   onBlock: (userId: string, name: string) => void;
+  onUserPress: (userId: string) => void;
   onMentionPress: (userId: string) => void;
 }
 
-const getInitials = (name: string): string => {
-  const words = name
-    .trim()
-    .split(" ")
-    .filter((w) => w.length > 0);
-  if (words.length >= 2) {
-    const firstWord = words[0];
-    const lastWord = words[words.length - 1];
-    if (firstWord && lastWord && firstWord[0] && lastWord[0]) {
-      return (firstWord[0] + lastWord[0]).toUpperCase();
-    }
+interface CommentOption {
+  label: string;
+  destructive?: boolean;
+  /** Reachable elsewhere in the row, so it can give way on Android. */
+  optional?: boolean;
+  run: () => void;
+}
+
+// Android's alert dialog shows at most three buttons.
+const ANDROID_ALERT_MAX_BUTTONS = 3;
+
+/** Interim presenter until native context menus (Expo UI) are available. */
+const presentCommentOptions = (options: CommentOption[]) => {
+  if (process.env.EXPO_OS === "ios") {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [...options.map((option) => option.label), "Cancel"],
+        cancelButtonIndex: options.length,
+        destructiveButtonIndex: options.flatMap((option, index) =>
+          option.destructive ? [index] : [],
+        ),
+      },
+      (buttonIndex) => options[buttonIndex]?.run(),
+    );
+    return;
   }
-  return name.substring(0, 2).toUpperCase();
+
+  // Drop shortcuts first so every action that only lives here stays visible;
+  // the dialog can always be dismissed with back or a tap outside.
+  const buttons: AlertButton[] = options
+    .filter(
+      (option) =>
+        !option.optional || options.length < ANDROID_ALERT_MAX_BUTTONS,
+    )
+    .map((option) => ({
+      text: option.label,
+      style: option.destructive ? "destructive" : "default",
+      onPress: option.run,
+    }));
+  if (buttons.length < ANDROID_ALERT_MAX_BUTTONS) {
+    buttons.push({ text: "Cancel", style: "cancel" });
+  }
+  Alert.alert("Comment", undefined, buttons, { cancelable: true });
 };
 
 export const CommentCard = memo(
   ({
     comment,
     isReply = false,
-    isFocused = false,
+    isHighlighted = false,
     isOwnComment,
+    isAuthor = false,
     onReply,
     onDelete,
     onReport,
     onBlock,
+    onUserPress,
     onMentionPress,
   }: Props) => {
     const timeAgo = useMemo(
-      () =>
-        formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }),
+      () => formatRelativeTimeShort(comment.createdAt),
       [comment.createdAt],
-    );
-
-    const userInitials = useMemo(
-      () => getInitials(comment.user.name),
-      [comment.user.name],
     );
 
     const renderedContent = useMemo(() => {
@@ -93,203 +135,268 @@ export const CommentCard = memo(
       return nodes.length > 0 ? nodes : comment.content;
     }, [comment.content, comment.mentions, onMentionPress]);
 
-    const handleDelete = () => {
-      Alert.alert(
-        "Delete Comment",
-        "Are you sure you want to delete this comment?",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: () => onDelete(comment.id),
-          },
-        ],
-      );
-    };
+    const handleUserPress = useCallback(
+      () => onUserPress(comment.user.id),
+      [comment.user.id, onUserPress],
+    );
+
+    const confirmDelete = useCallback(() => {
+      Alert.alert("Delete comment?", "This can’t be undone.", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => onDelete(comment.id),
+        },
+      ]);
+    }, [comment.id, onDelete]);
+
+    // Moderation lives behind the ellipsis and a long press, so the row only
+    // shows what people do most: read and reply. Kept as plain data so a
+    // native context menu (Expo UI) can render the same list later.
+    const options = useMemo<CommentOption[]>(() => {
+      const list: CommentOption[] = [];
+      if (!isReply) {
+        list.push({ label: "Reply", run: () => onReply(comment) });
+      }
+      list.push({
+        label: "View profile",
+        optional: true,
+        run: handleUserPress,
+      });
+      if (isOwnComment) {
+        list.push({
+          label: "Delete comment",
+          destructive: true,
+          run: confirmDelete,
+        });
+      } else {
+        list.push({ label: "Report comment", run: () => onReport(comment.id) });
+        list.push({
+          label: `Block ${comment.user.name}`,
+          destructive: true,
+          run: () => onBlock(comment.user.id, comment.user.name),
+        });
+      }
+      return list;
+    }, [
+      comment,
+      confirmDelete,
+      handleUserPress,
+      isOwnComment,
+      isReply,
+      onBlock,
+      onReply,
+      onReport,
+    ]);
+
+    const showOptions = useCallback(
+      () => presentCommentOptions(options),
+      [options],
+    );
 
     return (
-      <View
-        style={[
+      <Pressable
+        // The row is only a long-press target; leave its name, links, Reply
+        // and options buttons individually reachable by screen readers.
+        accessible={false}
+        onLongPress={showOptions}
+        delayLongPress={350}
+        style={({ pressed }) => [
           styles.container,
           isReply && styles.replyContainer,
-          isFocused && styles.focusedContainer,
+          isHighlighted && styles.highlighted,
+          pressed && styles.pressed,
         ]}
       >
-        {/* User Avatar */}
-        <View style={[styles.avatar, isReply && styles.replyAvatar]}>
-          {comment.user.image ? (
-            <Image
-              source={{ uri: comment.user.image }}
-              style={styles.avatarImage}
-              cachePolicy="memory-disk"
-              transition={100}
-            />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text
-                style={[
-                  styles.avatarInitials,
-                  isReply && styles.replyAvatarInitials,
-                ]}
-              >
-                {userInitials}
-              </Text>
-            </View>
-          )}
-        </View>
+        <Avatar
+          imageUrl={comment.user.image}
+          name={comment.user.name}
+          size={isReply ? REPLY_AVATAR_SIZE : COMMENT_AVATAR_SIZE}
+          onPress={handleUserPress}
+        />
 
-        {/* Comment Content */}
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text type="headline" style={styles.userName}>
+            <Text
+              type="subheadline"
+              numberOfLines={1}
+              accessibilityRole="button"
+              onPress={handleUserPress}
+              style={styles.userName}
+            >
               {comment.user.name}
             </Text>
+            {isAuthor ? (
+              <View style={styles.authorBadge}>
+                <Text type="caption2" style={styles.authorBadgeText}>
+                  Author
+                </Text>
+              </View>
+            ) : null}
             <Text type="footnote" style={styles.timeAgo}>
               {timeAgo}
             </Text>
+            <Pressable
+              accessibilityLabel="Comment options"
+              accessibilityRole="button"
+              hitSlop={12}
+              onPress={showOptions}
+              style={({ pressed }) => [
+                styles.moreButton,
+                pressed && styles.dimmed,
+              ]}
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={16}
+                style={styles.moreIcon}
+              />
+            </Pressable>
           </View>
 
-          <Text type="body" style={styles.commentText}>
+          <Text type="subheadline" style={styles.commentText}>
             {renderedContent}
           </Text>
 
-          {/* Actions */}
-          <View style={styles.actions}>
-            {!isReply && (
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => onReply(comment)}
-                activeOpacity={0.7}
-              >
-                <Text type="footnote" style={styles.actionText}>
-                  Reply
-                </Text>
-              </TouchableOpacity>
-            )}
-            {isOwnComment && (
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={handleDelete}
-                activeOpacity={0.7}
-              >
-                <Text type="footnote" style={styles.deleteText}>
-                  Delete
-                </Text>
-              </TouchableOpacity>
-            )}
-            {!isOwnComment && (
-              <>
-                <TouchableOpacity
-                  accessibilityLabel="Report comment"
-                  style={styles.actionButton}
-                  onPress={() => onReport(comment.id)}
-                  activeOpacity={0.7}
-                >
-                  <Text type="footnote" style={styles.actionText}>
-                    Report
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  accessibilityLabel="Block comment author"
-                  style={styles.actionButton}
-                  onPress={() => onBlock(comment.user.id, comment.user.name)}
-                  activeOpacity={0.7}
-                >
-                  <Text type="footnote" style={styles.deleteText}>
-                    Block
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
+          {!isReply ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Reply to ${comment.user.name}`}
+              hitSlop={10}
+              onPress={() => onReply(comment)}
+              style={({ pressed }) => [
+                styles.replyButton,
+                pressed && styles.dimmed,
+              ]}
+            >
+              <Text type="footnote" style={styles.replyText}>
+                Reply
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
-      </View>
+      </Pressable>
     );
   },
+);
+
+interface PendingProps {
+  content: string;
+  isReply?: boolean;
+  user: { name: string; image?: string | null };
+}
+
+/** The viewer's comment while it posts, shown in place straight away. */
+export const PendingCommentCard = memo(
+  ({ content, isReply = false, user }: PendingProps) => (
+    <View
+      accessible
+      accessibilityLabel={`Posting your comment: ${content}`}
+      style={[
+        styles.container,
+        isReply && styles.replyContainer,
+        styles.pending,
+      ]}
+    >
+      <Avatar
+        imageUrl={user.image}
+        name={user.name}
+        size={isReply ? REPLY_AVATAR_SIZE : COMMENT_AVATAR_SIZE}
+      />
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text type="subheadline" style={styles.userName}>
+            You
+          </Text>
+          <Text type="footnote" style={styles.timeAgo}>
+            Posting…
+          </Text>
+        </View>
+        <Text type="subheadline" style={styles.commentText}>
+          {content}
+        </Text>
+      </View>
+    </View>
+  ),
 );
 
 const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
-    gap: 12,
-    paddingVertical: 12,
+    gap: AVATAR_GAP,
+    paddingVertical: 10,
+    paddingHorizontal: ROW_INSET,
   },
   replyContainer: {
-    marginLeft: 44,
+    // Replies hang off the parent's text column, not its avatar.
+    paddingLeft: ROW_INSET + COMMENT_AVATAR_SIZE + AVATAR_GAP,
+    paddingTop: 4,
+    gap: 10,
   },
-  focusedContainer: {
-    backgroundColor: theme.colors.inputBackground,
-    borderRadius: theme.borderRadius.medium,
-    paddingHorizontal: 12,
+  highlighted: {
+    // A faint wash of the brand red that reads in light and dark themes.
+    backgroundColor: `${theme.colors.primary}12`,
   },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    overflow: "hidden",
+  pressed: {
+    backgroundColor: theme.colors.pressHighlight,
   },
-  replyAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-  avatarImage: {
-    width: "100%",
-    height: "100%",
-  },
-  avatarPlaceholder: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarInitials: {
-    color: theme.colors.buttonText,
-    fontSize: 14,
-    fontFamily: theme.fonts.semiBold,
-  },
-  replyAvatarInitials: {
-    fontSize: 11,
+  pending: {
+    opacity: 0.55,
   },
   content: {
     flex: 1,
-    gap: 4,
+    minWidth: 0,
+    gap: 2,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   userName: {
-    fontSize: 14,
+    flexShrink: 1,
+    fontFamily: theme.fonts.semiBold,
+  },
+  authorBadge: {
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  authorBadgeText: {
+    color: theme.colors.onPrimarySoft,
+    fontFamily: theme.fonts.semiBold,
+    lineHeight: 16,
   },
   timeAgo: {
     color: theme.colors.textSecondary,
   },
+  moreButton: {
+    marginLeft: "auto",
+    width: 28,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moreIcon: {
+    color: theme.colors.textSecondary,
+  },
+  dimmed: {
+    opacity: 0.5,
+  },
   commentText: {
-    lineHeight: 20,
+    lineHeight: 21,
   },
   mentionText: {
     color: theme.colors.primary,
     fontFamily: theme.fonts.semiBold,
   },
-  actions: {
-    flexDirection: "row",
-    gap: 16,
+  replyButton: {
+    alignSelf: "flex-start",
     marginTop: 4,
   },
-  actionButton: {
-    paddingVertical: 4,
-  },
-  actionText: {
+  replyText: {
     color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
-  },
-  deleteText: {
-    color: theme.colors.destructive,
     fontFamily: theme.fonts.semiBold,
   },
 }));
