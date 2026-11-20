@@ -6,12 +6,15 @@ import {
   Menu,
   RNHostView,
 } from "@expo/ui/swift-ui";
+import { View } from "react-native";
 
 import type {
   CommentContextMenuProps,
   CommentOption,
   CommentOptionsMenuProps,
 } from "./types";
+
+import { dismissKeyboardForMenu } from "@/utils/dismissKeyboardForMenu";
 
 /** The actions, with destructive ones set apart below a divider. */
 const OptionButtons = ({ options }: { options: CommentOption[] }) => {
@@ -43,15 +46,22 @@ const OptionButtons = ({ options }: { options: CommentOption[] }) => {
 };
 
 /**
- * The iOS pull-down menu behind a comment's ellipsis, drawn by SwiftUI so it
- * has the system glass and animation. Android has its own version.
+ * The iOS pull-down menu behind an ellipsis, drawn by SwiftUI so it has the
+ * system glass and animation. Android has its own version. The label is for
+ * Android; on iOS the children describe themselves.
  */
 export const CommentOptionsMenu = ({
   options,
   children,
 }: CommentOptionsMenuProps) => (
   <Host matchContents>
-    <Menu label={<RNHostView matchContents>{children}</RNHostView>}>
+    <Menu
+      label={
+        <RNHostView matchContents>
+          <View onTouchStart={dismissKeyboardForMenu}>{children}</View>
+        </RNHostView>
+      }
+    >
       <OptionButtons options={options} />
     </Menu>
   </Host>

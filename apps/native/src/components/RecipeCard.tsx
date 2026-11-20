@@ -8,6 +8,7 @@ import { Text } from "./Text";
 import { Ionicons } from "@/components/Ionicons";
 import { OptimizedImage } from "@/components/OptimizedImage";
 import { RecipeDestinationLabel } from "@/components/RecipeDestinationLabel";
+import { sourceHost as getSourceHost } from "@/utils/sourceHost";
 import { formatMinutes, formatMinutesShort } from "@/utils/timeUtils";
 
 interface Tag {
@@ -48,15 +49,10 @@ export const RecipeCard = memo(function RecipeCard({
   onPressRecipeId,
   compact = false,
 }: Props) {
-  const sourceHost = useMemo(() => {
-    if (!recipe.sourceUrl) return null;
-
-    try {
-      return new URL(recipe.sourceUrl).hostname.replace(/^www\./, "");
-    } catch {
-      return recipe.sourceUrl.replace(/^https?:\/\/(www\.)?/, "").split("/")[0];
-    }
-  }, [recipe.sourceUrl]);
+  const sourceHost = useMemo(
+    () => getSourceHost(recipe.sourceUrl),
+    [recipe.sourceUrl],
+  );
 
   const handlePress = useCallback(() => {
     if (onPressRecipeId) {

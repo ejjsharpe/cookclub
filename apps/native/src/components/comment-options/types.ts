@@ -13,6 +13,8 @@ export interface CommentOption {
 
 export interface CommentOptionsMenuProps {
   options: CommentOption[];
+  /** What screen readers call the button. Defaults to "Comment options". */
+  accessibilityLabel?: string;
   /** What the menu opens from. Not pressable itself: the menu handles taps. */
   children: ReactElement;
 }

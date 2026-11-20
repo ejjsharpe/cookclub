@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { View } from "react-native";
 
 import type { RecipeSort } from "@/api/recipe";
+import { dismissKeyboardForMenu } from "@/utils/dismissKeyboardForMenu";
 
 export interface RecipeSortMenuProps {
   sort: RecipeSort;
@@ -31,6 +32,7 @@ export const RecipeSortMenu = ({
             {/* The hosted view isn't described to VoiceOver otherwise. */}
             <View
               accessible
+              onTouchStart={dismissKeyboardForMenu}
               accessibilityRole="button"
               accessibilityLabel={`Sort by ${current ?? "default"}`}
               accessibilityHint="Choose how results are ordered"

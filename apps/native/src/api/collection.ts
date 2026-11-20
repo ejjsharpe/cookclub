@@ -1,8 +1,12 @@
+import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "react-native";
 
 import { updateRecipeCollections } from "./utils/cache-helpers";
+
+export type CollectionRecipe =
+  Outputs["collection"]["getCollectionDetail"]["recipes"][number];
 
 // Get user's collections with optional recipe membership info
 interface UseGetUserCollectionsParams {
