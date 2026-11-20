@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   getRecipeImportSocialPlatform,
   getRecipeImportSocialPlatformInfo,
-  getRecipeImportSourceTitle,
 } from "./socialPlatforms";
 
 describe("social platform import utilities", () => {
@@ -15,9 +14,6 @@ describe("social platform import utilities", () => {
     "https://redd.it/abc123",
   ])("routes Reddit source %s to Smart Import", (url) => {
     expect(getRecipeImportSocialPlatform(url)).toBe("reddit");
-    expect(getRecipeImportSourceTitle(url)).toBe(
-      "Importing recipe from Reddit",
-    );
     expect(isBasicImportUnsupportedUrl(url)).toBe(true);
     expect(getRecipeImportSocialPlatformInfo("reddit")).toMatchObject({
       displayName: "Reddit",
@@ -32,9 +28,6 @@ describe("social platform import utilities", () => {
     "https://www.pinterest.co.uk/pin/1085719422756328161/sent/?sfo=1",
   ])("routes Pinterest source %s to Smart Import", (url) => {
     expect(getRecipeImportSocialPlatform(url)).toBe("pinterest");
-    expect(getRecipeImportSourceTitle(url)).toBe(
-      "Importing recipe from Pinterest",
-    );
     expect(isBasicImportUnsupportedUrl(url)).toBe(true);
     expect(getRecipeImportSocialPlatformInfo("pinterest")).toMatchObject({
       displayName: "Pinterest",
@@ -50,9 +43,6 @@ describe("social platform import utilities", () => {
     "https://m.facebook.com/chef/posts/pfbidABC/",
   ])("routes Facebook source %s to Smart Import", (url) => {
     expect(getRecipeImportSocialPlatform(url)).toBe("facebook");
-    expect(getRecipeImportSourceTitle(url)).toBe(
-      "Importing recipe from Facebook",
-    );
     expect(isBasicImportUnsupportedUrl(url)).toBe(true);
   });
   it("detects and labels YouTube sources", () => {
@@ -70,9 +60,6 @@ describe("social platform import utilities", () => {
       displayName: "YouTube",
       icon: "logo-youtube",
     });
-    expect(getRecipeImportSourceTitle("https://youtu.be/abc123DEF_-")).toBe(
-      "Importing recipe from YouTube",
-    );
   });
 
   it("blocks YouTube URLs in Basic Import", () => {

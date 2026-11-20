@@ -49,8 +49,6 @@ export type RecipeImportItem = Omit<
 
 type RecipeImportContextValue = {
   imports: RecipeImportItem[];
-  pendingCount: number;
-  readyCount: number;
   submitImport: (
     submission: RecipeImportSubmission,
   ) => Promise<RecipeImportSummary>;
@@ -226,10 +224,6 @@ export function RecipeImportProvider({ children }: PropsWithChildren) {
   const value = useMemo<RecipeImportContextValue>(
     () => ({
       imports,
-      pendingCount: imports.filter(
-        (job) => job.status === "pending" || job.status === "processing",
-      ).length,
-      readyCount: imports.filter((job) => job.status === "ready").length,
       submitImport,
       uploadImportSource,
       dismissImport,

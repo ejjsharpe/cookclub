@@ -1,7 +1,6 @@
 import type { ShareIntent } from "expo-share-intent";
 
-const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`[\]]+/i;
-const MIN_RECIPE_TEXT_LENGTH = 50;
+import { MIN_RECIPE_TEXT_LENGTH, URL_PATTERN } from "../lib/recipeImportSource";
 
 export type DetectedShareIntent = {
   type: "url" | "text" | "image";
@@ -27,9 +26,9 @@ export function detectPendingShareIntent(
 
   if (!intent?.text) return null;
 
-  const urlMatch = intent.text.match(URL_PATTERN);
-  if (urlMatch) {
-    return { type: "url", content: urlMatch[0] };
+  const [url] = intent.text.match(URL_PATTERN) ?? [];
+  if (url) {
+    return { type: "url", content: url };
   }
 
   if (intent.text.length >= MIN_RECIPE_TEXT_LENGTH) {
