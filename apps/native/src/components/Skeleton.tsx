@@ -169,10 +169,16 @@ export const HomeFeedSkeleton = () => {
 
 // ─── Recipe Card Skeleton ────────────────────────────────────────────────────
 
-export const RecipeCardSkeleton = () => {
+export const RecipeCardSkeleton = ({
+  compact = false,
+}: {
+  /** Matches RecipeCard's compact row. */
+  compact?: boolean;
+}) => {
+  const size = compact ? 72 : 100;
   return (
     <View style={styles.recipeCard}>
-      <Skeleton width={100} height={100} borderRadius={12} />
+      <Skeleton width={size} height={size} borderRadius={compact ? 16 : 12} />
       <View style={styles.recipeCardContent}>
         <Skeleton width="80%" height={17} borderRadius={4} />
         <View style={styles.recipeCardMeta}>

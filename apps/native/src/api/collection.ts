@@ -49,10 +49,12 @@ export const useCreateCollection = () => {
 // Get user's collections with metadata (recipe count, owner info)
 interface UseGetUserCollectionsWithMetadataParams {
   search?: string;
+  enabled?: boolean;
 }
 
 export const useGetUserCollectionsWithMetadata = ({
   search = "",
+  enabled = true,
 }: UseGetUserCollectionsWithMetadataParams = {}) => {
   const trpc = useTRPC();
 
@@ -61,6 +63,7 @@ export const useGetUserCollectionsWithMetadata = ({
       includeMetadata: true,
       search: search.trim() || undefined,
     }),
+    enabled,
   });
 };
 
