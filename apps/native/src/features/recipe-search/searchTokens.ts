@@ -1,5 +1,5 @@
 import {
-  DEFAULT_RECIPE_SEARCH_FILTERS,
+  sortOptions,
   timeLabel,
   type RecipeSearchFilters,
 } from "./recipeSearchFilters";
@@ -23,6 +23,8 @@ export interface SearchToken {
 export interface SearchChip {
   key: string;
   label: string;
+  /** Set for tag chips, so they can be saved to recent searches. */
+  tag?: { id: number; name: string };
   apply: (filters: RecipeSearchFilters) => RecipeSearchFilters;
 }
 
@@ -35,12 +37,24 @@ const SOURCE_TOKEN_LABELS: Record<RecipeSourceFilter, string> = {
 /** The most useful time limit to offer as a chip. */
 const QUICK_TIME = 30;
 
-/** Tokens in the order they read in the field: time, source, then tags. */
+/**
+ * Tokens in the order they read in the field: sort, time, source, then tags.
+ * Sort is a token too, so it can be taken off like any filter.
+ */
 export function searchTokens(
   filters: RecipeSearchFilters,
   tags: SearchTag[],
 ): SearchToken[] {
   const tokens: SearchToken[] = [];
+  if (filters.sort !== "default") {
+    tokens.push({
+      key: "sort",
+      label:
+        sortOptions(true).find((option) => option.value === filters.sort)
+          ?.label ?? "Sorted",
+      without: (f) => ({ ...f, sort: "default" }),
+    });
+  }
   if (filters.maxTotalTime != null) {
     tokens.push({
       key: "time",
@@ -99,6 +113,7 @@ export function searchChips(
     chips.push({
       key: `tag:${tag.id}`,
       label: tag.name,
+      tag: { id: tag.id, name: tag.name },
       apply: addTag(tag.id),
     });
   }
@@ -131,13 +146,4 @@ export function matchingTags(
           .some((word) => word.startsWith(needle)),
     )
     .slice(0, limit);
-}
-
-export function isDefaultSearch(filters: RecipeSearchFilters): boolean {
-  return (
-    filters.sort === DEFAULT_RECIPE_SEARCH_FILTERS.sort &&
-    filters.maxTotalTime == null &&
-    filters.source == null &&
-    filters.tagIds.length === 0
-  );
 }

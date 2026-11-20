@@ -29,10 +29,10 @@ import { Text } from "@/components/Text";
 import {
   RecipeSearch,
   SEARCH_FIELD_CLEARANCE,
-  TAB_BAR_HEIGHT,
   type RecipeSearchRef,
 } from "@/features/recipe-search/RecipeSearch";
 import type { CollectionWithMetadata } from "@/hooks/useCollectionData";
+import { TAB_BAR_HEIGHT } from "@/navigation/tabBar";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const HORIZONTAL_PADDING = 20;
@@ -244,6 +244,11 @@ export const MyRecipesScreen = () => {
     <View style={styles.screen}>
       <Animated.ScrollView
         ref={browseScrollRef}
+        // Search covers the library; screen readers shouldn't reach under it.
+        accessibilityElementsHidden={isSearchOpen}
+        importantForAccessibility={
+          isSearchOpen ? "no-hide-descendants" : "auto"
+        }
         contentContainerStyle={styles.browseContent}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
@@ -325,7 +330,14 @@ export const MyRecipesScreen = () => {
       </Animated.ScrollView>
 
       {/* Fixed Title Header */}
-      <View style={styles.fixedHeader} pointerEvents="none">
+      <View
+        style={styles.fixedHeader}
+        pointerEvents="none"
+        accessibilityElementsHidden={isSearchOpen}
+        importantForAccessibility={
+          isSearchOpen ? "no-hide-descendants" : "auto"
+        }
+      >
         <Animated.View style={titleAnimatedStyle}>
           <Text type="screenTitle">Recipes</Text>
         </Animated.View>

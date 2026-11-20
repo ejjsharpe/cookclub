@@ -52,9 +52,8 @@ import { Text } from "@/components/Text";
 import { GlassSurface } from "@/components/glass/Glass";
 import { useDebounce } from "@/hooks/useDebounce";
 import { addRecentRecipeSearch } from "@/lib/recentRecipeSearches";
+import { TAB_BAR_HEIGHT } from "@/navigation/tabBar";
 
-/** Approximate native tab bar height, as on the Shop tab. */
-export const TAB_BAR_HEIGHT = 76;
 const FIELD = 50;
 const GAP = 8;
 const H_PAD = 16;
@@ -65,7 +64,7 @@ const CHIP = 36;
 const CHIP_PAD = 10;
 /** The field and the fade above it, from the bottom of the stack. */
 export const SEARCH_FIELD_CLEARANCE = FIELD + 24 + 12;
-const FADE_TIMING = { duration: 220 };
+const FADE_TIMING = { duration: 300 };
 const NO_TAGS: SearchTag[] = [];
 
 export interface RecipeSearchRef {
@@ -90,8 +89,6 @@ export const RecipeSearch = ({ onOpenChange, ref }: RecipeSearchProps) => {
   const filterSheetRef = useRef<RecipeFilterSheetRef>(null);
 
   const [open, setOpen] = useState(false);
-  // Results stay mounted while they fade out.
-  const [showResults, setShowResults] = useState(false);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebounce(query, 250);
   const [filters, setFilters] = useState<RecipeSearchFilters>(
@@ -104,27 +101,32 @@ export const RecipeSearch = ({ onOpenChange, ref }: RecipeSearchProps) => {
     useReanimatedKeyboardAnimation();
 
   // ─── Open / close ─────────────────────────────────────────────────────────
-  const hideResults = useCallback(() => setShowResults(false), []);
-
+  // The fade starts on touch down rather than on focus, which only arrives
+  // once the keyboard is on its way, and the results are always mounted so
+  // there's no first render to wait for either.
   const openSearch = useCallback(() => {
     if (open) return;
     setOpen(true);
-    setShowResults(true);
     progress.set(withTiming(1, FADE_TIMING));
   }, [open, progress]);
+
+  // Cleared once the results have faded, so they don't flash back to
+  // recent searches on the way out.
+  const resetSearch = useCallback(() => {
+    setQuery("");
+    setFilters(DEFAULT_RECIPE_SEARCH_FILTERS);
+  }, []);
 
   const close = useCallback(() => {
     Keyboard.dismiss();
     inputRef.current?.blur();
     setOpen(false);
-    setQuery("");
-    setFilters(DEFAULT_RECIPE_SEARCH_FILTERS);
     progress.set(
       withTiming(0, FADE_TIMING, (finished) => {
-        if (finished) scheduleOnRN(hideResults);
+        if (finished) scheduleOnRN(resetSearch);
       }),
     );
-  }, [progress, hideResults]);
+  }, [progress, resetSearch]);
 
   useImperativeHandle(ref, () => ({ close }), [close]);
 
@@ -206,24 +208,29 @@ export const RecipeSearch = ({ onOpenChange, ref }: RecipeSearchProps) => {
     width: progress.get() * (FIELD + GAP),
   }));
 
-  const resultsBottomInset =
-    restingGap + SEARCH_FIELD_CLEARANCE + CHIP + CHIP_PAD * 2;
+  const stackHeight = SEARCH_FIELD_CLEARANCE + CHIP + CHIP_PAD + 4;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {showResults && (
-        <Animated.View style={[styles.results, resultsStyle]}>
-          <RecipeSearchResults
-            query={query}
-            debouncedQuery={debouncedQuery}
-            filters={filters}
-            onFiltersChange={updateFilters}
-            onQueryChange={setQuery}
-            tags={tags}
-            bottomInset={resultsBottomInset}
-          />
-        </Animated.View>
-      )}
+      <Animated.View
+        style={[styles.results, resultsStyle]}
+        // Hidden but mounted while closed, so opening has nothing to render.
+        pointerEvents={open ? "auto" : "none"}
+        accessibilityElementsHidden={!open}
+        importantForAccessibility={open ? "auto" : "no-hide-descendants"}
+      >
+        <RecipeSearchResults
+          query={query}
+          debouncedQuery={debouncedQuery}
+          filters={filters}
+          onFiltersChange={updateFilters}
+          onQueryChange={setQuery}
+          tags={tags}
+          stackHeight={stackHeight}
+          restingGap={restingGap}
+          keyboardGap={KEYBOARD_GAP}
+        />
+      </Animated.View>
 
       <Animated.View style={[styles.stack, stackLift]} pointerEvents="box-none">
         <Animated.View style={stackPadding} pointerEvents="box-none">
@@ -240,7 +247,12 @@ export const RecipeSearch = ({ onOpenChange, ref }: RecipeSearchProps) => {
                   key={chip.key}
                   label={chip.label}
                   icon="add"
-                  onPress={() => setFilters(chip.apply)}
+                  onPress={() => {
+                    if (chip.tag) {
+                      addRecentRecipeSearch({ type: "tag", ...chip.tag });
+                    }
+                    setFilters(chip.apply);
+                  }}
                 />
               ))}
               <SearchChipButton
@@ -321,6 +333,7 @@ export const RecipeSearch = ({ onOpenChange, ref }: RecipeSearchProps) => {
                     ref={inputRef}
                     value={query}
                     onChangeText={setQuery}
+                    onPressIn={openSearch}
                     onFocus={openSearch}
                     onSubmitEditing={handleSubmit}
                     onKeyPress={(event) =>

@@ -16,14 +16,16 @@ const TAGS = [
 ];
 
 describe("searchTokens", () => {
-  it("reads time, source, then tags", () => {
+  it("reads sort, time, source, then tags", () => {
     const filters = {
       ...DEFAULT_RECIPE_SEARCH_FILTERS,
+      sort: "time" as const,
       tagIds: [2],
       maxTotalTime: 30,
       source: "cook" as const,
     };
     expect(searchTokens(filters, TAGS).map((token) => token.label)).toEqual([
+      "Quickest first",
       "Under 30 min",
       "From cooks",
       "Thai",
@@ -40,6 +42,10 @@ describe("searchTokens", () => {
     expect(once.tagIds).toEqual([1]);
     const twice = withoutLastToken(withoutLastToken(once, TAGS), TAGS);
     expect(twice).toEqual(DEFAULT_RECIPE_SEARCH_FILTERS);
+    const sorted = { ...DEFAULT_RECIPE_SEARCH_FILTERS, sort: "name" as const };
+    expect(withoutLastToken(sorted, TAGS)).toEqual(
+      DEFAULT_RECIPE_SEARCH_FILTERS,
+    );
     expect(withoutLastToken(twice, TAGS)).toBe(twice);
   });
 });

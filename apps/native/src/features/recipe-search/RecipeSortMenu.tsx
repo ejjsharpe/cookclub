@@ -1,5 +1,6 @@
 import { Host, Menu, RNHostView, Section, Toggle } from "@expo/ui/swift-ui";
 import type { ReactElement } from "react";
+import { View } from "react-native";
 
 import type { RecipeSort } from "@/api/recipe";
 
@@ -20,19 +21,36 @@ export const RecipeSortMenu = ({
   options,
   onChange,
   children,
-}: RecipeSortMenuProps) => (
-  <Host matchContents>
-    <Menu label={<RNHostView matchContents>{children}</RNHostView>}>
-      <Section title="Sort by">
-        {options.map((option) => (
-          <Toggle
-            key={option.value}
-            label={option.label}
-            isOn={sort === option.value}
-            onIsOnChange={(isOn) => isOn && onChange(option.value)}
-          />
-        ))}
-      </Section>
-    </Menu>
-  </Host>
-);
+}: RecipeSortMenuProps) => {
+  const current = options.find((option) => option.value === sort)?.label;
+  return (
+    <Host matchContents>
+      <Menu
+        label={
+          <RNHostView matchContents>
+            {/* The hosted view isn't described to VoiceOver otherwise. */}
+            <View
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={`Sort by ${current ?? "default"}`}
+              accessibilityHint="Choose how results are ordered"
+            >
+              {children}
+            </View>
+          </RNHostView>
+        }
+      >
+        <Section title="Sort by">
+          {options.map((option) => (
+            <Toggle
+              key={option.value}
+              label={option.label}
+              isOn={sort === option.value}
+              onIsOnChange={(isOn) => isOn && onChange(option.value)}
+            />
+          ))}
+        </Section>
+      </Menu>
+    </Host>
+  );
+};

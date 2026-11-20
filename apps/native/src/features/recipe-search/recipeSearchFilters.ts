@@ -53,8 +53,3 @@ export function activeFilterCount(filters: RecipeSearchFilters): number {
     filters.tagIds.length
   );
 }
-
-/** What the Filters button's badge counts: filters plus a non-default sort. */
-export function appliedCount(filters: RecipeSearchFilters): number {
-  return activeFilterCount(filters) + (filters.sort === "default" ? 0 : 1);
-}

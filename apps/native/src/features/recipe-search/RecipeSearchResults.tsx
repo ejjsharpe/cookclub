@@ -1,8 +1,13 @@
 import { useNavigation } from "@react-navigation/native";
 import { MIN_RECIPE_SEARCH_LENGTH } from "@repo/shared";
 import { FlashList } from "@shopify/flash-list";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 import { RecentSearchRow, SearchRowTile } from "./RecentSearchRow";
@@ -39,6 +44,7 @@ type Row =
   | { kind: "recent"; item: RecentRecipeSearch }
   | { kind: "tag"; tag: SearchTag }
   | { kind: "collection"; collection: CollectionWithMetadata }
+  | { kind: "moreCollections"; count: number }
   | { kind: "recipesHeading" }
   | { kind: "recipe"; recipe: Recipe }
   | { kind: "message"; title: string; body: string }
@@ -72,8 +78,11 @@ interface RecipeSearchResultsProps {
   ) => void;
   onQueryChange: (query: string) => void;
   tags: SearchTag[];
-  /** Room to leave under the last row for the field and chips. */
-  bottomInset: number;
+  /** Height of the chips and field floating over the bottom of the list. */
+  stackHeight: number;
+  /** Gap under that stack: above the tab bar, and above the keyboard. */
+  restingGap: number;
+  keyboardGap: number;
 }
 
 /**
@@ -87,11 +96,19 @@ export const RecipeSearchResults = ({
   onFiltersChange,
   onQueryChange,
   tags,
-  bottomInset,
+  stackHeight,
+  restingGap,
+  keyboardGap,
 }: RecipeSearchResultsProps) => {
   const navigation = useNavigation();
   const { theme, rt } = useUnistyles();
   const recents = useRecentRecipeSearches();
+  // Which search "Show all" was tapped for, so a new search starts capped.
+  const [allCollectionsFor, setAllCollectionsFor] = useState<string | null>(
+    null,
+  );
+  const { height: keyboardHeight, progress: keyboardProgress } =
+    useReanimatedKeyboardAnimation();
 
   const trimmed = debouncedQuery.trim();
   const typing = query.trim() !== "";
@@ -103,7 +120,8 @@ export const RecipeSearchResults = ({
   const waiting =
     query.trim().length >= MIN_RECIPE_SEARCH_LENGTH && query.trim() !== trimmed;
   // Collections aren't tagged or timed, so they'd ignore any filter.
-  const showCollections = trimmed !== "" && activeFilterCount(filters) === 0;
+  const showCollections = hasQuery && activeFilterCount(filters) === 0;
+  const allCollections = allCollectionsFor === trimmed;
 
   const recipeData = useRecipeData({
     search: debouncedQuery,
@@ -147,9 +165,10 @@ export const RecipeSearchResults = ({
       result.push({ kind: "heading", key: "tags", title: "Tags" });
       for (const tag of tagMatches) result.push({ kind: "tag", tag });
     }
-    const collections = showCollections
-      ? collectionData.collections.slice(0, MAX_COLLECTIONS)
-      : [];
+    const matching = showCollections ? collectionData.collections : [];
+    const collections = allCollections
+      ? matching
+      : matching.slice(0, MAX_COLLECTIONS);
     if (collections.length > 0) {
       result.push({
         kind: "heading",
@@ -158,6 +177,9 @@ export const RecipeSearchResults = ({
       });
       for (const collection of collections) {
         result.push({ kind: "collection", collection });
+      }
+      if (matching.length > collections.length) {
+        result.push({ kind: "moreCollections", count: matching.length });
       }
     }
     if (showRecipes || waiting) {
@@ -168,6 +190,12 @@ export const RecipeSearchResults = ({
         }
       } else if (waiting || recipeData.isPending) {
         result.push({ kind: "loading" });
+      } else if (recipeData.error) {
+        result.push({
+          kind: "message",
+          title: "Couldn't search your recipes",
+          body: "Check your connection and try again.",
+        });
       } else {
         result.push({
           kind: "message",
@@ -178,6 +206,14 @@ export const RecipeSearchResults = ({
         });
       }
     }
+    if (result.length === 0) {
+      // One letter: too short to search, and no tag starts with it.
+      result.push({
+        kind: "message",
+        title: "Keep typing",
+        body: "Search starts after two letters.",
+      });
+    }
     return result;
   }, [
     typing,
@@ -186,11 +222,22 @@ export const RecipeSearchResults = ({
     tagMatches,
     showCollections,
     collectionData.collections,
+    allCollections,
     showRecipes,
     waiting,
     recipeData.recipes,
     recipeData.isPending,
+    recipeData.error,
   ]);
+
+  // Keeps the last rows clear of the chips and field, and of the keyboard,
+  // which Android doesn't make room for by itself.
+  const spacerStyle = useAnimatedStyle(() => ({
+    height:
+      stackHeight +
+      interpolate(keyboardProgress.get(), [0, 1], [restingGap, keyboardGap]) -
+      keyboardHeight.get(),
+  }));
 
   // ─── Actions ──────────────────────────────────────────────────────────────
   const pickTag = useCallback(
@@ -351,6 +398,18 @@ export const RecipeSearchResults = ({
           </Pressable>
         );
       }
+      case "moreCollections":
+        return (
+          <Pressable
+            onPress={() => setAllCollectionsFor(trimmed)}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.more, pressed && styles.pressed]}
+          >
+            <Text type="footnote" style={styles.clear}>
+              Show all {item.count} collections
+            </Text>
+          </Pressable>
+        );
       case "recipesHeading":
         return (
           <View style={styles.heading}>
@@ -416,20 +475,19 @@ export const RecipeSearchResults = ({
       onEndReached={showRecipes ? recipeData.handleLoadMore : undefined}
       onEndReachedThreshold={0.5}
       ListFooterComponent={
-        recipeData.isFetchingNext ? (
-          <ActivityIndicator
-            style={styles.loading}
-            color={theme.colors.primary}
-          />
-        ) : null
+        <>
+          {recipeData.isFetchingNext && (
+            <ActivityIndicator
+              style={styles.loading}
+              color={theme.colors.primary}
+            />
+          )}
+          <Animated.View style={spacerStyle} />
+        </>
       }
-      contentContainerStyle={{
-        paddingTop: rt.insets.top + 8,
-        paddingBottom: bottomInset,
-      }}
+      contentContainerStyle={{ paddingTop: rt.insets.top + 8 }}
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
-      automaticallyAdjustKeyboardInsets
     />
   );
 };
@@ -450,6 +508,10 @@ const styles = StyleSheet.create((theme) => ({
   clear: {
     fontFamily: theme.fonts.bold,
     color: theme.colors.primary,
+  },
+  more: {
+    paddingHorizontal: H_PAD,
+    paddingVertical: 10,
   },
   sort: {
     flexDirection: "row",

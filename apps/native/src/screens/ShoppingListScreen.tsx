@@ -90,6 +90,7 @@ import {
   useSelectedShoppingList,
   useShoppingListView,
 } from "@/lib/shoppingListPreferences";
+import { TAB_BAR_HEIGHT } from "@/navigation/tabBar";
 
 const INPUT_SECTION_HEIGHT = 66;
 // On iOS the title and the ••• sit in the tab's native navigation bar, as on
@@ -293,7 +294,6 @@ const SwipeableItem = memo(
 
 SwipeableItem.displayName = "SwipeableItem";
 
-const TAB_BAR_HEIGHT = 76; // Approximate native tab bar height
 const LIST_BOTTOM_CLEARANCE = 200;
 const KEYBOARD_OPEN_INPUT_GAP = 4;
 
