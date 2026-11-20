@@ -2,6 +2,7 @@ import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
   ScrollView,
   TouchableOpacity,
   View,
@@ -74,8 +75,10 @@ export const MealPlanScreen = () => {
   // Refs
   const scrollRef = useRef<ScrollViewInstance>(null);
   const sectionTops = useRef(new Map<string, number>());
-  // Day to scroll to once its section has been laid out
-  const pendingScrollDate = useRef<string | null>(toDateString(new Date()));
+  // Day kept at the top of the list until the user scrolls. Its section's
+  // onLayout re-runs whenever days above it grow (meals loading, a banner
+  // appearing), and each time we scroll it back to the top.
+  const focusDate = useRef<string | null>(toDateString(new Date()));
   // Only scrolls the user makes move the strip's picked day
   const isUserScrolling = useRef(false);
 
@@ -91,7 +94,18 @@ export const MealPlanScreen = () => {
   const [selectedDate, setSelectedDate] = useState(() =>
     toDateString(new Date()),
   );
-  const days = useMemo(() => getWeekDays(weekStart, new Date()), [weekStart]);
+  // "Today" moves on if the app stays open past midnight
+  const [today, setToday] = useState(() => toDateString(new Date()));
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") setToday(toDateString(new Date()));
+    });
+    return () => sub.remove();
+  }, []);
+  const days = useMemo(
+    () => getWeekDays(weekStart, new Date(`${today}T12:00:00`)),
+    [weekStart, today],
+  );
 
   // Reactive meal plan selection from MMKV
   const {
@@ -168,6 +182,17 @@ export const MealPlanScreen = () => {
     return map;
   }, [entries, mealTimes]);
 
+  const entriesByDate = useMemo(() => {
+    const map = new Map<string, MealPlanEntry[]>();
+    mealsByDate.forEach((list, date) =>
+      map.set(
+        date,
+        list.map((m) => m.entry),
+      ),
+    );
+    return map;
+  }, [mealsByDate]);
+
   const mealCounts = useMemo(() => {
     const counts = new Map<string, number>();
     mealsByDate.forEach((list, date) => counts.set(date, list.length));
@@ -178,18 +203,14 @@ export const MealPlanScreen = () => {
 
   const scrollToDate = useCallback((dateString: string, animated = true) => {
     const top = sectionTops.current.get(dateString);
-    if (top === undefined) {
-      pendingScrollDate.current = dateString;
-      return;
-    }
+    if (top === undefined) return; // its onLayout scrolls once it's measured
     scrollRef.current?.scrollTo({ y: Math.max(0, top - 8), animated });
   }, []);
 
   const handleSectionLayout = useCallback(
     (dateString: string, event: LayoutChangeEvent) => {
       sectionTops.current.set(dateString, event.nativeEvent.layout.y);
-      if (pendingScrollDate.current === dateString) {
-        pendingScrollDate.current = null;
+      if (focusDate.current === dateString && !isUserScrolling.current) {
         requestAnimationFrame(() => scrollToDate(dateString, false));
       }
     },
@@ -198,6 +219,8 @@ export const MealPlanScreen = () => {
 
   const handleSelectDate = useCallback(
     (dateString: string) => {
+      isUserScrolling.current = false;
+      focusDate.current = dateString;
       setSelectedDate(dateString);
       scrollToDate(dateString);
     },
@@ -221,6 +244,7 @@ export const MealPlanScreen = () => {
 
   const handleScrollBeginDrag = useCallback(() => {
     isUserScrolling.current = true;
+    focusDate.current = null;
   }, []);
 
   const handleScrollEndDrag = useCallback(
@@ -245,7 +269,8 @@ export const MealPlanScreen = () => {
       ? todayString
       : week[0]!.dateString;
     sectionTops.current.clear();
-    pendingScrollDate.current = focus;
+    focusDate.current = focus;
+    isUserScrolling.current = false;
     setSelectedDate(focus);
     setWeekStart(start);
   }, []);
@@ -282,18 +307,14 @@ export const MealPlanScreen = () => {
     [],
   );
 
-  const handleAdd = useCallback(
-    (day: WeekDay) => {
-      addToDaySheetRef.current?.present({
-        dateString: day.dateString,
-        label: day.isToday
-          ? "today"
-          : `${longDayName(day.date)} ${day.date.getDate()}`,
-        entries: (mealsByDate.get(day.dateString) ?? []).map((m) => m.entry),
-      });
-    },
-    [mealsByDate],
-  );
+  const handleAdd = useCallback((day: WeekDay) => {
+    addToDaySheetRef.current?.present({
+      dateString: day.dateString,
+      label: day.isToday
+        ? "today"
+        : `${longDayName(day.date)} ${day.date.getDate()}`,
+    });
+  }, []);
 
   const handleOpenMeal = useCallback(
     (entry: MealPlanEntry) => {
@@ -532,6 +553,7 @@ export const MealPlanScreen = () => {
         ref={addToDaySheetRef}
         mealPlanId={activePlan?.id}
         mealTimes={mealTimes}
+        entriesByDate={entriesByDate}
         onEditMealTimes={handleOpenMealTimes}
       />
       <MealTimesSheet
@@ -637,6 +659,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     flex: 1,
   },
   listContent: {
-    paddingBottom: rt.insets.bottom + 120,
+    // Enough room for Sunday to scroll up to the top of the list
+    paddingBottom: Math.max(rt.insets.bottom + 120, rt.screen.height * 0.6),
   },
 }));

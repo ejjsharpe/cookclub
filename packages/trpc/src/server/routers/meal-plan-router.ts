@@ -17,7 +17,7 @@ import {
   getMealPlanInvitationStatus as getMealPlanInvitationStatusService,
   getShareStatus as getShareStatusService,
   addMealTime as addMealTimeService,
-  updateMealTimes as updateMealTimesService,
+  changeMealTime as changeMealTimeService,
 } from "@repo/db/services";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
@@ -208,26 +208,27 @@ export const mealPlanRouter = router({
       }
     }),
 
-  // Reorder, hide, rename or remove a plan's meal times
-  updateMealTimes: authedProcedure
+  // Hide, show, move or remove one of a plan's meal times
+  changeMealTime: authedProcedure
     .input(
       type({
         mealPlanId: "number",
-        mealTimes: type({
+        change: type({
+          type: "'hide' | 'show' | 'remove'",
           key: "0 < string <= 64",
-          name: "0 < string <= 64",
-          "hidden?": "boolean",
-        })
-          .array()
-          .atMostLength(24),
+        }).or({
+          type: "'move'",
+          key: "0 < string <= 64",
+          beforeKey: "(0 < string <= 64) | null",
+        }),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        return await updateMealTimesService(ctx.db, {
+        return await changeMealTimeService(ctx.db, {
           userId: ctx.user.id,
           mealPlanId: input.mealPlanId,
-          mealTimes: input.mealTimes,
+          change: input.change,
         });
       } catch (err) {
         throw mapServiceError(err);

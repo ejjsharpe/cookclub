@@ -71,64 +71,71 @@ export function createMealTime(
 }
 
 /**
- * Checks an edited list (reordered, hidden, renamed or with some removed)
- * against the current one. New meal times go through createMealTime instead.
- * `usedKeys` are meal times that still have meals planned; they can't be removed.
+ * One edit to a plan's meal times. Edits name a single meal time rather than
+ * sending the whole list, so a phone with an out-of-date list can't undo or
+ * delete changes other people on the plan have made since.
  */
-export function validateMealTimesUpdate(
+export type MealTimeChange =
+  | { type: "hide"; key: string }
+  | { type: "show"; key: string }
+  // Place `key` just before `beforeKey`, or at the end when it's null.
+  | { type: "move"; key: string; beforeKey: string | null }
+  | { type: "remove"; key: string };
+
+/**
+ * Applies one change to the current meal times and returns the new list.
+ * `hasMeals` says whether the changed meal time still has meals planned;
+ * it's only consulted for removals, which it blocks.
+ */
+export function applyMealTimeChange(
   current: readonly MealTime[],
-  next: readonly { key: string; name: string; hidden?: boolean }[],
-  usedKeys: ReadonlySet<string>,
+  change: MealTimeChange,
+  hasMeals: boolean,
 ): MealTime[] {
-  const byKey = new Map(current.map((t) => [t.key, t]));
-  const seen = new Set<string>();
-  const names = new Set<string>();
-  const result: MealTime[] = [];
-
-  for (const item of next) {
-    const existing = byKey.get(item.key);
-    if (!existing) {
-      throw new ServiceError("BAD_REQUEST", "Unknown meal time");
-    }
-    if (seen.has(item.key)) {
-      throw new ServiceError("BAD_REQUEST", "Meal times must be unique");
-    }
-    seen.add(item.key);
-
-    const name = cleanName(item.name);
-    if (!name || name.length > MAX_MEAL_TIME_NAME_LENGTH) {
-      throw new ServiceError("BAD_REQUEST", "Invalid meal time name");
-    }
-    if (names.has(name.toLowerCase())) {
-      throw new ServiceError("CONFLICT", `There's already a ${name} meal time`);
-    }
-    names.add(name.toLowerCase());
-
-    const { hidden: _hidden, ...rest } = existing;
-    result.push(
-      item.hidden ? { ...rest, name, hidden: true } : { ...rest, name },
+  const index = current.findIndex((t) => t.key === change.key);
+  const target = current[index];
+  if (!target) {
+    throw new ServiceError(
+      "NOT_FOUND",
+      "That meal time has been removed from this plan",
     );
   }
 
-  for (const t of current) {
-    if (seen.has(t.key)) continue;
-    if (isDefaultMealTime(t.key)) {
-      throw new ServiceError(
-        "BAD_REQUEST",
-        `${t.name} can be hidden but not deleted`,
-      );
+  switch (change.type) {
+    case "show": {
+      const { hidden: _hidden, ...shown } = target;
+      return current.map((t, i) => (i === index ? shown : t));
     }
-    if (usedKeys.has(t.key)) {
-      throw new ServiceError(
-        "BAD_REQUEST",
-        `${t.name} still has meals planned. Hide it instead, or remove those meals first.`,
-      );
+    case "hide": {
+      if (current.every((t) => t.key === target.key || t.hidden)) {
+        throw new ServiceError("BAD_REQUEST", "Keep at least one meal time on");
+      }
+      return current.map((t, i) => (i === index ? { ...t, hidden: true } : t));
+    }
+    case "move": {
+      if (change.beforeKey === target.key) return [...current];
+      const rest = current.filter((t) => t.key !== target.key);
+      // If the meal time it was dropped before has since gone, it goes last.
+      const at = change.beforeKey
+        ? rest.findIndex((t) => t.key === change.beforeKey)
+        : -1;
+      rest.splice(at === -1 ? rest.length : at, 0, target);
+      return rest;
+    }
+    case "remove": {
+      if (isDefaultMealTime(target.key)) {
+        throw new ServiceError(
+          "BAD_REQUEST",
+          `${target.name} can be hidden but not deleted`,
+        );
+      }
+      if (hasMeals) {
+        throw new ServiceError(
+          "BAD_REQUEST",
+          `${target.name} still has meals planned. Hide it instead, or remove those meals first.`,
+        );
+      }
+      return current.filter((t) => t.key !== target.key);
     }
   }
-
-  if (!result.some((t) => !t.hidden)) {
-    throw new ServiceError("BAD_REQUEST", "Keep at least one meal time on");
-  }
-
-  return result;
 }

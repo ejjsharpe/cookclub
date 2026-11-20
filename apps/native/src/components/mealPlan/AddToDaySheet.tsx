@@ -26,7 +26,6 @@ export interface AddToDayTarget {
   dateString: string;
   /** e.g. "Thursday 20" or "today" */
   label: string;
-  entries: MealPlanEntry[];
 }
 
 export interface AddToDaySheetRef {
@@ -37,6 +36,8 @@ export interface AddToDaySheetRef {
 interface AddToDaySheetProps {
   mealPlanId: number | undefined;
   mealTimes: MealTime[];
+  /** Planned meals by date, kept live so the sheet sees others' changes */
+  entriesByDate: Map<string, MealPlanEntry[]>;
   onEditMealTimes: () => void;
 }
 
@@ -56,7 +57,7 @@ const pickDefaultMealTime = (
  * Add a recipe to one day: pick the meal time (or make a new one), then a recipe.
  */
 export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
-  ({ mealPlanId, mealTimes, onEditMealTimes }, ref) => {
+  ({ mealPlanId, mealTimes, entriesByDate, onEditMealTimes }, ref) => {
     const { theme } = useUnistyles();
     const browserRef = useRef<RecipeBrowserSheetRef>(null);
     const [target, setTarget] = useState<AddToDayTarget | null>(null);
@@ -75,7 +76,12 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
     useImperativeHandle(ref, () => ({
       present: (next) => {
         setTarget(next);
-        setSelectedKey(pickDefaultMealTime(visible, next.entries));
+        setSelectedKey(
+          pickDefaultMealTime(
+            visible,
+            entriesByDate.get(next.dateString) ?? [],
+          ),
+        );
         setIsNaming(false);
         setNewName("");
         browserRef.current?.present();
@@ -83,14 +89,23 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
       dismiss: () => browserRef.current?.dismiss(),
     }));
 
+    const dayEntries = useMemo(
+      () => (target ? (entriesByDate.get(target.dateString) ?? []) : []),
+      [entriesByDate, target],
+    );
+
     const takenBy = useMemo(() => {
       const map = new Map<string, MealPlanEntry>();
-      target?.entries.forEach((e) => map.set(e.mealType, e));
+      dayEntries.forEach((e) => map.set(e.mealType, e));
       return map;
-    }, [target]);
+    }, [dayEntries]);
 
-    const selected = visible.find((t) => t.key === selectedKey);
-    const replacing = selectedKey ? takenBy.get(selectedKey) : undefined;
+    // If the picked meal time was hidden meanwhile, fall back to a visible one
+    const effectiveKey = visible.some((t) => t.key === selectedKey)
+      ? selectedKey
+      : pickDefaultMealTime(visible, dayEntries);
+    const selected = visible.find((t) => t.key === effectiveKey);
+    const replacing = effectiveKey ? takenBy.get(effectiveKey) : undefined;
 
     const handleSaveNew = useCallback(async () => {
       if (!mealPlanId || !newName.trim()) {
@@ -112,15 +127,15 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
 
     const handleSelectRecipe = useCallback(
       async (recipeId: number) => {
-        if (!mealPlanId || !target || !selectedKey) return;
+        if (!mealPlanId || !target || !effectiveKey) return;
         await addRecipe.mutateAsync({
           mealPlanId,
           recipeId,
           date: target.dateString,
-          mealType: selectedKey,
+          mealType: effectiveKey,
         });
       },
-      [addRecipe, mealPlanId, selectedKey, target],
+      [addRecipe, mealPlanId, effectiveKey, target],
     );
 
     const hint = !selected
@@ -148,7 +163,7 @@ export const AddToDaySheet = forwardRef<AddToDaySheetRef, AddToDaySheetProps>(
 
         <View style={styles.chips} accessibilityRole="radiogroup">
           {visible.map((t) => {
-            const on = t.key === selectedKey;
+            const on = t.key === effectiveKey;
             return (
               <Pressable
                 key={t.key}

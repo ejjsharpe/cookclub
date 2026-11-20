@@ -2,6 +2,7 @@ import type { TrueSheet } from "@lodev09/react-native-true-sheet";
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -12,14 +13,16 @@ import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { scheduleOnRN } from "react-native-worklets";
 
 import {
   useAddMealTime,
-  useUpdateMealTimes,
+  useChangeMealTime,
   type MealTime,
+  type MealTimeChange,
 } from "@/api/mealPlan";
 import { AppSheet } from "@/components/AppSheet";
 import { Ionicons } from "@/components/Ionicons";
@@ -39,11 +42,6 @@ interface MealTimesSheetProps {
   mealTimes: MealTime[];
   isShared: boolean;
 }
-
-const toUpdate = (list: MealTime[]) =>
-  list.map(({ key, name, hidden }) =>
-    hidden ? { key, name, hidden: true } : { key, name },
-  );
 
 interface RowProps {
   mealTime: MealTime;
@@ -67,8 +65,25 @@ const MealTimeRow = ({
   const dragging = useSharedValue(0);
   const on = !mealTime.hidden;
 
-  // Drag by the grip; on release the row lands in the slot nearest where it was dropped.
+  // The row stays where it was dropped until it re-renders in its new slot.
+  useEffect(() => {
+    dragY.set(0);
+  }, [index, dragY]);
+
+  const handleDrop = useCallback(
+    (by: number) => {
+      onMove(index, by);
+      // If the move fails the row stays at this index, so bring it back.
+      setTimeout(() => dragY.set(withTiming(0)), 800);
+    },
+    [dragY, index, onMove],
+  );
+
+  // Drag by the grip; on release the row lands in the slot nearest where it
+  // was dropped. Vertical only, so sideways swipes still reach swipe-to-delete.
   const pan = Gesture.Pan()
+    .activeOffsetY([-8, 8])
+    .failOffsetX([-12, 12])
     .onStart(() => {
       dragging.set(1);
     })
@@ -79,10 +94,13 @@ const MealTimeRow = ({
     })
     .onEnd(() => {
       const by = Math.round(dragY.get() / ROW_HEIGHT);
-      if (by !== 0) scheduleOnRN(onMove, index, by);
+      if (by !== 0) {
+        scheduleOnRN(handleDrop, by);
+      } else {
+        dragY.set(withTiming(0));
+      }
     })
     .onFinalize(() => {
-      dragY.set(0);
       dragging.set(0);
     });
 
@@ -101,14 +119,17 @@ const MealTimeRow = ({
         <View
           style={styles.grip}
           hitSlop={8}
+          accessible
           accessibilityLabel={`Reorder ${mealTime.name}`}
+          accessibilityValue={{ text: `${index + 1} of ${count}` }}
           accessibilityRole="adjustable"
           accessibilityActions={[
-            { name: "increment", label: "Move down" },
-            { name: "decrement", label: "Move up" },
+            { name: "increment", label: "Move up" },
+            { name: "decrement", label: "Move down" },
           ]}
+          // Swiping up (increment) moves it towards the top of the list
           onAccessibilityAction={(e) =>
-            onMove(index, e.nativeEvent.actionName === "increment" ? 1 : -1)
+            onMove(index, e.nativeEvent.actionName === "increment" ? -1 : 1)
           }
         >
           <Ionicons name="reorder-three" size={22} style={styles.gripIcon} />
@@ -169,7 +190,7 @@ export const MealTimesSheet = forwardRef<
   const sheetRef = useRef<TrueSheet>(null);
   const [isNaming, setIsNaming] = useState(false);
   const [newName, setNewName] = useState("");
-  const updateMealTimes = useUpdateMealTimes();
+  const changeMealTime = useChangeMealTime();
   const addMealTime = useAddMealTime();
 
   useImperativeHandle(ref, () => ({
@@ -181,42 +202,39 @@ export const MealTimesSheet = forwardRef<
     dismiss: () => sheetRef.current?.dismiss(),
   }));
 
-  const save = useCallback(
-    (next: MealTime[]) => {
+  const change = useCallback(
+    (next: MealTimeChange) => {
       if (!mealPlanId) return;
-      updateMealTimes.mutate({ mealPlanId, mealTimes: toUpdate(next) });
+      changeMealTime.mutate({ mealPlanId, change: next });
     },
-    [mealPlanId, updateMealTimes],
+    [mealPlanId, changeMealTime],
   );
 
   const handleToggle = useCallback(
-    (key: string, on: boolean) => {
-      save(
-        mealTimes.map((t) => {
-          if (t.key !== key) return t;
-          const { hidden: _hidden, ...rest } = t;
-          return on ? rest : { ...rest, hidden: true };
-        }),
-      );
-    },
-    [mealTimes, save],
+    (key: string, on: boolean) => change({ type: on ? "show" : "hide", key }),
+    [change],
   );
 
   const handleMove = useCallback(
     (from: number, by: number) => {
       const to = Math.max(0, Math.min(mealTimes.length - 1, from + by));
-      if (to === from) return;
-      const next = [...mealTimes];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved!);
-      save(next);
+      const moved = mealTimes[from];
+      if (to === from || !moved) return;
+      const rest = mealTimes.filter((t) => t.key !== moved.key);
+      // Name its new neighbour rather than an index, so the move still makes
+      // sense if someone else changed the list meanwhile.
+      change({
+        type: "move",
+        key: moved.key,
+        beforeKey: rest[to]?.key ?? null,
+      });
     },
-    [mealTimes, save],
+    [mealTimes, change],
   );
 
   const handleDelete = useCallback(
-    (key: string) => save(mealTimes.filter((t) => t.key !== key)),
-    [mealTimes, save],
+    (key: string) => change({ type: "remove", key }),
+    [change],
   );
 
   const handleAdd = useCallback(async () => {

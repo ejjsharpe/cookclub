@@ -10,12 +10,13 @@ import {
   user,
 } from "../../schemas";
 import { ServiceError } from "../errors";
-import type { DbClient } from "../types";
+import type { DbClient, TransactionClient } from "../types";
 import {
   createMealTime,
   resolveMealTimes,
-  validateMealTimesUpdate,
+  applyMealTimeChange,
   type MealTime,
+  type MealTimeChange,
 } from "./meal-times";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -274,11 +275,21 @@ export async function canUserEditMealPlan(
 
 // ─── Meal Times ─────────────────────────────────────────────────────────────
 
-async function getPlanMealTimes(db: DbClient, mealPlanId: number) {
-  const plan = await db
+/**
+ * A plan's meal times, read with a row lock so they can't change underneath
+ * the caller's transaction: "update" for edits to the list, "share" when
+ * planning a meal (so a meal time can't be removed while one is added to it).
+ */
+async function getPlanMealTimes(
+  tx: TransactionClient,
+  mealPlanId: number,
+  lock: "update" | "share",
+) {
+  const plan = await tx
     .select({ mealTimes: mealPlans.mealTimes })
     .from(mealPlans)
     .where(eq(mealPlans.id, mealPlanId))
+    .for(lock)
     .then((rows) => rows[0]);
   if (!plan) {
     throw new ServiceError("NOT_FOUND", "Meal plan not found");
@@ -287,13 +298,26 @@ async function getPlanMealTimes(db: DbClient, mealPlanId: number) {
 }
 
 async function assertMealTimeExists(
-  db: DbClient,
+  tx: TransactionClient,
   mealPlanId: number,
   mealType: string,
 ) {
-  const mealTimes = await getPlanMealTimes(db, mealPlanId);
+  const mealTimes = await getPlanMealTimes(tx, mealPlanId, "share");
   if (!mealTimes.some((t) => t.key === mealType)) {
-    throw new ServiceError("BAD_REQUEST", "That meal time isn't on this plan");
+    throw new ServiceError(
+      "BAD_REQUEST",
+      "That meal time isn't on this plan any more",
+    );
+  }
+}
+
+async function assertCanEdit(db: DbClient, userId: string, mealPlanId: number) {
+  const canEdit = await canUserEditMealPlan(db, userId, mealPlanId);
+  if (!canEdit) {
+    throw new ServiceError(
+      "FORBIDDEN",
+      "You do not have permission to edit this meal plan",
+    );
   }
 }
 
@@ -306,14 +330,7 @@ export async function addMealTime(
   params: { userId: string; mealPlanId: number; name: string },
 ): Promise<{ mealTimes: MealTime[]; mealTime: MealTime }> {
   const { userId, mealPlanId, name } = params;
-
-  const canEdit = await canUserEditMealPlan(db, userId, mealPlanId);
-  if (!canEdit) {
-    throw new ServiceError(
-      "FORBIDDEN",
-      "You do not have permission to edit this meal plan",
-    );
-  }
+  await assertCanEdit(db, userId, mealPlanId);
 
   const adder = await db
     .select({ name: user.name })
@@ -321,73 +338,59 @@ export async function addMealTime(
     .where(eq(user.id, userId))
     .then((rows) => rows[0]);
 
-  const current = await getPlanMealTimes(db, mealPlanId);
-  const mealTime = createMealTime(current, name, {
-    id: userId,
-    name: adder?.name ?? "",
+  return await db.transaction(async (tx) => {
+    const current = await getPlanMealTimes(tx, mealPlanId, "update");
+    const mealTime = createMealTime(current, name, {
+      id: userId,
+      name: adder?.name ?? "",
+    });
+    const mealTimes = [...current, mealTime];
+    await tx
+      .update(mealPlans)
+      .set({ mealTimes, updatedAt: new Date() })
+      .where(eq(mealPlans.id, mealPlanId));
+    return { mealTimes, mealTime };
   });
-  const mealTimes = [...current, mealTime];
-
-  await db
-    .update(mealPlans)
-    .set({ mealTimes, updatedAt: new Date() })
-    .where(eq(mealPlans.id, mealPlanId));
-
-  return { mealTimes, mealTime };
 }
 
 /**
- * Save a reordered or edited list of a plan's meal times (hide, rename, remove).
- * Meal times with planned meals can't be removed, only hidden.
+ * Hide, show, move or remove one of a plan's meal times. Meal times with
+ * planned meals can be hidden but not removed. Returns the updated list.
  */
-export async function updateMealTimes(
+export async function changeMealTime(
   db: DbClient,
-  params: {
-    userId: string;
-    mealPlanId: number;
-    mealTimes: { key: string; name: string; hidden?: boolean }[];
-  },
+  params: { userId: string; mealPlanId: number; change: MealTimeChange },
 ): Promise<MealTime[]> {
-  const { userId, mealPlanId } = params;
+  const { userId, mealPlanId, change } = params;
+  await assertCanEdit(db, userId, mealPlanId);
 
-  const canEdit = await canUserEditMealPlan(db, userId, mealPlanId);
-  if (!canEdit) {
-    throw new ServiceError(
-      "FORBIDDEN",
-      "You do not have permission to edit this meal plan",
-    );
-  }
+  return await db.transaction(async (tx) => {
+    const current = await getPlanMealTimes(tx, mealPlanId, "update");
 
-  const current = await getPlanMealTimes(db, mealPlanId);
-  const nextKeys = new Set(params.mealTimes.map((t) => t.key));
-  const removed = current.map((t) => t.key).filter((key) => !nextKeys.has(key));
+    // Meals are added under a share lock on the plan row, so none can be
+    // added to this meal time between this check and the write below.
+    let hasMeals = false;
+    if (change.type === "remove") {
+      const planned = await tx
+        .select({ id: mealPlanEntries.id })
+        .from(mealPlanEntries)
+        .where(
+          and(
+            eq(mealPlanEntries.mealPlanId, mealPlanId),
+            eq(mealPlanEntries.mealType, change.key),
+          ),
+        )
+        .limit(1);
+      hasMeals = planned.length > 0;
+    }
 
-  const usedKeys = new Set<string>();
-  if (removed.length > 0) {
-    const used = await db
-      .selectDistinct({ mealType: mealPlanEntries.mealType })
-      .from(mealPlanEntries)
-      .where(
-        and(
-          eq(mealPlanEntries.mealPlanId, mealPlanId),
-          inArray(mealPlanEntries.mealType, removed),
-        ),
-      );
-    used.forEach((row) => usedKeys.add(row.mealType));
-  }
-
-  const mealTimes = validateMealTimesUpdate(
-    current,
-    params.mealTimes,
-    usedKeys,
-  );
-
-  await db
-    .update(mealPlans)
-    .set({ mealTimes, updatedAt: new Date() })
-    .where(eq(mealPlans.id, mealPlanId));
-
-  return mealTimes;
+    const mealTimes = applyMealTimeChange(current, change, hasMeals);
+    await tx
+      .update(mealPlans)
+      .set({ mealTimes, updatedAt: new Date() })
+      .where(eq(mealPlans.id, mealPlanId));
+    return mealTimes;
+  });
 }
 
 // ─── Entry Operations ─────────────────────────────────────────────────────
@@ -459,8 +462,6 @@ export async function addRecipeToMealPlan(
     );
   }
 
-  await assertMealTimeExists(db, mealPlanId, mealType);
-
   // Verify recipe exists and belongs to user's library
   const recipe = await db
     .select({
@@ -492,34 +493,37 @@ export async function addRecipeToMealPlan(
     .limit(1)
     .then((rows) => rows[0]);
 
-  // Delete existing entry for this slot if any (replace behavior)
-  await db
-    .delete(mealPlanEntries)
-    .where(
-      and(
-        eq(mealPlanEntries.mealPlanId, mealPlanId),
-        eq(mealPlanEntries.date, date),
-        eq(mealPlanEntries.mealType, mealType),
-      ),
-    );
+  return await db.transaction(async (tx) => {
+    await assertMealTimeExists(tx, mealPlanId, mealType);
 
-  // Insert new entry
-  const entry = await db
-    .insert(mealPlanEntries)
-    .values({
-      mealPlanId,
-      date,
-      mealType,
-      recipeId,
-      recipeName: recipe.name,
-      recipeImageUrl: firstImage?.url ?? null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .returning()
-    .then((rows) => rows[0]);
+    // Delete existing entry for this slot if any (replace behavior)
+    await tx
+      .delete(mealPlanEntries)
+      .where(
+        and(
+          eq(mealPlanEntries.mealPlanId, mealPlanId),
+          eq(mealPlanEntries.date, date),
+          eq(mealPlanEntries.mealType, mealType),
+        ),
+      );
 
-  return entry!;
+    const entry = await tx
+      .insert(mealPlanEntries)
+      .values({
+        mealPlanId,
+        date,
+        mealType,
+        recipeId,
+        recipeName: recipe.name,
+        recipeImageUrl: firstImage?.url ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning()
+      .then((rows) => rows[0]);
+
+    return entry!;
+  });
 }
 
 /**
@@ -591,32 +595,33 @@ export async function moveEntry(
     );
   }
 
-  await assertMealTimeExists(db, entry.mealPlanId, newMealType);
+  return await db.transaction(async (tx) => {
+    await assertMealTimeExists(tx, entry.mealPlanId, newMealType);
 
-  // Delete any existing entry at the target slot
-  await db
-    .delete(mealPlanEntries)
-    .where(
-      and(
-        eq(mealPlanEntries.mealPlanId, entry.mealPlanId),
-        eq(mealPlanEntries.date, newDate),
-        eq(mealPlanEntries.mealType, newMealType),
-      ),
-    );
+    // Delete any existing entry at the target slot
+    await tx
+      .delete(mealPlanEntries)
+      .where(
+        and(
+          eq(mealPlanEntries.mealPlanId, entry.mealPlanId),
+          eq(mealPlanEntries.date, newDate),
+          eq(mealPlanEntries.mealType, newMealType),
+        ),
+      );
 
-  // Update the entry
-  const updated = await db
-    .update(mealPlanEntries)
-    .set({
-      date: newDate,
-      mealType: newMealType,
-      updatedAt: new Date(),
-    })
-    .where(eq(mealPlanEntries.id, entryId))
-    .returning()
-    .then((rows) => rows[0]);
+    const updated = await tx
+      .update(mealPlanEntries)
+      .set({
+        date: newDate,
+        mealType: newMealType,
+        updatedAt: new Date(),
+      })
+      .where(eq(mealPlanEntries.id, entryId))
+      .returning()
+      .then((rows) => rows[0]);
 
-  return updated!;
+    return updated!;
+  });
 }
 
 // ─── Sharing & Invitation Operations ─────────────────────────────────────────

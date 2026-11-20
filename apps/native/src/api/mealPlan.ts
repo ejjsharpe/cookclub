@@ -69,14 +69,55 @@ const setPlanMealTimes = (
 const errorMessage = (err: unknown, fallback: string) =>
   err instanceof Error && err.message ? err.message : fallback;
 
+// All meal-time edits share this scope, so TanStack Query sends them one at a
+// time, in order, and a slow save can't land after a newer one.
+const MEAL_TIMES_SCOPE = { id: "meal-times" };
+
+export type MealTimeChange =
+  | { type: "hide" | "show" | "remove"; key: string }
+  | { type: "move"; key: string; beforeKey: string | null };
+
+// The server applies the same change; this is only for the instant update.
+const applyChangeLocally = (
+  mealTimes: MealTime[],
+  change: MealTimeChange,
+): MealTime[] => {
+  const target = mealTimes.find((t) => t.key === change.key);
+  if (!target) return mealTimes;
+  switch (change.type) {
+    case "hide":
+      return mealTimes.map((t) =>
+        t.key === change.key ? { ...t, hidden: true } : t,
+      );
+    case "show":
+      return mealTimes.map((t) => {
+        if (t.key !== change.key) return t;
+        const { hidden: _hidden, ...shown } = t;
+        return shown;
+      });
+    case "remove":
+      return mealTimes.filter((t) => t.key !== change.key);
+    case "move": {
+      const rest = mealTimes.filter((t) => t.key !== change.key);
+      const at = change.beforeKey
+        ? rest.findIndex((t) => t.key === change.beforeKey)
+        : -1;
+      rest.splice(at === -1 ? rest.length : at, 0, target);
+      return rest;
+    }
+  }
+};
+
 // Add a custom meal time (e.g. "Supper") to a plan
 export const useAddMealTime = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const plansKey = trpc.mealPlan.getMealPlans.queryKey();
 
   const mutationOptions = trpc.mealPlan.addMealTime.mutationOptions({
+    scope: MEAL_TIMES_SCOPE,
     onSuccess: (data, variables) => {
-      queryClient.setQueryData(trpc.mealPlan.getMealPlans.queryKey(), (plans) =>
+      queryClient.setQueryData(plansKey, (plans) =>
         setPlanMealTimes(plans, variables.mealPlanId, data.mealTimes),
       );
     },
@@ -86,54 +127,42 @@ export const useAddMealTime = () => {
         errorMessage(err, "Please try again."),
       );
     },
+    // Pick up anything other people on the plan changed meanwhile
+    onSettled: () => queryClient.invalidateQueries({ queryKey: plansKey }),
   });
 
   return useMutation(mutationOptions);
 };
 
-// Reorder, hide, rename or remove a plan's meal times (applied straight away)
-export const useUpdateMealTimes = () => {
+// Hide, show, move or remove one meal time (shown straight away)
+export const useChangeMealTime = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const plansKey = trpc.mealPlan.getMealPlans.queryKey();
 
-  const mutationOptions = trpc.mealPlan.updateMealTimes.mutationOptions({
-    onMutate: async (variables) => {
+  const mutationOptions = trpc.mealPlan.changeMealTime.mutationOptions({
+    scope: MEAL_TIMES_SCOPE,
+    onMutate: async ({ mealPlanId, change }) => {
       await queryClient.cancelQueries({ queryKey: plansKey });
-      const previous = queryClient.getQueryData(plansKey);
       queryClient.setQueryData(plansKey, (plans) =>
-        plans?.map((p) => {
-          if (p.id !== variables.mealPlanId) return p;
-          const byKey = new Map(p.mealTimes.map((t) => [t.key, t]));
-          const mealTimes = variables.mealTimes.flatMap((t) => {
-            const existing = byKey.get(t.key);
-            if (!existing) return [];
-            const { hidden: _hidden, ...rest } = existing;
-            return [
-              t.hidden
-                ? { ...rest, name: t.name, hidden: true }
-                : { ...rest, name: t.name },
-            ];
-          });
-          return { ...p, mealTimes };
-        }),
+        plans?.map((p) =>
+          p.id === mealPlanId
+            ? {
+                ...p,
+                mealTimes: applyChangeLocally(p.mealTimes ?? [], change),
+              }
+            : p,
+        ),
       );
-      return { previous };
     },
-    onError: (err, _variables, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(plansKey, context.previous);
-      }
+    onError: (err) => {
       Alert.alert(
         "Couldn't update meal times",
         errorMessage(err, "Please try again."),
       );
     },
-    onSuccess: (mealTimes, variables) => {
-      queryClient.setQueryData(plansKey, (plans) =>
-        setPlanMealTimes(plans, variables.mealPlanId, mealTimes),
-      );
-    },
+    // Whether it worked or not, the server's list is the truth
+    onSettled: () => queryClient.invalidateQueries({ queryKey: plansKey }),
   });
 
   return useMutation(mutationOptions);

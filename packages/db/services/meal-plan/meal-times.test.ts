@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MEAL_TIMES,
   createMealTime,
+  type MealTime,
   resolveMealTimes,
-  validateMealTimesUpdate,
+  applyMealTimeChange,
 } from "./meal-times";
 
 const me = { id: "u1", name: "Elliot" };
@@ -57,68 +58,100 @@ describe("createMealTime", () => {
   });
 });
 
-describe("validateMealTimesUpdate", () => {
-  const current = [
+describe("applyMealTimeChange", () => {
+  const current: MealTime[] = [
     ...DEFAULT_MEAL_TIMES,
     { key: "snack", name: "Snack", addedBy: me },
   ];
+  const keys = (list: MealTime[]) => list.map((t) => t.key);
 
-  it("reorders and hides, keeping who added each one", () => {
-    const next = validateMealTimesUpdate(
+  it("hides and shows one meal time, leaving the rest as they are", () => {
+    const hidden = applyMealTimeChange(
       current,
-      [
-        { key: "breakfast", name: "Breakfast", hidden: true },
-        { key: "snack", name: "Snack" },
-        { key: "lunch", name: "Lunch" },
-        { key: "dinner", name: "Dinner" },
-      ],
-      new Set(),
+      { type: "hide", key: "breakfast" },
+      false,
     );
-    expect(next.map((t) => t.key)).toEqual([
-      "breakfast",
-      "snack",
-      "lunch",
-      "dinner",
-    ]);
-    expect(next[0]!.hidden).toBe(true);
-    expect(next[1]!.addedBy).toEqual(me);
+    expect(hidden[0]!.hidden).toBe(true);
+    expect(hidden[3]).toEqual(current[3]);
+
+    const shown = applyMealTimeChange(
+      hidden,
+      { type: "show", key: "breakfast" },
+      false,
+    );
+    expect(shown[0]).toEqual(DEFAULT_MEAL_TIMES[0]);
+  });
+
+  it("moves a meal time before another, or to the end", () => {
+    expect(
+      keys(
+        applyMealTimeChange(
+          current,
+          { type: "move", key: "snack", beforeKey: "dinner" },
+          false,
+        ),
+      ),
+    ).toEqual(["breakfast", "lunch", "snack", "dinner"]);
+    expect(
+      keys(
+        applyMealTimeChange(
+          current,
+          { type: "move", key: "breakfast", beforeKey: null },
+          false,
+        ),
+      ),
+    ).toEqual(["lunch", "dinner", "snack", "breakfast"]);
+  });
+
+  it("moves to the end if the meal time it was dropped before has gone", () => {
+    expect(
+      keys(
+        applyMealTimeChange(
+          current,
+          { type: "move", key: "lunch", beforeKey: "supper" },
+          false,
+        ),
+      ),
+    ).toEqual(["breakfast", "dinner", "snack", "lunch"]);
+  });
+
+  it("only touches the named meal time, so an out-of-date list can't drop others", () => {
+    // Someone else added Supper; this phone's list predates it.
+    const withSupper = [...current, { key: "supper", name: "Supper" }];
+    const next = applyMealTimeChange(
+      withSupper,
+      { type: "hide", key: "lunch" },
+      false,
+    );
+    expect(keys(next)).toContain("supper");
   });
 
   it("removes an unused custom meal time", () => {
-    const next = validateMealTimesUpdate(
-      current,
-      DEFAULT_MEAL_TIMES,
-      new Set(),
-    );
-    expect(next.map((t) => t.key)).toEqual(["breakfast", "lunch", "dinner"]);
+    expect(
+      keys(
+        applyMealTimeChange(current, { type: "remove", key: "snack" }, false),
+      ),
+    ).toEqual(["breakfast", "lunch", "dinner"]);
   });
 
-  it("won't remove a default or one with meals planned", () => {
+  it("won't remove a default, one with meals planned, or one already gone", () => {
     expect(() =>
-      validateMealTimesUpdate(current, current.slice(1), new Set()),
+      applyMealTimeChange(current, { type: "remove", key: "lunch" }, false),
     ).toThrow(/hidden but not deleted/);
     expect(() =>
-      validateMealTimesUpdate(current, DEFAULT_MEAL_TIMES, new Set(["snack"])),
+      applyMealTimeChange(current, { type: "remove", key: "snack" }, true),
     ).toThrow(/still has meals planned/);
+    expect(() =>
+      applyMealTimeChange(current, { type: "hide", key: "brunch" }, false),
+    ).toThrow(/removed from this plan/);
   });
 
-  it("rejects unknown keys, duplicates and hiding everything", () => {
+  it("keeps at least one meal time on", () => {
+    const onlyDinner = current.map((t) =>
+      t.key === "dinner" ? t : { ...t, hidden: true },
+    );
     expect(() =>
-      validateMealTimesUpdate(
-        current,
-        [...current, { key: "brunch", name: "Brunch" }],
-        new Set(),
-      ),
-    ).toThrow(/Unknown/);
-    expect(() =>
-      validateMealTimesUpdate(current, [...current, current[0]!], new Set()),
-    ).toThrow(/unique/);
-    expect(() =>
-      validateMealTimesUpdate(
-        current,
-        current.map((t) => ({ ...t, hidden: true })),
-        new Set(),
-      ),
+      applyMealTimeChange(onlyDinner, { type: "hide", key: "dinner" }, false),
     ).toThrow(/at least one/);
   });
 });
