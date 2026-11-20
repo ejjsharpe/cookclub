@@ -39,3 +39,16 @@ export function useSelectedShoppingList() {
 
   return { selectedList, setSelectedList, clearSelectedList };
 }
+
+const SHOPPING_LIST_VIEW_KEY = "shopping_list_view";
+
+/** Whether the shopping list is grouped by aisle or by recipe. */
+export function useShoppingListView() {
+  const [stored, setStored] = useMMKVString(SHOPPING_LIST_VIEW_KEY, storage);
+  const view: "aisle" | "recipe" = stored === "recipe" ? "recipe" : "aisle";
+  const setView = useCallback(
+    (next: "aisle" | "recipe") => setStored(next),
+    [setStored],
+  );
+  return [view, setView] as const;
+}

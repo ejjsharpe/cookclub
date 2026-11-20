@@ -1,115 +1,77 @@
-import { getAisleOrder } from "@repo/shared";
 import { useMemo } from "react";
 
-// Layout heights for FlashList item types
-const SECTION_HEADER_HEIGHT = 56;
-const ITEM_HEIGHT = 58;
+import {
+  groupShoppingList,
+  type ShoppingListItem,
+  type ShoppingListRecipe,
+  type ShoppingListSection,
+  type ShoppingListView,
+} from "@/lib/shoppingListGroups";
 
-// ShoppingListItem from the API
-export interface ShoppingListItem {
-  id: number;
-  ingredientName: string;
-  quantity: number;
-  unit: string | null;
-  displayText: string;
-  isChecked: boolean;
-  aisle: string;
-  sourceItems: {
-    id: number;
-    quantity: number | null;
-    sourceRecipeId: number | null;
-    sourceRecipeName: string | null;
-  }[];
-}
+export type { ShoppingListItem } from "@/lib/shoppingListGroups";
 
-// FlashList item types - discriminated union
-interface SectionHeaderItem {
+interface SectionHeaderRow {
   type: "section-header";
   id: string;
   title: string;
-  isComplete: boolean;
+  recipe?: ShoppingListRecipe;
+  isFirst: boolean;
 }
 
-interface ShoppingItem {
+interface ItemRow {
   type: "item";
   id: string;
-  itemId: number;
-  ingredientName: string;
-  quantity: number;
-  unit: string | null;
-  displayText: string;
-  isChecked: boolean;
-  aisle: string;
-  sourceItems: {
-    id: number;
-    quantity: number | null;
-    sourceRecipeId: number | null;
-    sourceRecipeName: string | null;
-  }[];
+  item: ShoppingListItem;
+  isFirstInSection: boolean;
 }
 
-export type ShoppingListFlashItem = SectionHeaderItem | ShoppingItem;
+export type ShoppingListRow = SectionHeaderRow | ItemRow;
 
-interface UseShoppingListDataProps {
+interface Options {
   items: ShoppingListItem[];
+  recipes: ShoppingListRecipe[];
+  view: ShoppingListView;
+  /** Ticked items are hidden unless asked for. */
+  showTicked: boolean;
 }
 
-export const useShoppingListData = ({ items }: UseShoppingListDataProps) => {
-  // Flatten items into a single array with section headers interspersed
-  const flattenedData: ShoppingListFlashItem[] = useMemo(() => {
-    if (!items.length) return [];
+/** The sections of the list, and the flat rows the FlatList renders. */
+export const useShoppingListData = ({
+  items,
+  recipes,
+  view,
+  showTicked,
+}: Options) => {
+  const sections: ShoppingListSection[] = useMemo(
+    () => groupShoppingList(items, recipes, view),
+    [items, recipes, view],
+  );
 
-    // Group by aisle
-    const groups = new Map<string, ShoppingListItem[]>();
-    for (const item of items) {
-      const aisle = item.aisle || "Other";
-      const existing = groups.get(aisle) || [];
-      existing.push(item);
-      groups.set(aisle, existing);
-    }
-
-    // Sort by aisle order and flatten with section headers
-    const result: ShoppingListFlashItem[] = [];
-
-    const sortedAisles = Array.from(groups.entries()).sort(
-      (a, b) => getAisleOrder(a[0] as any) - getAisleOrder(b[0] as any),
-    );
-
-    for (const [aisle, aisleItems] of sortedAisles) {
-      const isComplete =
-        aisleItems.length > 0 && aisleItems.every((item) => item.isChecked);
-
-      // Add section header
+  const rows = useMemo(() => {
+    const result: ShoppingListRow[] = [];
+    for (const section of sections) {
+      const visible = showTicked
+        ? section.items
+        : section.items.filter((i) => !i.isChecked);
+      if (!visible.length) continue;
       result.push({
         type: "section-header",
-        id: `header-${aisle}`,
-        title: aisle,
-        isComplete,
+        id: `header-${section.key}`,
+        title: section.title,
+        ...(section.recipe ? { recipe: section.recipe } : {}),
+        isFirst: result.length === 0,
       });
-
-      // Add items
-      for (const item of aisleItems) {
+      visible.forEach((item, index) =>
         result.push({
           type: "item",
           id: `item-${item.id}`,
-          itemId: item.id,
-          ingredientName: item.ingredientName,
-          quantity: item.quantity,
-          unit: item.unit,
-          displayText: item.displayText,
-          isChecked: item.isChecked,
-          aisle: item.aisle,
-          sourceItems: item.sourceItems,
-        });
-      }
+          item,
+          isFirstInSection: index === 0,
+        }),
+      );
     }
-
     return result;
-  }, [items]);
+  }, [sections, showTicked]);
 
-  return {
-    flattenedData,
-    SECTION_HEADER_HEIGHT,
-    ITEM_HEIGHT,
-  };
+  return { sections, rows };
 };

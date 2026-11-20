@@ -31,11 +31,114 @@ import {
 } from "@repo/shared";
 import { TRPCError } from "@trpc/server";
 import { type } from "arktype";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 
 import { createAndSendNotificationInBackground } from "../services/push-notification.service";
 import { router, authedProcedure } from "../trpc";
 import { mapServiceError } from "../utils";
+
+interface ShoppingListRow {
+  id: number;
+  ingredientName: string;
+  displayName: string;
+  quantity: string | null;
+  unit: string | null;
+  isChecked: boolean;
+  aisle: string;
+  sourceRecipeId: number | null;
+  sourceRecipeName: string | null;
+}
+
+/**
+ * One list item per ingredient and unit, merged from every row (one row per
+ * recipe that needs it, plus anything typed in). Rows come in newest first,
+ * and the item takes its id from the newest row. It counts as ticked only
+ * once every row is, so ticking one recipe's share leaves the rest to get.
+ */
+export function mergeShoppingListItems(rows: ShoppingListRow[]) {
+  const merged = new Map<
+    string,
+    {
+      ingredientName: string;
+      displayName: string;
+      unit: string | null;
+      totalQuantity: number;
+      aisle: string;
+      items: {
+        id: number;
+        quantity: number;
+        isChecked: boolean;
+        sourceRecipeId: number | null;
+        sourceRecipeName: string | null;
+      }[];
+    }
+  >();
+
+  for (const row of rows) {
+    const key = `${row.ingredientName}::${row.unit || "null"}`;
+    const quantity = row.quantity ? parseFloat(row.quantity) : 0;
+    const source = {
+      id: row.id,
+      quantity,
+      isChecked: row.isChecked,
+      sourceRecipeId: row.sourceRecipeId,
+      sourceRecipeName: row.sourceRecipeName,
+    };
+    const existing = merged.get(key);
+    if (existing) {
+      existing.totalQuantity += quantity;
+      existing.items.push(source);
+    } else {
+      merged.set(key, {
+        ingredientName: row.ingredientName,
+        displayName: row.displayName,
+        unit: row.unit,
+        totalQuantity: quantity,
+        aisle: row.aisle,
+        items: [source],
+      });
+    }
+  }
+
+  const items = [...merged.values()].map((agg) => ({
+    id: agg.items[0]?.id ?? 0,
+    ingredientName: agg.ingredientName,
+    displayName: agg.displayName,
+    displayText: agg.unit
+      ? `${formatQuantity(agg.totalQuantity)} ${agg.unit} ${agg.displayName}`
+      : agg.totalQuantity
+        ? `${formatQuantity(agg.totalQuantity)} ${agg.displayName}`
+        : agg.displayName,
+    quantity: agg.totalQuantity,
+    unit: agg.unit,
+    isChecked: agg.items.every((source) => source.isChecked),
+    aisle: agg.aisle,
+    sourceItems: agg.items,
+  }));
+
+  // Ordering ignores ticks, so ticking an item doesn't move it
+  items.sort(
+    (a, b) =>
+      a.displayName.localeCompare(b.displayName) ||
+      a.displayText.localeCompare(b.displayText),
+  );
+  return items;
+}
+
+/** Most rows a single merged list item can stand for. */
+const MAX_GROUP_ITEM_IDS = 100;
+
+/** The item's own ID plus the other rows merged into it, without repeats. */
+export function groupItemIds(itemId: number, itemIds?: number[]): number[] {
+  const ids = [...new Set([itemId, ...(itemIds ?? [])])];
+  if (ids.length > MAX_GROUP_ITEM_IDS) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Too many items",
+    });
+  }
+  return ids;
+}
 
 type RecipeShoppingIngredient = {
   id: number;
@@ -126,85 +229,7 @@ export const shoppingRouter = router({
           .where(eq(shoppingListItems.shoppingListId, shoppingList.id))
           .orderBy(desc(shoppingListItems.createdAt));
 
-        // Aggregate items by ingredientName + unit
-        const aggregatedItemsMap = new Map<
-          string,
-          {
-            ingredientName: string;
-            displayName: string;
-            unit: string | null;
-            totalQuantity: number;
-            isChecked: boolean;
-            aisle: string;
-            items: {
-              id: number;
-              quantity: number | null;
-              sourceRecipeId: number | null;
-              sourceRecipeName: string | null;
-            }[];
-          }
-        >();
-
-        for (const item of rawItems) {
-          const key = `${item.ingredientName}::${item.unit || "null"}`;
-          const quantity = item.quantity ? parseFloat(item.quantity) : 0;
-
-          if (!aggregatedItemsMap.has(key)) {
-            aggregatedItemsMap.set(key, {
-              ingredientName: item.ingredientName,
-              displayName: item.displayName,
-              unit: item.unit,
-              totalQuantity: quantity,
-              isChecked: item.isChecked,
-              aisle: item.aisle,
-              items: [
-                {
-                  id: item.id,
-                  quantity,
-                  sourceRecipeId: item.sourceRecipeId,
-                  sourceRecipeName: item.sourceRecipeName,
-                },
-              ],
-            });
-          } else {
-            const existing = aggregatedItemsMap.get(key)!;
-            existing.totalQuantity += quantity;
-            existing.items.push({
-              id: item.id,
-              quantity,
-              sourceRecipeId: item.sourceRecipeId,
-              sourceRecipeName: item.sourceRecipeName,
-            });
-            // If ANY item is checked, mark the whole group as checked
-            if (item.isChecked) {
-              existing.isChecked = true;
-            }
-          }
-        }
-
-        // Convert map to array and format for display
-        const items = Array.from(aggregatedItemsMap.values()).map((agg) => ({
-          // We use the first item's ID as the group ID for operations
-          id: agg.items[0]?.id || 0,
-          ingredientName: agg.ingredientName,
-          displayText: agg.unit
-            ? `${formatQuantity(agg.totalQuantity)} ${agg.unit} ${agg.displayName}`
-            : agg.totalQuantity
-              ? `${formatQuantity(agg.totalQuantity)} ${agg.displayName}`
-              : agg.displayName,
-          quantity: agg.totalQuantity,
-          unit: agg.unit,
-          isChecked: agg.isChecked,
-          aisle: agg.aisle,
-          // Return the underlying items for detailed view
-          sourceItems: agg.items,
-        }));
-
-        // Keep item ordering independent of checked state so checking an item
-        // does not move it after the server response refreshes the cache.
-        items.sort((a, b) => {
-          return a.displayText.localeCompare(b.displayText);
-        });
+        const items = mergeShoppingListItems(rawItems);
 
         // Get all recipes in the shopping list
         const recipesList = await ctx.db
@@ -367,27 +392,28 @@ export const shoppingRouter = router({
     .input(
       type({
         itemId: "number",
+        // The list shows one row per ingredient, merged from every recipe
+        // that needs it. Older apps send only itemId; newer ones send every
+        // row behind the merged item so they all change together.
+        "itemIds?": "number[]",
+        "isChecked?": "boolean",
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const { itemId } = input;
+      const ids = groupItemIds(input.itemId, input.itemIds);
 
       try {
-        // Get item and its shopping list
-        const item = await ctx.db
+        const rows = await ctx.db
           .select({
-            item: shoppingListItems,
-            list: shoppingLists,
+            id: shoppingListItems.id,
+            isChecked: shoppingListItems.isChecked,
+            listId: shoppingListItems.shoppingListId,
           })
           .from(shoppingListItems)
-          .innerJoin(
-            shoppingLists,
-            eq(shoppingListItems.shoppingListId, shoppingLists.id),
-          )
-          .where(eq(shoppingListItems.id, itemId))
-          .then((rows) => rows[0]);
+          .where(inArray(shoppingListItems.id, ids));
 
-        if (!item) {
+        const primary = rows.find((row) => row.id === input.itemId);
+        if (!primary) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Item not found",
@@ -398,7 +424,7 @@ export const shoppingRouter = router({
         const hasAccess = await canUserAccessShoppingList(
           ctx.db,
           ctx.user.id,
-          item.list.id,
+          primary.listId,
         );
         if (!hasAccess) {
           throw new TRPCError({
@@ -407,15 +433,20 @@ export const shoppingRouter = router({
           });
         }
 
-        // Toggle checked status
-        const newChecked = !item.item.isChecked;
+        const newChecked = input.isChecked ?? !primary.isChecked;
         await ctx.db
           .update(shoppingListItems)
           .set({
             isChecked: newChecked,
             updatedAt: new Date(),
           })
-          .where(eq(shoppingListItems.id, itemId));
+          .where(
+            and(
+              inArray(shoppingListItems.id, ids),
+              // Ignore any ID from another list
+              eq(shoppingListItems.shoppingListId, primary.listId),
+            ),
+          );
 
         return { success: true, isChecked: newChecked };
       } catch (err) {
@@ -436,29 +467,31 @@ export const shoppingRouter = router({
     .input(
       type({
         itemId: "number",
+        // Every row behind a merged item (see toggleItemChecked)
+        "itemIds?": "number[]",
         shoppingListId: "number",
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const { itemId, shoppingListId } = input;
+      const ids = groupItemIds(itemId, input.itemIds);
 
       try {
-        // Get item details
-        const item = await ctx.db
+        // Only rows on the selected list
+        const rows = await ctx.db
           .select({
-            listId: shoppingListItems.shoppingListId,
+            id: shoppingListItems.id,
             sourceRecipeId: shoppingListItems.sourceRecipeId,
           })
           .from(shoppingListItems)
           .where(
             and(
-              eq(shoppingListItems.id, itemId),
+              inArray(shoppingListItems.id, ids),
               eq(shoppingListItems.shoppingListId, shoppingListId),
             ),
-          )
-          .then((rows) => rows[0]);
+          );
 
-        if (!item) {
+        if (!rows.some((row) => row.id === itemId)) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Item not found",
@@ -469,7 +502,7 @@ export const shoppingRouter = router({
         const hasAccess = await canUserAccessShoppingList(
           ctx.db,
           ctx.user.id,
-          item.listId,
+          shoppingListId,
         );
         if (!hasAccess) {
           throw new TRPCError({
@@ -478,33 +511,45 @@ export const shoppingRouter = router({
           });
         }
 
-        await ctx.db.transaction(async (tx) => {
-          // Delete the item
-          await tx
-            .delete(shoppingListItems)
-            .where(eq(shoppingListItems.id, itemId));
+        const recipeIds = [
+          ...new Set(
+            rows
+              .map((row) => row.sourceRecipeId)
+              .filter((id): id is number => id != null),
+          ),
+        ];
 
-          // If this item was from a recipe, check if it was the last item
-          if (item.sourceRecipeId) {
+        await ctx.db.transaction(async (tx) => {
+          await tx.delete(shoppingListItems).where(
+            and(
+              inArray(
+                shoppingListItems.id,
+                rows.map((row) => row.id),
+              ),
+              eq(shoppingListItems.shoppingListId, shoppingListId),
+            ),
+          );
+
+          // A recipe with nothing left on the list comes off it too
+          for (const recipeId of recipeIds) {
             const remainingItems = await tx
               .select({ id: shoppingListItems.id })
               .from(shoppingListItems)
               .where(
                 and(
-                  eq(shoppingListItems.shoppingListId, item.listId),
-                  eq(shoppingListItems.sourceRecipeId, item.sourceRecipeId),
+                  eq(shoppingListItems.shoppingListId, shoppingListId),
+                  eq(shoppingListItems.sourceRecipeId, recipeId),
                 ),
               )
               .limit(1);
 
-            // If no items remain from this recipe, remove the recipe too
             if (remainingItems.length === 0) {
               await tx
                 .delete(shoppingListRecipes)
                 .where(
                   and(
-                    eq(shoppingListRecipes.shoppingListId, item.listId),
-                    eq(shoppingListRecipes.recipeId, item.sourceRecipeId),
+                    eq(shoppingListRecipes.shoppingListId, shoppingListId),
+                    eq(shoppingListRecipes.recipeId, recipeId),
                   ),
                 );
             }

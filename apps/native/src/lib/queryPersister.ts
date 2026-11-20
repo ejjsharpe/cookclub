@@ -24,5 +24,5 @@ export const queryPersister = createAsyncStoragePersister({
 export const persistOptions = {
   persister: queryPersister,
   maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-  buster: "v2", // Increment when breaking cache schema changes (v2: plans gained mealTimes)
+  buster: "v3", // Increment when breaking cache schema changes (v2: plans gained mealTimes; v3: shopping rows gained isChecked)
 };
