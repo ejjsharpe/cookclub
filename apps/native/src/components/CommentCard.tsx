@@ -1,12 +1,6 @@
 import { parseMentionTokens } from "@repo/shared";
 import { memo, useCallback, useMemo, type ReactNode } from "react";
-import {
-  Alert,
-  Keyboard,
-  Pressable,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Alert, Pressable, View, useWindowDimensions } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { Avatar } from "./Avatar";
@@ -19,6 +13,7 @@ import {
 import type { CommentOption } from "./comment-options/types";
 
 import type { Comment } from "@/api/comment";
+import { dismissKeyboardForMenu } from "@/utils/dismissKeyboardForMenu";
 import { formatRelativeTimeShort } from "@/utils/relativeTime";
 
 export const COMMENT_AVATAR_SIZE = 34;
@@ -43,16 +38,6 @@ interface Props {
   onUserPress: (userId: string) => void;
   onMentionPress: (userId: string) => void;
 }
-
-/**
- * Opening a native menu takes focus from the composer, and iOS hides the
- * keyboard without the keyboard events the composer follows, so it would be
- * left floating and then jump when the keyboard returned. Put the keyboard
- * away ourselves first so the composer goes down with it.
- */
-const dismissKeyboardForMenu = () => {
-  if (Keyboard.isVisible()) Keyboard.dismiss();
-};
 
 export const CommentCard = memo(
   ({

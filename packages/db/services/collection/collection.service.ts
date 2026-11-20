@@ -239,6 +239,7 @@ export interface CollectionDetailResult {
     id: number;
     name: string;
     cookTime: number | null; // minutes
+    totalTime: number | null; // minutes
     servings: number | null;
     sourceUrl: string | null;
     coverImage: string | null;
@@ -283,6 +284,7 @@ export async function getCollectionDetail(
       id: recipes.id,
       name: recipes.name,
       cookTime: recipes.cookTime,
+      totalTime: recipes.totalTime,
       servings: recipes.servings,
       sourceUrl: recipes.sourceUrl,
       createdAt: recipes.createdAt,

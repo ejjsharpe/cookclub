@@ -12,6 +12,8 @@ interface GlassCircleButtonProps {
   accessibilityHint?: string;
   onPress: () => void;
   disabled?: boolean;
+  /** Defaults to the toolbar size. */
+  size?: number;
 }
 
 /** A round glass button for toolbars that float over a screen. */
@@ -21,10 +23,12 @@ export const GlassCircleButton = ({
   accessibilityHint,
   onPress,
   disabled,
+  size = GLASS_CONTROL_SIZE,
 }: GlassCircleButtonProps) => {
   const { theme } = useUnistyles();
+  const dimensions = { width: size, height: size, borderRadius: size / 2 };
   return (
-    <GlassSurface interactive style={styles.circle}>
+    <GlassSurface interactive style={dimensions}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
@@ -33,7 +37,11 @@ export const GlassCircleButton = ({
         disabled={disabled}
         hitSlop={4}
         onPress={onPress}
-        style={({ pressed }) => [styles.hit, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.hit,
+          { width: size, height: size },
+          pressed && styles.pressed,
+        ]}
       >
         <SystemIcon {...icon} size={20} color={theme.colors.text} />
       </Pressable>
@@ -42,14 +50,7 @@ export const GlassCircleButton = ({
 };
 
 const styles = StyleSheet.create(() => ({
-  circle: {
-    width: GLASS_CONTROL_SIZE,
-    height: GLASS_CONTROL_SIZE,
-    borderRadius: GLASS_CONTROL_SIZE / 2,
-  },
   hit: {
-    width: GLASS_CONTROL_SIZE,
-    height: GLASS_CONTROL_SIZE,
     alignItems: "center",
     justifyContent: "center",
   },

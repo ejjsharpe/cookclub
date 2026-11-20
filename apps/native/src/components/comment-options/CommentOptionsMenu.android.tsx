@@ -16,6 +16,7 @@ import type { CommentContextMenuProps, CommentOptionsMenuProps } from "./types";
  */
 export const CommentOptionsMenu = ({
   options,
+  accessibilityLabel = "Comment options",
   children,
 }: CommentOptionsMenuProps) => {
   const { theme } = useUnistyles();
@@ -32,7 +33,7 @@ export const CommentOptionsMenu = ({
             <Pressable
               hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="Comment options"
+              accessibilityLabel={accessibilityLabel}
               accessibilityState={{ expanded }}
               onPress={() => setExpanded(true)}
             >
