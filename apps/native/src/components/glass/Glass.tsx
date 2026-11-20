@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import {
   Platform,
   Pressable,
+  View,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
@@ -99,7 +100,7 @@ export const GlassSurface = ({
           tint="systemChromeMaterial"
           style={[styles.blurFallback, style]}
         >
-          {children}
+          <View style={contentLayout}>{children}</View>
         </BlurView>
       </Animated.View>
     );
@@ -110,7 +111,7 @@ export const GlassSurface = ({
       pointerEvents={pointerEvents}
       style={[styles.solidFallback, style, contentStyle]}
     >
-      {children}
+      <View style={contentLayout}>{children}</View>
     </Animated.View>
   );
 };
