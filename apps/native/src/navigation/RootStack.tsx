@@ -60,7 +60,12 @@ const RootStack = createNativeStackNavigator({
         headerShown: false,
       },
       screens: {
-        Tabs: TabNavigator,
+        Tabs: {
+          screen: TabNavigator,
+          // Coming from onboarding the welcome already covers the swap, and
+          // laying the native tab bar out mid-transition clips its labels
+          options: { animation: "none" },
+        },
         GenerateRecipe: { screen: GenerateRecipeScreen },
         Settings: { screen: SettingsScreen },
         BlockedUsers: { screen: BlockedUsersScreen },

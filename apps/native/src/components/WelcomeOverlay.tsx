@@ -1,197 +1,345 @@
-import { useTRPC } from "@repo/trpc/client";
-import { useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useState } from "react";
+import { Image } from "expo-image";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { View } from "react-native";
 import Animated, {
+  ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
-  withSequence,
   withSpring,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
+import { scheduleOnRN } from "react-native-worklets";
 
+import startImage1 from "@/assets/images/start-food-1.jpg";
+import startImage6 from "@/assets/images/start-food-6.jpg";
+import { Avatar } from "@/components/Avatar";
 import { Text } from "@/components/Text";
+import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 
-const SPRING = { damping: 20, stiffness: 170, mass: 0.8 };
-const FADE_OUT_DURATION = 500;
+export interface WelcomePerson {
+  name: string;
+  image?: string | null;
+}
+
+export interface WelcomeDetails {
+  me: WelcomePerson;
+  /** Who they just followed, newest first. Empty shows dishes instead. */
+  followed: WelcomePerson[];
+  /** "Let's cook" waits for this, e.g. finishing onboarding on the server. */
+  ready?: Promise<unknown>;
+}
 
 type WelcomeOverlayContextType = {
-  triggerWelcome: () => void;
+  /** Shows the welcome over whatever is on screen. */
+  showWelcome: (details: WelcomeDetails) => void;
+  /** Takes it away straight away, e.g. when finishing onboarding failed. */
+  hideWelcome: () => void;
 };
 
 const WelcomeOverlayContext = createContext<WelcomeOverlayContextType>({
-  triggerWelcome: () => {},
+  showWelcome: () => {},
+  hideWelcome: () => {},
 });
 
 export const useWelcomeOverlay = () => useContext(WelcomeOverlayContext);
 
-export function WelcomeOverlayProvider({
-  children,
+// Gentle springs: a hint of overshoot, no bounce
+const SPRING = { damping: 20, stiffness: 170, mass: 0.8 };
+const RISE = { duration: 420 };
+const ME = 72;
+const SIDE = 52;
+
+const firstName = (person: WelcomePerson) =>
+  person.name.trim().split(" ")[0] || "them";
+
+export function welcomeLine(followed: WelcomePerson[]): string {
+  if (!followed.length) {
+    return "Save a recipe you love to get started.\nHome fills up as you cook.";
+  }
+  const [a, b] = followed;
+  if (followed.length === 1) {
+    return `You're following ${firstName(a!)}.\nTheir latest cooking is waiting on Home.`;
+  }
+  const who =
+    followed.length === 2
+      ? `${firstName(a!)} and ${firstName(b!)}`
+      : `${firstName(a!)}, ${firstName(b!)} and ${followed.length - 2} more`;
+  return `You're following ${who}.\nTheir latest cooking is waiting on Home.`;
+}
+
+/** Fades in while rising `by` points. */
+const useRise = (shown: SharedValue<number>, by = 12) =>
+  useAnimatedStyle(() => ({
+    opacity: shown.get(),
+    transform: [{ translateY: (1 - shown.get()) * by }],
+  }));
+
+/** Slides out from behind the centre face, from the `dir` side. */
+const useSlideOut = (shown: SharedValue<number>, dir: 1 | -1) =>
+  useAnimatedStyle(() => ({
+    opacity: Math.min(1, shown.get()),
+    transform: [
+      { translateX: (1 - shown.get()) * 34 * dir },
+      { scale: 0.8 + 0.2 * shown.get() },
+    ],
+  }));
+
+function Welcome({
+  details,
+  onDone,
 }: {
-  children: React.ReactNode;
+  details: WelcomeDetails;
+  onDone: () => void;
 }) {
-  const [visible, setVisible] = useState(false);
-  const trpc = useTRPC();
-  const queryClient = useQueryClient();
+  const reduceMotion = useReducedMotion();
+  const backdrop = useSharedValue(0);
+  const me = useSharedValue(0);
+  const left = useSharedValue(0);
+  const right = useSharedValue(0);
+  const lead = useSharedValue(0);
+  const wordmark = useSharedValue(0);
+  const line = useSharedValue(0);
+  const button = useSharedValue(0);
+  const leaving = useSharedValue(0);
+  const shownAt = useRef(0);
+  const [isReady, setIsReady] = useState(!details.ready);
 
-  // Animation shared values
-  const overlayOpacity = useSharedValue(0);
-  const welcomeOpacity = useSharedValue(0);
-  const welcomeTranslateY = useSharedValue(60);
-  const cookingOpacity = useSharedValue(0);
-  const cookingTranslateY = useSharedValue(60);
+  useEffect(() => {
+    let live = true;
+    // A failure is handled by whoever showed the welcome (it hides it)
+    details.ready?.then(
+      () => live && setIsReady(true),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [details.ready]);
 
-  const updateQueryCache = useCallback(() => {
-    queryClient.setQueryData(trpc.user.getUser.queryKey(), (old: any) => {
-      if (!old) return old;
-      return {
-        ...old,
-        user: { ...old.user, onboardingCompleted: true },
-      };
-    });
-  }, [queryClient, trpc]);
-
-  const unmountOverlay = useCallback(() => {
-    setVisible(false);
+  useEffect(() => {
+    if (reduceMotion) {
+      for (const v of [backdrop, me, left, right, lead, wordmark, line])
+        v.set(1);
+      return;
+    }
+    shownAt.current = Date.now();
+    backdrop.set(withTiming(1, { duration: 150 }));
+    me.set(withDelay(150, withSpring(1, SPRING)));
+    left.set(withDelay(420, withSpring(1, SPRING)));
+    right.set(withDelay(480, withSpring(1, SPRING)));
+    lead.set(withDelay(700, withTiming(1, RISE)));
+    wordmark.set(withDelay(780, withTiming(1, { duration: 460 })));
+    line.set(withDelay(980, withTiming(1, RISE)));
+    // Shared values are stable; this runs once when the welcome appears
   }, []);
 
-  const triggerWelcome = useCallback(() => {
-    // Reset values
-    overlayOpacity.set(0);
-    welcomeOpacity.set(0);
-    welcomeTranslateY.set(60);
-    cookingOpacity.set(0);
-    cookingTranslateY.set(60);
+  // The button arrives last, and never before there's somewhere to go
+  useEffect(() => {
+    if (!isReady) return;
+    if (reduceMotion) {
+      button.set(1);
+      return;
+    }
+    const wait = Math.max(0, 1200 - (Date.now() - shownAt.current));
+    button.set(withDelay(wait, withSpring(1, SPRING)));
+  }, [isReady, reduceMotion, button]);
 
-    setVisible(true);
-
-    // Overlay fades in, holds, then fades out to reveal tabs
-    overlayOpacity.set(
-      withSequence(
-        withTiming(1, { duration: 300 }),
-        withDelay(2900, withTiming(0, { duration: FADE_OUT_DURATION })),
+  const leave = () => {
+    leaving.set(
+      withTiming(
+        1,
+        { duration: 300, reduceMotion: ReduceMotion.System },
+        (done) => {
+          if (done) scheduleOnRN(onDone);
+        },
       ),
     );
+  };
 
-    // Phase 1 → 2: Welcome text springs in, holds, then springs out
-    welcomeOpacity.set(
-      withSequence(
-        withSpring(1, SPRING),
-        withDelay(600, withSpring(0, SPRING)),
-      ),
-    );
-    welcomeTranslateY.set(
-      withSequence(
-        withSpring(0, SPRING),
-        withDelay(600, withSpring(-40, SPRING)),
-      ),
-    );
-
-    // Phase 2: "Let's get cooking!" springs in after welcome exits (~1800ms)
-    cookingOpacity.set(withDelay(1800, withSpring(1, SPRING)));
-    cookingTranslateY.set(withDelay(1800, withSpring(0, SPRING)));
-
-    // Phase 3: Update cache so tabs mount underneath (~2600ms)
-    setTimeout(() => {
-      updateQueryCache();
-    }, 2600);
-
-    // Phase 4: Unmount after fade completes
-    setTimeout(
-      () => {
-        unmountOverlay();
-      },
-      3200 + FADE_OUT_DURATION + 100,
-    );
-  }, [
-    overlayOpacity,
-    welcomeOpacity,
-    welcomeTranslateY,
-    cookingOpacity,
-    cookingTranslateY,
-    updateQueryCache,
-    unmountOverlay,
-  ]);
-
-  const welcomeStyle = useAnimatedStyle(() => ({
-    opacity: welcomeOpacity.get(),
-    transform: [{ translateY: welcomeTranslateY.get() }],
+  const screenStyle = useAnimatedStyle(() => ({
+    opacity: backdrop.get() * (1 - leaving.get()),
+    transform: [{ scale: 1 - 0.04 * leaving.get() }],
   }));
-
-  const cookingStyle = useAnimatedStyle(() => ({
-    opacity: cookingOpacity.get(),
-    transform: [{ translateY: cookingTranslateY.get() }],
+  const meStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, me.get() * 1.5),
+    transform: [{ scale: 0.6 + 0.4 * me.get() }],
   }));
+  const leftStyle = useSlideOut(left, 1);
+  const rightStyle = useSlideOut(right, -1);
+  const leadStyle = useRise(lead);
+  const wordmarkStyle = useRise(wordmark, 14);
+  const lineStyle = useRise(line, 10);
+  const buttonStyle = useRise(button, 24);
 
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: overlayOpacity.get(),
-  }));
+  const [first, second] = details.followed;
+  const sides: ReactNode[] = first
+    ? [
+        <Avatar key="a" imageUrl={first.image} name={first.name} size={SIDE} />,
+        second ? (
+          <Avatar
+            key="b"
+            imageUrl={second.image}
+            name={second.name}
+            size={SIDE}
+          />
+        ) : null,
+      ]
+    : [
+        <Image key="a" source={startImage6} style={styles.dish} />,
+        <Image key="b" source={startImage1} style={styles.dish} />,
+      ];
 
   return (
-    <WelcomeOverlayContext.Provider value={{ triggerWelcome }}>
-      {children}
-      {visible && (
-        <Animated.View style={[styles.overlay, overlayStyle]}>
-          <Animated.View style={[styles.textGroup, welcomeStyle]}>
-            <Text style={styles.welcomeText}>Welcome to</Text>
-            <Text style={styles.brandText}>
-              cook
-              <Text style={[styles.brandText, styles.clubText]}>club</Text>
-            </Text>
+    <Animated.View
+      style={[styles.overlay, screenStyle]}
+      accessibilityViewIsModal
+    >
+      <View style={styles.centre}>
+        <View style={styles.faces} accessibilityElementsHidden>
+          {sides[0] ? (
+            <Animated.View style={[styles.ring, leftStyle]}>
+              {sides[0]}
+            </Animated.View>
+          ) : null}
+          <Animated.View style={[styles.ring, styles.me, meStyle]}>
+            <Avatar
+              imageUrl={details.me.image}
+              name={details.me.name}
+              size={ME}
+            />
           </Animated.View>
-          <Animated.View style={[styles.textGroup, cookingStyle]}>
-            <Text style={styles.cookingText}>Let's get cooking!</Text>
-          </Animated.View>
+          {sides[1] ? (
+            <Animated.View style={[styles.ring, rightStyle]}>
+              {sides[1]}
+            </Animated.View>
+          ) : null}
+        </View>
+        <Animated.View style={leadStyle}>
+          <Text style={styles.lead}>Welcome to</Text>
         </Animated.View>
-      )}
+        <Animated.View style={wordmarkStyle}>
+          <Text style={styles.wordmark} accessibilityRole="header">
+            cook<Text style={[styles.wordmark, styles.club]}>club</Text>
+          </Text>
+        </Animated.View>
+        <Animated.View style={lineStyle}>
+          <Text style={styles.line}>{welcomeLine(details.followed)}</Text>
+        </Animated.View>
+      </View>
+      <Animated.View style={[styles.footer, buttonStyle]}>
+        <PrimaryButton onPress={leave} disabled={!isReady}>
+          Let's cook
+        </PrimaryButton>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+/**
+ * Shown once onboarding finishes: your face with the cooks you followed
+ * (or a couple of dishes), "Welcome to cookclub", and one button into Home.
+ * Home mounts underneath while it plays.
+ */
+export function WelcomeOverlayProvider({ children }: { children: ReactNode }) {
+  const [details, setDetails] = useState<WelcomeDetails | null>(null);
+
+  const showWelcome = useCallback((next: WelcomeDetails) => {
+    setDetails(next);
+  }, []);
+  const hideWelcome = useCallback(() => setDetails(null), []);
+  const value = useMemo(
+    () => ({ showWelcome, hideWelcome }),
+    [showWelcome, hideWelcome],
+  );
+
+  return (
+    <WelcomeOverlayContext.Provider value={value}>
+      {/* TalkBack has no modal flag, so hide what's behind the welcome */}
+      <View
+        style={styles.app}
+        importantForAccessibility={details ? "no-hide-descendants" : "auto"}
+        accessibilityElementsHidden={!!details}
+      >
+        {children}
+      </View>
+      {details ? <Welcome details={details} onDone={hideWelcome} /> : null}
     </WelcomeOverlayContext.Provider>
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create((theme, rt) => ({
+  app: {
+    flex: 1,
+  },
   overlay: {
-    ...({
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-    } as const),
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: theme.colors.background,
-    justifyContent: "center",
-    alignItems: "center",
     zIndex: 9999,
   },
-  textGroup: {
-    position: "absolute",
+  centre: {
+    flex: 1,
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
   },
-  welcomeText: {
-    fontSize: 24,
-    lineHeight: 24,
-    fontFamily: theme.fonts.regular,
-    color: theme.colors.text,
-    letterSpacing: -1,
-    paddingHorizontal: 2,
+  faces: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 28,
   },
-  brandText: {
-    fontSize: 44,
-    lineHeight: 54,
-    fontFamily: theme.fonts.black,
-    color: theme.colors.text,
-    letterSpacing: -2.3,
-    paddingHorizontal: 6,
+  ring: {
+    borderRadius: 999,
+    borderWidth: 3,
+    borderColor: theme.colors.background,
+    backgroundColor: theme.colors.background,
   },
-  clubText: {
-    color: theme.colors.primary,
+  me: {
+    marginHorizontal: -12,
+    zIndex: 1,
   },
-  cookingText: {
-    fontSize: 34,
+  dish: {
+    width: SIDE,
+    height: SIDE,
+    borderRadius: SIDE / 2,
+  },
+  lead: {
+    fontSize: 17,
+    color: theme.colors.textSecondary,
+    textAlign: "center",
+  },
+  wordmark: {
+    fontSize: 36,
     lineHeight: 44,
     fontFamily: theme.fonts.black,
+    letterSpacing: -1.8,
     color: theme.colors.text,
-    letterSpacing: -1,
-    paddingHorizontal: 2,
+    textAlign: "center",
+  },
+  club: {
+    color: theme.colors.primary,
+  },
+  line: {
+    marginTop: 14,
+    fontSize: 16,
+    lineHeight: 22,
+    color: theme.colors.textSecondary,
+    textAlign: "center",
+  },
+  footer: {
+    paddingHorizontal: 24,
+    paddingBottom: rt.insets.bottom + 8,
   },
 }));

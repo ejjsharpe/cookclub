@@ -1,20 +1,29 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { View, ScrollView, useWindowDimensions } from "react-native";
+import { useTRPC } from "@repo/trpc/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import {
+  Keyboard,
+  Pressable,
+  ScrollView,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
   withSpring,
   withTiming,
-  Easing,
 } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
 
-import { OnboardingStepFollowCooks } from "./onboarding-steps/OnboardingStepFollowCooks";
-import { OnboardingStepMeasurements } from "./onboarding-steps/OnboardingStepMeasurements";
-import { OnboardingStepProfile } from "./onboarding-steps/OnboardingStepProfile";
+import { OnboardingStepAbout } from "./onboarding-steps/OnboardingStepAbout";
+import {
+  OnboardingStepFollowCooks,
+  SUGGESTED_COOKS,
+} from "./onboarding-steps/OnboardingStepFollowCooks";
 
+import { useFollowing, useSuggestedUsers } from "@/api/follows";
 import {
   currentTermsAcceptanceInput,
   useAcceptCurrentTerms,
@@ -25,355 +34,437 @@ import {
   useUpdateProfile,
   useUser,
 } from "@/api/user";
-import { OnboardingProgress } from "@/components/OnboardingProgress";
-import { SafeAreaView } from "@/components/SafeAreaView";
-import { VSpace } from "@/components/Space";
 import { Text } from "@/components/Text";
 import { useWelcomeOverlay } from "@/components/WelcomeOverlay";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
-import { ScalePressable } from "@/components/buttons/ScalePressable";
+import { GlassSurface } from "@/components/glass/Glass";
+import { GlassCircleButton } from "@/components/glass/GlassCircleButton";
 import { useAvatarUpload } from "@/hooks/useAvatarUpload";
 import { useDebounce } from "@/hooks/useDebounce";
 import { alertApiError } from "@/lib/apiErrorAlert";
 import type { MeasurementSystem } from "@/lib/measurementPreferences";
+import {
+  setOnboardingPreview,
+  useOnboardingPreview,
+} from "@/lib/onboardingPreview";
 
-const TOTAL_STEPS = 3;
-const SPRING_CONFIG = { damping: 20, stiffness: 170, mass: 0.8 };
-const TIMING_CONFIG = { duration: 250, easing: Easing.out(Easing.cubic) };
-const BACK_BUTTON_WIDTH = 88;
+const STEPS = 2;
+// Follows tapped just before Continue are given this long to land
+const FOLLOW_SETTLE_MS = 3000;
+const PAGE_SPRING = { damping: 20, stiffness: 170, mass: 0.8 };
+const IMPERIAL_REGIONS = new Set(["US", "LR", "MM"]);
 
-function isMeasurementSystem(
-  value: string | null | undefined,
-): value is MeasurementSystem {
-  return value === "auto" || value === "metric" || value === "imperial";
+/** Metric everywhere except the few places that cook in cups and ounces. */
+function unitsForRegion(): MeasurementSystem {
+  try {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale;
+    const region = locale.split(/[-_]/).find((part) => /^[A-Z]{2}$/.test(part));
+    return region && IMPERIAL_REGIONS.has(region) ? "imperial" : "metric";
+  } catch {
+    return "metric";
+  }
 }
 
+const isMeasurementSystem = (
+  value: string | null | undefined,
+): value is MeasurementSystem =>
+  value === "auto" || value === "metric" || value === "imperial";
+
+/** A small glass capsule of dots; the current one is a longer dash. */
+const StepDots = ({ step }: { step: number }) => (
+  <GlassSurface style={styles.dots} contentStyle={styles.dotsInner}>
+    <View
+      style={styles.dotsLabel}
+      accessible
+      accessibilityLabel={`Step ${step} of ${STEPS}`}
+    />
+    {Array.from({ length: STEPS }, (_, i) => (
+      <View
+        key={i}
+        style={[
+          styles.dot,
+          i + 1 === step && styles.dotCurrent,
+          i + 1 <= step && styles.dotDone,
+        ]}
+      />
+    ))}
+  </GlassSurface>
+);
+
+/**
+ * Two short steps after sign-up: "About you", then "Follow cooks". Glass
+ * controls float over the content; the welcome plays when you finish.
+ */
 export default function OnboardingScreen() {
-  const { width: screenWidth } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { data: userData } = useUser();
   const user = userData?.user;
-  const { triggerWelcome } = useWelcomeOverlay();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { data: following } = useFollowing();
+  // Loads while you fill in step 1, so step 2 opens with them ready
+  useSuggestedUsers(SUGGESTED_COOKS);
+  const { showWelcome, hideWelcome } = useWelcomeOverlay();
   const completeOnboarding = useCompleteOnboarding();
   const updateProfile = useUpdateProfile();
   const acceptTerms = useAcceptCurrentTerms();
-  const { upload: uploadAvatar, isUploading: isUploadingAvatar } =
-    useAvatarUpload();
+  const { upload: uploadAvatar, isUploading } = useAvatarUpload();
 
-  const [currentStep, setCurrentStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-
-  // Step 1: Profile data
+  const [step, setStep] = useState(1);
+  // Step 2 stays mounted once reached, so going back doesn't blank it
+  const [reachedFollow, setReachedFollow] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
   const [name, setName] = useState("");
-  const [bio, setBio] = useState("");
-  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [username, setUsername] = useState("");
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [units, setUnits] = useState<MeasurementSystem>(unitsForRegion);
+  const hydrated = useRef(false);
+  // A development preview: nothing on the About step is saved
+  const isPreview = useOnboardingPreview();
 
-  // Step 2: Measurements
-  const [measurementSystem, setMeasurementSystem] =
-    useState<MeasurementSystem>("auto");
-  const hasHydratedUser = useRef(false);
-
+  // Fill in what sign-up already knows (Apple and Google give a name)
   useEffect(() => {
-    if (!user || hasHydratedUser.current) return;
-
-    hasHydratedUser.current = true;
+    if (!user || hydrated.current) return;
+    hydrated.current = true;
     setName(user.name);
     setUsername(user.username ?? "");
-    setBio(user.bio ?? "");
-    if (isMeasurementSystem(user.measurementPreference)) {
-      setMeasurementSystem(user.measurementPreference);
+    if (
+      isMeasurementSystem(user.measurementPreference) &&
+      user.measurementPreference !== "auto"
+    ) {
+      setUnits(user.measurementPreference);
     }
   }, [user]);
 
-  // Username validation
   const debouncedUsername = useDebounce(username, 300);
-  const { data: usernameCheck, isFetching: isCheckingUsername } =
-    useCheckUsername(debouncedUsername);
+  const {
+    data: usernameCheck,
+    isFetching: isCheckingUsername,
+    isError: usernameCheckFailed,
+  } = useCheckUsername(debouncedUsername);
+  const isUsernameAvailable =
+    debouncedUsername === username ? usernameCheck?.available : undefined;
+  // Still typing, or waiting on the server
+  const isUsernamePending =
+    username.length >= 3 &&
+    (debouncedUsername !== username || isCheckingUsername);
 
-  const isUsernameAvailable = usernameCheck?.available;
-  const usernameError = usernameCheck?.reason ?? null;
-
-  // Spring pager animation
-  const translateX = useSharedValue(0);
-
-  const animatedPagerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.get() }],
+  const page = useSharedValue(0);
+  const pagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -page.get() * width }],
+  }));
+  const back = useSharedValue(0);
+  const backStyle = useAnimatedStyle(() => ({
+    opacity: back.get(),
+    transform: [{ scale: 0.8 + 0.2 * back.get() }],
   }));
 
-  // Back button animation
-  const backButtonProgress = useSharedValue(0);
+  const goTo = (requested: number) => {
+    const next = Math.min(STEPS, Math.max(1, requested));
+    Keyboard.dismiss();
+    if (next === 2) setReachedFollow(true);
+    setStep(next);
+    page.set(withSpring(next - 1, PAGE_SPRING));
+    back.set(withTiming(next > 1 ? 1 : 0, { duration: 200 }));
+  };
 
-  const animatedBackButtonStyle = useAnimatedStyle(() => ({
-    width: backButtonProgress.get() * BACK_BUTTON_WIDTH,
-    marginRight: backButtonProgress.get() * 12,
-    opacity: backButtonProgress.get(),
-    overflow: "hidden" as const,
-  }));
+  const canContinue =
+    name.trim().length > 0 &&
+    username.length >= 3 &&
+    isUsernameAvailable === true;
 
-  const navigateToStep = useCallback(
-    (step: number) => {
-      setCurrentStep(step);
-      translateX.set(withSpring(-(step - 1) * screenWidth, SPRING_CONFIG));
-      backButtonProgress.set(withTiming(step > 1 ? 1 : 0, TIMING_CONFIG));
-    },
-    [translateX, backButtonProgress, screenWidth],
-  );
-
-  const handleNext = async () => {
-    if (currentStep === 1 && !canProceed()) {
-      setHasAttemptedSubmit(true);
+  const saveAbout = async () => {
+    if (!canContinue) {
+      setShowErrors(true);
       return;
     }
-
-    setIsSubmitting(true);
+    if (isPreview) return goTo(2);
+    setIsSaving(true);
     try {
-      if (currentStep === 1) {
-        await acceptTerms.mutateAsync(currentTermsAcceptanceInput);
-
-        await updateProfile.mutateAsync({
-          username,
-          name: name.trim(),
-          bio: bio || null,
-        });
-
-        if (profileImage) {
-          await uploadAvatar(profileImage);
-          setProfileImage(null);
-        }
-
-        navigateToStep(2);
-      } else if (currentStep === 2) {
-        await updateProfile.mutateAsync({
-          measurementPreference: measurementSystem,
-        });
-        navigateToStep(3);
-      } else {
-        await completeOnboarding.mutateAsync({
-          username,
-          name: name.trim(),
-          bio: bio || null,
-          measurementPreference: measurementSystem,
-        });
-        triggerWelcome();
-        return;
+      await acceptTerms.mutateAsync(currentTermsAcceptanceInput);
+      await updateProfile.mutateAsync({
+        username,
+        name: name.trim(),
+        measurementPreference: units,
+      });
+      if (profileImage) {
+        await uploadAvatar(profileImage);
+        setProfileImage(null);
       }
+      goTo(2);
     } catch (error) {
-      const errorDetails =
-        currentStep === 1
-          ? {
-              title: "Profile Save Failed",
-              operation: "onboarding.saveProfile",
-              fallback: "Failed to save your profile. Please try again.",
-            }
-          : currentStep === 2
-            ? {
-                title: "Preferences Save Failed",
-                operation: "onboarding.savePreferences",
-                fallback: "Failed to save your preferences. Please try again.",
-              }
-            : {
-                title: "Onboarding Failed",
-                operation: "onboarding.complete",
-                fallback: "Failed to finish onboarding. Please try again.",
-              };
+      alertApiError("Couldn't save your profile", error, {
+        operation: "onboarding.saveProfile",
+        fallback: "Please try again.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-      alertApiError(errorDetails.title, error, {
-        operation: errorDetails.operation,
-        fallback: errorDetails.fallback,
+  /** Who you follow, once any follow you just tapped has landed. */
+  const settledFollowing = async () => {
+    const filters = { mutationKey: trpc.follows.pathKey() };
+    if (queryClient.isMutating(filters)) {
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(done, FOLLOW_SETTLE_MS);
+        const unsubscribe = queryClient.getMutationCache().subscribe(() => {
+          if (!queryClient.isMutating(filters)) done();
+        });
+        function done() {
+          clearTimeout(timeout);
+          unsubscribe();
+          resolve();
+        }
       });
     }
-    setIsSubmitting(false);
-  };
-
-  const handleBack = () => {
-    if (currentStep > 1) {
-      navigateToStep(currentStep - 1);
+    try {
+      const list = await queryClient.fetchQuery({
+        ...trpc.follows.getFollowing.queryOptions(),
+        staleTime: 0,
+      });
+      return list.map((f) => f.user);
+    } catch {
+      return (following ?? []).map((f) => f.user);
     }
   };
 
-  const canProceed = () => {
-    if (currentStep === 1) {
-      return (
-        username.length >= 3 &&
-        isUsernameAvailable === true &&
-        name.trim().length > 0
-      );
+  const finish = async () => {
+    if (isSaving) return;
+    Keyboard.dismiss();
+    setIsSaving(true);
+    try {
+      const followed = await settledFollowing();
+      const completed = isPreview
+        ? Promise.resolve()
+        : completeOnboarding.mutateAsync({
+            username,
+            name: name.trim(),
+            measurementPreference: units,
+          });
+      // The welcome covers the screen first, so Home can mount underneath
+      // it. Its button waits until setting up has finished.
+      showWelcome({
+        me: { name: name.trim() || user?.name || "", image: user?.image },
+        followed,
+        ready: completed,
+      });
+      if (isPreview) {
+        // Let the welcome cover the screen before leaving onboarding
+        setTimeout(() => setOnboardingPreview(false), 200);
+        return;
+      }
+      await completed;
+    } catch (error) {
+      hideWelcome();
+      alertApiError("Couldn't finish setting up", error, {
+        operation: "onboarding.complete",
+        fallback: "Please try again.",
+      });
+    } finally {
+      setIsSaving(false);
     }
-    return true;
   };
+
+  const busy = isSaving || isUploading;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.content}>
-        <VSpace size={10} />
-        <Text type="title2" style={styles.brandText}>
-          cook
-          <Text type="title2" style={styles.clubText}>
-            club
-          </Text>
-        </Text>
-        <VSpace size={12} />
-        <OnboardingProgress
-          currentStep={currentStep}
-          totalSteps={TOTAL_STEPS}
-        />
-        <VSpace size={24} />
+    <View style={styles.screen}>
+      <Animated.View
+        style={[styles.pager, { width: width * STEPS }, pagerStyle]}
+      >
+        <KeyboardAwareScrollView
+          style={{ width }}
+          accessibilityElementsHidden={step !== 1}
+          importantForAccessibility={
+            step !== 1 ? "no-hide-descendants" : "auto"
+          }
+          contentContainerStyle={styles.page}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bottomOffset={110}
+        >
+          <OnboardingStepAbout
+            name={name}
+            setName={setName}
+            username={username}
+            setUsername={setUsername}
+            profileImage={profileImage}
+            setProfileImage={setProfileImage}
+            existingImage={user?.image}
+            units={units}
+            setUnits={setUnits}
+            isCheckingUsername={isCheckingUsername}
+            isUsernameAvailable={isUsernameAvailable}
+            checkFailed={usernameCheckFailed}
+            usernameError={
+              usernameCheckFailed
+                ? "Couldn't check that username. Try again."
+                : (usernameCheck?.reason ?? null)
+            }
+            showErrors={showErrors}
+          />
+        </KeyboardAwareScrollView>
+        <ScrollView
+          style={{ width }}
+          contentContainerStyle={styles.page}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          accessibilityElementsHidden={step !== 2}
+          importantForAccessibility={
+            step !== 2 ? "no-hide-descendants" : "auto"
+          }
+        >
+          {reachedFollow ? <OnboardingStepFollowCooks /> : null}
+        </ScrollView>
+      </Animated.View>
 
-        <View style={styles.pagerContainer}>
-          <Animated.View
-            style={[
-              styles.pagerRow,
-              { width: screenWidth * TOTAL_STEPS },
-              animatedPagerStyle,
-            ]}
-          >
-            <KeyboardAwareScrollView
-              style={[styles.stepContainer, { width: screenWidth }]}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={insets.bottom}
-              extraKeyboardSpace={8}
-            >
-              <OnboardingStepProfile
-                name={name}
-                setName={setName}
-                bio={bio}
-                setBio={setBio}
-                profileImage={profileImage}
-                setProfileImage={setProfileImage}
-                existingName={user?.name}
-                existingImage={user?.image}
-                username={username}
-                setUsername={setUsername}
-                isUsernameAvailable={isUsernameAvailable}
-                isCheckingUsername={isCheckingUsername}
-                usernameError={usernameError}
-                hasAttemptedSubmit={hasAttemptedSubmit}
-              />
-            </KeyboardAwareScrollView>
+      <View style={styles.top} pointerEvents="box-none">
+        <Animated.View
+          style={backStyle}
+          pointerEvents={step > 1 ? "auto" : "none"}
+          accessibilityElementsHidden={step === 1}
+          importantForAccessibility={
+            step === 1 ? "no-hide-descendants" : "auto"
+          }
+        >
+          <GlassCircleButton
+            icon={{ sf: "chevron.left", android: "chevron-back" }}
+            accessibilityLabel="Back"
+            onPress={() => goTo(step - 1)}
+            size={40}
+          />
+        </Animated.View>
+        <StepDots step={step} />
+        <View style={styles.topSpacer} />
+      </View>
 
-            <View
-              style={[
-                styles.stepContainer,
-                styles.stepContent,
-                { width: screenWidth },
-              ]}
-            >
-              <OnboardingStepMeasurements
-                selected={measurementSystem}
-                onSelect={setMeasurementSystem}
-              />
-            </View>
-
-            <ScrollView
-              style={[styles.stepContainer, { width: screenWidth }]}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <OnboardingStepFollowCooks />
-            </ScrollView>
-          </Animated.View>
-        </View>
-
-        <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
-          <View style={styles.buttonRow}>
-            <Animated.View style={animatedBackButtonStyle}>
-              <ScalePressable
-                style={styles.backButton}
-                onPress={handleBack}
+      <View style={styles.footer} pointerEvents="box-none">
+        {step === 1 ? (
+          <PrimaryButton onPress={saveAbout} disabled={busy}>
+            {busy
+              ? "Saving…"
+              : isUsernamePending
+                ? "Checking username…"
+                : "Continue"}
+          </PrimaryButton>
+        ) : (
+          <View style={styles.footerRow}>
+            <GlassSurface interactive style={styles.skip}>
+              <Pressable
+                onPress={finish}
+                disabled={busy}
                 accessibilityRole="button"
-                accessibilityLabel="Previous onboarding step"
+                style={({ pressed }) => [
+                  styles.skipHit,
+                  pressed && styles.pressed,
+                ]}
               >
-                <Text style={styles.backButtonText}>Back</Text>
-              </ScalePressable>
-            </Animated.View>
-            <View style={styles.nextButtonFlex}>
-              <PrimaryButton
-                onPress={handleNext}
-                disabled={
-                  (currentStep !== 1 && !canProceed()) ||
-                  isSubmitting ||
-                  isUploadingAvatar
-                }
-              >
-                {isSubmitting || isUploadingAvatar
-                  ? "Saving..."
-                  : currentStep === TOTAL_STEPS
-                    ? "Get Started"
-                    : "Continue"}
+                <Text style={styles.skipText}>Skip</Text>
+              </Pressable>
+            </GlassSurface>
+            <View style={styles.continue}>
+              <PrimaryButton onPress={finish} disabled={busy}>
+                Continue
               </PrimaryButton>
             </View>
           </View>
-        </View>
+        )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  content: {
-    flex: 1,
-  },
-  brandText: {
-    textAlign: "center",
-    letterSpacing: -1,
-    paddingHorizontal: 2,
-  },
-  clubText: {
-    color: theme.colors.primary,
-    letterSpacing: -1,
-  },
-  pagerContainer: {
+const styles = StyleSheet.create((theme, rt) => ({
+  screen: {
     flex: 1,
     overflow: "hidden",
-  },
-  pagerRow: {
-    flexDirection: "row",
-    flex: 1,
-  },
-  stepContainer: {},
-  stepContent: {
-    paddingHorizontal: 20,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    flexGrow: 1,
-  },
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.background,
   },
-  buttonRow: {
-    flexDirection: "row",
-    width: "100%",
-  },
-  backButton: {
-    width: BACK_BUTTON_WIDTH,
-    height: 50,
-    borderRadius: 999,
-    backgroundColor: theme.colors.inputBackground,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontFamily: theme.fonts.medium,
-    color: theme.colors.textSecondary,
-  },
-  nextButtonFlex: {
+  pager: {
     flex: 1,
-    width: undefined,
+    flexDirection: "row",
+  },
+  page: {
+    paddingHorizontal: 24,
+    paddingTop: rt.insets.top + 68,
+    // Room to scroll the last item above the floating buttons
+    paddingBottom: rt.insets.bottom + 110,
+  },
+  top: {
+    position: "absolute",
+    top: rt.insets.top + 6,
+    left: 16,
+    right: 16,
+    height: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  topSpacer: {
+    width: 40,
+  },
+  dots: {
+    height: 28,
+    borderRadius: 14,
+  },
+  dotsInner: {
+    height: 28,
+    paddingHorizontal: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  dotsLabel: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.border,
+  },
+  dotCurrent: {
+    width: 16,
+  },
+  dotDone: {
+    backgroundColor: theme.colors.primary,
+  },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: rt.insets.bottom + 8,
+    experimental_backgroundImage: `linear-gradient(180deg, ${theme.colors.background}00 0%, ${theme.colors.background} 45%)`,
+  },
+  footerRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  skip: {
+    height: 50,
+    borderRadius: 25,
+  },
+  skipHit: {
+    height: 50,
+    paddingHorizontal: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skipText: {
+    fontSize: 16,
+    fontFamily: theme.fonts.bold,
+    color: theme.colors.text,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  continue: {
+    flex: 1,
   },
 }));

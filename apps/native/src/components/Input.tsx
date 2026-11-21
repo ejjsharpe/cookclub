@@ -1,4 +1,9 @@
-import { TextInput, TextInputProps, View } from "react-native";
+import {
+  TextInput,
+  TextInputProps,
+  View,
+  type TextInputInstance,
+} from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 
@@ -8,6 +13,7 @@ const ERROR_ENTERING = FadeIn.duration(160);
 const ERROR_EXITING = FadeOut.duration(100);
 
 interface Props extends TextInputProps {
+  ref?: React.Ref<TextInputInstance>;
   label?: string;
   rightElement?: React.ReactNode;
   error?: string;
