@@ -62,6 +62,7 @@ import { VSpace } from "@/components/Space";
 import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
 import { GlassSurface } from "@/components/glass/Glass";
+import { SignatureIcon } from "@/components/icons/SignatureIcon";
 import {
   PeopleLine,
   type SharingMember,
@@ -861,7 +862,7 @@ export const ShoppingListScreen = () => {
 
     return (
       <Animated.View style={[styles.centered, emptyStateAnimatedStyle]}>
-        <Ionicons name="cart-outline" size={56} style={styles.emptyIcon} />
+        <SignatureIcon name="shop" size={56} color={theme.colors.border} />
         <VSpace size={12} />
         <Text type="heading">Your shopping list is empty</Text>
         <VSpace size={6} />
@@ -1300,9 +1301,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     alignItems: "center",
     paddingHorizontal: 32,
     top: -80,
-  },
-  emptyIcon: {
-    color: theme.colors.border,
   },
   doneIcon: {
     color: theme.colors.primary,
