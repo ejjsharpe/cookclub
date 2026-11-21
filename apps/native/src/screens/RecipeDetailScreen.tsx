@@ -34,7 +34,6 @@ import {
   NativeScrollEvent,
   Platform,
   Pressable,
-  ScrollView,
   TextInput,
 } from "react-native";
 import {
@@ -91,6 +90,11 @@ import {
   type PersonaliseRecipeSheetRef,
 } from "@/components/PersonaliseRecipeSheet";
 import {
+  RecipePhotosSheet,
+  type RecipePhotoItem,
+  type RecipePhotosSheetRef,
+} from "@/components/RecipePhotosSheet";
+import {
   ReportContentSheet,
   type ReportContentSheetRef,
 } from "@/components/ReportContentSheet";
@@ -137,11 +141,16 @@ import {
   convertParsedIngredient,
 } from "@/utils/measurementUtils";
 import { transformParsedRecipeForPreview } from "@/utils/recipeTransform";
-import { moveArrayItem } from "@/utils/reorder";
 import { formatMinutesShort } from "@/utils/timeUtils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const IMAGE_HEIGHT = SCREEN_WIDTH;
+// Where each photo sits in the fanned stack on the edit-mode photo pill.
+const STACK_POSES = [
+  { left: 0, transform: [{ rotate: "-8deg" }] },
+  { left: 12, transform: [{ rotate: "-2deg" }] },
+  { left: 24, transform: [{ rotate: "8deg" }] },
+] as const;
 
 type RecipeDetailMode = "view" | "edit";
 
@@ -586,6 +595,7 @@ export const RecipeDetailScreen = () => {
   const collectionSheetRef = useRef<CollectionSelectorSheetRef>(null);
   const cookingReviewSheetRef = useRef<CookingReviewSheetRef>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
+  const recipePhotosSheetRef = useRef<RecipePhotosSheetRef>(null);
   const ingredientSectionYRef = useRef(0);
   const summaryPanelYRef = useRef(0);
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
@@ -1160,20 +1170,46 @@ export const RecipeDetailScreen = () => {
     [currentImageIndex, draft, updateDraft],
   );
 
-  const handleMoveImage = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      if (!draft) return;
-      if (toIndex < 0 || toIndex >= draft.images.length) return;
-      if (fromIndex === toIndex) return;
-
-      pendingImageScrollIndexRef.current = toIndex;
+  const handleReorderImages = useCallback(
+    (ids: string[]) => {
+      updateDraft((current) => {
+        const byId = new Map(current.images.map((image) => [image.id, image]));
+        const reordered = ids
+          .map((id) => byId.get(id))
+          .filter((image): image is DraftImage => Boolean(image));
+        // Keep anything added while the sheet was open.
+        const rest = current.images.filter((image) => !ids.includes(image.id));
+        return { ...current, images: [...reordered, ...rest] };
+      });
+      // Show the cover, which is what a reorder is usually about.
+      pendingImageScrollIndexRef.current = 0;
       pendingImageScrollAnimatedRef.current = false;
-      updateDraft((current) => ({
-        ...current,
-        images: moveArrayItem(current.images, fromIndex, toIndex),
-      }));
     },
-    [draft, updateDraft],
+    [updateDraft],
+  );
+
+  const handleRemoveImageById = useCallback(
+    (id: string) => {
+      const index = draft?.images.findIndex((image) => image.id === id) ?? -1;
+      if (index >= 0) handleRemoveImage(index);
+    },
+    [draft, handleRemoveImage],
+  );
+
+  const draftPhotoItems = useMemo<RecipePhotoItem[]>(
+    () =>
+      (draft?.images ?? []).map((image) => {
+        const progress = uploadProgress[image.uri];
+        return {
+          id: image.id,
+          uri: image.isRemote
+            ? (getImageUrl(image.asset ?? image.uri, "recipe-card") ?? null)
+            : image.uri,
+          isUploading:
+            progress !== undefined && progress >= 0 && progress < 100,
+        };
+      }),
+    [draft?.images, uploadProgress],
   );
 
   const addIngredient = useCallback(
@@ -1885,151 +1921,81 @@ export const RecipeDetailScreen = () => {
 
   const renderDraftPhotoStrip = () => {
     if (!isEditing || !draft) return null;
-    const isCreatingImage = generateRecipeImageMutation.isPending;
-    const lastIndex = draft.images.length - 1;
+    const count = draft.images.length;
+    // Up to three photos fanned behind one another; the cover sits on top.
+    const stack = draftPhotoItems.slice(0, 3);
 
     return (
       <View pointerEvents="box-none" style={styles.photoStripWrap}>
         {renderValidationMessage("images", true, true)}
-        <GlassSurface
-          style={styles.photoStrip}
-          contentStyle={styles.photoStripContent}
-        >
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.photoThumbScroll}
-            contentContainerStyle={styles.photoThumbScrollContent}
+        <View pointerEvents="box-none" style={styles.photoControls}>
+          <GlassSurface
+            interactive
+            style={styles.photoPill}
+            contentStyle={styles.photoPillContent}
           >
-            {draft.images.map((image, index) => {
-              const thumbUrl = image.isRemote
-                ? getImageUrl(image.asset ?? image.uri, "recipe-thumb")
-                : image.uri;
-              const position = `Photo ${index + 1} of ${draft.images.length}`;
-              const options: CommentOption[] = [
-                ...(index > 0
-                  ? [
-                      {
-                        key: "cover",
-                        label: "Make Cover",
-                        systemImage: "star" as const,
-                        run: () => handleMoveImage(index, 0),
-                      },
-                      {
-                        key: "earlier",
-                        label: "Move Earlier",
-                        systemImage: "arrow.left" as const,
-                        run: () => handleMoveImage(index, index - 1),
-                      },
-                    ]
-                  : []),
-                ...(index < lastIndex
-                  ? [
-                      {
-                        key: "later",
-                        label: "Move Later",
-                        systemImage: "arrow.right" as const,
-                        run: () => handleMoveImage(index, index + 1),
-                      },
-                    ]
-                  : []),
-                {
-                  key: "remove",
-                  label: "Remove Photo",
-                  systemImage: "trash",
-                  destructive: true,
-                  run: () => handleRemoveImage(index),
-                },
-              ];
-
-              return (
-                <View key={image.id} style={styles.photoThumbWrap}>
-                  <CommentOptionsMenu
-                    options={options}
-                    accessibilityLabel={
-                      index === 0
-                        ? `${position}, cover. Photo options`
-                        : `${position}. Photo options`
-                    }
-                  >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${count} ${count === 1 ? "photo" : "photos"}`}
+              accessibilityHint="Reorder, remove or add photos"
+              onPress={() => recipePhotosSheetRef.current?.present()}
+              style={({ pressed }) => [
+                styles.photoPillButton,
+                pressed && styles.photoStripButtonPressed,
+              ]}
+            >
+              <View
+                style={[
+                  styles.photoStack,
+                  { width: 30 + Math.max(0, stack.length - 1) * 12 },
+                ]}
+              >
+                {stack
+                  .map((photo, index) => (
                     <View
-                      accessible
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        index === 0
-                          ? `${position}, cover. Photo options`
-                          : `${position}. Photo options`
-                      }
-                      style={[
-                        styles.photoThumb,
-                        index === currentImageIndex &&
-                          styles.photoThumbSelected,
-                      ]}
+                      key={photo.id}
+                      style={[styles.photoStackItem, STACK_POSES[index]]}
                     >
-                      {thumbUrl ? (
+                      {photo.uri ? (
                         <Image
-                          source={{ uri: thumbUrl }}
+                          source={{ uri: photo.uri }}
                           style={styles.photoThumbImage}
                           contentFit="cover"
                         />
                       ) : null}
-                      {index === 0 ? (
-                        <View style={styles.photoCoverLabel}>
-                          <Text style={styles.photoCoverText}>Cover</Text>
-                        </View>
-                      ) : null}
                     </View>
-                  </CommentOptionsMenu>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${position.toLowerCase()}`}
-                    hitSlop={6}
-                    onPress={() => handleRemoveImage(index)}
-                    style={styles.photoRemoveBadge}
-                  >
-                    <Ionicons name="close" size={12} color="white" />
-                  </Pressable>
-                </View>
-              );
-            })}
-          </ScrollView>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add photo"
-            accessibilityHint="Take a photo or choose one from your library"
-            onPress={handlePickRecipeImage}
-            style={({ pressed }) => [
-              styles.photoStripButton,
-              pressed && styles.photoStripButtonPressed,
-            ]}
-          >
-            <Ionicons name="add" size={22} style={styles.photoStripIcon} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Create photo with AI"
-            accessibilityState={{
-              disabled: isCreatingImage,
-              busy: isCreatingImage,
-            }}
-            disabled={isCreatingImage}
-            onPress={handleGenerateRecipeImage}
-            style={({ pressed }) => [
-              styles.photoStripButton,
-              pressed && styles.photoStripButtonPressed,
-            ]}
-          >
-            {isCreatingImage ? (
-              <ActivityIndicator size="small" />
-            ) : (
+                  ))
+                  .reverse()}
+              </View>
+              <Text style={styles.photoPillText}>
+                {count} {count === 1 ? "photo" : "photos"}
+              </Text>
               <Ionicons
-                name="sparkles"
-                size={19}
-                style={styles.photoStripIcon}
+                name="chevron-forward"
+                size={14}
+                style={styles.photoPillChevron}
               />
-            )}
-          </Pressable>
-        </GlassSurface>
+            </Pressable>
+          </GlassSurface>
+          <GlassSurface
+            interactive
+            style={styles.photoAddCircle}
+            contentStyle={styles.photoPillContent}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add photo"
+              accessibilityHint="Take a photo or choose one from your library"
+              onPress={handlePickRecipeImage}
+              style={({ pressed }) => [
+                styles.photoAddButton,
+                pressed && styles.photoStripButtonPressed,
+              ]}
+            >
+              <Ionicons name="add" size={22} style={styles.photoStripIcon} />
+            </Pressable>
+          </GlassSurface>
+        </View>
       </View>
     );
   };
@@ -2919,14 +2885,9 @@ export const RecipeDetailScreen = () => {
         layout={LinearTransition.duration(180)}
         style={styles.tagEditor}
       >
-        <View style={styles.tagEditorHeader}>
-          <Ionicons name="pricetag-outline" size={16} style={styles.tagsIcon} />
-          <Text style={styles.tagEditorTitle}>Tags</Text>
-        </View>
         <AutocompleteTagSelector
           selectedNames={draft.tagNames}
           onChange={updateDraftTags}
-          placeholder="Search tags"
         />
       </Animated.View>
     );
@@ -3263,6 +3224,18 @@ export const RecipeDetailScreen = () => {
       />
 
       <ReportContentSheet ref={reportSheetRef} />
+
+      {isEditing && draft ? (
+        <RecipePhotosSheet
+          ref={recipePhotosSheetRef}
+          photos={draftPhotoItems}
+          onReorder={handleReorderImages}
+          onRemove={handleRemoveImageById}
+          onAddPhoto={handlePickRecipeImage}
+          onCreateWithAI={handleGenerateRecipeImage}
+          isCreatingWithAI={generateRecipeImageMutation.isPending}
+        />
+      ) : null}
 
       {isEditing && draft ? (
         <Animated.View
@@ -3654,22 +3627,9 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.textSecondary,
     fontFamily: theme.fonts.bold,
   },
-  tagsIcon: {
-    color: theme.colors.textSecondary,
-  },
   tagEditor: {
     gap: 10,
     marginBottom: 4,
-  },
-  tagEditorHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  tagEditorTitle: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
   },
   recipeDescription: {
     lineHeight: 22,
@@ -4234,89 +4194,65 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: 8,
   },
-  photoStrip: {
-    borderRadius: 24,
-    borderCurve: "continuous",
-    maxWidth: "100%",
-    overflow: "hidden",
-  },
-  photoStripContent: {
-    maxWidth: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 8,
-  },
-  photoThumbScroll: {
-    flexShrink: 1,
-    // Room for the remove badges, which sit over the tile corners.
-    marginVertical: -6,
-  },
-  photoThumbScrollContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 6,
-    paddingRight: 6,
-  },
-  photoThumbWrap: {
-    width: 48,
-    height: 48,
-  },
-  photoThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    borderCurve: "continuous",
-    overflow: "hidden",
-    backgroundColor: theme.colors.inputBackground,
-  },
-  photoThumbSelected: {
-    borderWidth: 2,
-    borderColor: "white",
-  },
   photoThumbImage: {
     width: "100%",
     height: "100%",
   },
-  photoCoverLabel: {
-    position: "absolute",
-    left: 3,
-    right: 3,
-    bottom: 3,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.62)",
-    justifyContent: "center",
+  photoControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  photoPill: {
+    height: 50,
+    borderRadius: 25,
+  },
+  photoPillContent: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
   },
-  photoCoverText: {
-    color: "white",
-    fontSize: 9,
-    lineHeight: 12,
-    fontFamily: theme.fonts.bold,
+  photoPillButton: {
+    height: 50,
+    paddingLeft: 10,
+    paddingRight: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
-  photoRemoveBadge: {
+  photoStack: {
+    height: 34,
+  },
+  photoStackItem: {
     position: "absolute",
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 2,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    borderCurve: "continuous",
     borderWidth: 2,
     borderColor: "white",
-    backgroundColor: "#191919",
-    justifyContent: "center",
-    alignItems: "center",
+    overflow: "hidden",
+    backgroundColor: theme.colors.inputBackground,
   },
-  photoStripButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    borderCurve: "continuous",
-    backgroundColor: "rgba(255,255,255,0.55)",
-    justifyContent: "center",
+  photoPillText: {
+    color: "#191919",
+    fontSize: 15,
+    fontFamily: theme.fonts.bold,
+  },
+  photoPillChevron: {
+    color: "rgba(0,0,0,0.5)",
+  },
+  photoAddCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  photoAddButton: {
+    width: 50,
+    height: 50,
     alignItems: "center",
+    justifyContent: "center",
   },
   photoStripButtonPressed: {
     opacity: 0.6,
