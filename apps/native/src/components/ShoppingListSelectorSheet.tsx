@@ -549,14 +549,16 @@ export const ShoppingListSelectorSheet = forwardRef<
   },
 );
 
-const styles = StyleSheet.create((theme, rt) => ({
+const styles = StyleSheet.create((theme) => ({
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 60 + rt.insets.bottom,
+    // The footer's height above the safe area (border, padding, button),
+    // plus a little air. The sheet adds the safe area itself.
+    paddingBottom: 1 + 12 + 50 + 12 + 16,
     gap: 14,
   },
   sectionHeadingRow: {

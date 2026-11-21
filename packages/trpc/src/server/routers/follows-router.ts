@@ -173,6 +173,7 @@ export const followsRouter = router({
               ne(user.id, ctx.user.id),
               eq(user.emailVerified, true),
               eq(user.onboardingCompleted, true),
+              sql`coalesce(${user.banned}, false) = false`,
               isNotNull(user.username),
               ...(blockedUserIds.length > 0
                 ? [notInArray(user.id, blockedUserIds)]
@@ -248,6 +249,31 @@ export const followsRouter = router({
             followerCount: sql<number>`(
               SELECT COUNT(*)::int FROM follows WHERE following_id = "user"."id"
             )`,
+            // Cover photos of their latest public activity, so you can see
+            // what someone cooks before following them
+            // One per photo, newest first: the same dish often appears
+            // in several events (saved, then reviewed)
+            recentImages: sql<string[]>`COALESCE((
+              SELECT array_agg(latest.url ORDER BY latest.at DESC) FROM (
+                SELECT ri.url, MAX(ae.created_at) AS at
+                FROM activity_events ae
+                JOIN recipes r
+                  ON r.id = ae.recipe_id AND r.moderation_state = 'visible'
+                JOIN recipe_images ri
+                  ON ri.recipe_id = ae.recipe_id AND ri.index = 0
+                WHERE ae.user_id = "user"."id"
+                  AND ae.moderation_state = 'visible'
+                  -- Same rule as the feed: a hidden review hides its event
+                  AND NOT EXISTS (
+                    SELECT 1 FROM cooking_reviews cr
+                    WHERE cr.activity_event_id = ae.id
+                      AND cr.moderation_state <> 'visible'
+                  )
+                GROUP BY ri.url
+                ORDER BY at DESC
+                LIMIT 3
+              ) latest
+            ), '{}')`,
           })
           .from(user)
           .where(
@@ -255,6 +281,7 @@ export const followsRouter = router({
               ne(user.id, ctx.user.id),
               eq(user.emailVerified, true),
               eq(user.onboardingCompleted, true),
+              sql`coalesce(${user.banned}, false) = false`,
               isNotNull(user.username),
               ...(blockedUserIds.length > 0
                 ? [notInArray(user.id, blockedUserIds)]

@@ -563,7 +563,7 @@ export const ProPaywallSheet = forwardRef<
 const styles = StyleSheet.create((theme, rt) => ({
   content: {
     paddingHorizontal: 20,
-    paddingBottom: rt.insets.bottom + 132,
+    paddingBottom: 132,
     gap: 22,
   },
   hero: {

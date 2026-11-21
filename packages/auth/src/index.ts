@@ -204,6 +204,17 @@ export function getAuth(
       requireEmailVerification,
       resetPasswordTokenExpiresIn: 60 * 60,
       revokeSessionsOnPasswordReset: true,
+      // Sign-up never says an email is taken (it looks like it worked), so
+      // the owner gets an email instead. Otherwise a returning user who
+      // tried "Create account" would wait for a verification email that
+      // never comes.
+      onExistingUserSignUp: async ({ user }) => {
+        await sendEmail(env, {
+          to: user.email,
+          subject: "You already have a cookclub account",
+          html: `<p>Someone, probably you, tried to create a cookclub account with this email.</p><p>You already have one. Open the app and choose <strong>Continue with email</strong>, then <strong>Sign in</strong>. If you've forgotten your password, you can reset it from there.</p><p>If this wasn't you, you can ignore this email.</p>`,
+        });
+      },
       sendResetPassword: async ({ user, url, token }) => {
         // Better Auth has already checked this callback against trustedOrigins.
         // A fragment keeps the bearer token out of HTTP access logs/referrers.

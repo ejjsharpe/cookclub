@@ -136,10 +136,10 @@ export const ReportContentSheet = forwardRef<ReportContentSheetRef>(
   },
 );
 
-const styles = StyleSheet.create((theme, rt) => ({
+const styles = StyleSheet.create((theme) => ({
   content: {
     paddingHorizontal: 20,
-    paddingBottom: rt.insets.bottom + 28,
+    paddingBottom: 28,
     gap: 12,
   },
   reasons: { gap: 8 },

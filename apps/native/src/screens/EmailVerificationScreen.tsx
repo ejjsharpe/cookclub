@@ -54,8 +54,10 @@ export const EmailVerificationScreen = () => {
     }
   };
 
-  const handleBackToSignIn = () => {
-    navigation.goBack();
+  // Sign-up looks the same for an email that already has an account, and
+  // the server emails its owner instead, so offer the way back in here
+  const handleSignInInstead = () => {
+    navigation.navigate("Start", { signInEmail: email });
   };
 
   return (
@@ -83,7 +85,8 @@ export const EmailVerificationScreen = () => {
         <VSpace size={8} />
 
         <Text type="bodyFaded" style={styles.subtitle}>
-          Click the link in your email to verify your account and get started.
+          Tap the link in it to verify your account. If you already have an
+          account, we've emailed you about signing in instead.
         </Text>
 
         <VSpace size={32} />
@@ -94,8 +97,10 @@ export const EmailVerificationScreen = () => {
 
         <VSpace size={16} />
 
-        <BaseButton onPress={handleBackToSignIn}>
-          <Text type="bodyFaded">Back to sign in</Text>
+        <BaseButton onPress={handleSignInInstead}>
+          <Text type="bodyFaded">
+            Already have an account? <Text type="highlight">Sign in</Text>
+          </Text>
         </BaseButton>
       </View>
     </SafeAreaView>

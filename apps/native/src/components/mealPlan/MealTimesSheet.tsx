@@ -330,10 +330,10 @@ export const MealTimesSheet = forwardRef<
   );
 });
 
-const styles = StyleSheet.create((theme, rt) => ({
+const styles = StyleSheet.create((theme) => ({
   body: {
     paddingHorizontal: 16,
-    paddingBottom: rt.insets.bottom + 16,
+    paddingBottom: 16,
     gap: 12,
   },
   intro: {
