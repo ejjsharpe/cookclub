@@ -1773,7 +1773,10 @@ export const RecipeDetailScreen = () => {
           items: recipeMenuOptions.map((option) => ({
             type: "action" as const,
             label: option.label,
-            icon: { type: "sfSymbol" as const, name: option.systemImage },
+            icon: {
+              type: "sfSymbol" as const,
+              name: option.systemImage ?? "circle",
+            },
             destructive: option.destructive,
             onPress: option.run,
           })),
