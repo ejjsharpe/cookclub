@@ -1,7 +1,11 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
+import {
+  setOnboardingPreview,
+  useOnboardingPreview,
+} from "./onboardingPreview";
 import { useSessionContext } from "./sessionContext";
 
 import { useUser } from "@/api/user";
@@ -44,6 +48,11 @@ export const SignedInProvider = ({
   const { data: userData, isPending: isUserPending } = useUser({
     enabled: isSignedIn,
   });
+  const isPreviewingOnboarding = useOnboardingPreview();
+  // A preview belongs to the account it started on
+  useEffect(() => {
+    if (!isSignedIn) setOnboardingPreview(false);
+  }, [isSignedIn]);
 
   if (isSignedIn && isUserPending) {
     return <AuthTransitionScreen />;
@@ -51,7 +60,8 @@ export const SignedInProvider = ({
 
   const value: SignedInState = {
     isSignedIn,
-    onboardingCompleted: userData?.user?.onboardingCompleted ?? false,
+    onboardingCompleted:
+      (userData?.user?.onboardingCompleted ?? false) && !isPreviewingOnboarding,
   };
 
   return (

@@ -2,6 +2,7 @@ import type { Outputs } from "@repo/trpc/client";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { forgetEmail } from "@/lib/knownEmails";
 import { clearLocalSessionState } from "@/lib/sessionCleanup";
 
 // API Response Types
@@ -57,6 +58,13 @@ export const useCompleteOnboarding = () => {
   return useMutation({
     ...trpc.user.completeOnboarding.mutationOptions(),
     onSuccess: async () => {
+      // Leave onboarding now rather than when the refetch below lands,
+      // which may never happen if it fails
+      queryClient.setQueryData(trpc.user.getUser.queryKey(), (old) =>
+        old?.user
+          ? { ...old, user: { ...old.user, onboardingCompleted: true } }
+          : old,
+      );
       await Promise.all([
         queryClient.invalidateQueries(trpc.user.getUser.pathFilter()),
         queryClient.invalidateQueries(trpc.follows.pathFilter()),
@@ -88,6 +96,9 @@ export const useDeleteAccount = () => {
   return useMutation({
     ...trpc.user.deleteAccount.mutationOptions(),
     onSuccess: async () => {
+      const email = queryClient.getQueryData(trpc.user.getUser.queryKey())?.user
+        ?.email;
+      if (email) forgetEmail(email);
       await clearLocalSessionState(queryClient);
     },
   });

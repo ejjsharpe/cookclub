@@ -31,12 +31,19 @@ export const useGetUserShoppingLists = () => {
 };
 
 // Create a new shopping list
-export const useCreateShoppingList = () => {
+/**
+ * Lists are created offline-first and sync later. Pass `waitForServer` when
+ * the caller needs the real list straight away (to invite people to it), so
+ * it fails offline instead of waiting.
+ */
+export const useCreateShoppingList = ({
+  waitForServer = false,
+}: { waitForServer?: boolean } = {}) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
   const mutationOptions = trpc.shopping.createShoppingList.mutationOptions({
-    networkMode: "offlineFirst",
+    networkMode: waitForServer ? "always" : "offlineFirst",
     onSuccess: () => {
       const shoppingListsFilter =
         trpc.shopping.getUserShoppingLists.pathFilter();
@@ -441,7 +448,13 @@ export const useGetShoppingListShareableUsers = () => {
 };
 
 // Invite a friend to a shopping list
-export const useInviteToShoppingList = () => {
+/**
+ * Pass `silent` to handle failures yourself, e.g. to show one alert for
+ * several invites.
+ */
+export const useInviteToShoppingList = ({
+  silent = false,
+}: { silent?: boolean } = {}) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
@@ -455,6 +468,7 @@ export const useInviteToShoppingList = () => {
       });
     },
     onError: () => {
+      if (silent) return;
       Alert.alert("Error", "Failed to send invitation. Please try again.");
     },
   });

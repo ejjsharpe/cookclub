@@ -6,7 +6,7 @@ export interface CommentOption {
   key: string;
   label: string;
   /** SF Symbol shown beside the label on iOS. */
-  systemImage: NonNullable<ButtonProps["systemImage"]>;
+  systemImage?: ButtonProps["systemImage"];
   destructive?: boolean;
   run: () => void;
 }

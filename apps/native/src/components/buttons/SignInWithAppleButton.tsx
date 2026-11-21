@@ -37,7 +37,7 @@ export const SignInWithAppleButton = ({
       style={[styles.container, disabled && styles.disabled]}
     >
       <AppleAuthentication.AppleAuthenticationButton
-        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+        buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
         buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
         cornerRadius={25}
         style={styles.button}
