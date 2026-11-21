@@ -1,6 +1,6 @@
 {
   "fill" : {
-    "automatic-gradient" : "display-p3:0.96162,0.13655,0.20829,1.00000",
+    "automatic-gradient" : "display-p3:0.91699,0.20178,0.23145,1.00000",
     "orientation" : {
       "start" : {
         "x" : 0.5,
@@ -16,16 +16,17 @@
     {
       "layers" : [
         {
+          "blend-mode" : "normal",
           "fill" : "automatic",
-          "glass" : true,
+          "glass" : false,
           "hidden" : false,
-          "image-name" : "whiteontrans.png",
-          "name" : "cookclublogo",
+          "image-name" : "Image.png",
+          "name" : "cook-club-bubble",
           "position" : {
-            "scale" : 1.2,
+            "scale" : 0.9,
             "translation-in-points" : [
-              0,
-              66.5234375
+              4.5,
+              9
             ]
           }
         }
