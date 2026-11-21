@@ -25,6 +25,7 @@ import startImage6 from "@/assets/images/start-food-6.jpg";
 import startImage7 from "@/assets/images/start-food-7.jpg";
 import startImage8 from "@/assets/images/start-food-8.jpg";
 import startImage9 from "@/assets/images/start-food-9.jpg";
+import { DevMenuItems } from "@/components/DevMenuItems";
 import { WelcomeOverlayProvider } from "@/components/WelcomeOverlay";
 import { RecipeImportProvider } from "@/features/recipe-import/RecipeImportProvider";
 import { ShareIntentImportHandler } from "@/features/recipe-import/ShareIntentImportHandler";
@@ -165,6 +166,7 @@ function App() {
                         <GestureHandlerRootView style={styles.rootView}>
                           <CookTimerProvider>
                             <WelcomeOverlayProvider>
+                              {__DEV__ ? <DevMenuItems /> : null}
                               <ShareIntentImportHandler />
                               <Navigation
                                 ref={navigationRef}

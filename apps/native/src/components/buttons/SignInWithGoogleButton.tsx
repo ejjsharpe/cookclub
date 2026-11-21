@@ -22,7 +22,7 @@ export function SignInWithGoogleButton({
     >
       <View style={styles.content}>
         <GoogleLogo size={20} />
-        <Text style={styles.text}>Sign in with Google</Text>
+        <Text style={styles.text}>Continue with Google</Text>
       </View>
     </BaseButton>
   );

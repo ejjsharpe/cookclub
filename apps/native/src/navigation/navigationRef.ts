@@ -20,7 +20,8 @@ type ActivityScreenParams = ActivityNotificationTarget & {
 
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
-  Start: undefined;
+  /** signInEmail reopens the email sheet on "Welcome back" for it. */
+  Start: { signInEmail?: string } | undefined;
   Onboarding: undefined;
   Settings: undefined;
   BlockedUsers: undefined;
