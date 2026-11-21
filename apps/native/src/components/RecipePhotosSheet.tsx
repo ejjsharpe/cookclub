@@ -33,6 +33,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { AppSheet } from "@/components/AppSheet";
 import { Ionicons } from "@/components/Ionicons";
 import { Text } from "@/components/Text";
+import { moveArrayItem } from "@/utils/reorder";
 
 const COLUMNS = 2;
 const GAP = 12;
@@ -106,6 +107,8 @@ interface PhotoTileProps {
   count: number;
   tileSize: number;
   positions: SharedValue<Positions>;
+  /** The last order that was saved, to fall back to if a drag is cancelled. */
+  committed: SharedValue<Positions>;
   onDragChange: (dragging: boolean) => void;
   onDrop: () => void;
   onMove: (id: string, to: number) => void;
@@ -118,6 +121,7 @@ const PhotoTile = ({
   count,
   tileSize,
   positions,
+  committed,
   onDragChange,
   onDrop,
   onMove,
@@ -129,6 +133,9 @@ const PhotoTile = ({
   const dragStartX = useSharedValue(0);
   const dragStartY = useSharedValue(0);
   const isDragging = useSharedValue(false);
+  // Stays true until a dropped photo has settled, so it doesn't slide under
+  // its neighbours on the way back.
+  const isLifted = useSharedValue(false);
   const rows = Math.ceil(count / COLUMNS);
 
   // Slide into a new slot whenever another photo is dragged past this one.
@@ -147,6 +154,7 @@ const PhotoTile = ({
     onActivate: () => {
       "worklet";
       isDragging.set(true);
+      isLifted.set(true);
       dragStartX.set(x.get());
       dragStartY.set(y.get());
       scheduleOnRN(onDragChange, true);
@@ -168,12 +176,18 @@ const PhotoTile = ({
         positions.set(movePosition(current, photo.id, to));
       }
     },
-    onDeactivate: () => {
+    onDeactivate: (event) => {
       "worklet";
+      // An interrupted drag (a call, the sheet closing) puts everything back.
+      if (event.canceled) positions.set(committed.get());
       const target = slotOffset(positions.get()[photo.id] ?? 0, tileSize);
       x.set(withSpring(target.x, SPRING));
-      y.set(withSpring(target.y, SPRING));
-      scheduleOnRN(onDrop);
+      y.set(
+        withSpring(target.y, SPRING, () => {
+          isLifted.set(false);
+        }),
+      );
+      if (!event.canceled) scheduleOnRN(onDrop);
     },
     onFinalize: () => {
       "worklet";
@@ -192,7 +206,7 @@ const PhotoTile = ({
         { scale: withSpring(dragging ? 1.06 : 1, SPRING) },
         { rotate: withSpring(dragging ? "3deg" : "0deg", SPRING) },
       ],
-      zIndex: dragging ? 10 : 1,
+      zIndex: dragging || isLifted.get() ? 10 : 1,
       shadowOpacity: withSpring(dragging ? 0.3 : 0, SPRING),
     };
   });
@@ -291,6 +305,14 @@ export const RecipePhotosSheet = forwardRef<
     const sheetRef = useRef<TrueSheet>(null);
     const [isDragging, setIsDragging] = useState(false);
     const positions = useSharedValue<Positions>(positionsFrom(photos));
+    const committed = useSharedValue<Positions>(positionsFrom(photos));
+    const isDraggingRef = useRef(false);
+    const needsResyncRef = useRef(false);
+    const photosRef = useRef(photos);
+    photosRef.current = photos;
+    // Only the order of photos matters here; their upload progress changes
+    // often and mustn't reset a drag in progress.
+    const orderKey = photos.map((photo) => photo.id).join("|");
 
     useImperativeHandle(ref, () => ({
       present: () => {
@@ -299,11 +321,33 @@ export const RecipePhotosSheet = forwardRef<
       dismiss: () => sheetRef.current?.dismiss(),
     }));
 
-    // Start from the real order whenever the photos change (a drop has been
-    // committed, or one was added or removed).
+    const syncPositions = useCallback(() => {
+      const next = positionsFrom(photosRef.current);
+      committed.set(next);
+      positions.set(next);
+    }, [committed, positions]);
+
+    // Start from the real order whenever it changes (a drop was saved, or a
+    // photo was added or removed). Wait if a photo is being dragged.
     useEffect(() => {
-      positions.set(positionsFrom(photos));
-    }, [photos, positions]);
+      if (isDraggingRef.current) {
+        needsResyncRef.current = true;
+        return;
+      }
+      syncPositions();
+    }, [orderKey, syncPositions]);
+
+    const handleDragChange = useCallback(
+      (dragging: boolean) => {
+        isDraggingRef.current = dragging;
+        setIsDragging(dragging);
+        if (!dragging && needsResyncRef.current) {
+          needsResyncRef.current = false;
+          syncPositions();
+        }
+      },
+      [syncPositions],
+    );
 
     const tileSize = Math.floor(
       (width - SIDE_PADDING * 2 - GAP * (COLUMNS - 1)) / COLUMNS,
@@ -323,12 +367,16 @@ export const RecipePhotosSheet = forwardRef<
       }
     }, [onReorder, photos, positions]);
 
+    // VoiceOver moves don't go through the shared value, which updates on
+    // the UI thread a moment later; the new order is worked out here.
     const handleMove = useCallback(
       (id: string, to: number) => {
-        positions.set(movePosition(positions.get(), id, to));
-        handleDrop();
+        const ids = photos.map((photo) => photo.id);
+        const from = ids.indexOf(id);
+        if (from < 0 || to < 0 || to >= ids.length || from === to) return;
+        onReorder(moveArrayItem(ids, from, to));
       },
-      [handleDrop, positions],
+      [onReorder, photos],
     );
 
     return (
@@ -355,7 +403,8 @@ export const RecipePhotosSheet = forwardRef<
                   count={photos.length}
                   tileSize={tileSize}
                   positions={positions}
-                  onDragChange={setIsDragging}
+                  committed={committed}
+                  onDragChange={handleDragChange}
                   onDrop={handleDrop}
                   onMove={handleMove}
                   onRemove={onRemove}
@@ -423,7 +472,9 @@ export const RecipePhotosSheet = forwardRef<
 
 const styles = StyleSheet.create((theme) => ({
   gestureRoot: {
-    flex: 1,
+    // flexGrow rather than flex, or gestures can fail inside the sheet on
+    // Android.
+    flexGrow: 1,
   },
   content: {
     paddingHorizontal: SIDE_PADDING,

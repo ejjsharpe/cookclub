@@ -1148,7 +1148,8 @@ export const RecipeDetailScreen = () => {
 
   const handleRemoveImage = useCallback(
     (imageIndex: number) => {
-      if (!draft) return;
+      const imageId = draft?.images[imageIndex]?.id;
+      if (!draft || !imageId) return;
       const remaining = draft.images.length - 1;
 
       if (imageIndex < currentImageIndex) {
@@ -1164,7 +1165,9 @@ export const RecipeDetailScreen = () => {
 
       updateDraft((current) => ({
         ...current,
-        images: current.images.filter((_, index) => index !== imageIndex),
+        // By id, in case the list changed since this render (an upload
+        // finishing or failing).
+        images: current.images.filter((image) => image.id !== imageId),
       }));
     },
     [currentImageIndex, draft, updateDraft],

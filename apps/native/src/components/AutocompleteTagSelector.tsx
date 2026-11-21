@@ -89,6 +89,10 @@ export const AutocompleteTagSelector = ({
   };
 
   const handleSubmit = () => {
+    if (!normalizedSearchText) {
+      inputRef.current?.blur();
+      return;
+    }
     const exactMatch = allTags.find(
       (tag: Tag) => normalizeTagKey(tag.name) === normalizedSearchKey,
     );
