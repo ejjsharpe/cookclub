@@ -1,8 +1,16 @@
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
   AppState,
+  Platform,
+  Pressable,
   ScrollView,
   TouchableOpacity,
   View,
@@ -21,14 +29,18 @@ import {
   useGetPendingMealPlanInvitations,
   useAcceptMealPlanInvitation,
   useDeclineMealPlanInvitation,
+  useCreateMealPlan,
+  useInviteToMealPlan,
+  useGetShareableUsers,
+  useGetMealPlanInvitationStatus,
   type MealPlanEntry,
 } from "@/api/mealPlan";
 import { useUser } from "@/api/user";
 import { InvitationBanner } from "@/components/InvitationBanner";
 import { Ionicons } from "@/components/Ionicons";
 import { MealPlanSkeleton } from "@/components/Skeleton";
-import { StackedAvatars } from "@/components/StackedAvatars";
 import { Text } from "@/components/Text";
+import { GlassMenu, type GlassMenuItem } from "@/components/glass/GlassMenu";
 import {
   AddToDaySheet,
   type AddToDaySheetRef,
@@ -60,7 +72,21 @@ import {
   toDateString,
   type WeekDay,
 } from "@/components/mealPlan/week";
+import {
+  PeopleLine,
+  type SharingMember,
+} from "@/components/sharing/SharingControls";
+import {
+  StartSharingSheet,
+  type StartSharingSheetRef,
+} from "@/components/sharing/StartSharingSheet";
+import { inviteAll } from "@/components/sharing/inviteAll";
 import { useSelectedMealPlan } from "@/lib/mealPlanPreferences";
+
+// On iOS the title, the sharing button and ••• sit in the tab's native
+// navigation bar, as on the shopping list. Android draws the same row itself.
+const IS_IOS = Platform.OS === "ios";
+const NAV_BAR_HEIGHT = 44;
 
 // How far below a day's top the list can be scrolled and still count as that day.
 const ACTIVE_DAY_OFFSET = 48;
@@ -69,7 +95,7 @@ const titleCase = (key: string) =>
   key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, " ");
 
 export const MealPlanScreen = () => {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
   const navigation = useNavigation();
 
   // Refs
@@ -88,6 +114,8 @@ export const MealPlanScreen = () => {
   const shareSheetRef = useRef<MealPlanShareSheetRef>(null);
   const sharedUsersSheetRef = useRef<SharedUsersSheetRef>(null);
   const mealPlanPickerSheetRef = useRef<MealPlanPickerSheetRef>(null);
+  const startSharingSheetRef = useRef<StartSharingSheetRef>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Week shown, and the day picked in the strip
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
@@ -141,9 +169,10 @@ export const MealPlanScreen = () => {
     enabled: !!activePlan,
   });
 
+  // Only the owner can see who's on a plan, and a personal plan has no one
   const { data: shareStatus } = useGetShareStatus({
     mealPlanId: activePlan?.id ?? 0,
-    enabled: !!activePlan,
+    enabled: Boolean(activePlan?.isOwner && !activePlan.isDefault),
   });
 
   const { data: userData } = useUser();
@@ -334,10 +363,16 @@ export const MealPlanScreen = () => {
 
   // ─── Sharing ───────────────────────────────────────────────────────────
 
-  // Build list of users who can edit (current user + all shared users)
-  const editableUsers = useMemo(() => {
-    const users: { id: string; name: string; image?: string | null }[] = [];
+  // Only the owner of a shared plan can see who's been invited
+  const canInvite = Boolean(activePlan?.isOwner);
+  const { data: invitations } = useGetMealPlanInvitationStatus({
+    mealPlanId: activePlan?.id ?? 0,
+    enabled: Boolean(activePlan?.isOwner && !activePlan.isDefault),
+  });
 
+  // Everyone on the plan, you first, then anyone invited
+  const members = useMemo(() => {
+    const users: SharingMember[] = [];
     if (currentUser) {
       users.push({
         id: currentUser.id,
@@ -345,44 +380,47 @@ export const MealPlanScreen = () => {
         image: currentUser.image,
       });
     }
-
-    if (shareStatus) {
-      shareStatus.forEach((status) => {
-        users.push({
-          id: status.userId,
-          name: status.userName,
-          image: status.userImage,
-        });
-      });
+    // Members only see the owner: the server keeps the rest to the owner
+    if (activePlan && !activePlan.isOwner) {
+      users.push(activePlan.owner);
     }
-
+    shareStatus?.forEach((status) =>
+      users.push({
+        id: status.userId,
+        name: status.userName,
+        image: status.userImage,
+      }),
+    );
+    invitations?.forEach((invite) =>
+      users.push({
+        id: invite.userId,
+        name: invite.userName,
+        image: invite.userImage,
+        pending: true,
+      }),
+    );
     return users;
-  }, [currentUser, shareStatus]);
+  }, [currentUser, activePlan, shareStatus, invitations]);
 
-  const handleOpenSharedUsers = useCallback(() => {
+  // Your own plan can't be shared, so inviting starts a shared one
+  const handleInvite = useCallback(() => {
     if (!activePlan) return;
-
     if (activePlan.isDefault && activePlan.isOwner) {
-      Alert.alert(
-        "Can't Share Default Plan",
-        "Your default meal plan is personal and can't be shared. Create a new plan to share with friends.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Create New Plan",
-            onPress: () => mealPlanPickerSheetRef.current?.present(),
-          },
-        ],
-      );
-      return;
-    }
-
-    if (!shareStatus || shareStatus.length === 0) {
-      shareSheetRef.current?.present();
+      startSharingSheetRef.current?.present();
     } else {
-      sharedUsersSheetRef.current?.present();
+      shareSheetRef.current?.present();
     }
-  }, [activePlan, shareStatus]);
+  }, [activePlan]);
+
+  // Who's on it, or the invite sheet while it's just you
+  // Owners can see who's on it; members just read the line
+  const handlePeoplePress = useCallback(() => {
+    if (shareStatus?.length) {
+      sharedUsersSheetRef.current?.present();
+    } else {
+      handleInvite();
+    }
+  }, [shareStatus, handleInvite]);
 
   const handleManageSharing = useCallback(() => {
     shareSheetRef.current?.present();
@@ -414,22 +452,51 @@ export const MealPlanScreen = () => {
     [mealPlans, setSelectedPlan],
   );
 
+  const { data: friends, isLoading: isLoadingFriends } = useGetShareableUsers();
+  const { mutateAsync: createPlan } = useCreateMealPlan();
+  const { mutateAsync: invite } = useInviteToMealPlan({ silent: true });
+  const handleStartSharing = useCallback(
+    async (name: string, userIds: string[]) => {
+      const plan = await createPlan({ name });
+      handleSelectMealPlan(plan.id);
+      // The plan exists by now, so a failed invite can be retried from it
+      await inviteAll(
+        userIds,
+        (userId) => invite({ mealPlanId: plan.id, userId }),
+        friends,
+        `"${name}"`,
+      );
+    },
+    [createPlan, invite, handleSelectMealPlan, friends],
+  );
+
   const handleOpenMealPlanPicker = useCallback(() => {
     mealPlanPickerSheetRef.current?.present();
   }, []);
 
   // ─── Render ────────────────────────────────────────────────────────────
 
-  const titleRow = (
-    <View style={styles.headerRow}>
-      <TouchableOpacity
-        style={styles.titleButton}
+  const planName = activePlan?.name ?? storedPlan?.name ?? "Meal plan";
+  // The picked day, or the week's first if it's in another week
+  // (read when tapped, so scrolling through the days doesn't rebuild the menu)
+  const dayToAdd = useRef(days[0]!);
+  dayToAdd.current =
+    days.find((d) => d.dateString === selectedDate) ?? days[0]!;
+
+  const titleButton = useMemo(
+    () => (
+      <Pressable
+        style={({ pressed }) => [
+          IS_IOS ? styles.barTitle : styles.titleButton,
+          pressed && styles.pressed,
+        ]}
         onPress={handleOpenMealPlanPicker}
-        activeOpacity={0.7}
         disabled={isLoadingPlans}
+        accessibilityRole="button"
+        accessibilityHint="Switch meal plan"
       >
         <Text type="screenTitle" numberOfLines={1} style={styles.title}>
-          {activePlan?.name ?? storedPlan?.name ?? "Meal Plan"}
+          {planName}
         </Text>
         <Ionicons
           name="chevron-down"
@@ -437,26 +504,112 @@ export const MealPlanScreen = () => {
           color={theme.colors.textSecondary}
           style={styles.titleChevron}
         />
-      </TouchableOpacity>
-      {editableUsers.length > 0 && (
-        <TouchableOpacity
-          style={styles.inviteStack}
-          activeOpacity={0.7}
-          onPress={handleOpenSharedUsers}
-          accessibilityLabel="Sharing"
-        >
-          <View style={styles.inviteIconWrapper}>
-            <Ionicons
-              name="people"
-              size={20}
-              color={theme.colors.textSecondary}
-            />
-          </View>
-          <View style={styles.stackedAvatarsWrapper}>
-            <StackedAvatars users={editableUsers} maxVisible={3} size={44} />
-          </View>
-        </TouchableOpacity>
-      )}
+      </Pressable>
+    ),
+    [planName, isLoadingPlans, handleOpenMealPlanPicker, theme],
+  );
+
+  // The ••• menu: everything on the plan that isn't sharing
+  const menuGroups: GlassMenuItem[][] = useMemo(
+    () => [
+      [
+        ...(canInvite
+          ? [
+              {
+                key: "invite",
+                label: "Invite someone",
+                icon: "person-add-outline" as const,
+                onPress: handleInvite,
+              },
+            ]
+          : []),
+        {
+          key: "add",
+          label: "Add a meal",
+          icon: "add",
+          onPress: () => handleAdd(dayToAdd.current),
+        },
+      ],
+      [
+        {
+          key: "times",
+          label: "Meal times",
+          icon: "time-outline",
+          onPress: handleOpenMealTimes,
+        },
+        {
+          key: "plans",
+          label: "All plans",
+          icon: "albums-outline",
+          onPress: handleOpenMealPlanPicker,
+        },
+      ],
+    ],
+    [
+      canInvite,
+      handleInvite,
+      handleAdd,
+      handleOpenMealTimes,
+      handleOpenMealPlanPicker,
+    ],
+  );
+
+  useLayoutEffect(() => {
+    if (!IS_IOS) return;
+    const icons: Record<string, string> = {
+      "person-add-outline": "person.badge.plus",
+      add: "plus",
+      "time-outline": "clock",
+      "albums-outline": "square.stack",
+    };
+    navigation.setOptions({
+      unstable_headerLeftItems: () => [
+        { type: "custom", hidesSharedBackground: true, element: titleButton },
+      ],
+      unstable_headerRightItems: () => [
+        {
+          type: "menu",
+          label: "Plan options",
+          icon: { type: "sfSymbol", name: "ellipsis" },
+          menu: {
+            items: menuGroups.map((group) => ({
+              type: "submenu",
+              // An untitled inline section, shown as a divider
+              label: "",
+              inline: true,
+              items: group.map((item) => ({
+                type: "action",
+                label: item.label,
+                icon: {
+                  type: "sfSymbol",
+                  name: icons[item.icon ?? ""] ?? "circle",
+                },
+                onPress: item.onPress,
+              })),
+            })),
+          },
+        },
+      ],
+    } as never);
+    // Only when what it shows changes, not on every scroll through the days
+  }, [navigation, titleButton, menuGroups]);
+
+  // Android has no navigation bar, so the row is drawn here
+  const titleRow = IS_IOS ? null : (
+    <View style={styles.headerRow}>
+      {titleButton}
+      <Pressable
+        onPress={() => setMenuOpen(true)}
+        style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Plan options"
+      >
+        <Ionicons
+          name="ellipsis-horizontal"
+          size={22}
+          color={theme.colors.text}
+        />
+      </Pressable>
     </View>
   );
 
@@ -473,6 +626,16 @@ export const MealPlanScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         {titleRow}
+
+        {activePlan ? (
+          <View style={styles.peopleRow}>
+            <PeopleLine
+              members={members}
+              onPress={canInvite ? handlePeoplePress : undefined}
+              onInvite={canInvite ? handleInvite : undefined}
+            />
+          </View>
+        ) : null}
 
         <View style={styles.weekRow}>
           <Text type="headline" style={styles.weekRange}>
@@ -581,6 +744,24 @@ export const MealPlanScreen = () => {
         activePlanId={activePlan?.id}
         onSelectPlan={handleSelectMealPlan}
       />
+      <StartSharingSheet
+        ref={startSharingSheetRef}
+        title="Plan together"
+        note={`A new plan to share. ${planName} stays just yours.`}
+        defaultName="Family dinners"
+        resourceLabel="plan"
+        friends={friends}
+        isLoadingFriends={isLoadingFriends}
+        onCreate={handleStartSharing}
+      />
+      {!IS_IOS && (
+        <GlassMenu
+          visible={menuOpen}
+          top={rt.insets.top + 60}
+          groups={menuGroups}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
     </View>
   );
 };
@@ -591,7 +772,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     backgroundColor: theme.colors.background,
   },
   header: {
-    paddingTop: rt.insets.top,
+    paddingTop: rt.insets.top + (IS_IOS ? NAV_BAR_HEIGHT : 0),
     paddingHorizontal: 12,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -616,24 +797,27 @@ const styles = StyleSheet.create((theme, rt) => ({
     marginLeft: 4,
     marginTop: 2,
   },
-  inviteStack: {
+  barTitle: {
+    // Leaves room for ••• on the right
+    width: rt.screen.width - 100,
+    height: 44,
     flexDirection: "row",
     alignItems: "center",
-    height: 44,
   },
-  inviteIconWrapper: {
+  pressed: {
+    opacity: 0.7,
+  },
+  peopleRow: {
+    paddingHorizontal: 8,
+    paddingTop: 2,
+  },
+  moreButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 2,
-    borderColor: theme.colors.background,
-    backgroundColor: theme.colors.inputBackground,
-    justifyContent: "center",
     alignItems: "center",
-    zIndex: 10,
-  },
-  stackedAvatarsWrapper: {
-    marginLeft: -22,
+    justifyContent: "center",
+    backgroundColor: theme.colors.inputBackground,
   },
   weekRow: {
     flexDirection: "row",

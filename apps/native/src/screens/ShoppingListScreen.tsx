@@ -41,6 +41,7 @@ import {
   useGetShoppingList,
   useGetUserShoppingLists,
   useGetShoppingListShareStatus,
+  useGetShoppingListInvitationStatus,
   useToggleItemChecked,
   useRemoveItem,
   useClearCheckedItems,
@@ -49,7 +50,11 @@ import {
   useGetPendingShoppingListInvitations,
   useAcceptShoppingListInvitation,
   useDeclineShoppingListInvitation,
+  useCreateShoppingList,
+  useInviteToShoppingList,
+  useGetShoppingListShareableUsers,
 } from "@/api/shopping";
+import { useUser } from "@/api/user";
 import { InvitationBanner } from "@/components/InvitationBanner";
 import { Ionicons } from "@/components/Ionicons";
 import { ShoppingListSkeleton, SkeletonContainer } from "@/components/Skeleton";
@@ -57,6 +62,15 @@ import { VSpace } from "@/components/Space";
 import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
 import { GlassSurface } from "@/components/glass/Glass";
+import {
+  PeopleLine,
+  type SharingMember,
+} from "@/components/sharing/SharingControls";
+import {
+  StartSharingSheet,
+  type StartSharingSheetRef,
+} from "@/components/sharing/StartSharingSheet";
+import { inviteAll } from "@/components/sharing/inviteAll";
 import {
   AddRecipeToShoppingListSheet,
   type AddRecipeToShoppingListSheetRef,
@@ -307,6 +321,7 @@ export const ShoppingListScreen = () => {
   const shareSheetRef = useRef<ShoppingListShareSheetRef>(null);
   const exportSheetRef = useRef<ShoppingListExportSheetRef>(null);
   const listPickerSheetRef = useRef<ShoppingListPickerSheetRef>(null);
+  const startSharingSheetRef = useRef<StartSharingSheetRef>(null);
   const [manualItemText, setManualItemText] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [showTicked, setShowTicked] = useState(false);
@@ -423,26 +438,6 @@ export const ShoppingListScreen = () => {
   const leftCount = viewItems.length - checkedCount;
   // Clearing removes every ticked share, even of an item still partly needed
   const hasTickedRows = useMemo(() => tickedRowIds(items).length > 0, [items]);
-
-  // "10 to get · with Mei"
-  const subtitle = useMemo(() => {
-    const parts: string[] = [];
-    if (viewItems.length) {
-      parts.push(leftCount ? `${leftCount} to get` : "All got");
-      if (checkedCount && leftCount) parts.push(`${checkedCount} ticked`);
-    }
-    const others = activeList?.isOwner
-      ? (members ?? []).map((m) => m.userName.split(" ")[0])
-      : activeList
-        ? [activeList.owner.name.split(" ")[0]]
-        : [];
-    if (others.length) {
-      parts.push(
-        `with ${others.length > 2 ? `${others.length} people` : others.join(" and ")}`,
-      );
-    }
-    return parts.join(" · ");
-  }, [viewItems.length, leftCount, checkedCount, activeList, members]);
 
   // Ticked items go back to hidden when the list is cleared or switched
   const activeListId = activeList?.id;
@@ -623,23 +618,72 @@ export const ShoppingListScreen = () => {
     return unsubscribe;
   }, [navigation, isFocused, scrollToTop]);
 
-  const handleShareWithSomeone = useCallback(() => {
+  // Only the owner can invite, and see who's been invited
+  const canInvite = Boolean(activeList?.isOwner);
+  const { data: invitations } = useGetShoppingListInvitationStatus({
+    shoppingListId: activeList?.id ?? 0,
+    enabled: Boolean(activeList?.isOwner && !activeList.isDefault),
+  });
+
+  // Your own list can't be shared, so inviting starts a shared one
+  const handleInvite = useCallback(() => {
     if (activeList?.isDefault && activeList?.isOwner) {
-      Alert.alert(
-        "Can't share this list",
-        "Your default shopping list is just for you. Make a new list to share it with friends.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "New list",
-            onPress: () => listPickerSheetRef.current?.present(),
-          },
-        ],
-      );
+      startSharingSheetRef.current?.present();
       return;
     }
     shareSheetRef.current?.present();
   }, [activeList]);
+
+  const { data: userData } = useUser();
+  const currentUser = userData?.user;
+  // Everyone on the list, you first, then anyone invited
+  const listMembers = useMemo(() => {
+    if (!currentUser || !activeList) return [];
+    const me: SharingMember = {
+      id: currentUser.id,
+      name: currentUser.name,
+      image: currentUser.image,
+    };
+    if (!activeList.isOwner) {
+      return [me, activeList.owner];
+    }
+    return [
+      me,
+      ...(members ?? []).map((m) => ({
+        id: m.userId,
+        name: m.userName,
+        image: m.userImage,
+      })),
+      ...(invitations ?? []).map((m) => ({
+        id: m.userId,
+        name: m.userName,
+        image: m.userImage,
+        pending: true,
+      })),
+    ];
+  }, [currentUser, activeList, members, invitations]);
+
+  const { data: friends, isLoading: isLoadingFriends } =
+    useGetShoppingListShareableUsers();
+  const { mutateAsync: createList } = useCreateShoppingList({
+    waitForServer: true,
+  });
+  const { mutateAsync: invite } = useInviteToShoppingList({ silent: true });
+  const handleStartSharing = useCallback(
+    async (name: string, userIds: string[]) => {
+      const list = await createList({ name });
+      if (!list) throw new Error("The list wasn't created");
+      handleSelectShoppingList(list.id);
+      // The list exists by now, so a failed invite can be retried from it
+      await inviteAll(
+        userIds,
+        (userId) => invite({ shoppingListId: list.id, userId }),
+        friends,
+        `"${name}"`,
+      );
+    },
+    [createList, invite, handleSelectShoppingList, friends],
+  );
 
   // The native ••• menu in the navigation bar, like the recipe screen's
   useLayoutEffect(() => {
@@ -666,11 +710,9 @@ export const ShoppingListScreen = () => {
           action("Share list", "square.and.arrow.up", () =>
             exportSheetRef.current?.present(),
           ),
-          action(
-            "Share with someone",
-            "person.badge.plus",
-            handleShareWithSomeone,
-          ),
+          ...(canInvite
+            ? [action("Invite someone", "person.badge.plus", handleInvite)]
+            : []),
           action("Add a recipe", "plus", () =>
             addRecipeSheetRef.current?.present(),
           ),
@@ -763,7 +805,8 @@ export const ShoppingListScreen = () => {
     hasTickedRows,
     showTicked,
     handleClearChecked,
-    handleShareWithSomeone,
+    canInvite,
+    handleInvite,
   ]);
 
   const renderItem = useCallback(
@@ -850,29 +893,32 @@ export const ShoppingListScreen = () => {
                 style={styles.titleChevron}
               />
             </Pressable>
-            {!IS_IOS && (
-              <Pressable
-                onPress={() => setMenuOpen(true)}
-                style={({ pressed }) => [
-                  styles.roundButton,
-                  pressed && styles.roundButtonPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="List options"
-              >
-                <Ionicons
-                  name="ellipsis-horizontal"
-                  size={22}
-                  style={styles.headerIcon}
-                />
-              </Pressable>
-            )}
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              style={({ pressed }) => [
+                styles.roundButton,
+                pressed && styles.roundButtonPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="List options"
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={22}
+                style={styles.headerIcon}
+              />
+            </Pressable>
           </View>
         )}
-        {subtitle ? (
-          <Text type="subheadline" style={styles.subtitle}>
-            {subtitle}
-          </Text>
+        {activeList ? (
+          <View style={styles.peopleRow}>
+            <PeopleLine
+              members={listMembers}
+              // Members just read the line: only the owner can invite
+              onPress={canInvite ? handleInvite : undefined}
+              onInvite={canInvite ? handleInvite : undefined}
+            />
+          </View>
         ) : null}
         <ShoppingListRecipeStrip
           recipes={recipes}
@@ -880,6 +926,34 @@ export const ShoppingListScreen = () => {
           onRemoveRecipe={handleRemoveRecipe}
           onAddRecipe={handleAddRecipe}
         />
+        {viewItems.length ? (
+          <View style={styles.progress}>
+            <View style={styles.progressText}>
+              <Text type="heading" style={styles.progressTitle}>
+                {leftCount ? `${leftCount} to get` : "Got everything"}
+              </Text>
+              <Text type="subheadline" style={styles.progressDetail}>
+                {checkedCount} of {viewItems.length} ticked
+              </Text>
+            </View>
+            <View
+              style={styles.progressTrack}
+              accessibilityRole="progressbar"
+              accessibilityValue={{
+                min: 0,
+                max: viewItems.length,
+                now: checkedCount,
+              }}
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${(checkedCount / viewItems.length) * 100}%` },
+                ]}
+              />
+            </View>
+          </View>
+        ) : null}
         {pendingInvitations?.map((invitation) => (
           <InvitationBanner
             key={invitation.id}
@@ -902,7 +976,13 @@ export const ShoppingListScreen = () => {
       insets.top,
       listName,
       handleOpenListPicker,
-      subtitle,
+      activeList,
+      listMembers,
+      canInvite,
+      handleInvite,
+      viewItems.length,
+      leftCount,
+      checkedCount,
       recipes,
       handleOpenRecipe,
       handleRemoveRecipe,
@@ -972,6 +1052,12 @@ export const ShoppingListScreen = () => {
               style={[styles.inputGlass, styles.inputRow]}
               contentStyle={styles.inputRowContent}
             >
+              <SystemIcon
+                sf="plus"
+                android="add"
+                size={18}
+                color={theme.colors.textSecondary}
+              />
               <TextInput
                 style={styles.input}
                 placeholder="Add an item"
@@ -1018,7 +1104,6 @@ export const ShoppingListScreen = () => {
           onToggleTicked={() => setShowTicked((v) => !v)}
           onClose={() => setMenuOpen(false)}
           onShareList={() => exportSheetRef.current?.present()}
-          onShareWithSomeone={handleShareWithSomeone}
           onAddRecipe={() => addRecipeSheetRef.current?.present()}
           onChangeView={setView}
           onClearTicked={handleClearChecked}
@@ -1041,6 +1126,16 @@ export const ShoppingListScreen = () => {
         ref={shareSheetRef}
         shoppingListId={activeList?.id}
         listName={activeList?.name}
+      />
+      <StartSharingSheet
+        ref={startSharingSheetRef}
+        title="Shop together"
+        note={`A new list to share. ${listName} stays just yours.`}
+        defaultName="Weekly shop"
+        resourceLabel="list"
+        friends={friends}
+        isLoadingFriends={isLoadingFriends}
+        onCreate={handleStartSharing}
       />
       <ShoppingListPickerSheet
         ref={listPickerSheetRef}
@@ -1067,7 +1162,8 @@ const styles = StyleSheet.create((theme, rt) => ({
   // A custom bar item needs a real size, or iOS hands its taps to the
   // nearest bar button instead.
   barTitle: {
-    width: rt.screen.width - 120,
+    // Leaves room for ••• on the right
+    width: rt.screen.width - 100,
     height: 44,
     flexDirection: "row",
     alignItems: "center",
@@ -1088,6 +1184,9 @@ const styles = StyleSheet.create((theme, rt) => ({
   roundButtonPressed: {
     opacity: 0.6,
   },
+  headerIcon: {
+    color: theme.colors.text,
+  },
   title: {
     flexShrink: 1,
   },
@@ -1096,14 +1195,39 @@ const styles = StyleSheet.create((theme, rt) => ({
     marginTop: 2,
     color: theme.colors.textSecondary,
   },
-  headerIcon: {
-    color: theme.colors.text,
-  },
-  subtitle: {
+
+  peopleRow: {
     paddingHorizontal: ROW_PADDING,
     paddingTop: 4,
+  },
+  progress: {
+    paddingHorizontal: ROW_PADDING,
+    paddingTop: 16,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  progressText: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  progressTitle: {
+    fontFamily: theme.fonts.black,
+  },
+  progressDetail: {
     color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.medium,
+    fontFamily: theme.fonts.semiBold,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+    backgroundColor: theme.colors.inputBackground,
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
+    backgroundColor: theme.colors.primary,
   },
 
   // Rows
@@ -1208,7 +1332,7 @@ const styles = StyleSheet.create((theme, rt) => ({
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingLeft: 18,
+    paddingLeft: 16,
     paddingRight: 6,
   },
   inputRowContent: {
