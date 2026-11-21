@@ -272,7 +272,13 @@ export const useGetShareableUsers = () => {
 };
 
 // Invite a friend to a meal plan
-export const useInviteToMealPlan = () => {
+/**
+ * Pass `silent` to handle failures yourself, e.g. to show one alert for
+ * several invites.
+ */
+export const useInviteToMealPlan = ({
+  silent = false,
+}: { silent?: boolean } = {}) => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
@@ -286,6 +292,7 @@ export const useInviteToMealPlan = () => {
       });
     },
     onError: () => {
+      if (silent) return;
       Alert.alert("Error", "Failed to send invitation. Please try again.");
     },
   });

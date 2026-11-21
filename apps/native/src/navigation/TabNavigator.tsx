@@ -51,6 +51,11 @@ export const TabNavigator = () => {
         options={{
           tabBarLabel: "Plan",
           tabBarIcon: signatureTabIcon("plan"),
+          // A transparent native bar like the shopping list's: the plan
+          // picker on the left, sharing and ••• on the right.
+          headerShown: true,
+          headerTransparent: true,
+          headerTitle: "",
         }}
       />
       <Tab.Screen
