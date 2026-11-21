@@ -4,13 +4,15 @@ import {
   useNavigation,
   type RouteProp,
 } from "@react-navigation/native";
-import type { NativeStackHeaderItemProps } from "@react-navigation/native-stack";
+import type {
+  NativeStackHeaderItem,
+  NativeStackHeaderItemProps,
+} from "@react-navigation/native-stack";
 import type { PublicImageAsset } from "@repo/contracts/images";
 import { useTRPC } from "@repo/trpc/client";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   useState,
   useEffect,
@@ -88,6 +90,11 @@ import {
   type PersonaliseRecipeSheetRef,
 } from "@/components/PersonaliseRecipeSheet";
 import {
+  RecipePhotosSheet,
+  type RecipePhotoItem,
+  type RecipePhotosSheetRef,
+} from "@/components/RecipePhotosSheet";
+import {
   ReportContentSheet,
   type ReportContentSheetRef,
 } from "@/components/ReportContentSheet";
@@ -97,8 +104,16 @@ import {
 } from "@/components/ShoppingListSelectorSheet";
 import { Skeleton } from "@/components/Skeleton";
 import { VSpace } from "@/components/Space";
+import { SystemIcon } from "@/components/SystemIcon";
 import { Text } from "@/components/Text";
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
+import { CommentOptionsMenu } from "@/components/comment-options/CommentOptionsMenu";
+import type { CommentOption } from "@/components/comment-options/types";
+import {
+  GlassButtonGroup,
+  GlassIconButton,
+  GlassSurface,
+} from "@/components/glass/Glass";
 import {
   AddToMealPlanSheet,
   type AddToMealPlanSheetRef,
@@ -126,11 +141,16 @@ import {
   convertParsedIngredient,
 } from "@/utils/measurementUtils";
 import { transformParsedRecipeForPreview } from "@/utils/recipeTransform";
-import { moveArrayItem } from "@/utils/reorder";
 import { formatMinutesShort } from "@/utils/timeUtils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const IMAGE_HEIGHT = SCREEN_WIDTH;
+// Where each photo sits in the fanned stack on the edit-mode photo pill.
+const STACK_POSES = [
+  { left: 0, transform: [{ rotate: "-8deg" }] },
+  { left: 12, transform: [{ rotate: "-2deg" }] },
+  { left: 24, transform: [{ rotate: "8deg" }] },
+] as const;
 
 type RecipeDetailMode = "view" | "edit";
 
@@ -575,7 +595,9 @@ export const RecipeDetailScreen = () => {
   const collectionSheetRef = useRef<CollectionSelectorSheetRef>(null);
   const cookingReviewSheetRef = useRef<CookingReviewSheetRef>(null);
   const reportSheetRef = useRef<ReportContentSheetRef>(null);
+  const recipePhotosSheetRef = useRef<RecipePhotosSheetRef>(null);
   const ingredientSectionYRef = useRef(0);
+  const summaryPanelYRef = useRef(0);
   const [expandedImageUrl, setExpandedImageUrl] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [ratingOverride, setRatingOverride] = useState<number | null>(null);
@@ -748,7 +770,9 @@ export const RecipeDetailScreen = () => {
     });
   }, [draft, isEditing]);
 
-  const isOwnRecipe = recipe?.owner.id === userData?.user?.id;
+  const isOwnRecipe = Boolean(
+    recipe && userData?.user?.id && recipe.owner.id === userData.user.id,
+  );
   const displayedRating = ratingOverride ?? recipe?.userReviewRating ?? null;
   const recipeSourceUrl = recipe?.sourceUrl ?? null;
   const sourceWebsiteName = useMemo(
@@ -758,16 +782,6 @@ export const RecipeDetailScreen = () => {
   const sourceChipAccessibilityLabel = sourceWebsiteName
     ? `View on ${sourceWebsiteName}`
     : undefined;
-  const shouldShowSourceChip =
-    !isEditing &&
-    !isPreviewMode &&
-    Boolean(recipeSourceUrl && sourceWebsiteName);
-  const shouldShowCreatorChip =
-    !isEditing &&
-    !isPreviewMode &&
-    !isOwnRecipe &&
-    !shouldShowSourceChip &&
-    Boolean(recipe);
   const ownerAvatarUrl = recipe?.owner.image
     ? getImageUrl(recipe.owner.image, "avatar-sm")
     : undefined;
@@ -823,8 +837,8 @@ export const RecipeDetailScreen = () => {
       const targetY =
         field === "ingredients"
           ? IMAGE_HEIGHT + ingredientSectionYRef.current - 24
-          : field === "servings"
-            ? IMAGE_HEIGHT
+          : field === "name" || field === "servings"
+            ? IMAGE_HEIGHT + summaryPanelYRef.current - 24
             : 0;
 
       requestAnimationFrame(() => {
@@ -849,6 +863,8 @@ export const RecipeDetailScreen = () => {
     setDraft(nextDraft);
     initialDraftRef.current = nextDraft;
     setHasAttemptedSave(false);
+    // The edit carousel mounts at the first photo.
+    setCurrentImageIndex(0);
     setIsEditing(true);
   }, [recipe]);
 
@@ -877,17 +893,17 @@ export const RecipeDetailScreen = () => {
     shoppingListSheetRef.current?.present();
   };
 
-  const handleOpenPersonaliseSheet = async () => {
+  const handleOpenPersonaliseSheet = useCallback(async () => {
     if (!recipe || isPreviewMode || isEditing) return;
     const allowed = await requireProFeature("Personalise recipe");
     if (!allowed) return;
     personaliseRecipeSheetRef.current?.present();
-  };
+  }, [isEditing, isPreviewMode, recipe, requireProFeature]);
 
-  const handleOpenReviewSheet = () => {
+  const handleOpenReviewSheet = useCallback(() => {
     if (!recipe || !isOwnRecipe || isPreviewMode || isEditing) return;
     cookingReviewSheetRef.current?.present();
-  };
+  }, [isEditing, isOwnRecipe, isPreviewMode, recipe]);
 
   const handleViewSource = useCallback(async () => {
     if (!recipeSourceUrl) return;
@@ -1130,31 +1146,73 @@ export const RecipeDetailScreen = () => {
     }
   }, [draft, generateRecipeImageMutation, requireProFeature, updateDraft]);
 
-  const handleRemoveCurrentImage = useCallback(() => {
-    updateDraft((current) => {
-      const nextImages = current.images.filter(
-        (_, index) => index !== currentImageIndex,
-      );
-      return { ...current, images: nextImages };
-    });
-    setCurrentImageIndex((index) => Math.max(0, index - 1));
-  }, [currentImageIndex, updateDraft]);
+  const handleRemoveImage = useCallback(
+    (imageIndex: number) => {
+      const imageId = draft?.images[imageIndex]?.id;
+      if (!draft || !imageId) return;
+      const remaining = draft.images.length - 1;
 
-  const handleMoveCurrentImage = useCallback(
-    (offset: -1 | 1) => {
-      if (!draft) return;
+      if (imageIndex < currentImageIndex) {
+        // The carousel keeps its offset, so follow the photo we were on.
+        pendingImageScrollIndexRef.current = currentImageIndex - 1;
+        pendingImageScrollAnimatedRef.current = false;
+      } else if (imageIndex === currentImageIndex) {
+        // The next photo slides into place; only clamp at the end.
+        setCurrentImageIndex(
+          Math.max(0, Math.min(currentImageIndex, remaining - 1)),
+        );
+      }
 
-      const nextIndex = currentImageIndex + offset;
-      if (nextIndex < 0 || nextIndex >= draft.images.length) return;
-
-      pendingImageScrollIndexRef.current = nextIndex;
-      pendingImageScrollAnimatedRef.current = false;
       updateDraft((current) => ({
         ...current,
-        images: moveArrayItem(current.images, currentImageIndex, nextIndex),
+        // By id, in case the list changed since this render (an upload
+        // finishing or failing).
+        images: current.images.filter((image) => image.id !== imageId),
       }));
     },
     [currentImageIndex, draft, updateDraft],
+  );
+
+  const handleReorderImages = useCallback(
+    (ids: string[]) => {
+      updateDraft((current) => {
+        const byId = new Map(current.images.map((image) => [image.id, image]));
+        const reordered = ids
+          .map((id) => byId.get(id))
+          .filter((image): image is DraftImage => Boolean(image));
+        // Keep anything added while the sheet was open.
+        const rest = current.images.filter((image) => !ids.includes(image.id));
+        return { ...current, images: [...reordered, ...rest] };
+      });
+      // Show the cover, which is what a reorder is usually about.
+      pendingImageScrollIndexRef.current = 0;
+      pendingImageScrollAnimatedRef.current = false;
+    },
+    [updateDraft],
+  );
+
+  const handleRemoveImageById = useCallback(
+    (id: string) => {
+      const index = draft?.images.findIndex((image) => image.id === id) ?? -1;
+      if (index >= 0) handleRemoveImage(index);
+    },
+    [draft, handleRemoveImage],
+  );
+
+  const draftPhotoItems = useMemo<RecipePhotoItem[]>(
+    () =>
+      (draft?.images ?? []).map((image) => {
+        const progress = uploadProgress[image.uri];
+        return {
+          id: image.id,
+          uri: image.isRemote
+            ? (getImageUrl(image.asset ?? image.uri, "recipe-card") ?? null)
+            : image.uri,
+          isUploading:
+            progress !== undefined && progress >= 0 && progress < 100,
+        };
+      }),
+    [draft?.images, uploadProgress],
   );
 
   const addIngredient = useCallback(
@@ -1450,6 +1508,7 @@ export const RecipeDetailScreen = () => {
       if (initialDraftRef.current) {
         setDraft(initialDraftRef.current);
       }
+      setCurrentImageIndex(0);
       setIsEditing(false);
     };
 
@@ -1514,6 +1573,7 @@ export const RecipeDetailScreen = () => {
         });
         initialDraftRef.current = draft;
         setServings(draft.servings);
+        setCurrentImageIndex(0);
         setIsEditing(false);
       } else {
         const { id } = importJobId
@@ -1600,129 +1660,126 @@ export const RecipeDetailScreen = () => {
     );
   }, [deleteMutation, navigation, recipeId]);
 
-  const handleOpenAndroidRecipeMenu = useCallback(() => {
+  const recipeMenuOptions = useMemo<CommentOption[]>(() => {
+    if (isEditing || isPreviewMode || !recipe) return [];
+
+    const options: CommentOption[] = [
+      {
+        key: "personalise",
+        label: "Personalise with AI",
+        systemImage: "sparkles",
+        run: () => {
+          handleOpenPersonaliseSheet().catch(() => {});
+        },
+      },
+    ];
+
     if (isOwnRecipe) {
-      // Android alerts support at most three actions. The dialog remains
-      // dismissible with the system back action or by tapping outside it.
-      Alert.alert(
-        "Recipe Options",
-        undefined,
-        [
-          { text: "Edit Recipe", onPress: handleEnterEditMode },
-          {
-            text: "Manage Collections",
-            onPress: () => collectionSheetRef.current?.present(),
-          },
-          {
-            text: "Delete Recipe",
-            style: "destructive",
-            onPress: handleDeleteRecipe,
-          },
-        ],
-        { cancelable: true },
+      options.push(
+        {
+          key: "collections",
+          label: "Manage Collections",
+          systemImage: "bookmark",
+          run: () => collectionSheetRef.current?.present(),
+        },
+        {
+          key: "rate",
+          label: displayedRating
+            ? `Your Rating: ${displayedRating}/5`
+            : "Rate Recipe",
+          systemImage: displayedRating ? "star.fill" : "star",
+          run: handleOpenReviewSheet,
+        },
       );
-      return;
     }
 
-    if (recipeId !== null) {
-      Alert.alert("Recipe Options", undefined, [
+    if (recipeSourceUrl) {
+      options.push({
+        key: "source",
+        label: "View Original Recipe",
+        systemImage: "safari",
+        run: () => {
+          handleViewSource().catch(() => {});
+        },
+      });
+    }
+
+    if (isOwnRecipe) {
+      options.push({
+        key: "delete",
+        label: "Delete Recipe",
+        systemImage: "trash",
+        destructive: true,
+        run: handleDeleteRecipe,
+      });
+    } else if (recipeId !== null) {
+      options.push(
         {
-          text: "Report Recipe",
-          onPress: () =>
+          key: "report",
+          label: "Report Recipe",
+          systemImage: "flag",
+          run: () =>
             reportSheetRef.current?.present({
               targetType: "recipe",
               targetId: String(recipeId),
             }),
         },
         {
-          text: "Block Recipe Author",
-          style: "destructive",
-          onPress: handleBlockRecipeOwner,
+          key: "block",
+          label: "Block Recipe Author",
+          systemImage: "hand.raised",
+          destructive: true,
+          run: handleBlockRecipeOwner,
         },
-        { text: "Cancel", style: "cancel" },
-      ]);
+      );
     }
+
+    return options;
   }, [
+    displayedRating,
     handleBlockRecipeOwner,
     handleDeleteRecipe,
-    handleEnterEditMode,
+    handleOpenPersonaliseSheet,
+    handleOpenReviewSheet,
+    handleViewSource,
+    isEditing,
     isOwnRecipe,
+    isPreviewMode,
+    recipe,
     recipeId,
+    recipeSourceUrl,
   ]);
+  const canEditRecipe = !isEditing && !isPreviewMode && isOwnRecipe;
+  const showViewActionBar = !isEditing && !isPreviewMode && Boolean(recipe);
 
   useLayoutEffect(() => {
-    const headerRightItems: any[] = [];
+    const headerRightItems: NativeStackHeaderItem[] = [];
 
-    if (!isEditing && !isPreviewMode && isOwnRecipe) {
+    if (canEditRecipe) {
       headerRightItems.push({
-        type: "menu" as const,
-        label: "Options",
-        icon: {
-          type: "sfSymbol" as const,
-          name: "ellipsis",
-        },
-        menu: {
-          items: [
-            {
-              type: "action" as const,
-              label: "Edit Recipe",
-              icon: {
-                type: "sfSymbol" as const,
-                name: "pencil",
-              },
-              onPress: handleEnterEditMode,
-            },
-            {
-              type: "action" as const,
-              label: "Manage Collections",
-              icon: {
-                type: "sfSymbol" as const,
-                name: "bookmark",
-              },
-              onPress: () => {
-                if (recipe) {
-                  collectionSheetRef.current?.present();
-                }
-              },
-            },
-            {
-              type: "action" as const,
-              label: "Delete Recipe",
-              icon: {
-                type: "sfSymbol" as const,
-                name: "trash",
-              },
-              destructive: true,
-              onPress: handleDeleteRecipe,
-            },
-          ],
-        },
+        type: "button",
+        label: "Edit",
+        icon: { type: "sfSymbol", name: "pencil" },
+        onPress: handleEnterEditMode,
       });
-    } else if (!isEditing && !isPreviewMode && recipeId !== null) {
+    }
+
+    if (recipeMenuOptions.length > 0) {
       headerRightItems.push({
-        type: "menu" as const,
-        label: "Safety options",
-        icon: { type: "sfSymbol" as const, name: "ellipsis" },
+        type: "menu",
+        label: "Recipe options",
+        icon: { type: "sfSymbol", name: "ellipsis" },
         menu: {
-          items: [
-            {
-              type: "action" as const,
-              label: "Report Recipe",
-              icon: { type: "sfSymbol" as const, name: "flag" },
-              onPress: () =>
-                reportSheetRef.current?.present({
-                  targetType: "recipe",
-                  targetId: String(recipeId),
-                }),
+          items: recipeMenuOptions.map((option) => ({
+            type: "action" as const,
+            label: option.label,
+            icon: {
+              type: "sfSymbol" as const,
+              name: option.systemImage ?? "circle",
             },
-            {
-              type: "action" as const,
-              label: "Block Recipe Author",
-              icon: { type: "sfSymbol" as const, name: "hand.raised" },
-              destructive: true,
-              onPress: handleBlockRecipeOwner,
-            },
-          ],
+            destructive: option.destructive,
+            onPress: option.run,
+          })),
         },
       });
     }
@@ -1734,37 +1791,40 @@ export const RecipeDetailScreen = () => {
       headerRight:
         Platform.OS === "android" && headerRightItems.length > 0
           ? ({ tintColor }: NativeStackHeaderItemProps) => (
-              <Pressable
-                accessibilityLabel="Recipe options"
-                accessibilityRole="button"
-                hitSlop={8}
-                onPress={handleOpenAndroidRecipeMenu}
-                style={({ pressed }) => [
-                  styles.androidHeaderMenuButton,
-                  pressed && styles.androidHeaderMenuButtonPressed,
-                ]}
-              >
-                <Ionicons
-                  color={tintColor}
-                  name="ellipsis-horizontal"
-                  size={24}
-                />
-              </Pressable>
+              <View style={styles.androidHeaderActions}>
+                {canEditRecipe ? (
+                  <Pressable
+                    accessibilityLabel="Edit recipe"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={handleEnterEditMode}
+                    style={({ pressed }) => [
+                      styles.androidHeaderMenuButton,
+                      pressed && styles.androidHeaderMenuButtonPressed,
+                    ]}
+                  >
+                    <Ionicons color={tintColor} name="pencil" size={22} />
+                  </Pressable>
+                ) : null}
+                {recipeMenuOptions.length > 0 ? (
+                  <CommentOptionsMenu
+                    options={recipeMenuOptions}
+                    accessibilityLabel="Recipe options"
+                  >
+                    <View style={styles.androidHeaderMenuButton}>
+                      <Ionicons
+                        color={tintColor}
+                        name="ellipsis-horizontal"
+                        size={24}
+                      />
+                    </View>
+                  </CommentOptionsMenu>
+                ) : null}
+              </View>
             )
           : undefined,
     });
-  }, [
-    handleBlockRecipeOwner,
-    handleDeleteRecipe,
-    handleEnterEditMode,
-    handleOpenAndroidRecipeMenu,
-    isEditing,
-    isOwnRecipe,
-    isPreviewMode,
-    navigation,
-    recipe,
-    recipeId,
-  ]);
+  }, [canEditRecipe, handleEnterEditMode, navigation, recipeMenuOptions]);
 
   if (!isBlankDraftMode && !isPending && (error || !recipe)) {
     const resolvedError = resolvePublicError(error, "Recipe not found.");
@@ -1865,99 +1925,83 @@ export const RecipeDetailScreen = () => {
     );
   };
 
-  const renderImageEditOverlay = () => {
+  const renderDraftPhotoStrip = () => {
     if (!isEditing || !draft) return null;
-    const isCreatingImage = generateRecipeImageMutation.isPending;
+    const count = draft.images.length;
+    // Up to three photos fanned behind one another; the cover sits on top.
+    const stack = draftPhotoItems.slice(0, 3);
 
     return (
-      <View style={styles.heroEditRow}>
-        <TouchableOpacity
-          style={styles.heroEditButton}
-          onPress={handlePickRecipeImage}
-          activeOpacity={0.78}
-          accessibilityLabel="Add recipe image"
-          accessibilityHint="Take a photo or choose one from your library"
-          hitSlop={4}
-        >
-          <View style={styles.heroAddImageIcon}>
-            <Ionicons name="images-outline" size={19} color="white" />
-            <Ionicons
-              name="add-circle"
-              size={11}
-              color="white"
-              style={styles.heroAddImageBadge}
-            />
-          </View>
-          <View style={styles.heroCountChip}>
-            <Text style={styles.heroCountText}>{draft.images.length}</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.heroEditButton,
-            isCreatingImage && styles.heroButtonDisabled,
-          ]}
-          onPress={handleGenerateRecipeImage}
-          activeOpacity={0.78}
-          disabled={isCreatingImage}
-          accessibilityLabel="Create image with AI"
-        >
-          {isCreatingImage ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <Ionicons name="sparkles" size={17} color="white" />
-          )}
-          <Text numberOfLines={1} style={styles.heroEditButtonText}>
-            AI
-          </Text>
-        </TouchableOpacity>
-        {draft.images.length > 1 ? (
-          <View style={styles.heroReorderControls}>
+      <View pointerEvents="box-none" style={styles.photoStripWrap}>
+        {renderValidationMessage("images", true, true)}
+        <View pointerEvents="box-none" style={styles.photoControls}>
+          <GlassSurface
+            interactive
+            style={styles.photoPill}
+            contentStyle={styles.photoPillContent}
+          >
             <Pressable
-              style={[
-                styles.heroReorderButton,
-                currentImageIndex === 0 && styles.heroButtonDisabled,
-              ]}
-              onPress={() => handleMoveCurrentImage(-1)}
-              disabled={currentImageIndex === 0}
               accessibilityRole="button"
-              accessibilityLabel="Move current photo earlier"
-              accessibilityHint="Changes the photo order; the first photo is the recipe cover"
-              accessibilityState={{ disabled: currentImageIndex === 0 }}
-              hitSlop={4}
+              accessibilityLabel={`${count} ${count === 1 ? "photo" : "photos"}`}
+              accessibilityHint="Reorder, remove or add photos"
+              onPress={() => recipePhotosSheetRef.current?.present()}
+              style={({ pressed }) => [
+                styles.photoPillButton,
+                pressed && styles.photoStripButtonPressed,
+              ]}
             >
-              <Ionicons name="chevron-back" size={17} color="white" />
+              <View
+                style={[
+                  styles.photoStack,
+                  { width: 30 + Math.max(0, stack.length - 1) * 12 },
+                ]}
+              >
+                {stack
+                  .map((photo, index) => (
+                    <View
+                      key={photo.id}
+                      style={[styles.photoStackItem, STACK_POSES[index]]}
+                    >
+                      {photo.uri ? (
+                        <Image
+                          source={{ uri: photo.uri }}
+                          style={styles.photoThumbImage}
+                          contentFit="cover"
+                        />
+                      ) : null}
+                    </View>
+                  ))
+                  .reverse()}
+              </View>
+              <Text style={styles.photoPillText}>
+                {count} {count === 1 ? "photo" : "photos"}
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={14}
+                style={styles.photoPillChevron}
+              />
             </Pressable>
-            <View style={styles.heroReorderDivider} />
+          </GlassSurface>
+          <GlassSurface
+            interactive
+            style={styles.photoAddCircle}
+            contentStyle={styles.photoPillContent}
+          >
             <Pressable
-              style={[
-                styles.heroReorderButton,
-                currentImageIndex === draft.images.length - 1 &&
-                  styles.heroButtonDisabled,
-              ]}
-              onPress={() => handleMoveCurrentImage(1)}
-              disabled={currentImageIndex === draft.images.length - 1}
               accessibilityRole="button"
-              accessibilityLabel="Move current photo later"
-              accessibilityHint="Changes the photo order; the first photo is the recipe cover"
-              accessibilityState={{
-                disabled: currentImageIndex === draft.images.length - 1,
-              }}
-              hitSlop={4}
+              accessibilityLabel="Add photo"
+              accessibilityHint="Take a photo or choose one from your library"
+              onPress={handlePickRecipeImage}
+              style={({ pressed }) => [
+                styles.photoAddButton,
+                pressed && styles.photoStripButtonPressed,
+              ]}
             >
-              <Ionicons name="chevron-forward" size={17} color="white" />
+              <Ionicons name="add" size={22} style={styles.photoStripIcon} />
             </Pressable>
-          </View>
-        ) : null}
-        <TouchableOpacity
-          style={styles.heroIconButton}
-          onPress={handleRemoveCurrentImage}
-          activeOpacity={0.78}
-          accessibilityLabel="Remove current photo"
-          hitSlop={4}
-        >
-          <Ionicons name="trash-outline" size={17} color="white" />
-        </TouchableOpacity>
+          </GlassSurface>
+        </View>
       </View>
     );
   };
@@ -2058,36 +2102,6 @@ export const RecipeDetailScreen = () => {
                 </TouchableOpacity>
               </View>
             </View>
-            <View pointerEvents="box-none" style={styles.imageOverlay}>
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.58)"]}
-                pointerEvents="none"
-                style={[
-                  styles.editImageGradient,
-                  styles.emptyEditImageGradient,
-                ]}
-              />
-              {renderValidationMessage("name")}
-              <View
-                style={[
-                  styles.overlayTitleInputFrame,
-                  hasVisibleDraftError("name") &&
-                    styles.overlayTitleInputFrameError,
-                ]}
-              >
-                <TextInput
-                  defaultValue={draft.name}
-                  onChangeText={(name) =>
-                    updateDraft((current) => ({ ...current, name }))
-                  }
-                  placeholder="Recipe title"
-                  placeholderTextColor="rgba(255,255,255,0.75)"
-                  style={styles.overlayTitleInput}
-                  multiline
-                  textAlignVertical="top"
-                />
-              </View>
-            </View>
           </View>
         );
       }
@@ -2120,41 +2134,7 @@ export const RecipeDetailScreen = () => {
               }}
             />
           </Animated.View>
-          <PageIndicator
-            currentPage={currentImageIndex + 1}
-            totalPages={draft.images.length}
-          />
-          <View pointerEvents="box-none" style={styles.imageOverlay}>
-            <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.6)"]}
-              pointerEvents="none"
-              style={styles.editImageGradient}
-            />
-            {renderImageEditOverlay()}
-            {renderValidationMessage("images", true, true)}
-            {renderValidationMessage("name")}
-            <View
-              style={[
-                styles.overlayTitleInputFrame,
-                draft.images.length > 1 &&
-                  styles.overlayTitleInputFrameWithCounter,
-                hasVisibleDraftError("name") &&
-                  styles.overlayTitleInputFrameError,
-              ]}
-            >
-              <TextInput
-                defaultValue={draft.name}
-                onChangeText={(name) =>
-                  updateDraft((current) => ({ ...current, name }))
-                }
-                placeholder="Recipe title"
-                placeholderTextColor="rgba(255,255,255,0.75)"
-                style={styles.overlayTitleInput}
-                multiline
-                textAlignVertical="top"
-              />
-            </View>
-          </View>
+          {renderDraftPhotoStrip()}
         </View>
       );
     }
@@ -2186,83 +2166,6 @@ export const RecipeDetailScreen = () => {
               currentPage={currentImageIndex + 1}
               totalPages={recipe.images.length}
             />
-            <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.6)"]}
-              pointerEvents="box-none"
-              style={styles.imageOverlay}
-            >
-              <View pointerEvents="box-none" style={styles.heroTitleRow}>
-                <View
-                  pointerEvents="none"
-                  style={[
-                    styles.heroTitleTextWrap,
-                    recipe.images.length > 1 &&
-                      styles.heroTitleCounterClearance,
-                  ]}
-                >
-                  <Text
-                    type="title1"
-                    style={styles.overlayTitle}
-                    numberOfLines={2}
-                  >
-                    {recipe.name}
-                  </Text>
-                </View>
-              </View>
-              {shouldShowSourceChip || shouldShowCreatorChip ? (
-                <View pointerEvents="box-none" style={styles.heroMetaRow}>
-                  {shouldShowSourceChip && sourceWebsiteName ? (
-                    <TouchableOpacity
-                      style={[styles.heroMetaChip, styles.heroSourceButton]}
-                      onPress={handleViewSource}
-                      activeOpacity={0.76}
-                      accessibilityLabel={sourceChipAccessibilityLabel}
-                    >
-                      <Ionicons
-                        name="open-outline"
-                        size={14}
-                        style={styles.heroMetaIcon}
-                      />
-                      <Text style={styles.heroSourceText} numberOfLines={1}>
-                        {sourceWebsiteName}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  {shouldShowCreatorChip && ownerUsername ? (
-                    <TouchableOpacity
-                      style={[styles.heroMetaChip, styles.heroCreatorButton]}
-                      onPress={() =>
-                        navigation.navigate("UserProfile", {
-                          userId: recipe.owner.id,
-                        })
-                      }
-                      activeOpacity={0.76}
-                      accessibilityLabel={`View ${ownerUsername}'s profile`}
-                    >
-                      {ownerAvatarUrl ? (
-                        <Image
-                          source={{ uri: ownerAvatarUrl }}
-                          style={styles.heroCreatorAvatar}
-                          contentFit="cover"
-                        />
-                      ) : (
-                        <View style={styles.heroCreatorAvatarPlaceholder}>
-                          <Text style={styles.heroCreatorAvatarText}>
-                            {ownerUsername
-                              .replace(/^@/, "")
-                              .charAt(0)
-                              .toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
-                      <Text style={styles.heroCreatorText} numberOfLines={1}>
-                        {ownerUsername}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              ) : null}
-            </LinearGradient>
           </>
         ) : (
           <Skeleton
@@ -2274,6 +2177,13 @@ export const RecipeDetailScreen = () => {
       </View>
     );
   };
+
+  const measurementLabel =
+    measurementSystem === "metric"
+      ? "Metric"
+      : measurementSystem === "imperial"
+        ? "Imperial"
+        : "Units";
 
   const renderIngredients = () => {
     if (!recipe) return null;
@@ -2290,7 +2200,10 @@ export const RecipeDetailScreen = () => {
               </View>
             )}
 
-            {section.ingredients.map((item) => {
+            {section.ingredients.map((item, itemIndex) => {
+              const isLastRow =
+                sectionIndex === recipe.ingredientSections.length - 1 &&
+                itemIndex === section.ingredients.length - 1;
               let adjustedQuantity = item.quantity
                 ? parseFloat(item.quantity) * servingMultiplier
                 : null;
@@ -2322,26 +2235,26 @@ export const RecipeDetailScreen = () => {
               const needsSpace = displayUnit && !isCompactUnit(displayUnit);
 
               return (
-                <View key={item.id} style={styles.ingredientItem}>
-                  <View style={styles.ingredientContent}>
-                    <Text style={styles.ingredientName}>
-                      {(formattedQuantity || displayUnit) && (
-                        <Text style={styles.ingredientQuantity}>
-                          {formattedQuantity}
-                          {formattedQuantity && displayUnit && needsSpace
-                            ? " "
-                            : ""}
-                          {displayUnit}{" "}
-                        </Text>
-                      )}
-                      {item.name}
-                    </Text>
-                    {item.preparation && (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.ingredientItem,
+                    isLastRow && styles.ingredientItemLast,
+                  ]}
+                >
+                  <Text style={styles.ingredientQuantity}>
+                    {formattedQuantity}
+                    {formattedQuantity && displayUnit && needsSpace ? " " : ""}
+                    {displayUnit}
+                  </Text>
+                  <Text style={styles.ingredientName}>
+                    {item.name}
+                    {item.preparation ? (
                       <Text style={styles.ingredientPreparation}>
-                        {item.preparation}
+                        , {item.preparation}
                       </Text>
-                    )}
-                  </View>
+                    ) : null}
+                  </Text>
                 </View>
               );
             })}
@@ -2634,15 +2547,151 @@ export const RecipeDetailScreen = () => {
     );
   };
 
+  const renderAttribution = () => {
+    // The original site is always credited. In edit mode it is shown but
+    // can't be changed or removed.
+    const sourceName = isEditing
+      ? getSourceWebsiteName(draft?.sourceUrl)
+      : isPreviewMode
+        ? null
+        : sourceWebsiteName;
+    const showCreator =
+      !isEditing && !isPreviewMode && !isOwnRecipe && Boolean(recipe);
+
+    if (!sourceName && !showCreator) return null;
+
+    return (
+      <View style={styles.attributionRow}>
+        {sourceName ? (
+          isEditing ? (
+            <View
+              style={styles.sourceLink}
+              accessible
+              accessibilityLabel={`From ${sourceName}`}
+            >
+              <Ionicons
+                name="globe-outline"
+                size={15}
+                style={styles.sourceLinkText}
+              />
+              <Text style={styles.sourceLinkText} numberOfLines={1}>
+                {sourceName}
+              </Text>
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={sourceChipAccessibilityLabel}
+              hitSlop={8}
+              onPress={handleViewSource}
+              style={({ pressed }) => [
+                styles.sourceLink,
+                pressed && styles.pressedFaded,
+              ]}
+            >
+              <Ionicons
+                name="globe-outline"
+                size={15}
+                style={styles.sourceLinkText}
+              />
+              <Text style={styles.sourceLinkText} numberOfLines={1}>
+                {sourceName}
+              </Text>
+              <Ionicons
+                name="open-outline"
+                size={13}
+                style={styles.sourceLinkText}
+              />
+            </Pressable>
+          )
+        ) : null}
+        {showCreator && recipe && ownerUsername ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View ${ownerUsername}'s profile`}
+            hitSlop={8}
+            onPress={() =>
+              navigation.navigate("UserProfile", { userId: recipe.owner.id })
+            }
+            style={({ pressed }) => [
+              styles.creatorLink,
+              pressed && styles.pressedFaded,
+            ]}
+          >
+            {ownerAvatarUrl ? (
+              <Image
+                source={{ uri: ownerAvatarUrl }}
+                style={styles.creatorAvatar}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={styles.creatorAvatarPlaceholder}>
+                <Text style={styles.creatorAvatarText}>
+                  {ownerUsername.replace(/^@/, "").charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <Text style={styles.creatorText} numberOfLines={1}>
+              {ownerUsername}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderMetaLine = () => {
+    if (!recipe) return null;
+    const totalMinutes =
+      recipe.totalTime ||
+      (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0) ||
+      null;
+
+    return (
+      <View style={styles.metaLine}>
+        {totalMinutes ? (
+          <View
+            style={styles.metaLineItem}
+            accessible
+            accessibilityLabel={`${formatMinutesShort(totalMinutes)} total`}
+          >
+            <Ionicons name="time-outline" size={16} style={styles.metaIcon} />
+            <Text style={styles.metaLineText}>
+              <Text style={styles.metaLineValue}>
+                {formatMinutesShort(totalMinutes)}
+              </Text>{" "}
+              total
+            </Text>
+          </View>
+        ) : null}
+        <Pressable
+          onPress={handleOpenAdjustSheet}
+          accessibilityRole="button"
+          accessibilityLabel={`Adjust servings, currently ${servings}`}
+          hitSlop={12}
+          style={({ pressed }) => [
+            styles.metaLineItem,
+            pressed && styles.pressedFaded,
+          ]}
+        >
+          <Ionicons name="people-outline" size={16} style={styles.metaIcon} />
+          <Text style={styles.metaLineText}>
+            Serves <Text style={styles.metaLineValue}>{servings}</Text>
+          </Text>
+          <Ionicons name="chevron-down" size={13} style={styles.metaIcon} />
+        </Pressable>
+      </View>
+    );
+  };
+
   const renderEditableMeta = () => {
     if (!draft) return null;
 
     return (
       <View style={styles.metaEditor}>
-        <View style={styles.recipeMetaGroup}>
-          <View style={styles.recipeMetaInputItem}>
-            <Ionicons name="leaf-outline" size={16} style={styles.metaIcon} />
-            <Text style={styles.recipeMetaLabel}>Prep</Text>
+        <View style={styles.metaWellRow}>
+          <View style={styles.metaWell}>
+            <Text style={styles.metaWellLabel}>Prep (min)</Text>
             <TextInput
               defaultValue={draft.prepTime?.toString() ?? ""}
               onChangeText={(value) =>
@@ -2651,15 +2700,15 @@ export const RecipeDetailScreen = () => {
                   prepTime: value ? Math.max(0, Number(value) || 0) : null,
                 }))
               }
-              placeholder="min"
+              placeholder="–"
               placeholderTextColor={styles.placeholderText.color}
               keyboardType="number-pad"
-              style={styles.metaTextInput}
+              accessibilityLabel="Prep time in minutes"
+              style={styles.metaWellInput}
             />
           </View>
-          <View style={styles.recipeMetaInputItem}>
-            <Ionicons name="flame-outline" size={16} style={styles.metaIcon} />
-            <Text style={styles.recipeMetaLabel}>Cook</Text>
+          <View style={styles.metaWell}>
+            <Text style={styles.metaWellLabel}>Cook (min)</Text>
             <TextInput
               defaultValue={draft.cookTime?.toString() ?? ""}
               onChangeText={(value) =>
@@ -2668,20 +2717,20 @@ export const RecipeDetailScreen = () => {
                   cookTime: value ? Math.max(0, Number(value) || 0) : null,
                 }))
               }
-              placeholder="min"
+              placeholder="–"
               placeholderTextColor={styles.placeholderText.color}
               keyboardType="number-pad"
-              style={styles.metaTextInput}
+              accessibilityLabel="Cook time in minutes"
+              style={styles.metaWellInput}
             />
           </View>
           <View
             style={[
-              styles.recipeMetaInputItem,
+              styles.metaWell,
               hasVisibleDraftError("servings") && styles.metaInputError,
             ]}
           >
-            <Ionicons name="people-outline" size={16} style={styles.metaIcon} />
-            <Text style={styles.recipeMetaLabel}>Serves</Text>
+            <Text style={styles.metaWellLabel}>Serves</Text>
             <TextInput
               defaultValue={draft.servings.toString()}
               onChangeText={(value) =>
@@ -2691,7 +2740,8 @@ export const RecipeDetailScreen = () => {
                 }))
               }
               keyboardType="number-pad"
-              style={styles.metaTextInput}
+              accessibilityLabel="Servings"
+              style={styles.metaWellInput}
             />
           </View>
         </View>
@@ -2744,10 +2794,9 @@ export const RecipeDetailScreen = () => {
           <View style={styles.pageDivider} />
           <View style={styles.recipeSection}>
             <View style={styles.sectionHeadingRow}>
-              <View>
-                <Text style={styles.sectionHeading}>Nutrition</Text>
-                <Text style={styles.sectionSubheading}>Per serving</Text>
-              </View>
+              <Text accessibilityRole="header" style={styles.sectionHeading}>
+                Nutrition
+              </Text>
               <View style={styles.proBadge}>
                 <Text style={styles.proBadgeText}>Pro</Text>
               </View>
@@ -2772,15 +2821,19 @@ export const RecipeDetailScreen = () => {
         <View style={styles.pageDivider} />
         <View style={styles.recipeSection}>
           <View style={styles.sectionHeadingRow}>
-            <View>
-              <Text style={styles.sectionHeading}>Nutrition</Text>
-              <Text style={styles.sectionSubheading}>
-                {nutritionSubheading}
-              </Text>
-            </View>
+            <Text accessibilityRole="header" style={styles.sectionHeading}>
+              Nutrition
+            </Text>
+            <Text style={styles.sectionSubheading}>{nutritionSubheading}</Text>
           </View>
 
-          <View style={styles.nutritionCard}>
+          <View
+            style={
+              currentNutrition && !isLoadingNutrition
+                ? null
+                : styles.nutritionCard
+            }
+          >
             {isLoadingNutrition ? (
               <View style={styles.nutritionLoadingRow}>
                 <ActivityIndicator size="small" />
@@ -2838,14 +2891,9 @@ export const RecipeDetailScreen = () => {
         layout={LinearTransition.duration(180)}
         style={styles.tagEditor}
       >
-        <View style={styles.tagEditorHeader}>
-          <Ionicons name="pricetag-outline" size={16} style={styles.tagsIcon} />
-          <Text style={styles.tagEditorTitle}>Tags</Text>
-        </View>
         <AutocompleteTagSelector
           selectedNames={draft.tagNames}
           onChange={updateDraftTags}
-          placeholder="Search tags"
         />
       </Animated.View>
     );
@@ -2898,27 +2946,23 @@ export const RecipeDetailScreen = () => {
           {isLoading ? (
             <>
               <View style={styles.summaryPanel}>
-                <Skeleton width="88%" height={20} borderRadius={5} />
-                <Skeleton width="62%" height={20} borderRadius={5} />
+                <Skeleton width="82%" height={31} borderRadius={7} />
 
-                <View style={styles.skeletonTagRow}>
-                  <Skeleton width={82} height={16} borderRadius={4} />
-                  <Skeleton width={64} height={16} borderRadius={4} />
+                <View style={styles.skeletonTextBlock}>
+                  <Skeleton width="96%" height={15} borderRadius={4} />
+                  <Skeleton width="68%" height={15} borderRadius={4} />
                 </View>
 
-                <View style={styles.recipeMetaGroup}>
-                  <Skeleton width={92} height={34} borderRadius={17} />
-                  <Skeleton width={92} height={34} borderRadius={17} />
-                  <Skeleton width={100} height={34} borderRadius={17} />
+                <View style={styles.metaLine}>
+                  <Skeleton width={104} height={18} borderRadius={4} />
+                  <Skeleton width={92} height={18} borderRadius={4} />
                 </View>
 
-                <Skeleton width={124} height={24} borderRadius={5} />
-              </View>
-
-              <View style={styles.recipeActionGroup}>
-                <Skeleton width="60%" height={50} borderRadius={25} />
-                <Skeleton width={50} height={50} borderRadius={25} />
-                <Skeleton width={50} height={50} borderRadius={25} />
+                <View style={styles.tagsRow}>
+                  <Skeleton width={78} height={28} borderRadius={14} />
+                  <Skeleton width={96} height={28} borderRadius={14} />
+                  <Skeleton width={64} height={28} borderRadius={14} />
+                </View>
               </View>
 
               <View style={styles.pageDivider} />
@@ -2946,290 +2990,81 @@ export const RecipeDetailScreen = () => {
             <>
               <Animated.View
                 layout={LinearTransition.duration(200)}
-                style={styles.summaryPanel}
+                style={[
+                  styles.summaryPanel,
+                  isEditing && styles.summaryPanelEditing,
+                ]}
+                onLayout={(event) => {
+                  summaryPanelYRef.current = event.nativeEvent.layout.y;
+                }}
               >
-                {isEditing && draft ? (
-                  <TextInput
-                    defaultValue={draft.description}
-                    onChangeText={(description) =>
-                      updateDraft((current) => ({ ...current, description }))
-                    }
-                    placeholder="Add a short description..."
-                    placeholderTextColor={styles.placeholderText.color}
-                    style={styles.descriptionInput}
-                    multiline
-                  />
-                ) : recipe?.description ? (
-                  <Text type="body" style={styles.recipeDescription}>
-                    {recipe.description}
-                  </Text>
-                ) : null}
+                {renderAttribution()}
 
-                {!isEditing && recipe?.tags && recipe.tags.length > 0 && (
+                {isEditing && draft ? (
+                  <>
+                    {renderValidationMessage("name")}
+                    <TextInput
+                      defaultValue={draft.name}
+                      onChangeText={(name) =>
+                        updateDraft((current) => ({ ...current, name }))
+                      }
+                      placeholder="Recipe title"
+                      placeholderTextColor={styles.placeholderText.color}
+                      accessibilityLabel="Recipe title"
+                      style={[
+                        styles.titleInput,
+                        hasVisibleDraftError("name") && styles.editInputError,
+                      ]}
+                      multiline
+                      textAlignVertical="top"
+                    />
+                    <TextInput
+                      defaultValue={draft.description}
+                      onChangeText={(description) =>
+                        updateDraft((current) => ({ ...current, description }))
+                      }
+                      placeholder="A line or two about the dish"
+                      placeholderTextColor={styles.placeholderText.color}
+                      accessibilityLabel="Description"
+                      style={styles.descriptionInput}
+                      multiline
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Text
+                      accessibilityRole="header"
+                      style={styles.recipeTitle}
+                      selectable
+                    >
+                      {recipe?.name}
+                    </Text>
+                    {recipe?.description ? (
+                      <Text type="body" style={styles.recipeDescription}>
+                        {recipe.description}
+                      </Text>
+                    ) : null}
+                  </>
+                )}
+
+                {isEditing && draft ? renderEditableMeta() : renderMetaLine()}
+
+                {!isEditing && recipe?.tags && recipe.tags.length > 0 ? (
                   <Animated.View
                     entering={FadeIn.duration(160)}
                     exiting={FadeOut.duration(120)}
-                    layout={LinearTransition.duration(180)}
                     style={styles.tagsRow}
                   >
-                    <Ionicons
-                      name="pricetag-outline"
-                      size={14}
-                      style={styles.tagsIcon}
-                    />
-                    {recipe.tags.slice(0, 4).map((tag) => (
-                      <Text key={tag.name} style={styles.tagText}>
-                        {tag.name}
-                      </Text>
+                    {recipe.tags.map((tag) => (
+                      <View key={tag.name} style={styles.tagPill}>
+                        <Text style={styles.tagText}>{tag.name}</Text>
+                      </View>
                     ))}
                   </Animated.View>
-                )}
+                ) : null}
 
                 {isEditing && draft ? renderEditableTags() : null}
-
-                {isEditing && draft ? (
-                  renderEditableMeta()
-                ) : (
-                  <View style={styles.recipeMetaGroup}>
-                    {recipe?.prepTime ? (
-                      <View style={styles.recipeMetaItem}>
-                        <Ionicons
-                          name="leaf-outline"
-                          size={16}
-                          style={styles.metaIcon}
-                        />
-                        <Text style={styles.recipeMetaLabel}>Prep</Text>
-                        <Text style={styles.recipeMetaValue}>
-                          {formatMinutesShort(recipe.prepTime)}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {recipe?.cookTime ? (
-                      <View style={styles.recipeMetaItem}>
-                        <Ionicons
-                          name="flame-outline"
-                          size={16}
-                          style={styles.metaIcon}
-                        />
-                        <Text style={styles.recipeMetaLabel}>Cook</Text>
-                        <Text style={styles.recipeMetaValue}>
-                          {formatMinutesShort(recipe.cookTime)}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {recipe ? (
-                      <TouchableOpacity
-                        style={styles.recipeMetaItem}
-                        onPress={handleOpenAdjustSheet}
-                        activeOpacity={0.76}
-                        accessibilityLabel={`Adjust servings, currently ${servings}`}
-                      >
-                        <Ionicons
-                          name="people-outline"
-                          size={16}
-                          style={styles.metaIcon}
-                        />
-                        <Text style={styles.recipeMetaLabel}>Serves</Text>
-                        <Text style={styles.recipeMetaValue}>{servings}</Text>
-                        <Ionicons
-                          name="chevron-down"
-                          size={13}
-                          style={styles.recipeMetaButtonIcon}
-                        />
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                )}
-
-                {!isEditing && isOwnRecipe && !isPreviewMode ? (
-                  <Animated.View
-                    entering={FadeIn.duration(160)}
-                    exiting={FadeOut.duration(120)}
-                    layout={LinearTransition.duration(180)}
-                  >
-                    <TouchableOpacity
-                      style={styles.ratingInlineButton}
-                      onPress={handleOpenReviewSheet}
-                      activeOpacity={0.72}
-                      accessibilityLabel={
-                        displayedRating
-                          ? `Rate recipe, current rating ${displayedRating} out of 5`
-                          : "Rate recipe"
-                      }
-                    >
-                      <Ionicons
-                        name={displayedRating ? "star" : "star-outline"}
-                        size={15}
-                        style={
-                          displayedRating
-                            ? styles.starFilled
-                            : styles.ratingIcon
-                        }
-                      />
-                      <Text style={styles.ratingInlineText}>
-                        {displayedRating
-                          ? `Your rating ${displayedRating}/5`
-                          : "Rate this recipe"}
-                      </Text>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={13}
-                        style={styles.ratingChevron}
-                      />
-                    </TouchableOpacity>
-                  </Animated.View>
-                ) : null}
               </Animated.View>
-
-              {!isEditing && !isPreviewMode && (
-                <Animated.View
-                  entering={FadeIn.duration(180)}
-                  exiting={FadeOut.duration(120)}
-                  layout={LinearTransition.duration(200)}
-                  style={styles.recipeActionGroup}
-                >
-                  {isOwnRecipe ? (
-                    <>
-                      <TouchableOpacity
-                        style={styles.cookActionButton}
-                        onPress={handleStartCookMode}
-                        activeOpacity={0.82}
-                      >
-                        <Ionicons name="play" size={20} color="white" />
-                        <Text style={styles.cookActionText}>Cook</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.recipeActionButton}
-                        onPress={handleOpenPersonaliseSheet}
-                        activeOpacity={0.78}
-                        accessibilityLabel="Personalise recipe with AI"
-                      >
-                        <Ionicons
-                          name="sparkles-outline"
-                          size={21}
-                          style={styles.recipeActionIcon}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.recipeActionButton}
-                        onPress={handleOpenMealPlanSheet}
-                        activeOpacity={0.78}
-                        accessibilityLabel="Add to meal plan"
-                      >
-                        <Ionicons
-                          name="calendar-outline"
-                          size={21}
-                          style={styles.recipeActionIcon}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.recipeActionButton}
-                        onPress={handleOpenShoppingListSheet}
-                        activeOpacity={0.78}
-                        accessibilityLabel="Add ingredients to shopping list"
-                      >
-                        <Ionicons
-                          name="cart-outline"
-                          size={21}
-                          style={styles.recipeActionIcon}
-                        />
-                      </TouchableOpacity>
-                    </>
-                  ) : (
-                    <>
-                      <TouchableOpacity
-                        style={[
-                          styles.communityActionButton,
-                          styles.importActionButton,
-                        ]}
-                        onPress={handleImportRecipe}
-                        disabled={importMutation.isPending}
-                        activeOpacity={0.82}
-                        accessibilityLabel="Import recipe"
-                        accessibilityState={{
-                          disabled: importMutation.isPending,
-                          busy: importMutation.isPending,
-                        }}
-                      >
-                        {importMutation.isPending ? (
-                          <ActivityIndicator size="small" color="white" />
-                        ) : (
-                          <Ionicons
-                            name="download-outline"
-                            size={20}
-                            color="white"
-                          />
-                        )}
-                        <Text style={styles.cookActionText}>
-                          {importMutation.isPending ? "Importing" : "Import"}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.communityActionButton,
-                          styles.personaliseActionButton,
-                        ]}
-                        onPress={handleOpenPersonaliseSheet}
-                        activeOpacity={0.82}
-                        accessibilityLabel="Personalise recipe with AI"
-                      >
-                        <Ionicons
-                          name="sparkles-outline"
-                          size={20}
-                          style={styles.recipeActionIcon}
-                        />
-                        <Text style={styles.personaliseActionText}>
-                          Personalise
-                        </Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </Animated.View>
-              )}
-
-              {!isEditing &&
-                !isPreviewMode &&
-                !isOwnRecipe &&
-                !shouldShowCreatorChip &&
-                recipe && (
-                  <Animated.View
-                    entering={FadeIn.duration(180)}
-                    exiting={FadeOut.duration(120)}
-                    layout={LinearTransition.duration(200)}
-                    style={styles.actionRail}
-                  >
-                    <TouchableOpacity
-                      style={styles.authorCompact}
-                      onPress={() =>
-                        navigation.navigate("UserProfile", {
-                          userId: recipe.owner.id,
-                        })
-                      }
-                      activeOpacity={0.7}
-                    >
-                      {ownerAvatarUrl ? (
-                        <Image
-                          source={{
-                            uri: ownerAvatarUrl,
-                          }}
-                          style={styles.authorAvatarImage}
-                        />
-                      ) : (
-                        <View style={styles.authorAvatarPlaceholder}>
-                          <Text style={styles.authorAvatarText}>
-                            {recipe.owner.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.authorInfo}>
-                        <Text style={styles.authorLabel}>By</Text>
-                        <Text style={styles.authorName} numberOfLines={1}>
-                          {recipe.owner.name}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </Animated.View>
-                )}
 
               <View style={styles.pageDivider} />
 
@@ -3240,12 +3075,37 @@ export const RecipeDetailScreen = () => {
                 }}
               >
                 <View style={styles.sectionHeadingRow}>
-                  <View>
-                    <Text style={styles.sectionHeading}>Ingredients</Text>
+                  <Text
+                    accessibilityRole="header"
+                    style={styles.sectionHeading}
+                  >
+                    Ingredients
+                  </Text>
+                  {isEditing ? (
                     <Text style={styles.sectionSubheading}>
                       {ingredientCount} items
                     </Text>
-                  </View>
+                  ) : (
+                    <Pressable
+                      onPress={handleOpenAdjustSheet}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Units: ${measurementLabel}. Adjust servings and units`}
+                      hitSlop={12}
+                      style={({ pressed }) => [
+                        styles.unitsButton,
+                        pressed && styles.pressedFaded,
+                      ]}
+                    >
+                      <Text style={styles.unitsButtonText}>
+                        {measurementLabel}
+                      </Text>
+                      <Ionicons
+                        name="chevron-down"
+                        size={13}
+                        style={styles.unitsButtonText}
+                      />
+                    </Pressable>
+                  )}
                 </View>
                 {isEditing ? renderValidationMessage("ingredients") : null}
                 {isEditing ? renderEditableIngredients() : renderIngredients()}
@@ -3255,27 +3115,71 @@ export const RecipeDetailScreen = () => {
 
               <View style={styles.recipeSection}>
                 <View style={styles.sectionHeadingRow}>
-                  <View>
-                    <Text style={styles.sectionHeading}>Method</Text>
-                    <Text style={styles.sectionSubheading}>
-                      {instructionCount} steps
-                    </Text>
-                  </View>
+                  <Text
+                    accessibilityRole="header"
+                    style={styles.sectionHeading}
+                  >
+                    Method
+                  </Text>
+                  <Text style={styles.sectionSubheading}>
+                    {instructionCount}{" "}
+                    {instructionCount === 1 ? "step" : "steps"}
+                  </Text>
                 </View>
                 {isEditing ? renderEditableMethod() : renderMethod()}
               </View>
 
               {renderNutritionSection()}
 
+              {!isEditing && !isPreviewMode && sourceWebsiteName ? (
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel={sourceChipAccessibilityLabel}
+                  onPress={handleViewSource}
+                  style={({ pressed }) => [
+                    styles.originalRecipeCard,
+                    pressed && styles.pressedFaded,
+                  ]}
+                >
+                  <View style={styles.originalRecipeIcon}>
+                    <Ionicons
+                      name="globe-outline"
+                      size={18}
+                      style={styles.originalRecipeIconGlyph}
+                    />
+                  </View>
+                  <View style={styles.originalRecipeText}>
+                    <Text style={styles.originalRecipeLabel}>
+                      Original recipe
+                    </Text>
+                    <Text style={styles.originalRecipeName} numberOfLines={1}>
+                      {sourceWebsiteName}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="open-outline"
+                    size={17}
+                    style={styles.originalRecipeIconGlyph}
+                  />
+                </Pressable>
+              ) : null}
+
+              {isEditing && !isCreateMode && isOwnRecipe ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={handleDeleteRecipe}
+                  style={({ pressed }) => [
+                    styles.deleteRecipeButton,
+                    pressed && styles.pressedFaded,
+                  ]}
+                >
+                  <Text style={styles.deleteRecipeText}>Delete recipe</Text>
+                </Pressable>
+              ) : null}
+
               <VSpace
                 size={
-                  isEditing
-                    ? visibleDraftErrors.length > 0
-                      ? 190
-                      : 120
-                    : isPreviewMode || !isOwnRecipe
-                      ? 100
-                      : 40
+                  isEditing || showViewActionBar ? editFooterHeight + 24 : 40
                 }
               />
             </>
@@ -3328,13 +3232,25 @@ export const RecipeDetailScreen = () => {
       <ReportContentSheet ref={reportSheetRef} />
 
       {isEditing && draft ? (
+        <RecipePhotosSheet
+          ref={recipePhotosSheetRef}
+          photos={draftPhotoItems}
+          onReorder={handleReorderImages}
+          onRemove={handleRemoveImageById}
+          onAddPhoto={handlePickRecipeImage}
+          onCreateWithAI={handleGenerateRecipeImage}
+          isCreatingWithAI={generateRecipeImageMutation.isPending}
+        />
+      ) : null}
+
+      {isEditing && draft ? (
         <Animated.View
           entering={FadeIn.duration(180)}
           exiting={FadeOut.duration(120)}
+          pointerEvents="box-none"
           style={[
-            styles.stickyFooter,
-            styles.editFooter,
-            { paddingBottom: insets.bottom + 12 },
+            styles.actionBar,
+            { paddingBottom: Math.max(insets.bottom - 14, 12) },
           ]}
           onLayout={(event) => {
             setEditFooterHeight(event.nativeEvent.layout.height);
@@ -3366,46 +3282,150 @@ export const RecipeDetailScreen = () => {
             </Animated.View>
           ) : null}
 
-          <View style={styles.editFooterButtons}>
-            {isImportReviewMode ? (
-              <TouchableOpacity
-                style={[styles.cancelButton, styles.dismissButton]}
-                onPress={handleDismissImportReview}
-                disabled={isSaving}
-              >
-                <Text
-                  style={[styles.cancelButtonText, styles.dismissButtonText]}
-                >
-                  Dismiss
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={handleCancelEdit}
-                disabled={isSaving}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.saveButton, isSaving && styles.buttonDisabled]}
+          <View style={styles.actionBarRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isSaving, busy: isSaving }}
+              style={({ pressed }) => [
+                styles.primaryBarButton,
+                (pressed || isSaving) && styles.primaryBarButtonPressed,
+              ]}
               onPress={handleSaveDraft}
               disabled={isSaving}
             >
               {isSaving ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <>
-                  <Ionicons
-                    name="checkmark"
-                    size={20}
-                    style={styles.saveButtonIcon}
-                  />
-                  <Text style={styles.saveButtonText}>Save</Text>
-                </>
+                <Ionicons name="checkmark" size={20} color="white" />
               )}
-            </TouchableOpacity>
+              <Text style={styles.primaryBarButtonText}>
+                {isCreateMode ? "Save recipe" : "Save changes"}
+              </Text>
+            </Pressable>
+            {isImportReviewMode ? (
+              <GlassSurface
+                interactive
+                style={styles.glassBarPill}
+                contentStyle={styles.glassBarPillContent}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={handleDismissImportReview}
+                  disabled={isSaving}
+                  style={({ pressed }) => [
+                    styles.glassBarTextButton,
+                    pressed && styles.pressedFaded,
+                  ]}
+                >
+                  <Text style={styles.glassBarText}>Dismiss</Text>
+                </Pressable>
+              </GlassSurface>
+            ) : (
+              <GlassSurface
+                interactive
+                style={styles.glassBarCircle}
+                contentStyle={styles.glassBarPillContent}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isCreateMode ? "Discard recipe" : "Cancel editing"
+                  }
+                  onPress={handleCancelEdit}
+                  disabled={isSaving}
+                  style={({ pressed }) => [
+                    styles.glassBarIconButton,
+                    pressed && styles.pressedFaded,
+                  ]}
+                >
+                  <SystemIcon
+                    sf="xmark"
+                    android="close"
+                    size={20}
+                    color={styles.glassBarText.color}
+                  />
+                </Pressable>
+              </GlassSurface>
+            )}
+          </View>
+        </Animated.View>
+      ) : showViewActionBar && recipe ? (
+        <Animated.View
+          entering={FadeIn.duration(180)}
+          exiting={FadeOut.duration(120)}
+          pointerEvents="box-none"
+          style={[
+            styles.actionBar,
+            { paddingBottom: Math.max(insets.bottom - 14, 12) },
+          ]}
+          onLayout={(event) => {
+            setEditFooterHeight(event.nativeEvent.layout.height);
+          }}
+        >
+          <View style={styles.actionBarRow}>
+            {isOwnRecipe ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleStartCookMode}
+                style={({ pressed }) => [
+                  styles.primaryBarButton,
+                  pressed && styles.primaryBarButtonPressed,
+                ]}
+              >
+                <Ionicons name="play" size={18} color="white" />
+                <Text style={styles.primaryBarButtonText}>Start cooking</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Import recipe"
+                accessibilityState={{
+                  disabled: importMutation.isPending,
+                  busy: importMutation.isPending,
+                }}
+                disabled={importMutation.isPending}
+                onPress={handleImportRecipe}
+                style={({ pressed }) => [
+                  styles.primaryBarButton,
+                  (pressed || importMutation.isPending) &&
+                    styles.primaryBarButtonPressed,
+                ]}
+              >
+                {importMutation.isPending ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Ionicons name="download-outline" size={19} color="white" />
+                )}
+                <Text style={styles.primaryBarButtonText}>
+                  {importMutation.isPending ? "Importing" : "Import recipe"}
+                </Text>
+              </Pressable>
+            )}
+            {isOwnRecipe ? (
+              <GlassButtonGroup style={styles.glassBarGroup}>
+                <GlassIconButton
+                  accessibilityLabel="Add ingredients to shopping list"
+                  onPress={handleOpenShoppingListSheet}
+                >
+                  <SystemIcon
+                    sf="cart"
+                    android="cart-outline"
+                    color={styles.glassBarText.color}
+                  />
+                </GlassIconButton>
+                <View style={styles.glassBarDivider} />
+                <GlassIconButton
+                  accessibilityLabel="Add to meal plan"
+                  onPress={handleOpenMealPlanSheet}
+                >
+                  <SystemIcon
+                    sf="calendar"
+                    android="calendar-outline"
+                    color={styles.glassBarText.color}
+                  />
+                </GlassIconButton>
+              </GlassButtonGroup>
+            ) : null}
           </View>
         </Animated.View>
       ) : null}
@@ -3457,6 +3477,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   androidHeaderMenuButtonPressed: {
     opacity: 0.55,
+  },
+  androidHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   scrollView: {
     flex: 1,
@@ -3577,130 +3601,6 @@ const styles = StyleSheet.create((theme) => ({
   emptyHeroButtonTextPrimary: {
     color: "white",
   },
-  imageOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 70,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-  },
-  editImageGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 180,
-  },
-  emptyEditImageGradient: {
-    height: 130,
-  },
-  overlayTitle: {
-    color: "white",
-  },
-  heroTitleRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 8,
-    width: "100%",
-  },
-  heroTitleTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  heroTitleCounterClearance: {
-    paddingRight: 64,
-  },
-  heroMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 8,
-    width: "100%",
-  },
-  heroMetaChip: {
-    minHeight: 30,
-    paddingHorizontal: 10,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.24)",
-    backgroundColor: "rgba(0,0,0,0.38)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  heroSourceButton: {
-    maxWidth: "72%",
-    flexShrink: 1,
-  },
-  heroMetaIcon: {
-    color: "rgba(255,255,255,0.84)",
-  },
-  heroSourceText: {
-    flexShrink: 1,
-    minWidth: 0,
-    maxWidth: 180,
-    color: "rgba(255,255,255,0.88)",
-    fontSize: 13,
-    fontFamily: theme.fonts.semiBold,
-  },
-  heroCreatorButton: {
-    maxWidth: "72%",
-    flexShrink: 1,
-    paddingLeft: 4,
-    paddingRight: 10,
-    gap: 7,
-  },
-  heroCreatorAvatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.32)",
-  },
-  heroCreatorAvatarPlaceholder: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  heroCreatorAvatarText: {
-    color: "white",
-    fontSize: 10,
-    lineHeight: 13,
-    fontFamily: theme.fonts.semiBold,
-    includeFontPadding: false,
-  },
-  heroCreatorText: {
-    flexShrink: 1,
-    minWidth: 0,
-    color: "rgba(255,255,255,0.92)",
-    fontSize: 13,
-    fontFamily: theme.fonts.semiBold,
-  },
-  overlayTitleInputFrame: {
-    marginTop: -5,
-    marginBottom: -9,
-    marginHorizontal: -13,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.42)",
-    backgroundColor: "rgba(0,0,0,0.14)",
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-  },
-  overlayTitleInputFrameError: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.destructive,
-    backgroundColor: "rgba(0,0,0,0.14)",
-  },
-  overlayTitleInputFrameWithCounter: {
-    marginRight: 58,
-  },
   heroValidationMessage: {
     marginBottom: 8,
     borderColor: theme.colors.destructive + "32",
@@ -3711,101 +3611,8 @@ const styles = StyleSheet.create((theme) => ({
   heroValidationMessageText: {
     color: theme.colors.destructive,
   },
-  overlayTitleInput: {
-    minHeight: 38,
-    maxHeight: 72,
-    color: "white",
-    fontSize: 28,
-    lineHeight: 34,
-    fontFamily: theme.fonts.black,
-    letterSpacing: -1,
-    paddingTop: 0,
-    paddingBottom: 4,
-    paddingHorizontal: 0,
-    backgroundColor: "transparent",
-  },
-  heroEditRow: {
-    width: "100%",
-    flexDirection: "row",
-    flexWrap: "nowrap",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 10,
-  },
-  heroEditButton: {
-    minWidth: 0,
-    height: 36,
-    paddingHorizontal: 8,
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
   heroButtonDisabled: {
     opacity: 0.65,
-  },
-  heroAddImageIcon: {
-    width: 21,
-    height: 21,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  heroAddImageBadge: {
-    position: "absolute",
-    right: -2,
-    bottom: -1,
-  },
-  heroEditButtonText: {
-    flexShrink: 1,
-    color: "white",
-    fontSize: 13,
-    fontFamily: theme.fonts.semiBold,
-  },
-  heroCountChip: {
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 0,
-    borderRadius: 9,
-    backgroundColor: "rgba(255,255,255,0.16)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 2,
-  },
-  heroCountText: {
-    color: "white",
-    fontSize: 11,
-    lineHeight: 18,
-    fontFamily: theme.fonts.semiBold,
-    includeFontPadding: false,
-  },
-  heroIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  heroReorderControls: {
-    height: 36,
-    borderRadius: 18,
-    borderCurve: "continuous",
-    backgroundColor: "rgba(0,0,0,0.45)",
-    flexDirection: "row",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  heroReorderButton: {
-    width: 38,
-    height: 36,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  heroReorderDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 18,
-    backgroundColor: "rgba(255,255,255,0.24)",
   },
   whiteCard: {
     backgroundColor: theme.colors.background,
@@ -3818,39 +3625,29 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
+    marginTop: 4,
   },
   tagText: {
     fontSize: 13,
     color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
-  },
-  tagsIcon: {
-    color: theme.colors.textSecondary,
+    fontFamily: theme.fonts.bold,
   },
   tagEditor: {
     gap: 10,
     marginBottom: 4,
-  },
-  tagEditorHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  tagEditorTitle: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
   },
   recipeDescription: {
     lineHeight: 22,
     fontFamily: theme.fonts.regular,
   },
   descriptionInput: {
-    minHeight: 96,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 25,
+    minHeight: 72,
+    paddingHorizontal: 14,
+    paddingTop: 11,
+    paddingBottom: 11,
+    borderRadius: 16,
+    borderCurve: "continuous",
     backgroundColor: theme.colors.inputBackground,
     color: theme.colors.text,
     fontSize: 17,
@@ -3858,84 +3655,18 @@ const styles = StyleSheet.create((theme) => ({
     textAlignVertical: "top",
   },
   summaryPanel: {
-    gap: 14,
+    gap: 16,
   },
-  recipeMetaGroup: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  summaryPanelEditing: {
+    gap: 10,
   },
   metaEditor: {
     gap: 8,
-  },
-  recipeMetaItem: {
-    minHeight: 34,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    borderRadius: 17,
-    backgroundColor: theme.colors.inputBackground,
-  },
-  recipeMetaInputItem: {
-    height: 34,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    borderRadius: 17,
-    backgroundColor: theme.colors.inputBackground,
   },
   metaInputError: {
     borderWidth: 1,
     borderColor: theme.colors.destructive,
     backgroundColor: theme.colors.destructive + "12",
-  },
-  recipeMetaButtonIcon: {
-    marginLeft: -1,
-    color: theme.colors.textSecondary,
-  },
-  recipeMetaLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
-    includeFontPadding: false,
-  },
-  recipeMetaValue: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: theme.colors.text,
-    fontFamily: theme.fonts.semiBold,
-    includeFontPadding: false,
-  },
-  metaTextInput: {
-    height: 16,
-    width: 28,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    color: theme.colors.text,
-    fontSize: 12,
-    fontFamily: theme.fonts.semiBold,
-    includeFontPadding: false,
-  },
-  ratingInlineButton: {
-    alignSelf: "flex-start",
-    minHeight: 30,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  ratingIcon: {
-    color: theme.colors.textSecondary,
-  },
-  ratingInlineText: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
-  },
-  ratingChevron: {
-    color: theme.colors.textSecondary,
   },
   metaIcon: {
     color: theme.colors.textSecondary,
@@ -3957,22 +3688,22 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
   },
   nutritionMetric: {
-    minWidth: 78,
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: theme.colors.background,
+    flexBasis: "22%",
+    flexGrow: 1,
+    padding: 12,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.inputBackground,
     gap: 2,
   },
   nutritionMetricValue: {
     color: theme.colors.text,
-    fontSize: 15,
-    fontFamily: theme.fonts.semiBold,
+    fontSize: 18,
+    fontFamily: theme.fonts.black,
   },
   nutritionMetricLabel: {
     color: theme.colors.textSecondary,
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: theme.fonts.medium,
   },
   nutritionLoadingRow: {
@@ -4008,155 +3739,56 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 11,
     fontFamily: theme.fonts.semiBold,
   },
-  starFilled: {
-    color: theme.colors.primary,
-  },
   ingredientItemSkeleton: {
     paddingVertical: 10,
   },
-  skeletonTagRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  skeletonTextBlock: {
     gap: 8,
-  },
-  recipeActionGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 14,
-  },
-  actionRail: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 12,
-  },
-  cookActionButton: {
-    flex: 1,
-    minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  communityActionButton: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    minHeight: 50,
-    borderRadius: 25,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  importActionButton: {
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-  },
-  personaliseActionButton: {
-    backgroundColor: theme.colors.inputBackground,
-  },
-  personaliseActionText: {
-    color: theme.colors.text,
-    fontSize: 17,
-    fontFamily: theme.fonts.semiBold,
-  },
-  cookActionText: {
-    color: "white",
-    fontSize: 17,
-    fontFamily: theme.fonts.semiBold,
-  },
-  recipeActionButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: theme.colors.inputBackground,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  recipeActionIcon: {
-    color: theme.colors.text,
-  },
-  authorAvatarImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    flexShrink: 0,
-  },
-  authorAvatarPlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-    justifyContent: "center",
-    alignItems: "center",
-    flexShrink: 0,
-  },
-  authorAvatarText: {
-    fontSize: 15,
-    fontFamily: theme.fonts.semiBold,
-    color: theme.colors.buttonText,
-  },
-  authorInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  authorCompact: {
-    flex: 1,
-    minHeight: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
-    borderRadius: 25,
-    backgroundColor: theme.colors.inputBackground,
-  },
-  authorLabel: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
-  },
-  authorName: {
-    fontSize: 15,
-    color: theme.colors.text,
-    fontFamily: theme.fonts.semiBold,
+    paddingVertical: 4,
   },
   tabContent: {
-    paddingTop: 16,
+    paddingTop: 4,
   },
   contentSectionGroup: {
     paddingTop: 18,
   },
   sectionHeader: {
-    paddingBottom: 10,
+    paddingBottom: 2,
   },
   sectionTitle: {
-    fontSize: 17,
-    lineHeight: 22,
-    color: theme.colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
     fontFamily: theme.fonts.bold,
   },
   sectionHeadingRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
-    paddingBottom: 2,
+    alignItems: "center",
+    gap: 12,
   },
   sectionHeading: {
-    fontSize: 22,
-    fontFamily: theme.fonts.bold,
+    fontSize: 23,
+    lineHeight: 28,
+    letterSpacing: -0.3,
+    fontFamily: theme.fonts.black,
     color: theme.colors.text,
   },
   sectionSubheading: {
-    fontSize: 13,
+    fontSize: 14,
     color: theme.colors.textSecondary,
-    fontFamily: theme.fonts.semiBold,
-    marginTop: 2,
+    fontFamily: theme.fonts.medium,
+  },
+  unitsButton: {
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  unitsButtonText: {
+    color: theme.colors.textSecondary,
+    fontSize: 14,
+    fontFamily: theme.fonts.bold,
   },
   recipeSection: {
     gap: 8,
@@ -4164,61 +3796,64 @@ const styles = StyleSheet.create((theme) => ({
   pageDivider: {
     height: 1,
     backgroundColor: theme.colors.border,
-    marginTop: 30,
+    marginTop: 24,
     marginBottom: 24,
     opacity: 0.4,
   },
   ingredientItem: {
-    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
   },
-  ingredientContent: {
-    flex: 1,
+  ingredientItemLast: {
+    borderBottomWidth: 0,
   },
   ingredientQuantity: {
+    width: 86,
+    fontSize: 16,
+    lineHeight: 22,
     fontFamily: theme.fonts.bold,
     color: theme.colors.text,
   },
   ingredientName: {
-    fontSize: 17,
+    flex: 1,
+    minWidth: 0,
+    fontSize: 16,
+    lineHeight: 22,
     color: theme.colors.text,
   },
   ingredientPreparation: {
-    fontSize: 14,
-    fontStyle: "italic",
     color: theme.colors.textSecondary,
-    marginTop: 2,
   },
   instructionItem: {
     flexDirection: "row",
     gap: 12,
-    paddingVertical: 16,
+    paddingVertical: 9,
   },
   stepMarkerColumn: {
-    width: 30,
-    alignItems: "center",
+    width: 24,
+    alignItems: "flex-start",
   },
   stepNumberBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: theme.colors.inputBackground,
+    minWidth: 24,
+    height: 24,
     justifyContent: "center",
-    alignItems: "center",
-    marginTop: 0,
+    alignItems: "flex-start",
   },
   stepNumberBadgeEdit: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: theme.colors.inputBackground,
+    minWidth: 24,
+    height: 27,
     justifyContent: "center",
-    alignItems: "center",
-    marginTop: 8,
+    alignItems: "flex-start",
+    marginTop: 10,
   },
   stepNumber: {
-    fontSize: 13,
-    lineHeight: 17,
-    fontFamily: theme.fonts.bold,
+    fontSize: 19,
+    lineHeight: 24,
+    fontFamily: theme.fonts.black,
     color: theme.colors.primary,
   },
   instructionContent: {
@@ -4226,8 +3861,8 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
   },
   instructionText: {
-    fontSize: 17,
-    lineHeight: 27,
+    fontSize: 16,
+    lineHeight: 24,
     color: theme.colors.text,
   },
   stepImageThumbnail: {
@@ -4364,24 +3999,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 14,
     fontFamily: theme.fonts.semiBold,
   },
-  stickyFooter: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: theme.colors.background,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  editFooter: {
-    gap: 10,
-  },
-  editFooterButtons: {
-    flexDirection: "row",
-    gap: 12,
-  },
   validationSummary: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -4413,51 +4030,6 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 17,
     fontFamily: theme.fonts.medium,
   },
-  cancelButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 50,
-    backgroundColor: theme.colors.inputBackground,
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  cancelButtonText: {
-    color: theme.colors.text,
-    fontSize: 17,
-    fontFamily: theme.fonts.semiBold,
-  },
-  dismissButton: {
-    borderColor: theme.colors.destructive,
-    backgroundColor: theme.colors.destructive + "12",
-  },
-  dismissButtonText: {
-    color: theme.colors.destructive,
-  },
-  saveButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 50,
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
-    borderRadius: 25,
-  },
-  buttonDisabled: {
-    opacity: 0.62,
-  },
-  saveButtonIcon: {
-    color: theme.colors.buttonText,
-  },
-  saveButtonText: {
-    color: theme.colors.buttonText,
-    fontSize: 17,
-    fontFamily: theme.fonts.semiBold,
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.95)",
@@ -4486,5 +4058,336 @@ const styles = StyleSheet.create((theme) => ({
   },
   placeholderText: {
     color: theme.colors.placeholderText,
+  },
+  pressedFaded: {
+    opacity: 0.6,
+  },
+  recipeTitle: {
+    // Tucks the description up under the title so the two read as one
+    // block; the gaps below them stay even.
+    marginBottom: -10,
+    fontSize: 31,
+    lineHeight: 35,
+    letterSpacing: -0.7,
+    fontFamily: theme.fonts.black,
+    color: theme.colors.text,
+  },
+  titleInput: {
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingTop: 9,
+    paddingBottom: 9,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.inputBackground,
+    color: theme.colors.text,
+    fontSize: 28,
+    lineHeight: 33,
+    letterSpacing: -0.7,
+    fontFamily: theme.fonts.black,
+  },
+  attributionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    columnGap: 16,
+    rowGap: 6,
+  },
+  sourceLink: {
+    minHeight: 24,
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  sourceLinkText: {
+    flexShrink: 1,
+    color: theme.colors.onPrimarySoft,
+    fontSize: 14,
+    fontFamily: theme.fonts.bold,
+  },
+  creatorLink: {
+    minHeight: 24,
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  creatorAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  creatorAvatarPlaceholder: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: theme.colors.inputBackground,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  creatorAvatarText: {
+    color: theme.colors.textSecondary,
+    fontSize: 10,
+    fontFamily: theme.fonts.semiBold,
+  },
+  creatorText: {
+    flexShrink: 1,
+    color: theme.colors.textSecondary,
+    fontSize: 14,
+    fontFamily: theme.fonts.semiBold,
+  },
+  metaLine: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    columnGap: 18,
+    rowGap: 6,
+  },
+  metaLineItem: {
+    minHeight: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  metaLineText: {
+    color: theme.colors.textSecondary,
+    fontSize: 15,
+    fontFamily: theme.fonts.medium,
+  },
+  metaLineValue: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.bold,
+  },
+  tagPill: {
+    height: 28,
+    paddingHorizontal: 11,
+    borderRadius: 14,
+    backgroundColor: theme.colors.inputBackground,
+    justifyContent: "center",
+  },
+  metaWellRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  metaWell: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.inputBackground,
+  },
+  metaWellLabel: {
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    fontFamily: theme.fonts.medium,
+  },
+  metaWellInput: {
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    color: theme.colors.text,
+    fontSize: 17,
+    fontFamily: theme.fonts.bold,
+  },
+  photoStripWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
+    alignItems: "center",
+    gap: 8,
+  },
+  photoThumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+  photoControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  photoPill: {
+    height: 50,
+    borderRadius: 25,
+  },
+  photoPillContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  photoPillButton: {
+    height: 50,
+    paddingLeft: 10,
+    paddingRight: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  photoStack: {
+    height: 34,
+  },
+  photoStackItem: {
+    position: "absolute",
+    top: 2,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    borderCurve: "continuous",
+    borderWidth: 2,
+    borderColor: "white",
+    overflow: "hidden",
+    backgroundColor: theme.colors.inputBackground,
+  },
+  photoPillText: {
+    color: "#191919",
+    fontSize: 15,
+    fontFamily: theme.fonts.bold,
+  },
+  photoPillChevron: {
+    color: "rgba(0,0,0,0.5)",
+  },
+  photoAddCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  photoAddButton: {
+    width: 50,
+    height: 50,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoStripButtonPressed: {
+    opacity: 0.6,
+  },
+  photoStripIcon: {
+    color: "#191919",
+  },
+  actionBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 0,
+    gap: 10,
+  },
+  actionBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  primaryBarButton: {
+    flex: 1,
+    height: 54,
+    borderRadius: 27,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.primary,
+    backgroundImage: theme.colors.primaryGradient,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    boxShadow: "0 8px 22px rgba(224, 0, 34, 0.3)",
+  },
+  primaryBarButtonPressed: {
+    opacity: 0.8,
+  },
+  primaryBarButtonText: {
+    color: "white",
+    fontSize: 17,
+    fontFamily: theme.fonts.bold,
+  },
+  glassBarGroup: {
+    height: 54,
+    borderRadius: 27,
+    paddingHorizontal: 4,
+  },
+  glassBarDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 22,
+    backgroundColor: theme.colors.border,
+  },
+  glassBarCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+  },
+  glassBarPill: {
+    height: 54,
+    borderRadius: 27,
+  },
+  glassBarPillContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  glassBarIconButton: {
+    width: 54,
+    height: 54,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  glassBarTextButton: {
+    height: 54,
+    paddingHorizontal: 20,
+    justifyContent: "center",
+  },
+  glassBarText: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontFamily: theme.fonts.bold,
+  },
+  originalRecipeCard: {
+    marginTop: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.inputBackground,
+  },
+  originalRecipeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  originalRecipeIconGlyph: {
+    color: theme.colors.text,
+  },
+  originalRecipeText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  originalRecipeLabel: {
+    color: theme.colors.textSecondary,
+    fontSize: 13,
+    fontFamily: theme.fonts.medium,
+  },
+  originalRecipeName: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontFamily: theme.fonts.bold,
+  },
+  deleteRecipeButton: {
+    marginTop: 32,
+    height: 52,
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: theme.colors.destructive + "17",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  deleteRecipeText: {
+    color: theme.colors.destructive,
+    fontSize: 16,
+    fontFamily: theme.fonts.bold,
   },
 }));

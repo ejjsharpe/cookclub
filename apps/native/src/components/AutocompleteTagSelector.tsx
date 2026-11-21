@@ -2,12 +2,11 @@ import { useState, useMemo, useRef } from "react";
 import {
   View,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   type TextInputInstance,
 } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
-import { VSpace } from "./Space";
 import { Text } from "./Text";
 
 import { useUserTags } from "@/api/recipe";
@@ -22,7 +21,6 @@ interface Props {
   selectedNames: string[];
   onChange: (tagNames: string[]) => void;
   placeholder?: string;
-  variant?: "default" | "like" | "dislike";
 }
 
 function normalizeTagName(tagName: string) {
@@ -33,14 +31,17 @@ function normalizeTagKey(tagName: string) {
   return normalizeTagName(tagName).toLocaleLowerCase();
 }
 
+/**
+ * Tags as removable pills with a "+ Tag" pill at the end. Tapping it opens
+ * a small inline field, with matching tags offered underneath.
+ */
 export const AutocompleteTagSelector = ({
   selectedNames,
   onChange,
-  placeholder = "Search...",
-  variant = "default",
+  placeholder = "Tag name",
 }: Props) => {
   const [searchText, setSearchText] = useState("");
-  const [isFocused, setIsFocused] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const inputRef = useRef<TextInputInstance>(null);
 
   const { data: allTags = [] } = useUserTags();
@@ -54,7 +55,7 @@ export const AutocompleteTagSelector = ({
     (tag) => normalizeTagKey(tag.name) === normalizedSearchKey,
   );
 
-  const filteredTags = useMemo(() => {
+  const suggestions = useMemo(() => {
     if (!normalizedSearchText) return [];
     const searchLower = normalizedSearchText.toLocaleLowerCase();
     return allTags
@@ -76,20 +77,30 @@ export const AutocompleteTagSelector = ({
     const normalizedTagName = normalizeTagName(tagName);
     if (!normalizedTagName) return;
 
-    const nextSelectedNames = [
+    onChange([
       ...selectedNames.filter(
         (selectedName) =>
           normalizeTagKey(selectedName) !== normalizeTagKey(normalizedTagName),
       ),
       normalizedTagName,
-    ];
-    onChange(nextSelectedNames);
+    ]);
     setSearchText("");
     inputRef.current?.focus();
   };
 
-  const handleSelectTag = (tag: Tag) => {
-    addTagName(tag.name);
+  const handleSubmit = () => {
+    if (!normalizedSearchText) {
+      inputRef.current?.blur();
+      return;
+    }
+    const exactMatch = allTags.find(
+      (tag: Tag) => normalizeTagKey(tag.name) === normalizedSearchKey,
+    );
+    if (exactMatch) {
+      addTagName(exactMatch.name);
+    } else if (normalizedSearchText) {
+      addTagName(normalizedSearchText);
+    }
   };
 
   const handleRemoveTag = (tagName: string) => {
@@ -101,112 +112,103 @@ export const AutocompleteTagSelector = ({
     );
   };
 
-  const showDropdown =
-    isFocused && (filteredTags.length > 0 || canAddSearchText);
+  const handleBlur = () => {
+    // Let a tap on a suggestion land before the field closes.
+    setTimeout(() => {
+      if (inputRef.current?.isFocused()) return;
+      setIsAdding(false);
+      setSearchText("");
+    }, 150);
+  };
 
-  // Variant-specific colors
-  const chipStyle =
-    variant === "like"
-      ? styles.chipLike
-      : variant === "dislike"
-        ? styles.chipDislike
-        : styles.chipDefault;
-
-  const chipTextStyle =
-    variant === "like"
-      ? styles.chipTextLike
-      : variant === "dislike"
-        ? styles.chipTextDislike
-        : styles.chipTextDefault;
+  const showSuggestions =
+    isAdding && (suggestions.length > 0 || canAddSearchText);
 
   return (
     <View style={styles.container}>
-      {/* Search Input */}
-      <View style={styles.inputWrapper}>
-        <Ionicons name="search" size={18} style={styles.searchIcon} />
-        <TextInput
-          ref={inputRef}
-          style={styles.input}
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholder={placeholder}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setTimeout(() => setIsFocused(false), 150)}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholderTextColor={styles.placeholder.color}
-        />
-        {searchText.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchText("")}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      <View style={styles.pills}>
+        {selectedNames.map((tagName) => (
+          <Pressable
+            key={normalizeTagKey(tagName)}
+            onPress={() => handleRemoveTag(tagName)}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove tag ${tagName}`}
+            hitSlop={4}
+            style={({ pressed }) => [styles.tag, pressed && styles.pressed]}
           >
-            <Ionicons name="close-circle" size={18} style={styles.clearIcon} />
-          </TouchableOpacity>
+            <Text style={styles.tagText}>{tagName}</Text>
+            <Ionicons name="close" size={13} style={styles.tagRemoveIcon} />
+          </Pressable>
+        ))}
+
+        {isAdding ? (
+          <View style={styles.inputPill}>
+            <TextInput
+              ref={inputRef}
+              autoFocus
+              value={searchText}
+              onChangeText={setSearchText}
+              onSubmitEditing={handleSubmit}
+              onBlur={handleBlur}
+              submitBehavior="submit"
+              returnKeyType="done"
+              placeholder={placeholder}
+              placeholderTextColor={styles.placeholder.color}
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="New tag"
+              style={styles.input}
+            />
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => setIsAdding(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add tag"
+            hitSlop={4}
+            style={({ pressed }) => [styles.addPill, pressed && styles.pressed]}
+          >
+            <Ionicons name="add" size={14} style={styles.addPillText} />
+            <Text style={styles.addPillText}>Tag</Text>
+          </Pressable>
         )}
       </View>
 
-      {/* Dropdown */}
-      {showDropdown && (
-        <View style={styles.dropdown}>
-          {filteredTags.map((tag) => (
-            <TouchableOpacity
+      {showSuggestions ? (
+        <View style={styles.suggestions}>
+          {suggestions.map((tag) => (
+            <Pressable
               key={tag.id}
-              style={styles.dropdownItem}
-              onPress={() => handleSelectTag(tag)}
-              activeOpacity={0.7}
+              onPress={() => addTagName(tag.name)}
+              accessibilityRole="button"
+              accessibilityLabel={`Add tag ${tag.name}`}
+              style={({ pressed }) => [
+                styles.suggestion,
+                pressed && styles.pressed,
+              ]}
             >
-              <Text style={styles.dropdownText}>{tag.name}</Text>
-              <Ionicons
-                name="add-circle-outline"
-                size={20}
-                style={styles.dropdownIcon}
-              />
-            </TouchableOpacity>
+              <Ionicons name="add" size={13} style={styles.suggestionIcon} />
+              <Text style={styles.suggestionText}>{tag.name}</Text>
+            </Pressable>
           ))}
-          {canAddSearchText && (
-            <TouchableOpacity
-              style={styles.dropdownItem}
+          {canAddSearchText ? (
+            <Pressable
               onPress={() => addTagName(searchText)}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Create tag ${normalizedSearchText}`}
+              style={({ pressed }) => [
+                styles.suggestion,
+                pressed && styles.pressed,
+              ]}
             >
-              <Text style={styles.dropdownText}>
-                Add "{normalizedSearchText}"
+              <Ionicons name="add" size={13} style={styles.suggestionIcon} />
+              <Text style={styles.suggestionText}>
+                Create “{normalizedSearchText}”
               </Text>
-              <Ionicons
-                name="add-circle-outline"
-                size={20}
-                style={styles.dropdownIcon}
-              />
-            </TouchableOpacity>
-          )}
+            </Pressable>
+          ) : null}
         </View>
-      )}
-
-      {/* Selected Chips */}
-      {selectedNames.length > 0 && (
-        <>
-          <VSpace size={12} />
-          <View style={styles.chipsContainer}>
-            {selectedNames.map((tagName) => (
-              <TouchableOpacity
-                key={normalizeTagKey(tagName)}
-                style={[styles.chip, chipStyle]}
-                onPress={() => handleRemoveTag(tagName)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.chipText, chipTextStyle]}>{tagName}</Text>
-                <Ionicons
-                  name="close"
-                  size={12}
-                  color="#fff"
-                  style={[styles.chipIcon, chipTextStyle]}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </>
-      )}
+      ) : null}
     </View>
   );
 };
@@ -214,100 +216,92 @@ export const AutocompleteTagSelector = ({
 const styles = StyleSheet.create((theme) => ({
   container: {
     width: "100%",
+    gap: 8,
   },
-  inputWrapper: {
+  pills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  tag: {
+    height: 30,
+    paddingLeft: 11,
+    paddingRight: 8,
+    borderRadius: 15,
+    backgroundColor: theme.colors.inputBackground,
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 44,
-    backgroundColor: theme.colors.inputBackground,
-    borderRadius: theme.borderRadius.extraLarge,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 4,
   },
-  searchIcon: {
-    marginRight: 8,
-    color: theme.colors.textTertiary,
+  tagText: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    fontFamily: theme.fonts.bold,
+  },
+  tagRemoveIcon: {
+    color: theme.colors.textSecondary,
+  },
+  addPill: {
+    height: 30,
+    paddingHorizontal: 11,
+    borderRadius: 15,
+    backgroundColor: theme.colors.primarySoft,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  addPillText: {
+    fontSize: 13,
+    color: theme.colors.onPrimarySoft,
+    fontFamily: theme.fonts.bold,
+  },
+  inputPill: {
+    height: 30,
+    minWidth: 120,
+    paddingHorizontal: 11,
+    borderRadius: 15,
+    backgroundColor: theme.colors.inputBackground,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    justifyContent: "center",
   },
   input: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 21,
-    includeFontPadding: false,
-    textAlignVertical: "center",
-    fontFamily: theme.fonts.regular,
+    minWidth: 96,
+    paddingVertical: 0,
+    fontSize: 13,
+    fontFamily: theme.fonts.bold,
     color: theme.colors.text,
   },
   placeholder: {
     color: theme.colors.placeholderText,
   },
-  clearIcon: {
-    color: theme.colors.textTertiary,
-  },
-  dropdown: {
-    marginTop: 4,
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.medium,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    overflow: "hidden",
-  },
-  dropdownItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  dropdownText: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: theme.fonts.regular,
-    color: theme.colors.text,
-  },
-  dropdownIcon: {
-    color: theme.colors.textTertiary,
-  },
-  chipsContainer: {
+  suggestions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
   },
-  chip: {
+  suggestion: {
+    height: 30,
+    paddingLeft: 8,
+    paddingRight: 11,
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius.full,
+    gap: 3,
   },
-  chipDefault: {
-    backgroundColor: theme.colors.primary,
-    backgroundImage: theme.colors.primaryGradient,
+  suggestionIcon: {
+    color: theme.colors.textSecondary,
   },
-  chipLike: {
-    backgroundColor: "#22c55e",
-  },
-  chipDislike: {
-    backgroundColor: "#ef4444",
-  },
-  chipText: {
-    fontSize: 12,
-    lineHeight: 14,
+  suggestionText: {
+    fontSize: 13,
+    color: theme.colors.text,
     fontFamily: theme.fonts.medium,
-    includeFontPadding: false,
   },
-  chipTextDefault: {
-    color: "#fff",
-  },
-  chipTextLike: {
-    color: "#fff",
-  },
-  chipTextDislike: {
-    color: "#fff",
-  },
-  chipIcon: {
-    marginLeft: 4,
-    lineHeight: 14,
+  pressed: {
+    opacity: 0.6,
   },
 }));

@@ -2,8 +2,9 @@ import { neon } from "@neondatabase/serverless";
 import { CURRENT_TERMS_VERSION } from "@repo/contracts";
 import {
   classifyIngredientAisle,
-  extractPreparation,
   normalizeIngredientName,
+  normalizeUnit,
+  parseIngredient,
 } from "@repo/shared";
 import { hashPassword } from "better-auth/crypto";
 import { and, eq, or, type SQLWrapper } from "drizzle-orm";
@@ -201,69 +202,16 @@ async function shouldClearDatabase(): Promise<boolean> {
   return answer.toLowerCase() === "yes" || answer.toLowerCase() === "y";
 }
 
-// Parse ingredient text to extract quantity, unit, name, and preparation
-interface ParsedIngredient {
-  quantity: string | null;
-  unit: string | null;
-  name: string;
-  preparation: string | null;
-}
-
-function parseIngredient(ingredientText: string): ParsedIngredient {
-  if (!ingredientText || typeof ingredientText !== "string") {
-    return {
-      quantity: null,
-      unit: null,
-      name: ingredientText || "",
-      preparation: null,
-    };
-  }
-
-  const match = ingredientText.match(
-    /^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s*([a-zA-Z]*)\s+(.+)$/,
-  );
-
-  if (match) {
-    const quantityStr = match[1];
-    const unit = match[2]?.trim() || null;
-    const rawName = match[3]?.trim() || ingredientText;
-
-    // Extract preparation from the ingredient name
-    const { name, preparation } = extractPreparation(rawName);
-
-    let quantity: string | null = null;
-    if (quantityStr) {
-      if (quantityStr.includes("/")) {
-        if (quantityStr.includes(" ")) {
-          const [whole, fraction] = quantityStr.split(" ");
-          if (whole && fraction) {
-            const [numerator, denominator] = fraction.split("/");
-            if (numerator && denominator) {
-              quantity = String(
-                parseInt(whole, 10) +
-                  parseInt(numerator, 10) / parseInt(denominator, 10),
-              );
-            }
-          }
-        } else {
-          const [numerator, denominator] = quantityStr.split("/");
-          if (numerator && denominator) {
-            quantity = String(
-              parseInt(numerator, 10) / parseInt(denominator, 10),
-            );
-          }
-        }
-      } else {
-        quantity = quantityStr;
-      }
-    }
-
-    return { quantity, unit, name, preparation };
-  }
-
-  // Try to extract preparation from the entire text
-  const { name, preparation } = extractPreparation(ingredientText);
-  return { quantity: null, unit: null, name, preparation };
+// Parse seed ingredients the same way the app parses saved recipes, so
+// seeded data matches what users would get.
+function parseSeedIngredient(ingredientText: string) {
+  const parsed = parseIngredient(ingredientText);
+  return {
+    quantity: parsed.quantity?.toString() ?? null,
+    unit: normalizeUnit(parsed.unit),
+    name: parsed.name,
+    preparation: parsed.preparation,
+  };
 }
 
 // ─── Database Operations ──────────────────────────────────────────────────────
@@ -471,7 +419,7 @@ async function seedRecipes(
     // Add ingredients to the section
     if (ingredientSection) {
       for (let i = 0; i < r.ingredients.length; i++) {
-        const parsed = parseIngredient(r.ingredients[i]!);
+        const parsed = parseSeedIngredient(r.ingredients[i]!);
         await db.insert(schema.recipeIngredients).values({
           sectionId: ingredientSection.id,
           index: i,
@@ -586,7 +534,7 @@ async function seedSocialRecipes(
     // Add ingredients to the section
     if (ingredientSection) {
       for (let i = 0; i < r.ingredients.length; i++) {
-        const parsed = parseIngredient(r.ingredients[i]!);
+        const parsed = parseSeedIngredient(r.ingredients[i]!);
         await db.insert(schema.recipeIngredients).values({
           sectionId: ingredientSection.id,
           index: i,

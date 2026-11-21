@@ -53,6 +53,43 @@ describe("ingredient parsing", () => {
     );
   });
 
+  it.each([
+    ["4 burger buns", 4, null, "burger buns"],
+    ["1 red onion", 1, null, "red onion"],
+    ["2 large eggs", 2, null, "large eggs"],
+    ["1.5 lbs ground beef", 1.5, "lbs", "ground beef"],
+    ["4 slices cheddar cheese", 4, "slices", "cheddar cheese"],
+    ["500g chicken thighs", 500, "g", "chicken thighs"],
+    ["1 1/2 cups milk", 1.5, "cups", "milk"],
+    ["2 T butter", 2, "T", "butter"],
+  ])(
+    "only treats a known unit as the unit: %s",
+    (text, quantity, unit, name) => {
+      expect(parseIngredient(text)).toMatchObject({ quantity, unit, name });
+    },
+  );
+
+  it.each(["1-2 cups flour", "2½ cups milk", "1,5 kg potatoes", "1.5", "1/2"])(
+    "keeps %s whole instead of splitting the number",
+    (text) => {
+      expect(parseIngredient(text)).toMatchObject({
+        quantity: null,
+        unit: null,
+        name: text,
+      });
+    },
+  );
+
+  it.each(["500g", "2 cups", "2 lbs."])(
+    "keeps a bare amount (%s) whole",
+    (text) => {
+      expect(parseIngredient(text)).toMatchObject({
+        quantity: null,
+        name: text,
+      });
+    },
+  );
+
   it("parses ingredient lists in order", () => {
     expect(
       parseIngredients(["1 cup flour", "salt"]).map((item) => item.name),
