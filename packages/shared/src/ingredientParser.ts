@@ -1,3 +1,5 @@
+import { isRecognizedUnit } from "./unitNormalizer";
+
 export interface ParsedIngredient {
   quantity: number | null;
   unit: string | null;
@@ -60,6 +62,44 @@ export function extractPreparation(text: string): {
   return { name: text, preparation: null };
 }
 
+// A leading quantity (whole, decimal, fraction or mixed number such as
+// "1 1/2"), then the rest of the line. The unit may be attached ("500g").
+// The number must be followed by a space or a letter, so ranges ("1-2"),
+// unicode fractions ("2½") and decimal commas ("1,5") aren't split apart.
+const QUANTITY_PATTERN =
+  /^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)(?:\s+|(?=[a-zA-Z]))(.+)$/;
+
+function parseQuantity(value: string): number | null {
+  const mixed = value.match(/^(\d+)\s+(\d+)\/(\d+)$/);
+  if (mixed) {
+    const denominator = Number(mixed[3]);
+    return denominator
+      ? Number(mixed[1]) + Number(mixed[2]) / denominator
+      : null;
+  }
+
+  const fraction = value.match(/^(\d+)\/(\d+)$/);
+  if (fraction) {
+    const denominator = Number(fraction[2]);
+    return denominator ? Number(fraction[1]) / denominator : null;
+  }
+
+  const numeric = parseFloat(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+/**
+ * Takes the first word as the unit only when it is a known measure, so
+ * "4 burger buns" stays a name and "4 slices cheese" keeps its unit.
+ */
+function splitUnit(text: string): { unit: string | null; rest: string } {
+  const match = text.match(/^([a-zA-Z]+)\.?\s+(.+)$/);
+  if (match && isRecognizedUnit(match[1] ?? null)) {
+    return { unit: match[1] ?? null, rest: match[2]?.trim() ?? "" };
+  }
+  return { unit: null, rest: text };
+}
+
 export function parseIngredient(ingredientText: string): ParsedIngredient {
   if (!ingredientText || typeof ingredientText !== "string") {
     return {
@@ -73,26 +113,14 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
   }
 
   const trimmed = ingredientText.trim();
-  const match = trimmed.match(
-    /^(\d+(?:\/\d+)?|\d*\.?\d+)\s*([a-zA-Z\s]*?)\s+(.+)$/,
-  );
+  const match = trimmed.match(QUANTITY_PATTERN);
 
-  if (match) {
-    const quantityStr = match[1];
-    const unit = match[2]?.trim() || null;
-    const rawName = match[3]?.trim() || trimmed;
-    const { name, preparation } = extractPreparation(rawName);
-
-    let quantity: number | null = null;
-    if (quantityStr) {
-      if (quantityStr.includes("/")) {
-        const [numerator, denominator] = quantityStr.split("/");
-        quantity =
-          parseFloat(numerator ?? "0") / parseFloat(denominator ?? "1");
-      } else {
-        quantity = parseFloat(quantityStr);
-      }
-    }
+  // A line that is only an amount ("500g", "2 cups") has no ingredient name
+  // to split out, so it stays whole.
+  if (match && !isRecognizedUnit(match[2]?.trim().replace(/\.$/, "") ?? null)) {
+    const quantity = parseQuantity(match[1] ?? "");
+    const { unit, rest } = splitUnit(match[2]?.trim() ?? "");
+    const { name, preparation } = extractPreparation(rest);
 
     let confidence: ParsedIngredient["confidence"];
     if (quantity && unit && name) {
